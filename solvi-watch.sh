@@ -1,0 +1,364 @@
+#!/usr/bin/env bash
+# SOLVI.help watcher — keep this file at the root of cv-meta-hackathon-solvi-help.
+# Watches ROOT/updates/*.zip, checks versions/checksums/tests, pushes GitHub, deploys Ubuntu.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python3 - "$ROOT" "$@" <<'SOLVI_WATCH_PY'
+#!/usr/bin/env python3
+"""SOLVI.help Mac release watcher: verified ZIP -> tests -> Git SSH -> SSH/rsync -> HTTPS smoke."""
+import argparse
+import datetime as dt
+import hashlib
+import http.server
+import json
+import os
+import re
+import shutil
+import socketserver
+import stat
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.request
+import zipfile
+from pathlib import Path, PurePosixPath
+
+ROOT=Path(sys.argv[1]).resolve()
+sys.argv=[sys.argv[0]]+sys.argv[2:]
+UPDATES=ROOT/'updates'
+STATE=ROOT/'.solvi'
+REMOTE_USER='root@yolo.cx'
+SSH_PORT='18021'
+WEBROOT='/var/www/solvi.help'
+GITHUB='git@github.com:sylwesterdigital/cv-meta-hackathon-solvi-help.git'
+PUBLIC='https://solvi.help/'
+VERSION_PATTERN=re.compile(r'^\d+\.\d+\.\d+$')
+SHA_PATTERN=re.compile(r'^[0-9a-f]{64}$')
+PUBLIC_ITEMS=('index.html','styles.css','js','assets','vendor','releases.json')
+REQUIRED=('index.html','styles.css','js/main.js','js/world.js','js/animations.js','js/devlog.js','assets/solvi-character.glb','releases.json','package.json','backend/server.py','scripts/prepare_vendor.mjs','tests/animations.test.mjs')
+REQUIRED_VENDOR=('vendor/three/three.module.js','vendor/three/three.core.js','vendor/three/addons/controls/OrbitControls.js','vendor/three/addons/loaders/GLTFLoader.js','vendor/three/addons/loaders/DRACOLoader.js','vendor/three/draco/draco_decoder.wasm')
+_log=None
+
+class ReleaseError(Exception):pass
+
+def display(message,level='INFO'):
+    s=f'{dt.datetime.now().strftime("%H:%M:%S")} [{level:5}] {message}'
+    codes={'INFO':'\033[36m','PASS':'\033[32m','FAIL':'\033[31m','STEP':'\033[34m','WARN':'\033[33m'}
+    if sys.stdout.isatty() and not os.environ.get('NO_COLOR'):
+        print(codes.get(level,'')+s+'\033[0m',flush=True)
+    else:print(s,flush=True)
+    if _log:
+        with _log.open('a') as f:f.write(s+'\n')
+
+def run(args,cwd=None,timeout=180,output=True):
+    args=[str(x) for x in args]
+    display('$ '+' '.join(subprocess.list2cmdline([x]) for x in args))
+    p=subprocess.run(args,cwd=cwd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=timeout)
+    if _log and p.stdout:
+        with _log.open('a') as f:f.write(p.stdout+'\n')
+    if p.returncode:
+        if p.stdout:print('\n'.join(p.stdout.splitlines()[-16:]),flush=True)
+        raise ReleaseError(f'Command failed ({p.returncode}): {args[0]} {args[1] if len(args)>1 else ""}')
+    return p.stdout.strip()
+
+def ssh(command):
+    return run(['ssh','-o','BatchMode=yes','-o','ConnectTimeout=10','-p',SSH_PORT,REMOTE_USER,command],timeout=70)
+
+def digest(content):return hashlib.sha256(content).hexdigest()
+
+def version_tuple(text):return tuple(map(int,text.split('.')))
+
+def last_deployed():
+    # The repo copy can be written during a failed pre-commit attempt.
+    # Only a confirmed deployment counts as deployed; this also permits retries.
+    versions=['0.0.0']
+    for path,field in ((STATE/'deployed.json','version'),):
+        try:
+            version=json.loads(path.read_text()).get(field,'')
+            if VERSION_PATTERN.fullmatch(version):versions.append(version)
+        except (OSError,ValueError,TypeError):pass
+    return max(versions,key=version_tuple)
+
+def verify_zip(archive,stage):
+    display(f'Checking {archive.name}: paths, SHA-256 hashes, version','STEP')
+    with zipfile.ZipFile(archive) as z:
+        members=z.infolist()
+        if len(members)>350 or sum(m.file_size for m in members)>110*1024*1024:
+            raise ReleaseError('Archive exceeds file-count or extracted-size safety limits')
+        names=[m.filename for m in members if not m.is_dir()]
+        if len(set(names))!=len(names) or 'manifest.json' not in names:raise ReleaseError('ZIP has duplicate filenames or lacks manifest')
+        for member in members:
+            p=PurePosixPath(member.filename)
+            if member.filename.startswith('/') or '\\' in member.filename or '..' in p.parts or (any(x.startswith('.') for x in p.parts) and member.filename!='app/.gitignore'):
+                raise ReleaseError('Unsafe archive path '+member.filename)
+            if stat.S_ISLNK(member.external_attr>>16):raise ReleaseError('Archive symlinks are forbidden')
+            if member.filename!='manifest.json' and (not p.parts or p.parts[0]!='app'):
+                raise ReleaseError('Unexpected archive entry '+member.filename)
+        manifest=json.loads(z.read('manifest.json'))
+        version=manifest.get('version','')
+        if not VERSION_PATTERN.fullmatch(version):raise ReleaseError('Bad version in manifest')
+        if version_tuple(version)<=version_tuple(last_deployed()):
+            raise ReleaseError(f'Release v{version} is not newer than deployed v{last_deployed()}')
+        hashes=manifest.get('sha256')
+        if not isinstance(hashes,dict) or set('app/'+k for k in hashes)!=set(n for n in names if n.startswith('app/')):
+            raise ReleaseError('Manifest checksum list does not match ZIP files')
+        for rel,sha in hashes.items():
+            p=PurePosixPath(rel)
+            if not SHA_PATTERN.fullmatch(sha) or p.is_absolute() or '..' in p.parts or (any(x.startswith('.') for x in p.parts) and rel!='.gitignore'):
+                raise ReleaseError('Invalid SHA/path '+rel)
+            contents=z.read('app/'+rel)
+            if digest(contents)!=sha:raise ReleaseError('SHA-256 mismatch: '+rel)
+            destination=stage.joinpath(*p.parts);destination.parent.mkdir(parents=True,exist_ok=True)
+            destination.write_bytes(contents)
+        for name in REQUIRED:
+            if not (stage/name).is_file():raise ReleaseError('Missing required file: '+name)
+        if json.loads((stage/'package.json').read_text())['version']!=version:raise ReleaseError('package.json version mismatch')
+        if json.loads((stage/'releases.json').read_text())['currentVersion']!=version:raise ReleaseError('releases.json version mismatch')
+        if not isinstance(manifest.get('changes'),list) or not manifest['changes']:raise ReleaseError('Manifest needs change notes')
+        display(f'Validated v{version}, {len(hashes)} files','PASS')
+        return manifest
+
+
+def merge_history(stage,manifest):
+    """Append deployment history instead of discarding earlier releases."""
+    history=[]
+    try:history=json.loads((ROOT/'releases.json').read_text()).get('releases',[])
+    except (OSError,ValueError):pass
+    previous=next((x for x in history if x.get('version')==manifest['version']
+                   and x.get('changes')==manifest['changes']),None)
+    published_at=(previous.get('publishedAt') if previous else None) or dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+    item={'version':manifest['version'],
+          'publishedAt':published_at,
+          'changes':manifest['changes']}
+    releases=[item]+[x for x in history if x.get('version')!=item['version']]
+    (stage/'releases.json').write_text(json.dumps({'currentVersion':item['version'],'releases':releases[:30]},indent=2)+'\n')
+
+def test_stage(stage):
+    display('Preparing local Three.js / Draco assets (npm cache reused)','STEP')
+    run(['npm','install','--ignore-scripts','--no-audit','--no-fund','--no-package-lock'],cwd=stage,timeout=200)
+    run(['node','scripts/prepare_vendor.mjs'],cwd=stage)
+    display('Running JavaScript, Python and HTTP smoke tests','STEP')
+    for js in list((stage/'js').rglob('*.js'))+list((stage/'scripts').rglob('*.mjs')):
+        run(['node','--check',js],cwd=stage)
+    run(['node','--test','tests/animations.test.mjs'],cwd=stage)
+    # compile-only: Flask packages are optional until live backend enabled
+    import ast
+    ast.parse((stage/'backend/server.py').read_text())
+    for name in REQUIRED+REQUIRED_VENDOR:
+        p=stage/name
+        if not p.is_file() or p.stat().st_size==0:raise ReleaseError('Missing/empty after build: '+name)
+    content=(stage/'index.html').read_text()
+    if 'id="devLogButton"' not in content or 'id="xrButton"' not in content or 'js/main.js' not in content:
+        raise ReleaseError('UI entry points missing')
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self,*a,**kw):super().__init__(*a,directory=str(stage),**kw)
+        def log_message(self,*a):pass
+    with http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler) as server:
+        t=threading.Thread(target=server.serve_forever,daemon=True);t.start()
+        try:
+            for path in ('','index.html','styles.css','js/main.js','js/world.js','releases.json','assets/solvi-character.glb','vendor/three/three.module.js','vendor/three/draco/draco_decoder.wasm'):
+                with urllib.request.urlopen(f'http://127.0.0.1:{server.server_port}/{path}',timeout=12) as resp:
+                    if resp.status!=200 or not resp.read():raise ReleaseError('HTTP failed: '+path)
+        finally:server.shutdown();t.join(timeout=5)
+    display('Local validation passed','PASS')
+
+def git_preflight(stage):
+    display('Checking local Git, branch and GitHub SSH remote','STEP')
+    if not (ROOT/'.git').exists():raise ReleaseError('Run inside the cloned Git repository root (missing .git)')
+    if run(['git','branch','--show-current'],cwd=ROOT)!='main':raise ReleaseError('Expected Git branch main')
+    staged=run(['git','diff','--cached','--name-only'],cwd=ROOT)
+    if staged:
+        raise ReleaseError('Already-staged Git changes detected; commit/stash them before automatic release: '+staged)
+    # .gitignore belongs to the developer, not the release installer. Never overwrite it.
+    # The watcher itself is explicitly installed by the developer and will be committed as-is.
+    changed=set(run(['git','diff','--name-only'],cwd=ROOT).splitlines())
+    incoming={str(p.relative_to(stage)) for p in stage.rglob('*')
+              if p.is_file() and p.relative_to(stage).parts[0] not in ('node_modules','vendor')
+              and p.relative_to(stage)!=Path('.gitignore')}
+    # README.md is documentation, not part of the public deployment.
+    # Preserve local README edits rather than blocking a release or overwriting them.
+    conflicts=sorted((changed & incoming)-{'solvi-watch.sh','README.md'})
+    dangerous=[rel for rel in conflicts if not ((ROOT/rel).is_file() and
+               (stage/rel).is_file() and (ROOT/rel).read_bytes()==(stage/rel).read_bytes())]
+    if dangerous:
+        raise ReleaseError('Uncommitted edits conflict with release: '+', '.join(dangerous))
+    try:origin=run(['git','remote','get-url','origin'],cwd=ROOT)
+    except ReleaseError:origin=''
+    accepted=('',GITHUB,'https://github.com/sylwesterdigital/cv-meta-hackathon-solvi-help.git',
+              'ssh://git@github.com/sylwesterdigital/cv-meta-hackathon-solvi-help.git')
+    if origin not in accepted:raise ReleaseError('Git origin is unexpected: '+origin)
+    run(['git','var','GIT_AUTHOR_IDENT'],cwd=ROOT)
+    remote=run(['git','-c','core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=10',
+                'ls-remote',GITHUB,'refs/heads/main'],cwd=ROOT,timeout=30)
+    if remote:
+        run(['git','-c','core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=10',
+             'fetch','--no-tags',GITHUB,'refs/heads/main'],cwd=ROOT,timeout=40)
+        relation=subprocess.run(['git','merge-base','--is-ancestor','FETCH_HEAD','HEAD'],
+                                cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        if relation.returncode:raise ReleaseError('GitHub main diverged; git pull --ff-only first')
+    ssh('test -d /var/www && command -v nginx >/dev/null && nginx -t >/dev/null 2>&1')
+    display('GitHub SSH and Ubuntu preflight passed','PASS')
+
+def update_git(stage,manifest):
+    display('Committing verified release to GitHub via SSH','STEP')
+    changed=[]
+    # Deliberately leave local .gitignore and all unrelated user changes alone.
+    # Generated vendor/ and node_modules/ are deployed but not committed.
+    for p in sorted(stage.rglob('*')):
+        if not p.is_file():continue
+        rel=p.relative_to(stage)
+        if rel.parts[0] in ('node_modules','vendor') or rel==Path('.gitignore'):continue
+        # Existing, locally modified README files are owned by the developer.
+        # The release never needs to replace README.md to deploy the site.
+        if rel==Path('README.md') and 'README.md' in set(run(['git','diff','--name-only','--','README.md'],cwd=ROOT).splitlines()):
+            display('Preserving local README.md edits (not included in this release commit)','WARN')
+            continue
+        dest=ROOT/rel
+        if dest.is_symlink():raise ReleaseError('Refusing local symlink overwrite: '+str(rel))
+        dest.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(p,dest)
+        changed.append(str(rel))
+    # Keep generated files out of future Git status without modifying tracked .gitignore.
+    exclude=ROOT/'.git/info/exclude'
+    exclude.parent.mkdir(parents=True,exist_ok=True)
+    existing=exclude.read_text() if exclude.exists() else ''
+    missing=[entry for entry in ('/updates/','/.solvi/','/node_modules/','/vendor/','/.venv/')
+             if entry not in existing.splitlines()]
+    if missing:exclude.write_text(existing.rstrip('\n')+'\n'+'\n'.join(missing)+'\n')
+    # The watcher is always present, even when this release has no tools/ directory.
+    if (ROOT/'solvi-watch.sh').is_file():changed.append('solvi-watch.sh')
+    # Never put nonexistent paths in 'git add'. Refuse staging pre-existing changes.
+    changed=sorted(set(p for p in changed if (ROOT/p).is_file()))
+    try:
+        run(['git','add','--']+changed,cwd=ROOT)
+        changed_in_index=subprocess.run(['git','diff','--cached','--quiet'],cwd=ROOT).returncode
+        if changed_in_index:
+            run(['git','commit','-m',f'solvi: release v{manifest["version"]}'],cwd=ROOT)
+    except Exception:
+        # Commit failed: unstage ONLY release paths; preserve working-tree files.
+        subprocess.run(['git','reset','-q','HEAD','--']+changed,cwd=ROOT,
+                       stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        raise
+    current=run(['git','remote','get-url','origin'],cwd=ROOT)
+    if current!=GITHUB:run(['git','remote','set-url','origin',GITHUB],cwd=ROOT)
+    run(['git','-c','core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=10',
+         'push','-u','origin','main'],cwd=ROOT,timeout=95)
+    expected=run(['git','rev-parse','HEAD'],cwd=ROOT)
+    remote=run(['git','-c','core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=10',
+                'ls-remote',GITHUB,'refs/heads/main'],cwd=ROOT,timeout=30)
+    if not remote.startswith(expected+'\t'):
+        raise ReleaseError('GitHub main does not match local HEAD after push')
+    display('GitHub main updated and verified','PASS')
+
+def publish(stage,version):
+    display('Staging on Ubuntu and backing up previous public files','STEP')
+    # Install only the missing deployment prerequisite; do not perform broad apt upgrades.
+    ssh('command -v rsync >/dev/null 2>&1 || (apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y rsync)')
+    stamp=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d%H%M%S')
+    remote_stage=f'/var/www/.solvi-stage-{version.replace(".","-")}-{stamp}'
+    backup=f'/var/www/.solvi-backups/solvi.help/{stamp}-{version}'
+    remote_root=WEBROOT
+    ssh(f'mkdir -p {remote_stage} {backup} {remote_root}')
+    # rsync only generated public assets, not Python source or build tools into web root.
+    with tempfile.TemporaryDirectory(prefix='solvi-public-') as td:
+        public=Path(td)
+        for item in PUBLIC_ITEMS:
+            src=stage/item;dest=public/item
+            if src.is_dir():shutil.copytree(src,dest)
+            else:shutil.copy2(src,dest)
+        run(['rsync','-az','-e',f'ssh -p {SSH_PORT}',str(public)+'/',f'{REMOTE_USER}:{remote_stage}/'],timeout=130)
+    for item in PUBLIC_ITEMS:
+        ssh(f'test -e {remote_stage}/{item}')
+    # No removal of .well-known or unrelated files in the existing Nginx root.
+    ssh(f'''set -eu; for item in {' '.join(PUBLIC_ITEMS)}; do if [ -e {remote_root}/"$item" ]; then cp -a {remote_root}/"$item" {backup}/; fi; done''')
+    try:
+        ssh(f'''set -eu; for item in {' '.join(PUBLIC_ITEMS)}; do
+            if [ -d {remote_stage}/"$item" ]; then
+                mkdir -p {remote_root}/"$item"; rsync -a --delete {remote_stage}/"$item"/ {remote_root}/"$item"/;
+            else
+                cp {remote_stage}/"$item" {remote_root}/"$item.new";
+                mv -f {remote_root}/"$item.new" {remote_root}/"$item";
+            fi
+        done
+        nginx -t >/dev/null 2>&1
+        ''')
+        display('Public HTTPS smoke test','STEP')
+        for path in ('','releases.json','js/main.js','assets/solvi-character.glb','vendor/three/three.module.js'):
+            with urllib.request.urlopen(PUBLIC+path+'?v='+version,timeout=25) as resp:
+                if resp.status!=200 or not resp.read():raise ReleaseError('Public site unavailable: '+path)
+        with urllib.request.urlopen(PUBLIC+'releases.json?v='+version,timeout=20) as resp:
+            obj=json.load(resp)
+        if obj.get('currentVersion')!=version:raise ReleaseError('Deployed version mismatch')
+        display('Live site verified: '+PUBLIC,'PASS')
+    except Exception:
+        display('Deployment failed, restoring previous public files','WARN')
+        ssh(f'''set -eu; for item in {' '.join(PUBLIC_ITEMS)}; do
+            rm -rf {remote_root}/"$item";
+            if [ -e {backup}/"$item" ]; then cp -a {backup}/"$item" {remote_root}/; fi;
+        done''')
+        raise
+    finally:
+        try:ssh(f'rm -rf {remote_stage}')
+        except ReleaseError:display('Temporary server staging directory needs cleanup','WARN')
+    display('Server backup: '+backup)
+
+def process(archive,dry):
+    with tempfile.TemporaryDirectory(prefix='solvi-validate-',dir=STATE) as tmp:
+        stage=Path(tmp)
+        manifest=verify_zip(archive,stage)
+        merge_history(stage,manifest)
+        test_stage(stage)
+        git_preflight(stage)
+        if dry:
+            display('DRY-RUN PASS (no Git commit/push or server file changes)','PASS')
+            return
+        update_git(stage,manifest)
+        try:publish(stage,manifest['version'])
+        except Exception:
+            display('GitHub already has the release; server rollback attempted. Retry the same ZIP after fixing the server.','WARN')
+            raise
+        (STATE/'deployed.json').write_text(json.dumps({'version':manifest['version'],'utc':dt.datetime.now(dt.timezone.utc).isoformat()})+'\n')
+        display(f'RELEASE v{manifest["version"]} SUCCESS','PASS')
+
+def main():
+    global _log
+    arg=argparse.ArgumentParser(description='SOLVI.help versioned deployment watcher')
+    group=arg.add_mutually_exclusive_group();group.add_argument('--once',action='store_true');group.add_argument('--dry-run',action='store_true')
+    arg.add_argument('--interval',type=int,default=3)
+    args=arg.parse_args()
+    if args.interval<1:arg.error('interval must be >= 1 second')
+    UPDATES.mkdir(exist_ok=True);STATE.mkdir(exist_ok=True)
+    for d in ('processed','failed'): (UPDATES/d).mkdir(exist_ok=True)
+    import fcntl
+    with (STATE/'watch.lock').open('w') as lf:
+        try:fcntl.flock(lf,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:raise ReleaseError('Another watcher instance is running')
+        display(f'WATCH READY — {UPDATES} → {REMOTE_USER}:{WEBROOT}')
+        failed=False
+        while True:
+            for file in sorted(UPDATES.glob('*.zip')):
+                if not(args.once or args.dry_run) and time.time()-file.stat().st_mtime<3:continue
+                stamp=dt.datetime.now().strftime('%Y%m%d-%H%M%S')
+                _log=STATE/f'logs/{stamp}-{file.stem}.log';_log.parent.mkdir(exist_ok=True)
+                try:
+                    process(file,args.dry_run)
+                    if not args.dry_run:file.rename(UPDATES/'processed'/file.name)
+                except Exception as exc:
+                    failed=True;display(str(exc),'FAIL')
+                    if not args.dry_run:
+                        dest=UPDATES/'failed'/file.name
+                        if dest.exists():dest=dest.with_name(dest.stem+'-'+stamp+'.zip')
+                        file.rename(dest)
+                        display(f'Archive moved to {dest}','WARN')
+                finally:display(f'Log: {_log}');_log=None
+            if args.once or args.dry_run:return 1 if failed else 0
+            time.sleep(args.interval)
+
+if __name__=='__main__':
+    try:sys.exit(main())
+    except KeyboardInterrupt:print('\nWatcher stopped.');sys.exit(0)
+    except Exception as exc:display(str(exc),'FAIL');sys.exit(1)
+
+SOLVI_WATCH_PY

@@ -1,0 +1,16 @@
+{
+  "currentVersion": "0.1.0",
+  "releases": [
+    {
+      "version": "0.1.0",
+      "publishedAt": "2026-10-26T21:38:13Z",
+      "changes": [
+        "Create SOLVI.help open-world Three.js and WebXR foundation.",
+        "Add rigged animated character with Idle, Walking, Running and Waving actions.",
+        "Add autonomous roaming, floor navigation, cubes and movement controls.",
+        "Add versioned deployment watcher, dev-log overlay and server verification.",
+        "Scaffold Flask WebSockets, shared presence and opt-in WebRTC media."
+      ]
+    }
+  ]
+}
