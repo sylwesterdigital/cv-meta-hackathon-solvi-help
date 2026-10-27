@@ -14,7 +14,9 @@ const room=new LiveRoom(
   ()=>{} // Reserved for WebRTC offer/answer/ICE signaling.
 );
 world.onPose=pose=>room.state(pose);
-room.connect();
+// Enable shared room only once the Flask backend and Nginx /ws proxy are configured.
+// Test explicitly with https://solvi.help/?live=1
+if(new URLSearchParams(location.search).get('live')==='1')room.connect();
 const buttons=[...document.querySelectorAll('[data-motion],#autoButton')];
 for(const btn of buttons){btn.addEventListener('click',()=>{
   const mode=btn.id==='autoButton'?'auto':btn.dataset.motion;

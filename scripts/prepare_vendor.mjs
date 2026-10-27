@@ -30,7 +30,7 @@ function imports(source) {
   return [...new Set(found)];
 }
 
-const queue = ['controls/OrbitControls.js', 'loaders/GLTFLoader.js', 'loaders/DRACOLoader.js'];
+const queue = ['controls/OrbitControls.js', 'loaders/GLTFLoader.js', 'loaders/DRACOLoader.js', 'webxr/XRControllerModelFactory.js', 'webxr/XRHandModelFactory.js'];
 const visited = new Set();
 while (queue.length) {
   const rel = queue.shift();

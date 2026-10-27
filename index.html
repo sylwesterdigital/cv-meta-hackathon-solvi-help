@@ -11,15 +11,15 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.1.1</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.1.2</small></div>
     <nav aria-label="Tools">
       <button type="button" id="devLogButton">Dev log</button>
-      <button type="button" id="xrButton" disabled>VR / XR</button>
+      <button type="button" id="xrButton" title="Open in a WebXR headset browser">Enter VR</button>
       <button type="button" id="callButton">Voice / video</button>
     </nav>
   </header>
   <div class="statusbar" aria-live="polite"><span class="signal"></span> <span id="networkStatus">Connecting…</span> <span class="sep">/</span> <span id="visitorCount">1 viewer</span></div>
-  <section class="instructions" aria-label="Controls">Drag to orbit · Scroll to zoom · Click the floor to move · W A S D to move · Shift to run</section>
+  <section class="instructions" aria-label="Controls">Drag to orbit · Click floor to walk · WASD / Shift · VR: trigger to teleport, point at menu for actions</section>
   <section class="controls" aria-label="Character controls">
     <button id="autoButton" class="selected">Auto roam</button>
     <button data-motion="idle">Idle</button>

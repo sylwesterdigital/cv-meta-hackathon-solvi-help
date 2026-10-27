@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.1.1",
+  "currentVersion": "0.1.2",
   "releases": [
+    {
+      "version": "0.1.2",
+      "publishedAt": "2026-10-27T00:45:09Z",
+      "changes": [
+        "Select exact Mixamo Idle clip; exclude Falling Idle regardless of animation order.",
+        "Add visible Enter VR control, tracked hands/controller models, XR action menu, and floor teleportation.",
+        "Disable WebSocket retries by default until backend enabled; optional multiplayer with ?live=1.",
+        "Add XR teleport and animation matching unit tests."
+      ]
+    },
     {
       "version": "0.1.1",
       "publishedAt": "2026-10-27T00:30:48Z",

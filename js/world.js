@@ -3,6 +3,9 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MotionController, computeMode} from './animations.js';
+import {teleportOffset,validTeleport} from './xr-navigation.js';
+import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
+import {XRHandModelFactory} from 'three/addons/webxr/XRHandModelFactory.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const random=(a,b)=>a+Math.random()*(b-a);
@@ -14,7 +17,7 @@ export class SolviWorld {
     this.camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.05,150);
     this.camera.position.set(5,3.7,7.5);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
     this.renderer.setSize(innerWidth,innerHeight);
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -22,6 +25,7 @@ export class SolviWorld {
     this.renderer.shadowMap.enabled=true;
     this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     this.renderer.xr.enabled=true;
+    this.renderer.xr.setReferenceSpaceType('local-floor');
     root.append(this.renderer.domElement);
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);
     this.controls.enableDamping=true;this.controls.target.set(0,1,0);
@@ -31,7 +35,7 @@ export class SolviWorld {
     this.clock=new THREE.Clock();
     this.character=new THREE.Group();this.scene.add(this.character);
     this.actor=new THREE.Group();this.character.add(this.actor);
-    this.pending=null;this.roam=true;this.desiredSpeed=1.4;this.idleTimer=2;this.currentMode='idle';
+    this.pending=null;this.roam=true;this.desiredSpeed=1.4;this.idleTimer=2;this.currentMode='idle';this.gestureUntil=0;
     this.keys=new Set();this.animator=null;this.ready=false;this.others=new Map();
     this.raycaster=new THREE.Raycaster();this.mouse=new THREE.Vector2();
     this.setupEnvironment();this.setupEvents();this.setupXR();
@@ -40,7 +44,7 @@ export class SolviWorld {
   setupEnvironment(){
     this.scene.add(new THREE.HemisphereLight(0xc8e4ff,0x34485f,2.3));
     const sunlight=new THREE.DirectionalLight(0xffeed7,3.6);sunlight.position.set(4,9,7);sunlight.castShadow=true;
-    sunlight.shadow.mapSize.set(2048,2048);sunlight.shadow.camera.left=-16;sunlight.shadow.camera.right=16;
+    sunlight.shadow.mapSize.set(1024,1024);sunlight.shadow.camera.left=-16;sunlight.shadow.camera.right=16;
     sunlight.shadow.camera.top=16;sunlight.shadow.camera.bottom=-16;sunlight.shadow.normalBias=.025;
     this.scene.add(sunlight);
     const ground=new THREE.Mesh(new THREE.PlaneGeometry(70,70),new THREE.MeshStandardMaterial({color:'#344758',roughness:.97}));
@@ -103,8 +107,8 @@ export class SolviWorld {
   setMode(mode){
     if(mode==='auto'){this.roam=true;this.pending=null;this.idleTimer=.5;return;}
     this.roam=false;
-    if(mode==='idle'){this.pending=null;this.currentMode='idle';this.animator?.play('idle');}
-    else if(mode==='wave'){this.pending=null;this.currentMode='wave';this.animator?.play('wave');setTimeout(()=>{if(this.currentMode==='wave'){this.currentMode='idle';this.animator?.play('idle');}},1750);}
+    if(mode==='idle'){this.pending=null;this.gestureUntil=0;this.currentMode='idle';this.animator?.play('idle');}
+    else if(mode==='wave'){this.pending=null;this.gestureUntil=performance.now()+1750;this.currentMode='wave';this.animator?.play('wave');}
     else if(['walk','run'].includes(mode)){
       this.desiredSpeed=mode==='run'?3.3:1.4;
       this.pending=new THREE.Vector3(random(-4,4),0,random(-4,4));
@@ -140,7 +144,7 @@ export class SolviWorld {
       const heading=Math.atan2(vx,vz);let diff=((heading-this.character.rotation.y+Math.PI*3)%(2*Math.PI))-Math.PI;
       this.character.rotation.y+=diff*Math.min(1,dt*8);
     }
-    const mode=computeMode(speed);
+    const mode=this.gestureUntil>performance.now()?'wave':computeMode(speed);
     if(mode!==this.currentMode){this.currentMode=mode;this.animator?.play(mode);}
     this.animator?.update(dt);
     this.onPose?.({x:+this.character.position.x.toFixed(2),z:+this.character.position.z.toFixed(2),yaw:+this.character.rotation.y.toFixed(2),mode});
@@ -158,55 +162,148 @@ export class SolviWorld {
   updateRemoteState(id,state){const group=this.others.get(id);if(group&&state){group.position.set(Number(state.x)||0,0,Number(state.z)||0);group.rotation.y=Number(state.yaw)||0;}}
   setupXR(){
     const btn=document.getElementById('xrButton');
-    const enabled=async()=>Boolean(navigator.xr&&await navigator.xr.isSessionSupported('immersive-vr'));
-    enabled().then(ok=>{btn.disabled=!ok;btn.textContent=ok?'Enter VR':'VR unavailable';}).catch(()=>{btn.textContent='VR unavailable';});
+    const toast=(message)=>{const el=document.getElementById('toast');el.textContent=message;el.hidden=false;};
+    // Keep the XR button visible even on desktop. It can explain why XR is unavailable.
+    btn.disabled=false;btn.textContent='Enter VR';btn.title='WebXR: Meta Quest / compatible headset browser';
     btn.addEventListener('click',async()=>{
+      if(this.renderer.xr.isPresenting){await this.renderer.xr.getSession()?.end();return;}
+      if(!navigator.xr){toast('VR requires a WebXR-enabled browser on a supported headset (e.g. Meta Quest Browser).');return;}
       try{
-        if(this.renderer.xr.isPresenting){await this.renderer.xr.getSession().end();return;}
-        const session=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor','hand-tracking']});
-        await this.renderer.xr.setSession(session);btn.textContent='Exit VR';
-        session.addEventListener('end',()=>{btn.textContent='Enter VR';});
-      }catch(e){alert('WebXR: '+e.message);}
+        if(!await navigator.xr.isSessionSupported('immersive-vr')){
+          toast('Immersive VR is not supported on this device. Open SOLVI.help in a headset browser.');return;
+        }
+        let session;
+        try {
+          this.renderer.xr.setReferenceSpaceType('local-floor');
+          session=await navigator.xr.requestSession('immersive-vr',{
+            requiredFeatures:['local-floor'],optionalFeatures:['hand-tracking','bounded-floor']});
+        }catch(floorError){
+          // A seated device can still provide 'local' tracking.
+          this.renderer.xr.setReferenceSpaceType('local');
+          session=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['hand-tracking']});
+        }
+        try{await this.renderer.xr.setSession(session);}catch(e){await session.end().catch(()=>{});throw e;}
+        btn.textContent='Exit VR';this.xrMenuPlaced=false;this.teleportAim=null;
+        this.renderer.xr.setFoveation?.(.8);
+        session.addEventListener('end',()=>{
+          btn.textContent='Enter VR';this.xrMenu.visible=false;
+          this.teleportIndicator.visible=false;this.teleportAim=null;
+          this.renderer.xr.setReferenceSpaceType('local-floor');
+        },{once:true});
+      }catch(e){toast('Cannot start VR: '+e.message);console.warn('XR session:',e);}
     });
-    this.xrMenu=new THREE.Group();this.xrMenu.position.set(0,1.45,-1.4);
-    const bg=new THREE.Mesh(new THREE.PlaneGeometry(.88,.95),new THREE.MeshBasicMaterial({color:0x101a2a,transparent:true,opacity:.95,side:THREE.DoubleSide}));this.xrMenu.add(bg);
+    // Floating menu: controller ray / hand select can trigger animations.
+    this.xrMenu=new THREE.Group();
+    const panel=new THREE.Mesh(new THREE.PlaneGeometry(.88,1.04),
+      new THREE.MeshBasicMaterial({color:0x102136,transparent:true,opacity:.94,side:THREE.DoubleSide,depthTest:false}));
+    this.xrMenu.add(panel);
     this.xrButtons=[];
-    ['idle','walk','run'].forEach((mode,i)=>{
-      const cv=document.createElement('canvas');cv.width=256;cv.height=70;
-      const ctx=cv.getContext('2d');ctx.fillStyle='#24374b';ctx.fillRect(0,0,256,70);ctx.fillStyle='#eff6ff';ctx.font='bold 27px system-ui';ctx.textAlign='center';ctx.fillText(mode.toUpperCase(),128,44);
-      const texture=new THREE.CanvasTexture(cv);
-      const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.65,.2),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}));
-      mesh.position.set(0,.23-i*.26,.01);mesh.userData.mode=mode;this.xrMenu.add(mesh);this.xrButtons.push(mesh);
-    });
+    for(const [index,mode] of ['idle','walk','run','wave'].entries()){
+      const cv=document.createElement('canvas');cv.width=256;cv.height=72;
+      const ctx=cv.getContext('2d');ctx.fillStyle='#294960';ctx.fillRect(0,0,256,72);
+      ctx.fillStyle='#ffffff';ctx.textAlign='center';ctx.font='600 30px system-ui';
+      ctx.fillText(mode.toUpperCase(),128,47);
+      const tex=new THREE.CanvasTexture(cv);
+      const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.68,.19),
+        new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide,depthTest:false}));
+      mesh.position.set(0,.35-index*.23,.01);mesh.userData.motion=mode;
+      this.xrMenu.add(mesh);this.xrButtons.push(mesh);
+    }
     this.xrMenu.visible=false;this.scene.add(this.xrMenu);
-    this.xrHands=[];
+    // Ring indicates controller/hand teleport destination on the floor.
+    this.teleportIndicator=new THREE.Mesh(new THREE.RingGeometry(.17,.27,36),
+      new THREE.MeshBasicMaterial({color:0x72e7ff,side:THREE.DoubleSide,depthTest:false}));
+    this.teleportIndicator.rotation.x=-Math.PI/2;this.teleportIndicator.position.y=.023;
+    this.teleportIndicator.visible=false;this.scene.add(this.teleportIndicator);
+    this.xrInputs=[];
+    const controllerFactory=new XRControllerModelFactory();
+    const handFactory=new XRHandModelFactory();
     for(let i=0;i<2;i++){
       const controller=this.renderer.xr.getController(i);
-      const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-2)]),new THREE.LineBasicMaterial({color:'#a7dbe7'}));controller.add(line);
+      // A simple ray works even when a native controller profile cannot be fetched.
+      const beam=new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-5)]),
+        new THREE.LineBasicMaterial({color:0x9fe3ff,transparent:true,opacity:.7}));
+      beam.name='Teleport ray';controller.add(beam);
       controller.addEventListener('selectstart',()=>{
-        this.raycaster.setFromXRController(controller);
-        const hits=this.raycaster.intersectObjects(this.xrButtons,false);
-        if(hits.length)this.setMode(hits[0].object.userData.mode);
+        if(!this.renderer.xr.isPresenting)return;
+        const selection=this.xrRaycast(controller);
+        if(selection.menu){this.setMode(selection.menu.userData.motion);return;}
+        this.xrInputs[i].selecting=true;
+        this.xrInputs[i].landing=selection.floor?.point.clone()||null;
+      });
+      controller.addEventListener('selectend',()=>{
+        const input=this.xrInputs[i];if(!input.selecting)return;
+        input.selecting=false;
+        if(input.landing)this.teleportTo(input.landing);
+        input.landing=null;this.teleportIndicator.visible=false;
       });
       this.scene.add(controller);
-      const hand=this.renderer.xr.getHand(i);this.scene.add(hand);this.xrHands.push(hand);
+      const grip=this.renderer.xr.getControllerGrip(i);
+      const fallback=new THREE.Mesh(new THREE.CylinderGeometry(.025,.035,.13,9),
+        new THREE.MeshStandardMaterial({color:0x80c6dc,roughness:.55}));
+      fallback.rotation.x=Math.PI/2;grip.add(fallback);
+      // Native controller models when their profiles are available. Primitive remains as fallback.
+      grip.add(controllerFactory.createControllerModel(grip));
+      this.scene.add(grip);
+      const hand=this.renderer.xr.getHand(i);
+      hand.add(handFactory.createHandModel(hand,'spheres'));
+      this.scene.add(hand);
+      this.xrInputs.push({controller,grip,hand,selecting:false,landing:null});
     }
+  }
+  xrRaycast(controller){
+    controller.updateWorldMatrix(true,false);
+    this.raycaster.setFromXRController(controller);
+    const menu=this.raycaster.intersectObjects(this.xrButtons,false)[0]?.object;
+    const floor=this.raycaster.intersectObject(this.floor,false)[0];
+    return {menu,floor:floor&&validTeleport(floor.point.x,floor.point.z)?floor:null};
+  }
+  teleportTo(landing){
+    const session=this.renderer.xr.getSession();
+    const reference=this.renderer.xr.getReferenceSpace();
+    if(!session||!reference||typeof XRRigidTransform==='undefined')return;
+    const head=this.renderer.xr.getCamera();
+    const current=head.getWorldPosition(new THREE.Vector3());
+    if(!validTeleport(landing.x,landing.z))return;
+    const offset=teleportOffset(current,landing);
+    try{
+      this.renderer.xr.setReferenceSpace(reference.getOffsetReferenceSpace(new XRRigidTransform(offset)));
+    }catch(err){console.warn('XR teleport failed:',err);}
+  }
+  updateXR(){
+    const presenting=this.renderer.xr.isPresenting;
+    this.xrMenu.visible=presenting;
+    if(!presenting){this.teleportIndicator.visible=false;return;}
+    if(!this.xrMenuPlaced){
+      const eye=this.renderer.xr.getCamera();
+      const pos=eye.getWorldPosition(new THREE.Vector3());
+      const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(eye.getWorldQuaternion(new THREE.Quaternion()));
+      fwd.y=0;fwd.normalize();
+      const right=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
+      if(pos.y<.2)return; // Wait for first tracked headset pose.
+      this.xrMenu.position.copy(pos).addScaledVector(fwd,1.5).addScaledVector(right,.65);
+      this.xrMenu.position.y=pos.y;
+      this.xrMenu.lookAt(pos);
+      this.xrMenuPlaced=true;
+    }
+    let found=false;
+    for(const input of this.xrInputs){
+      if(!input.selecting)continue;
+      const hit=this.xrRaycast(input.controller);
+      input.landing=hit.menu?null:hit.floor?.point.clone()||null;
+      if(input.landing){
+        this.teleportIndicator.position.set(input.landing.x,.024,input.landing.z);
+        found=true;
+      }
+    }
+    this.teleportIndicator.visible=found;
   }
   frame(){
     const dt=Math.min(.05,this.clock.getDelta());this.updateMovement(dt);
-    this.xrMenu.visible=this.renderer.xr.isPresenting;
-    if(this.renderer.xr.isPresenting){
-      for(const hand of this.xrHands){
-        for(const jointName of ['wrist','index-finger-tip','thumb-tip']){
-          const joint=hand.joints?.[jointName];
-          if(joint&&!joint.userData.solviMarker){
-            joint.add(new THREE.Mesh(new THREE.SphereGeometry(.015,8,6),new THREE.MeshBasicMaterial({color:'#b7e5f1'})));
-            joint.userData.solviMarker=true;
-          }
-        }
-      }
-    }
     this.controls.enabled=!this.renderer.xr.isPresenting;
-    this.controls.update();this.renderer.render(this.scene,this.camera);
+    if(!this.renderer.xr.isPresenting)this.controls.update();
+    this.updateXR();
+    this.renderer.render(this.scene,this.camera);
   }
 }
