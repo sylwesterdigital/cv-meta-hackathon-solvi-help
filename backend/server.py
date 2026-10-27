@@ -115,7 +115,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,version='0.2.0',ai=bool(MODEL_KEY),backend=True,websocket=True)
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.1',ai=bool(MODEL_KEY),backend=True,websocket=True)
 
 @app.post('/api/onboard')
 def onboard():
@@ -253,6 +253,26 @@ def models():
     if not MODEL_KEY:return jsonify(models=[],enabled=False,note='Configure MODEL_API_KEY to enable Meta inference')
     try:return jsonify(models=get_models(),enabled=True)
     except (RuntimeError,URLError,TimeoutError) as exc:return json_error(str(exc),502)
+
+@app.post('/api/message')
+def human_message():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    text=str(data.get('text','')).strip()[:3000]
+    ids=data.get('media',[])
+    if not isinstance(ids,list) or len(ids)>3:return json_error('Maximum three attachments')
+    if not text and not ids:return json_error('Empty message')
+    with db() as con:
+        for mid in ids:
+            if not isinstance(mid,str) or not con.execute('SELECT 1 FROM media WHERE id=? AND user_id=?',(mid,user['id'])).fetchone():
+                return json_error('Invalid attachment')
+        message_id=str(uuid.uuid4());ts=now()
+        con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created) VALUES(?,?,?,?,?,?,?)',
+                    (message_id,user['id'],'user','',text,json.dumps(ids),ts))
+    publish({'type':'chat-created','id':message_id})
+    return jsonify(message={'id':message_id,'role':'user','speaker':user['name'],'avatar':user['avatar'],
+                            'text':text,'media':json.dumps(ids),'created':ts})
 
 @app.post('/api/chat')
 def chat():
@@ -422,7 +442,7 @@ def websocket(ws):
 def index():return send_from_directory(ROOT,'index.html')
 
 @app.get('/<path:name>')
-def static(name):
+def public_asset(name):
     if name.split('/')[0] not in {'js','vendor','assets'} and name not in {'styles.css','releases.json'}:abort(404)
     return send_from_directory(ROOT,name)
 

@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.0",
+  "currentVersion": "0.2.1",
   "releases": [
+    {
+      "version": "0.2.1",
+      "publishedAt": "2026-10-27T12:44:45Z",
+      "changes": [
+        "Fix Flask endpoint collision that prevented backend from starting (public_asset instead of static)",
+        "Add HTTP and Flask endpoint regression tests, keeping previous v0.2.1 frontend and features unchanged",
+        "Automatic full-stack deployment with Flask, SQLite and Nginx API/WebSocket proxy"
+      ]
+    },
     {
       "version": "0.2.0",
       "publishedAt": "2026-10-27T12:17:08Z",

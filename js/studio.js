@@ -44,25 +44,25 @@ async function checkBackend(){try{const controller=new AbortController();const t
  catch{online=false;api.online=false;$('backendLabel').textContent='Local demo · backend not enabled';}}
 async function begin(){const p=stored();fillProfile(p);await checkBackend();
  if(!p?.name){show('profileBackdrop',true);$('profileName').focus();return;}
- if(!online){me=p;show('profileBackdrop',false);identity();window.dispatchEvent(new CustomEvent('solvi:scene-ready'));return;}
+ if(!online){me=p;show('profileBackdrop',false);show('chatPanel',true);identity();window.dispatchEvent(new CustomEvent('solvi:scene-ready'));return;}
  if(p.token){auth={token:p.token};try{const out=await api.req('/api/me');me=out.user;identity();await afterLogin();return;}catch(e){toast(e.message);}}
  show('profileBackdrop',true);$('profileStatus').textContent='Reconnect or take over this profile to continue.';
 }
 function identity(){const text=me?.name||'Guest';$('profileButton').textContent=text.length>15?text.slice(0,14)+'…':text;
  $('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;}
-async function afterLogin(){show('profileBackdrop',false);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
+async function afterLogin(){show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
  try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();
-  if(!modelIds.length){select.add(new Option(data.note||'Meta API unavailable',''));select.disabled=true;}else{
-   for(const id of modelIds)select.add(new Option(id,id));
-   select.value=modelIds.includes('muse-spark-1.3')?'muse-spark-1.3':modelIds[0];select.disabled=false;
-  }}catch(e){$('modelSelect').replaceChildren(new Option('Model catalog unavailable',''));toast(e.message);}
+  select.add(new Option('World chat · people',''));
+  for(const id of modelIds)select.add(new Option('AI · '+id,id));
+  select.value=modelIds.includes('muse-spark-1.3')?'muse-spark-1.3':'';select.disabled=false;
+  if(!modelIds.length)$('chatStatus').textContent=data.note||'Human chat available. AI key not configured.';}catch(e){$('modelSelect').replaceChildren(new Option('Model catalog unavailable',''));toast(e.message);}
  try{const data=await api.req('/api/messages');$('chatFeed').replaceChildren();for(const row of data.messages||[])await bubble(row);}catch(e){toast(e.message);}
  window.dispatchEvent(new CustomEvent('solvi:scene-ready'));
 }
 async function submitProfile(){const fields=profileFields();if(!fields.name){$('profileStatus').textContent='Name is required';return;}
- if(!online){me={...fields,id:me?.id||random(),avatar:me?.avatar||''};saveLocal(me);show('profileBackdrop',false);identity();return;}
+ if(!online){me={...fields,id:me?.id||random(),avatar:me?.avatar||''};saveLocal(me);show('profileBackdrop',false);show('chatPanel',true);identity();return;}
  try{const previous=stored();if(!auth || !me){
-  const data=await api.req('/api/onboard',{method:'POST',body:JSON.stringify({...fields,id:previous?.id||undefined,recovery:previous?.recovery||undefined,tab})});
+  const data=await api.req('/api/onboard',{method:'POST',body:JSON.stringify({...fields,id:previous?.recovery?previous.id:undefined,recovery:previous?.recovery||undefined,tab})});
   auth={token:data.token};me=data.user;saveLocal({...me,token:data.token,recovery:data.recovery||previous?.recovery});
   await afterLogin();
  }else{
@@ -90,10 +90,10 @@ async function attach(file){if(!file)return;try{const media=await uploadFile(fil
 async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.length)return;if(!me){show('profileBackdrop',true);return;}
  const ids=pending.map(x=>x.id);$('chatInput').value='';pending=[];updatePending();
  if(!online){await bubble({role:'user',text,speaker:me.name,created:new Date().toISOString()});toast('Local demo only. AI requires backend and MODEL_API_KEY.');return;}
- if(!$('modelSelect').value){toast('No AI model available: configure MODEL_API_KEY');return;}
+ const useAI=!!$('modelSelect').value;
  $('sendChat').disabled=true;$('chatStatus').textContent='Model processing…';
- try{const response=await api.req('/api/chat',{method:'POST',body:JSON.stringify({text,model:$('modelSelect').value,media:ids})});
-  await bubble(response.message);await bubble(response.answer);$('chatStatus').textContent=`${response.answer.model} · ${response.latency_ms} ms`;
+ try{const response=await api.req(useAI?'/api/chat':'/api/message',{method:'POST',body:JSON.stringify({text,model:$('modelSelect').value,media:ids})});
+  await bubble(response.message);if(response.answer)await bubble(response.answer);$('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
  }catch(e){$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
  finally{$('sendChat').disabled=false;}
 }
@@ -143,7 +143,7 @@ async function stats(){if(!adminToken)return;try{const data=await api.req('/api/
 function bindUI(world){
  const editor=new SceneEditor(world,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:scene-changed',()=>toast('Scene updated by another user — select Objects → Load to refresh'));
- window.addEventListener('solvi:chat-updated',async()=>{if(!online||!auth)return;try{const data=await api.req('/api/messages');$('chatFeed').replaceChildren();for(const row of data.messages||[])await bubble(row);}catch{}});
+ window.addEventListener('solvi:chat-updated',async()=>{if(!online||!auth)return;try{const data=await api.req('/api/messages');$('chatFeed').replaceChildren();for(const row of data.messages||[])await bubble(row);}catch(e){toast(e.message);}});
  $('chatButton').onclick=()=>show('chatPanel',$('chatPanel').hidden);$('closeChat').onclick=()=>show('chatPanel',false);
  $('profileButton').onclick=()=>{fillProfile(me||stored());show('profileBackdrop',true);};
  $('closeProfile').onclick=()=>{if(me)show('profileBackdrop',false);else toast('Enter a name to start');};

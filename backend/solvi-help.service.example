@@ -10,7 +10,7 @@ Environment=SOLVI_ALLOWED_ORIGINS=https://solvi.help
 Environment=SOLVI_STATIC_ROOT=/var/www/solvi.help
 Environment=SOLVI_DATA_DIR=/var/lib/solvi-help
 EnvironmentFile=-/etc/solvi-help.env
-ExecStart=/opt/solvi-help/.venv/bin/gunicorn --workers 1 --threads 12 --timeout 90 --bind 127.0.0.1:8765 server:app
+ExecStart=/opt/solvi-help/.venv/bin/gunicorn --workers 1 --threads 12 --timeout 90 --bind 127.0.0.1:18765 server:app
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

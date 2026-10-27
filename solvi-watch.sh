@@ -37,7 +37,7 @@ PUBLIC='https://solvi.help/'
 VERSION_PATTERN=re.compile(r'^\d+\.\d+\.\d+$')
 SHA_PATTERN=re.compile(r'^[0-9a-f]{64}$')
 PUBLIC_ITEMS=('index.html','styles.css','js','assets','vendor','releases.json')
-REQUIRED=('index.html','styles.css','js/main.js','js/world.js','js/animations.js','js/devlog.js','assets/solvi-character.glb','releases.json','package.json','backend/server.py','scripts/prepare_vendor.mjs','tests/animations.test.mjs','tests/browser-imports.test.mjs','scripts/check_browser_modules.mjs')
+REQUIRED=('index.html','styles.css','js/main.js','js/world.js','js/animations.js','js/devlog.js','assets/solvi-character.glb','releases.json','package.json','backend/server.py','backend/install-ubuntu.sh','backend/configure-nginx.py','backend/requirements.txt','scripts/prepare_vendor.mjs','tests/animations.test.mjs','tests/browser-imports.test.mjs','scripts/check_browser_modules.mjs','backend/test_api.py','backend/test_nginx.py')
 REQUIRED_VENDOR=('vendor/three/three.module.js','vendor/three/three.core.js','vendor/three/addons/controls/OrbitControls.js','vendor/three/addons/loaders/GLTFLoader.js','vendor/three/addons/loaders/DRACOLoader.js','vendor/three/addons/utils/BufferGeometryUtils.js','vendor/three/draco/draco_decoder.wasm')
 _log=None
 _VERBOSE=False
@@ -163,12 +163,26 @@ def test_stage(stage):
     display('Running JavaScript, Python and HTTP smoke tests','STEP')
     for js in list((stage/'js').rglob('*.js'))+list((stage/'scripts').rglob('*.mjs')):
         run(['node','--check',js],cwd=stage)
-    run(['node','--test','tests/animations.test.mjs','tests/browser-imports.test.mjs'],cwd=stage)
+    run(['npm','test'],cwd=stage)
     dependency_list=json.loads(run(['node','scripts/check_browser_modules.mjs','--json'],cwd=stage))['modules']
     if not dependency_list:raise ReleaseError('Browser import graph is empty')
-    # compile-only: Flask packages are optional until live backend enabled
+    # Backend is now mandatory. Test actual SQLite + onboarding + world chat.
     import ast
     ast.parse((stage/'backend/server.py').read_text())
+    ast.parse((stage/'backend/configure-nginx.py').read_text())
+    run(['bash','-n',stage/'backend/install-ubuntu.sh'],cwd=stage)
+    run(['python3','backend/test_nginx.py'],cwd=stage)
+    venv=STATE/'backend-test-venv'
+    if not (venv/'bin/python').is_file():run(['python3','-m','venv',venv],cwd=stage)
+    run([venv/'bin/python','-m','pip','install','-q','--disable-pip-version-check','-r','backend/requirements.txt'],cwd=stage,timeout=200)
+    with tempfile.TemporaryDirectory(prefix='solvi-db-test-',dir=STATE) as test_dir:
+        test_env={**os.environ,'SOLVI_DATA_DIR':test_dir,'SOLVI_STATIC_ROOT':str(stage),'SOLVI_ALLOWED_ORIGINS':'http://localhost'}
+        display('Testing SQLite onboarding, human chat, profiles and API health','EVENT')
+        test=subprocess.run([str(venv/'bin/python'),'backend/test_api.py'],cwd=stage,env=test_env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=35)
+    if test.returncode:raise ReleaseError('Backend integration test failed: '+test.stdout[-1500:])
+    if _log:
+        with _log.open('a') as log:log.write(test.stdout)
+
     for name in REQUIRED+REQUIRED_VENDOR:
         p=stage/name
         if not p.is_file() or p.stat().st_size==0:raise ReleaseError('Missing/empty after build: '+name)
@@ -228,40 +242,46 @@ def git_preflight(stage):
 def update_git(stage,manifest):
     display('Committing verified release to GitHub via SSH','STEP')
     changed=[]
-    # Deliberately leave local .gitignore and all unrelated user changes alone.
-    # Generated vendor/ and node_modules/ are deployed but not committed.
-    for p in sorted(stage.rglob('*')):
-        if not p.is_file():continue
-        rel=p.relative_to(stage)
-        if rel.parts[0] in ('node_modules','vendor') or rel==Path('.gitignore'):continue
-        # Existing, locally modified README files are owned by the developer.
-        # The release never needs to replace README.md to deploy the site.
+    # Stage ONLY files explicitly declared and SHA-256 verified in the release
+    # manifest, never derived build/test artifacts (__pycache__, .pyc, caches).
+    # Locally modified README.md and .gitignore remain untouched.
+    manifest_files=sorted(manifest['sha256'])
+    for name in manifest_files:
+        rel=Path(name)
+        if rel.parts[0] in ('node_modules','vendor') or rel==Path('.gitignore'):
+            continue
+        if (rel.name == '.DS_Store' or rel.suffix in ('.pyc','.pyo') or
+            any(part in ('__pycache__','.pytest_cache','.mypy_cache','.ruff_cache','.venv','.git','.solvi') for part in rel.parts)):
+            raise ReleaseError('Invalid generated file in release manifest: '+name)
+        source=stage/rel
+        if not source.is_file():raise ReleaseError('Manifest source disappeared: '+name)
+        if digest(source.read_bytes()) != manifest['sha256'][name] and name!='releases.json':
+            raise ReleaseError('Manifest source modified unexpectedly: '+name)
         if rel==Path('README.md') and 'README.md' in set(run(['git','diff','--name-only','--','README.md'],cwd=ROOT).splitlines()):
             display('Preserving local README.md edits (not included in this release commit)','WARN')
             continue
         dest=ROOT/rel
         if dest.is_symlink():raise ReleaseError('Refusing local symlink overwrite: '+str(rel))
         dest.parent.mkdir(parents=True,exist_ok=True)
-        shutil.copy2(p,dest)
-        changed.append(str(rel))
-    # Keep generated files out of future Git status without modifying tracked .gitignore.
+        shutil.copy2(source,dest)
+        changed.append(name)
+    # releases.json is regenerated with the merged release history, so it may
+    # differ from the archive hash. It is nevertheless an explicitly listed file.
     exclude=ROOT/'.git/info/exclude'
     exclude.parent.mkdir(parents=True,exist_ok=True)
     existing=exclude.read_text() if exclude.exists() else ''
     missing=[entry for entry in ('/updates/','/.solvi/','/node_modules/','/vendor/','/.venv/')
              if entry not in existing.splitlines()]
     if missing:exclude.write_text(existing.rstrip('\n')+'\n'+'\n'.join(missing)+'\n')
-    # The watcher is always present, even when this release has no tools/ directory.
     if (ROOT/'solvi-watch.sh').is_file():changed.append('solvi-watch.sh')
-    # Never put nonexistent paths in 'git add'. Refuse staging pre-existing changes.
-    changed=sorted(set(p for p in changed if (ROOT/p).is_file()))
+    changed=sorted(set(name for name in changed if (ROOT/name).is_file()))
+    if not changed:raise ReleaseError('Release contains no source files to commit')
     try:
         run(['git','add','--']+changed,cwd=ROOT)
         changed_in_index=subprocess.run(['git','diff','--cached','--quiet'],cwd=ROOT).returncode
         if changed_in_index:
             run(['git','commit','-m',f'solvi: release v{manifest["version"]}'],cwd=ROOT)
     except Exception:
-        # Commit failed: unstage ONLY release paths; preserve working-tree files.
         subprocess.run(['git','reset','-q','HEAD','--']+changed,cwd=ROOT,
                        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         raise
@@ -308,7 +328,7 @@ def publish(stage,version):
         done
         nginx -t >/dev/null 2>&1
         ''')
-        display('Public HTTPS smoke test','STEP')
+        display('Public frontend asset verification','STEP')
         dependency_list=json.loads(run(['node','scripts/check_browser_modules.mjs','--json'],cwd=stage))['modules']
         paths=set(('', 'releases.json', 'styles.css', 'assets/solvi-character.glb', 'vendor/three/draco/draco_decoder.wasm', *dependency_list))
         for path in sorted(paths):
@@ -317,7 +337,17 @@ def publish(stage,version):
         with urllib.request.urlopen(PUBLIC+'releases.json?v='+version,timeout=20) as resp:
             obj=json.load(resp)
         if obj.get('currentVersion')!=version:raise ReleaseError('Deployed version mismatch')
-        display('Live site verified: '+PUBLIC,'PASS')
+        # Backend deployment is part of the SAME release, not a separate manual step.
+        display('Installing Flask, SQLite, systemd service and HTTPS API/WebSocket proxy','EVENT')
+        ssh(f'mkdir -p {remote_stage}/backend')
+        run(['rsync','-az','-e',f'ssh -p {SSH_PORT}',str(stage/'backend')+'/',f'{REMOTE_USER}:{remote_stage}/backend/'],timeout=130)
+        ssh(f'SOLVI_EXPECTED_VERSION={version} bash {remote_stage}/backend/install-ubuntu.sh')
+        with urllib.request.urlopen(PUBLIC+'api/health?v='+version,timeout=20) as resp:
+            health=json.load(resp)
+        if health.get('service')!='solvi-help-api' or health.get('version')!=version or not health.get('backend'):
+            raise ReleaseError(f'Backend health mismatch: expected v{version}, got {health}')
+        display('API VERIFIED: '+PUBLIC+'api/health | SQLite + WS configured','LIVE')
+        display('Frontend + backend verified: '+PUBLIC,'PASS')
     except Exception:
         display('Deployment failed, restoring previous public files','WARN')
         ssh(f'''set -eu; for item in {' '.join(PUBLIC_ITEMS)}; do
@@ -360,7 +390,7 @@ def process(archive,dry):
         _RUN['server']=True
         (STATE/'deployed.json').write_text(json.dumps({'version':manifest['version'],'utc':dt.datetime.now(dt.timezone.utc).isoformat()})+'\n')
         seconds=round(time.monotonic()-_RUN['started'])
-        display(f'LIVE! v{manifest["version"]} DEPLOYED — {PUBLIC} | GitHub: UPDATED | {seconds}s','LIVE')
+        display(f'LIVE! v{manifest["version"]} FULL-STACK DEPLOYED — {PUBLIC} | GitHub: UPDATED | API: VERIFIED | {seconds}s','LIVE')
 
 def show_status():
     local=last_deployed()
@@ -370,7 +400,10 @@ def show_status():
             live=json.load(resp).get('currentVersion')
         with urllib.request.urlopen(PUBLIC+'vendor/three/addons/utils/BufferGeometryUtils.js?t='+str(int(time.time())),timeout=12) as asset:
             if asset.status!=200 or not asset.read():raise ReleaseError('Browser dependency unavailable: BufferGeometryUtils.js')
-        display(f'LIVE WEBSITE: v{live}, browser dependency OK — {PUBLIC}','LIVE')
+        with urllib.request.urlopen(PUBLIC+'api/health?t='+str(int(time.time())),timeout=12) as r:health=json.load(r)
+        if health.get('service')!='solvi-help-api' or health.get('version')!=live:
+            raise ReleaseError('Backend missing or wrong version')
+        display(f'LIVE WEBSITE: v{live}, static + Flask API VERIFIED — {PUBLIC}','LIVE')
     except Exception as exc:
         display(f'LIVE WEBSITE: BROKEN / unverified — {exc}','FAIL')
 

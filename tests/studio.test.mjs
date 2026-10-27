@@ -16,3 +16,9 @@ test('scene editor supports Blender shortcuts and transform controls',()=>{
 test('Meta API stays server side and admin requires a password hash',()=>{
  const src=read('backend/server.py');assert.match(src,/MODEL_API_KEY/);assert.match(src,/ADMIN_HASH/);assert.match(src,/compare_digest/);assert.match(src,/\/responses/);
 });
+
+test('Flask static endpoints are not shadowed by the public asset route',()=>{
+ const src=read('backend/server.py');
+ assert.match(src,/def public_asset\(name\):/);
+ assert.doesNotMatch(src,/def static\(name\):/);
+});

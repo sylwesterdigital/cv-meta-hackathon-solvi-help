@@ -11,7 +11,7 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.0</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.1</small></div>
     <nav aria-label="Tools">
       <button type="button" id="chatButton">Chat</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="objectsButton">Objects</button><button type="button" id="profileButton">Profile</button><button type="button" id="adminButton">Admin</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" title="Open in a WebXR headset browser">Enter VR</button>
@@ -62,7 +62,7 @@
     </div>
     <div class="panel-footer"><button id="reloadScene">Load</button><button id="saveScene" class="primary">Save scene</button></div>
   </aside>
-  <section id="chatPanel" class="chat-panel" aria-label="Chat">
+  <section id="chatPanel" class="chat-panel" aria-label="Chat" hidden>
     <div class="panel-title"><div><strong>SOLVI · World chat</strong><small id="backendLabel">Checking backend…</small></div><button id="closeChat" aria-label="Close chat">×</button></div>
     <div id="chatFeed" class="chat-feed" aria-live="polite"></div>
     <div class="chat-composer">
@@ -76,7 +76,7 @@
         <button id="robotVision" title="Attach view from the robot camera">Robot view</button>
         <button id="sendChat" class="primary">Send ↗</button>
       </div>
-      <small id="chatStatus">Messages appear here and can include media attachments.</small>
+      <small id="chatStatus">World chat available without an AI key. AI responses require MODEL_API_KEY.</small>
     </div>
   </section>
   <div id="profileBackdrop" class="backdrop profile-backdrop" hidden>
