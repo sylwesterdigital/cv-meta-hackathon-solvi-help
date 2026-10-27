@@ -17,7 +17,7 @@ export async function initDevLog(){
       const section=document.createElement('article');section.className='release';
       const header=document.createElement('div');header.className='release-head';
       const title=document.createElement('strong');title.textContent='v'+release.version;
-      const date=document.createElement('time');const moment=new Date(release.publishedAt||'');date.dateTime=release.publishedAt||'';date.textContent=Number.isFinite(+moment)?moment.toLocaleString([], {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}):'Initial release';
+      const date=document.createElement('time');const moment=new Date(release.publishedAt||'');date.dateTime=release.publishedAt||'';date.textContent=Number.isFinite(+moment)?moment.toLocaleString('en-GB',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZoneName:'short'}):'Time not recorded';
       header.append(title,date);section.append(header);
       const ul=document.createElement('ul');
       for(const text of release.changes||[]){const li=document.createElement('li');li.textContent=text;ul.append(li);}

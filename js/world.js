@@ -8,6 +8,7 @@ import {MotionController, computeMode} from './animations.js';
 import {teleportOffset,validTeleport} from './xr-navigation.js';
 import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
 import {XRHandModelFactory} from 'three/addons/webxr/XRHandModelFactory.js';
+import {readPreferences} from './preferences.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const random=(a,b)=>a+Math.random()*(b-a);
@@ -42,6 +43,7 @@ export class SolviWorld {
     this.keys=new Set();this.animator=null;this.ready=false;this.others=new Map();
     this.raycaster=new THREE.Raycaster();this.mouse=new THREE.Vector2();
     this.setupEnvironment();this.setupEvents();this.setupXR();
+    window.addEventListener('solvi:prefs-changed',event=>{for(const peer of this.others.values())if(peer.faceModel)peer.faceModel.rotation.y=event.detail.flipHead?Math.PI:0;});
     this.renderer.setAnimationLoop(()=>this.frame());
   }
   setupEnvironment(){
@@ -180,13 +182,14 @@ export class SolviWorld {
     const model=this.remoteFaceSource.clone(true);
     const box=new THREE.Box3().setFromObject(model);const size=box.getSize(new THREE.Vector3());
     if(size.y>.001){const k=.52/size.y;model.scale.setScalar(k);model.position.set(-box.getCenter(new THREE.Vector3()).x*k,-box.getCenter(new THREE.Vector3()).y*k,-box.getCenter(new THREE.Vector3()).z*k);}
-    peer.faceGroup.add(model);peer.faceModel=model;peer.fallback.visible=false;
+    model.rotation.y=readPreferences().flipHead?Math.PI:0;peer.faceGroup.add(model);peer.faceModel=model;peer.fallback.visible=false;
   }
   ensurePeer(id,state={}){
     if(this.others.has(id))return this.others.get(id);
     const group=new THREE.Group();
     const faceGroup=new THREE.Group();faceGroup.position.y=1.65;group.add(faceGroup);
     const fallback=new THREE.Mesh(new THREE.SphereGeometry(.26,24,16),new THREE.MeshStandardMaterial({color:'#a6d9ee',roughness:.65}));faceGroup.add(fallback);
+    const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.24,.38,4,10),new THREE.MeshStandardMaterial({color:0x86b8cc,roughness:.75,transparent:true,opacity:.34}));torso.position.y=1.14;group.add(torso);
     const label=this.labelSprite(state.name||'Guest');label.position.y=2.12;group.add(label);
     this.scene.add(group);
     const rings=[];
@@ -195,7 +198,7 @@ export class SolviWorld {
       ring.position.set(0,0,.35+j*.12);faceGroup.add(ring);rings.push(ring);
     }
     const limbs=new THREE.Group();group.add(limbs);
-    const peer={group,faceGroup,fallback,label,limbs,rings,voiceLevel:0,voiceBands:[0,0,0],name:state.name||'Guest',faceModel:null,balloon:null,balloonTimeout:0};
+    const peer={group,faceGroup,fallback,label,limbs,rings,torso,voiceLevel:0,voiceBands:[0,0,0],name:state.name||'Guest',faceModel:null,balloon:null,balloonTimeout:0};
     this.others.set(id,peer);this.addFaceToPeer(peer);
     this.loadRemoteFace();return peer;
   }
@@ -237,6 +240,15 @@ export class SolviWorld {
       const a=body[name];if(!Array.isArray(a)||a.length!==3)return null;
       return new THREE.Vector3(Math.max(-2,Math.min(2,a[0])),Math.max(.15,Math.min(2.8,a[1])),Math.max(-1,Math.min(1,a[2])));
     };
+    const left=point('leftShoulder'),right=point('rightShoulder');
+    peer.torso.visible=!(left&&right);
+    if(left&&right){
+      const middle=left.clone().add(right).multiplyScalar(.5);
+      const neck=new THREE.Vector3(0,peer.faceGroup.position.y-.2,0);
+      const torso=middle.clone().add(new THREE.Vector3(0,-.48,.04));
+      const neckLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints([neck,middle,torso]),new THREE.LineBasicMaterial({color:0xb7e2ec,transparent:true,opacity:.8}));peer.limbs.add(neckLine);
+      const chest=new THREE.Mesh(new THREE.SphereGeometry(.28,12,8),new THREE.MeshBasicMaterial({color:0x79c6d5,transparent:true,opacity:.12,depthWrite:false}));chest.position.copy(middle).add(new THREE.Vector3(0,-.21,0));chest.scale.set(Math.max(.85,left.distanceTo(right)*1.55),.9,.42);peer.limbs.add(chest);
+    }
     for(const [a,b] of links){const p1=point(a),p2=point(b);if(!p1||!p2)continue;
       const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1,p2]),new THREE.LineBasicMaterial({color:0x93dbea,transparent:true,opacity:.75}));peer.limbs.add(line);
     }
@@ -245,6 +257,7 @@ export class SolviWorld {
     for(const side of ['left','right']){
       const hand=body[side+'Hand'];if(!Array.isArray(hand)||hand.length!==21)continue;
       const points=hand.map(item=>Array.isArray(item)&&item.length===3?new THREE.Vector3(...item):null);
+      const wrist=point(side+'Wrist');if(wrist&&points[0]){const offset=wrist.clone().sub(points[0]);for(const candidate of points)candidate?.add(offset);}
       for(const chain of [...fingerChains,[0,5,9,13,17,0]])for(let i=1;i<chain.length;i++){
         const a=points[chain[i-1]],b=points[chain[i]];if(!a||!b)continue;
         peer.limbs.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]),new THREE.LineBasicMaterial({color:0xb7f7f0,transparent:true,opacity:.85})));

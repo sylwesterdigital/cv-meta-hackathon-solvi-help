@@ -123,7 +123,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.4',ai=bool(MODEL_KEY),backend=True,websocket=True)
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.5',ai=bool(MODEL_KEY),backend=True,websocket=True)
 
 @app.post('/api/onboard')
 def onboard():

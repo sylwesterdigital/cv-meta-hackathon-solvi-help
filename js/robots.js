@@ -40,11 +40,16 @@ export function robotAction(robot,mode){
   }
   robot.userData.robotAnimator?.play(mode);
   if(mode==='wave')robot.userData.waveEnd=performance.now()+1800;
+  if(mode==='jump'){robot.userData.robotJumpUntil=performance.now()+1050;robot.userData.jumpVel=4.6;robot.userData.groundY=robot.position.y;}
 }
 export function tickRobots(items,dt,onMove=()=>{}){
   for(const robot of items){
     if(robot.userData.editorKind!=='robot')continue;
     let mode=robot.userData.robotMode||'idle';
+    if(mode==='jump'&&robot.userData.jumpVel!==undefined){
+      robot.position.y+=robot.userData.jumpVel*dt;robot.userData.jumpVel-=12.5*dt;
+      if(robot.position.y<=(robot.userData.groundY??0)){robot.position.y=robot.userData.groundY??0;delete robot.userData.jumpVel;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;}
+    }
     if(mode==='wave'&&performance.now()>(robot.userData.waveEnd||0)){mode='idle';robot.userData.robotMode='idle';}
     if((mode==='walk'||mode==='run')&&robot.userData.robotGoal){
       const delta=robot.userData.robotGoal.clone().sub(robot.position);delta.y=0;

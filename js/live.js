@@ -19,7 +19,7 @@ export class LiveRoom{
       try {const m=JSON.parse(event.data);
         if(m.type==='auth-required'){this.close();window.dispatchEvent(new CustomEvent('solvi:auth-required',{detail:{reason:m.reason||'Please sign in again.'}}));return;}
         if(m.type==='snapshot'){this.peers=new Map((m.peers||[]).map(p=>[p.id,{...p,state:p.state||{}}]));this.onPresence(this.peers);}
-        if(m.type==='presence'){if(m.event==='left')this.peers.delete(m.id);else if(m.id!==this.id)this.peers.set(m.id,{name:m.name||'Guest',state:m.state||{}});this.onPresence(this.peers);}
+        if(m.type==='presence'){if(m.event==='left')this.peers.delete(m.id);else if(m.id!==this.id)this.peers.set(m.id,{name:m.name||'Guest',state:m.state||{}});this.onPresence(this.peers);window.dispatchEvent(new CustomEvent('solvi:presence-change',{detail:{action:m.event||'joined',id:m.id}}));}
         if(m.type==='state'&&m.id!==this.id){this.peers.set(m.id,{name:m.name||this.peers.get(m.id)?.name||'Guest',state:m.state});this.onState(m.id,{...m.state,name:m.name||this.peers.get(m.id)?.name});}
         if(m.type==='signal'&&m.to===this.id)this.onSignal?.(m);
         if(m.type==='robot-motion'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRobotMotion(m);

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
 import {captureRobotView} from './robots.js';
+import {readPreferences,updatePreferences,applyPreferences,themePalette,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
+import {playCue,primeAudio} from './audio-cues.js';
 
 const $=id=>document.getElementById(id);
 const random=()=>crypto.randomUUID();
@@ -18,6 +20,7 @@ function establishTabChannel(uid){
 }
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
+let cachedMessages=[],chatSignature='',lastBubbleEntry=null;const initialRoomLoads=new Set();
 let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;let sessionPrompt=false;
 const toast=text=>{const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5200);};
 const show=(id,yes=true)=>{$(id).hidden=!yes;};
@@ -31,7 +34,7 @@ function needSignIn(message='Session expired. Sign in to continue.'){
   auth=null;me=null;adminToken=null;
   window.dispatchEvent(new Event('solvi:session-lost'));
   fillProfile(previous);
-  $('profileStatus').textContent=message+' Enter your name and press Save / Sign in to reconnect.';
+  $('profileBackdrop').classList.remove('profile-drawer-mode');$('profileStatus').textContent=message+' Enter your name and press Save / Sign in to reconnect.';
   show('profileBackdrop',true);
   $('profileName').focus();
   $('chatStatus').textContent='Sign-in required before sending messages.';
@@ -62,12 +65,12 @@ async function checkBackend(){try{const controller=new AbortController();const t
  const data=await res.json();online=!!data.backend;api.online=online;$('backendLabel').textContent=online?`Backend connected · AI ${data.ai?'configured':'key missing'}`:'Local demo · backend not enabled';}
  catch{online=false;api.online=false;$('backendLabel').textContent='Local demo · backend not enabled';}}
 async function begin(){const p=stored();fillProfile(p);await checkBackend();
- if(!p?.name){show('profileBackdrop',true);$('profileName').focus();return;}
+ if(!p?.name){$('profileBackdrop').classList.remove('profile-drawer-mode');show('profileBackdrop',true);$('profileName').focus();return;}
  if(!online){me=p;show('profileBackdrop',false);show('chatPanel',true);identity();window.dispatchEvent(new CustomEvent('solvi:scene-ready'));return;}
  if(p.token){auth={token:p.token};try{const out=await api.req('/api/me');me=out.user;identity();await afterLogin();return;}catch(e){toast(e.message);}}
- show('profileBackdrop',true);$('profileStatus').textContent='Reconnect or take over this profile to continue.';
+ $('profileBackdrop').classList.remove('profile-drawer-mode');show('profileBackdrop',true);$('profileStatus').textContent='Reconnect or take over this profile to continue.';
 }
-function identity(){const text=me?.name||'Guest';$('profileButton').textContent=text.length>15?text.slice(0,14)+'…':text;
+function identity(){const text=me?.name||'Guest';$('profileButton').textContent=text.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'?';$('profileButton').title='Profile · '+text;
  $('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;}
 async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
  try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();
@@ -91,16 +94,27 @@ async function submitProfile(){const fields=profileFields();if(!fields.name){$('
 }
 function safeTime(t){const d=new Date(t||Date.now());return isNaN(+d)?'':d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
 async function bubble(entry){
- const feed=$('chatFeed');const wrap=document.createElement('article');const role=entry.role==='assistant'?'assistant':'user';const mine=role==='user'&&(entry.user_id===me?.id||(!entry.user_id&&entry.speaker===me?.name));wrap.className='chat-row '+(mine?'mine':'theirs');wrap.dataset.messageId=entry.id||'';wrap.addEventListener('wheel',event=>{event.preventDefault();feed.scrollTop+=event.deltaY;},{passive:false});
- const pic=document.createElement('span');pic.className='chat-avatar';pic.textContent=role==='assistant'?'AI':(entry.speaker||me?.name||'?').slice(0,2).toUpperCase();
- const panel=document.createElement('div');panel.className='chat-bubble';const meta=document.createElement('div');meta.className='chat-meta';
- const name=document.createElement('strong');name.textContent=entry.role==='assistant'?(entry.model||'Meta Model API'):(entry.speaker||me?.name||'Guest');
- const date=document.createElement('time');date.textContent=safeTime(entry.created);meta.append(name,date);
- const content=document.createElement('div');content.className='chat-body';content.textContent=entry.text||'';panel.append(meta,content);
+ const feed=$('chatFeed');const role=entry.role==='assistant'?'assistant':'user';
+ const mine=role==='user'&&(entry.user_id===me?.id||(!entry.user_id&&entry.speaker===me?.name));
+ const previous=lastBubbleEntry;
+ let wrap=feed.lastElementChild, panel=wrap?.querySelector('.chat-bubble');
+ const group=wrap&&shouldGroupMessages(previous,entry,readPreferences().group)&&wrap.classList.contains(mine?'mine':'theirs');
+ if(!group){
+  wrap=document.createElement('article');wrap.className='chat-row '+(mine?'mine':'theirs');
+  wrap.dataset.messageId=entry.id||'';
+  wrap.addEventListener('wheel',event=>{event.preventDefault();feed.scrollTop+=event.deltaY;},{passive:false});
+  const pic=document.createElement('span');pic.className='chat-avatar';pic.textContent=role==='assistant'?'AI':(entry.speaker||me?.name||'?').slice(0,2).toUpperCase();
+  panel=document.createElement('div');panel.className='chat-bubble';const meta=document.createElement('div');meta.className='chat-meta';
+  const name=document.createElement('strong');name.textContent=role==='assistant'?(entry.model||'Meta Model API'):(entry.speaker||me?.name||'Guest');
+  const date=document.createElement('time');date.textContent=safeTime(entry.created);meta.append(name,date);panel.append(meta);
+  if(entry.avatar&&online&&auth){api.mediaBlob(entry.avatar).then(url=>{pic.textContent='';const img=document.createElement('img');img.src=url;img.alt='';img.className='chat-profile-image';pic.append(img);}).catch(()=>{});}
+  wrap.append(pic,panel);feed.append(wrap);
+ }else{panel.querySelector('time').textContent=safeTime(entry.created);}
+ const content=document.createElement('div');content.className='chat-body chat-message-item';content.dataset.messageId=entry.id||'';content.textContent=entry.text||'';panel.append(content);
  let mids=[];try{mids=typeof entry.media==='string'?JSON.parse(entry.media):entry.media||[];}catch{}
  for(const id of mids){const slot=document.createElement('div');slot.className='chat-attachment';slot.textContent='Attachment';panel.append(slot);
-  if(online&&auth){api.mediaBlobInfo(id).then(({url,mime})=>{const el=document.createElement(mime.startsWith('video/')?'video':mime.startsWith('audio/')?'audio':'img');el.src=url;if(el.tagName==='IMG'){el.alt='Image attachment';el.loading='lazy';}else{el.controls=true;el.preload='metadata';}el.onerror=()=>{slot.textContent='Media attachment';URL.revokeObjectURL(url);};slot.replaceChildren(el);}).catch(()=>{slot.textContent='Attachment';});}}
- if(entry.avatar&&online&&auth){api.mediaBlob(entry.avatar).then(url=>{pic.textContent='';const img=document.createElement('img');img.src=url;img.alt='';img.className='chat-profile-image';pic.append(img);}).catch(()=>{});}wrap.append(pic,panel);feed.append(wrap);feed.scrollTop=feed.scrollHeight;
+  if(online&&auth){api.mediaBlobInfo(id).then(({url,mime})=>{const el=document.createElement(mime.startsWith('video/')?'video':mime.startsWith('audio/')?'audio':'img');el.src=url;if(el.tagName==='IMG'){el.alt='Image attachment';el.loading='lazy';}else{el.controls=true;el.preload='metadata';}el.onerror=()=>{slot.textContent='Media attachment';URL.revokeObjectURL(url);};slot.replaceChildren(el);}).catch(()=>{});}}
+ lastBubbleEntry=entry;feed.scrollTop=feed.scrollHeight;
 }
 async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask backend to store media');if(file.size>11_000_000)throw Error('File must be under 11 MB');
  const body=new FormData();body.append('file',file,file.name);const response=await api.req('/api/media',{method:'POST',body});return response.media;}
@@ -113,8 +127,8 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
  const useAI=!!$('modelSelect').value;
  $('sendChat').disabled=true;$('chatStatus').textContent='Model processing…';
  try{const response=await api.req(useAI?'/api/chat':'/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text,model:$('modelSelect').value,media:ids})});
-  $('chatInput').value='';pending=[];updatePending();await bubble(response.message);if(response.answer)await bubble(response.answer);$('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
- }catch(e){$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
+  $('chatInput').value='';pending=[];updatePending();playCue('sent');await bubble(response.message);if(response.answer)await bubble(response.answer);$('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
+ }catch(e){playCue('error');$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
  finally{$('sendChat').disabled=false;}
 }
 async function startRecording(video,forIntro=false){if(recorder?.state==='recording'){recorder.stop();return;}
@@ -158,14 +172,31 @@ async function stats(){if(!adminToken)return;try{const data=await api.req('/api/
 async function loadMessages(){
  if(!online||!auth)return;
  try{
-   const data=await api.req('/api/messages?room='+encodeURIComponent(activeRoom));
-   const feed=$('chatFeed');const previous=new Map([...feed.children].map(e=>[e.dataset.messageId,e]));
-   for(const entry of data.messages||[]){if(previous.has(entry.id))continue;
-      await bubble(entry);
-      if(entry.user_id!==me?.id&&entry.role==='user')window.dispatchEvent(new CustomEvent('solvi:peer-message',{detail:{userId:entry.user_id,text:entry.text}}));
-   }
-   const keep=new Set((data.messages||[]).map(m=>m.id));for(const old of previous.values())if(!keep.has(old.dataset.messageId))old.remove();
+   const room=activeRoom;const data=await api.req('/api/messages?room='+encodeURIComponent(room));
+   if(room!==activeRoom)return;
+   const messages=data.messages||[];
+   const nextSignature=room+':'+messages.map(m=>m.id+':'+m.text).join('|')+':'+readPreferences().group;
+   if(nextSignature===chatSignature)return;
+   const oldIds=new Set(cachedMessages.map(m=>m.id));
+   const hasLoaded=initialRoomLoads.has(room);
+   const newcomers=hasLoaded?messages.filter(m=>!oldIds.has(m.id)&&m.user_id!==me?.id):[];
+   cachedMessages=messages;chatSignature=nextSignature;
+   const feed=$('chatFeed');feed.replaceChildren();lastBubbleEntry=null;
+   for(const entry of messages)await bubble(entry);
+   feed.scrollTop=feed.scrollHeight;
+   initialRoomLoads.add(room);
+   if(newcomers.length)playCue('incoming');
+   for(const entry of newcomers)if(entry.role==='user')window.dispatchEvent(new CustomEvent('solvi:peer-message',{detail:{userId:entry.user_id,text:entry.text}}));
  }catch(e){toast(e.message);}
+}
+function exportMessages(format='json'){
+ if(!me){show('profileBackdrop',true);return;}
+ const extension=format==='md'?'md':'json';
+ const text=exportRoomTranscript(cachedMessages,activeRoom,format);
+ const blob=new Blob([text],{type:format==='md'?'text/markdown':'application/json'});
+ const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;
+ anchor.download=`solvi-${activeRoom}-chat-${new Date().toISOString().slice(0,16).replace(':','-')}.${extension}`;
+ anchor.click();setTimeout(()=>URL.revokeObjectURL(url),3000);
 }
 async function configureRooms(){
  const select=$('roomSelect');if(!select)return;
@@ -177,6 +208,7 @@ async function configureRooms(){
  select.onchange=()=>{
    activeRoom=select.value;window.solviRoom=activeRoom;sessionStorage.setItem('solvi-room',activeRoom);
    $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
+   chatSignature='';cachedMessages=[];lastBubbleEntry=null;$('chatFeed').replaceChildren();playCue('leave');
    window.dispatchEvent(new CustomEvent('solvi:room-changed',{detail:{room:activeRoom}}));
  };
 }
@@ -211,6 +243,26 @@ function setupNewRoom(){
   }catch(e){$('roomError').textContent=e.message;}
  };
 }
+function setupSettings(){
+ const current=readPreferences();applyPreferences(current);
+ const settings=$('settingsDrawer');
+ function paint(p){
+  $('accentColor').value=p.accent;$('bubbleOpacity').value=p.opacity;
+  for(const [id,key] of [['bubbleBackgrounds','backgrounds'],['bubbleBorders','borders'],['groupMessages','group'],['soundEffects','sounds'],['flipHead','flipHead']])$(id).checked=!!p[key];
+ }
+ paint(current);
+ $('settingsButton').onclick=()=>{settings.hidden=false;show('profileBackdrop',false);};
+ $('closeSettings').onclick=()=>{settings.hidden=true;};
+ settings.addEventListener('pointerdown',e=>{if(e.target===settings)settings.hidden=true;});
+ const apply=(patch)=>{const prefs=updatePreferences(patch);paint(prefs);if('group' in patch){chatSignature='';loadMessages();}};
+ $('accentColor').oninput=e=>apply({accent:e.target.value});
+ $('bubbleOpacity').oninput=e=>apply({opacity:Number(e.target.value)});
+ for(const [id,key] of [['bubbleBackgrounds','backgrounds'],['bubbleBorders','borders'],['groupMessages','group'],['soundEffects','sounds'],['flipHead','flipHead']])$(id).onchange=e=>apply({[key]:e.target.checked});
+ const colors=['#79cde5','#e7b073','#a5db91','#d9a0d7','#a0b5f5','#f3a1a1'];
+ function swatches(){const grid=$('themeSwatches');grid.replaceChildren();for(const color of colors){const b=document.createElement('button');b.className='theme-swatch';b.title='Apply '+color;b.style.background=color;b.onclick=()=>apply({accent:color});grid.append(b);}}
+ swatches();$('generateTheme').onclick=()=>{const color=themePalette(Math.floor(Math.random()*10000));colors[colors.length-1]=color;swatches();apply({accent:color});};
+ $('exportChatButton').onclick=()=>exportMessages('json');$('exportChatSettings').onclick=()=>exportMessages('md');
+}
 function setupChatPresentation(){
   const feed=$('chatFeed'),panel=$('chatPanel'),composer=panel.querySelector('.chat-composer');
   const messages=$('messagesToggleButton');
@@ -228,6 +280,20 @@ function setupChatPresentation(){
     feed.scrollTop=feed.scrollHeight;
   });
   $('floatChatButton').onclick=()=>$('chatModeButton').click();
+  const grip=$('chatResizeGrip');let start=null;
+  grip.addEventListener('pointerdown',event=>{
+    if(!panel.classList.contains('windowed'))return;
+    start={x:event.clientX,y:event.clientY,w:panel.offsetWidth,h:panel.offsetHeight};
+    grip.setPointerCapture(event.pointerId);event.preventDefault();
+  });
+  grip.addEventListener('pointermove',event=>{
+    if(!start)return;
+    const w=Math.min(innerWidth-12,Math.max(290,start.w+event.clientX-start.x));
+    const h=Math.min(innerHeight-90,Math.max(200,start.h+event.clientY-start.y));
+    panel.style.setProperty('--chat-width',w+'px');panel.style.setProperty('--chat-height',h+'px');
+  });
+  for(const name of ['pointerup','pointercancel'])grip.addEventListener(name,()=>start=null);
+
   const mobileTools=$('composerToolsButton');
   mobileTools.onclick=()=>{
     const expanded=composer.classList.toggle('tools-open');
@@ -248,7 +314,7 @@ function bindUI(world){
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail?.revision));
  window.addEventListener('solvi:chat-updated',loadMessages);
  $('chatButton').onclick=()=>{show('chatPanel',$('chatPanel').hidden);document.body.classList.remove('chat-muted');$('messagesToggleButton').setAttribute('aria-pressed','true');};$('closeChat').onclick=()=>show('chatPanel',false);
- $('profileButton').onclick=()=>{fillProfile(me||stored());show('profileBackdrop',true);};
+ $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?'Your profile':'Sign in';show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
  $('closeProfile').onclick=()=>{if(me&&auth)show('profileBackdrop',false);else{$('profileStatus').textContent='Sign in to continue.';$('profileName').focus();}};
  $('saveProfile').onclick=submitProfile;$('exportProfile').onclick=exportProfile;
  $('importProfile').onchange=e=>importProfile(e.target.files[0]);
@@ -270,7 +336,9 @@ function bindUI(world){
  $('adminLogin').onclick=adminLogin;$('adminRefresh').onclick=stats;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){show('addMenu',false);show('adminBackdrop',false);if(me)show('profileBackdrop',false);}});
  window.addEventListener('solvi:auth-required',event=>needSignIn(event.detail?.reason||'Session expired.'));
- setupChatPresentation();setupNewRoom();configureRooms();configureDragging();begin();
+ window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id)playCue(event.detail.action==='left'?'leave':'join');});
+ document.addEventListener('pointerdown',primeAudio,{once:true});
+ setupChatPresentation();setupSettings();setupNewRoom();configureRooms();configureDragging();begin();
  setInterval(async()=>{if(online&&auth){try{await api.req('/api/me');}catch{ /* expiry handler opens sign-in */ }}},45000);
 }
 export function initStudio(world){bindUI(world);}

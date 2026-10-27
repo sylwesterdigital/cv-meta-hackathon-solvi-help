@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.4",
+  "currentVersion": "0.2.5",
   "releases": [
+    {
+      "version": "0.2.5",
+      "publishedAt": "2026-10-27T15:44:03Z",
+      "changes": [
+        "Web Audio notification cues; room message export (JSON and Markdown) for optional AI summarisation.",
+        "Bottom-anchored edge-aligned chat, avatars facing the conversation, grouped messages, transparent/borderless themes and resizeable floating mode.",
+        "Settings and profile side drawers, colour palettes, message styling, sound preferences and avatar orientation controls.",
+        "Shift+D duplicate, X delete, arrow/Shift drive robot and Space jump; upper body linked to head and corrected head direction.",
+        "Dev log displays exact deployment timestamp including time and timezone."
+      ]
+    },
     {
       "version": "0.2.4",
       "publishedAt": "2026-10-27T14:56:47Z",

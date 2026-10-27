@@ -11,11 +11,11 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.4</small></div>
-    <nav aria-label="Tools" id="toolNav"><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="More tools">☰ Tools</button><button type="button" id="messagesToggleButton" aria-pressed="true" title="Show or hide chat messages">Messages</button><button type="button" id="chatModeButton" title="Move chat into a floating window">Float chat</button>
-      <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button><button type="button" id="poseButton" title="Track upper body and hand landmarks">Posture + hands</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="objectsButton">Objects</button><button type="button" id="profileButton">Profile</button><button type="button" id="adminButton">Admin</button><button type="button" id="devLogButton">Dev log</button>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.5</small></div>
+    <nav aria-label="Tools" id="toolNav"><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="More tools">☰ Tools</button><button type="button" id="messagesToggleButton" aria-pressed="true" title="Show or hide chat messages">Messages</button><button type="button" id="chatModeButton" title="Move chat into a floating window">Float chat</button><button type="button" id="exportChatButton" title="Export room messages">Export chat</button>
+      <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button><button type="button" id="poseButton" title="Track upper body and hand landmarks">Posture + hands</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="objectsButton">Objects</button><button type="button" id="adminButton">Admin</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" title="Open in a WebXR headset browser">Enter VR</button>
-      <button type="button" id="callButton">Voice / video</button>
+      <button type="button" id="callButton">Voice / video</button><button type="button" id="settingsButton" aria-label="Settings" title="Appearance and chat settings">⚙</button><button type="button" id="profileButton" aria-label="Your profile" title="Your profile">?</button>
     </nav>
   </header>
   <div class="statusbar" aria-live="polite"><span class="signal"></span> <span id="networkStatus">Connecting…</span> <span class="sep">/</span> <span id="visitorCount">1 viewer</span></div>
@@ -61,13 +61,13 @@
       <label class="field-label">Colour <input id="objectColor" type="color" value="#88bbee"></label>
       <div class="field-label">Textures</div><div id="textureGrid" class="texture-grid"></div>
       <label class="field-label">Upload texture <input id="textureUpload" type="file" accept="image/png,image/jpeg,image/webp"></label>
-      <div id="robotControls" hidden><strong>Robot action</strong><div class="transform-modes"><button id="robot-idle">Idle</button><button id="robot-walk">Walk</button><button id="robot-run">Run</button><button id="robot-wave">Wave</button></div><small>Choose Walk or Run, then click the floor to set a destination. Robot view captures from this robot's head.</small></div>
+      <div id="robotControls" hidden><strong>Robot action</strong><div class="transform-modes"><button id="robot-idle">Idle</button><button id="robot-walk">Walk</button><button id="robot-run">Run</button><button id="robot-wave">Wave</button><button id="robot-jump">Jump</button></div><small>Arrow keys steer / walk, Shift runs, Space jumps. Choose Walk or Run, then click the floor to set a destination. Robot view captures from this robot's head.</small></div>
       <div class="panel-footer"><button id="confirmProperties" class="primary" title="Save properties and close panel">OK ✓</button></div>
     </div>
 </aside>
   <section id="chatPanel" class="chat-panel" aria-label="Chat">
     <div class="panel-title drag-handle chat-drag"><div><strong id="roomChatTitle">Main realm · messages</strong><small id="backendLabel">Checking backend…</small></div><div><button type="button" id="floatChatButton" title="Return to overlay">Overlay</button><button id="closeChat" aria-label="Close chat">×</button></div></div>
-    <div id="chatFeed" class="chat-feed" aria-live="polite"></div>
+    <div id="chatFeed" class="chat-feed" aria-live="polite" aria-relevant="additions text"></div>
     <div class="chat-composer">
       <div class="composer-line"><span id="composerName">Guest</span><select id="modelSelect" aria-label="Meta model"><option value="">AI unavailable</option></select></div>
       <div id="pendingMedia" class="pending-media"></div>
@@ -82,12 +82,13 @@
       </div>
       <small id="chatStatus">World chat available without an AI key. AI responses require MODEL_API_KEY.</small><small id="captionStatus" aria-live="polite">CC off · opt-in browser speech recognition</small>
     </div>
+    <span id="chatResizeGrip" class="chat-resize-grip" title="Resize chat window" aria-label="Resize chat"></span>
   </section>
   <div id="roomBackdrop" class="backdrop" hidden><section class="overlay" role="dialog" aria-label="Create realm"><div class="panel-title"><strong>New room / realm</strong><button id="closeRoom">×</button></div><label class="field-label">Room title<input id="roomTitle" maxlength="80" placeholder="Robot laboratory"></label><label class="field-label">Room slug<input id="roomSlug" maxlength="40" placeholder="robot-lab"></label><div class="panel-footer"><button class="primary" id="saveRoom">Create realm</button></div><small id="roomError"></small></section></div>
   <video id="facePreview" autoplay muted playsinline hidden></video>
   <div id="profileBackdrop" class="backdrop profile-backdrop" hidden>
     <section class="overlay profile-modal" role="dialog" aria-label="Your SOLVI profile">
-      <div class="panel-title"><div><strong>Welcome to SOLVI.help</strong><small>Choose a name to enter the world.</small></div><button id="closeProfile">×</button></div>
+      <div class="panel-title"><div><strong id="profilePanelTitle">Your profile</strong><small id="profilePanelNote">Only your name is required.</small></div><button id="closeProfile">×</button></div>
       <label class="field-label">Name * <input id="profileName" maxlength="80" required placeholder="Your name" autocomplete="nickname"></label>
       <label class="field-label">Email (optional) <input id="profileEmail" type="email" maxlength="180" placeholder="you@example.com"></label>
       <label class="field-label">Bio (optional) <textarea id="profileBio" maxlength="500" rows="2" placeholder="About you"></textarea></label>
@@ -99,6 +100,18 @@
       <div class="panel-footer"><button id="exportProfile">Export profile</button><label class="icon-btn">Import profile<input type="file" id="importProfile" accept="application/json" hidden></label><button class="primary" id="saveProfile">Save / Sign in</button></div>
     </section>
   </div>
+  <div id="settingsDrawer" class="drawer-shell" hidden><aside class="drawer" aria-label="Appearance and chat settings"><div class="drawer-head"><strong>Settings</strong><button id="closeSettings" aria-label="Close settings">×</button></div>
+      <label class="field-label">Accent <input id="accentColor" type="color" value="#79cde5"></label>
+      <div class="drawer-label">Palettes <button id="generateTheme" type="button">Generate theme</button></div>
+      <div id="themeSwatches" class="theme-swatches"></div>
+      <label class="field-label">Bubble opacity <input id="bubbleOpacity" type="range" min="0" max="100" value="78"></label>
+      <label class="toggle-line"><input id="bubbleBackgrounds" type="checkbox" checked> Bubble backgrounds</label>
+      <label class="toggle-line"><input id="bubbleBorders" type="checkbox" checked> Bubble borders</label>
+      <label class="toggle-line"><input id="groupMessages" type="checkbox" checked> Group nearby messages</label>
+      <label class="toggle-line"><input id="soundEffects" type="checkbox" checked> Sound cues</label>
+      <label class="toggle-line"><input id="flipHead" type="checkbox" checked> Correct avatar facing</label>
+      <button id="exportChatSettings" type="button">Export room messages</button>
+    </aside></div>
   <div id="adminBackdrop" class="backdrop" hidden>
     <section class="overlay admin-modal" role="dialog" aria-label="Admin dashboard">
       <div class="panel-title"><strong>Server administration</strong><button id="closeAdmin">×</button></div>

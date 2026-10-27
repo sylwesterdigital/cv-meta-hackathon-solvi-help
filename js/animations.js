@@ -3,7 +3,8 @@ export const MOTION_ALIASES=Object.freeze({
   idle:['idle','breathing idle','standing idle','standing'],
   walk:['walking','walk','stroll'],
   run:['running','run','sprint','jogging','jog'],
-  wave:['waving','wave']
+  wave:['waving','wave'],
+  jump:['jump','jumping']
 });
 export function clipBase(name){return String(name||'').split('__')[0].trim().toLowerCase().replace(/[\s_-]+/g,' ');}
 export function findClip(clips,kind){
@@ -28,8 +29,8 @@ export class MotionController{
     const action=this.actions.get(kind)||this.actions.get('idle');
     if(!action||action===this.current)return;
     action.reset().setEffectiveWeight(1).setEffectiveTimeScale(1).play();
-    action.setLoop(kind==='wave'?this.THREE.LoopOnce:this.THREE.LoopRepeat,kind==='wave'?1:Infinity);
-    action.clampWhenFinished=kind==='wave';
+    action.setLoop(['wave','jump'].includes(kind)?this.THREE.LoopOnce:this.THREE.LoopRepeat,['wave','jump'].includes(kind)?1:Infinity);
+    action.clampWhenFinished=['wave','jump'].includes(kind);
     if(this.current&&fade)action.crossFadeFrom(this.current,fade,true);
     else if(this.current)this.current.stop();
     this.current=action;this.currentKind=kind;
