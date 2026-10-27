@@ -2,6 +2,7 @@
 Run behind TLS reverse proxy. No default admin credentials. No API key in browser.
 """
 import math
+import tempfile
 import base64
 import datetime as dt
 import hashlib
@@ -20,7 +21,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
-from flask import Flask, request, jsonify, send_from_directory, abort
+from flask import Flask, request, jsonify, send_from_directory, send_file, abort
 from flask_sock import Sock
 
 ROOT = Path(os.environ.get('SOLVI_STATIC_ROOT', Path(__file__).resolve().parent.parent)).resolve()
@@ -33,7 +34,14 @@ MODEL_KEY = os.environ.get('MODEL_API_KEY', '')
 ADMIN_HASH = os.environ.get('SOLVI_ADMIN_PASSWORD_HASH', '')
 ALLOWED_ORIGINS = set(os.environ.get('SOLVI_ALLOWED_ORIGINS', 'https://solvi.help,http://localhost:8000,http://127.0.0.1:8000,http://127.0.0.1:8765').split(','))
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 12 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 24 * 1024 * 1024
+STT_BIN=os.environ.get('SOLVI_WHISPER_BIN','/usr/local/bin/whisper-cli')
+STT_MODEL=os.environ.get('SOLVI_WHISPER_MODEL','/var/lib/whisper/models/ggml-base.bin')
+def whisper_ready():
+    return Path(STT_BIN).is_file() and os.access(STT_BIN,os.X_OK) and Path(STT_MODEL).is_file() and os.access(STT_MODEL,os.R_OK) and shutil.which('ffmpeg') is not None
+STT_READY=whisper_ready()
+stt_guard=threading.BoundedSemaphore(value=1)
+stt_throttle={}
 app.config['SOCK_SERVER_OPTIONS'] = {'ping_interval': 25, 'max_message_size': 32768}
 sock = Sock(app)
 room = {}
@@ -67,6 +75,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS messages_created ON messages(created);
         CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL, mime TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, created TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
+        CREATE TABLE IF NOT EXISTS avatar_library (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, created TEXT NOT NULL, filename TEXT NOT NULL, size INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS scene (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, payload TEXT NOT NULL);
         INSERT OR IGNORE INTO scene VALUES(1,0,'[]');
         CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, title TEXT NOT NULL, created TEXT NOT NULL);
@@ -123,7 +132,86 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.5',ai=bool(MODEL_KEY),backend=True,websocket=True)
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.7',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+
+@app.get('/api/avatars')
+def list_avatars():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:
+        rows=con.execute('SELECT a.id,a.title,a.user_id,u.name AS owner_name FROM avatar_library a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.created DESC LIMIT 100').fetchall()
+    return jsonify(avatars=[{'id':r['id'],'label':r['title'],'url':'/api/avatars/'+r['id']+'.glb','ownerName':r['owner_name'] or 'Member'} for r in rows])
+
+@app.post('/api/avatars')
+def upload_avatar():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    upload=request.files.get('avatar')
+    if not upload:return json_error('GLB file missing')
+    data=upload.stream.read(20_000_001)
+    if len(data)>20_000_000:return json_error('GLB exceeds 20 MB',413)
+    if len(data)<20 or data[:4]!=b'glTF' or int.from_bytes(data[4:8],'little')!=2 or int.from_bytes(data[8:12],'little')!=len(data):return json_error('Invalid GLB v2 file')
+    identifier=secrets.token_hex(16)
+    directory=STATE/'avatar-library';directory.mkdir(parents=True,exist_ok=True)
+    path=directory/(identifier+'.glb');path.write_bytes(data)
+    title=re.sub(r'[^a-zA-Z0-9 _.-]','',Path(upload.filename or '').stem).strip()[:60] or 'Custom avatar'
+    with db() as con:con.execute('INSERT INTO avatar_library VALUES(?,?,?,?,?,?)',(identifier,user['id'],title,now(),str(path),len(data)))
+    return jsonify(avatar={'id':identifier,'label':title,'url':'/api/avatars/'+identifier+'.glb','ownerName':user['name']}),201
+
+@app.get('/api/avatars/<identifier>.glb')
+def serve_avatar(identifier):
+    if not re.fullmatch(r'[0-9a-f]{32}',identifier):return json_error('Avatar not found',404)
+    with db() as con:row=con.execute('SELECT filename FROM avatar_library WHERE id=?',(identifier,)).fetchone()
+    if not row:return json_error('Avatar not found',404)
+    path=Path(row['filename']);
+    if not path.is_file() or path.parent.resolve()!=(STATE/'avatar-library').resolve():return json_error('Avatar file unavailable',404)
+    return send_file(path,mimetype='model/gltf-binary')
+
+@app.post('/api/stt')
+def transcribe_audio():
+    """Authenticated small-chunk Whisper STT; audio is deleted immediately after inference."""
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    if not whisper_ready():return json_error('Shared Whisper.cpp model unavailable on this server',503)
+    upload=request.files.get('audio')
+    if upload is None:return json_error('Audio recording missing')
+    language=str(request.form.get('language','auto')).lower()
+    if language not in ('auto','pl','en'):return json_error('Unsupported recognition language')
+    mime=(upload.mimetype or '').split(';')[0].lower()
+    extensions={'audio/webm':'.webm','audio/mp4':'.m4a','audio/x-m4a':'.m4a','audio/ogg':'.ogg','audio/wav':'.wav','audio/wave':'.wav'}
+    if mime not in extensions:return json_error('Unsupported audio codec',415)
+    content=upload.stream.read(1_500_001)
+    if len(content)>1_500_000:return json_error('Audio chunk exceeds 1.5 MB',413)
+    if len(content)<1000:return jsonify(text='',language=language,engine='whisper.cpp')
+    elapsed=time.monotonic()
+    with room_lock:
+        previous=stt_throttle.get(user['id'],0)
+        if elapsed-previous<2.0:return json_error('Wait before sending another audio chunk',429)
+        stt_throttle[user['id']]=elapsed
+        if len(stt_throttle)>200:
+            for uid,stamp in list(stt_throttle.items()):
+                if elapsed-stamp>120:stt_throttle.pop(uid,None)
+    if not stt_guard.acquire(blocking=False):return json_error('Whisper busy, retry in a moment',503)
+    try:
+        # No local model download or additional Python inference environment.
+        # Decode media using FFmpeg; whisper.cpp accepts 16kHz mono PCM WAV.
+        with tempfile.TemporaryDirectory(prefix='solvi-stt-',dir=STATE) as temporary:
+            src=Path(temporary)/('chunk'+extensions[mime]);src.write_bytes(content)
+            wav=Path(temporary)/'chunk.wav';out=Path(temporary)/'result'
+            subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-y','-i',str(src),
+                            '-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',str(wav)],
+                           check=True,timeout=18,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+            subprocess.run([STT_BIN,'-m',STT_MODEL,'-f',str(wav),'-l',language,
+                            '-t','2','-ng','-otxt','-of',str(out),'-np'],
+                           check=True,timeout=90,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+            result=out.with_suffix('.txt')
+            text=result.read_text(encoding='utf-8').strip()[:2000] if result.is_file() else ''
+            return jsonify(text=text,language=language,engine='whisper.cpp')
+    except (subprocess.CalledProcessError,subprocess.TimeoutExpired,OSError):
+        app.logger.exception('Shared Whisper.cpp transcription failed')
+        return json_error('Shared Whisper inference failed; check server logs',503)
+    finally:
+        stt_guard.release()
 
 @app.post('/api/onboard')
 def onboard():
@@ -394,8 +482,16 @@ def set_scene():
     with db() as con:
         old=con.execute('SELECT revision FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['revision']
         if old!=revision:return jsonify(error='Scene changed on another client; reload before saving',revision=old),409
+        before=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['payload'])
+        previous={o.get('id'):o for o in before}
+        submitted={o.get('id'):o for o in objects}
+        for identifier,existing in previous.items():
+            if existing.get('owner') and existing['owner']!=user['id'] and submitted.get(identifier)!=existing:
+                return json_error('Cannot change objects owned by other users',403)
+        for o in objects:
+            o['owner']=(previous.get(o.get('id')) or {}).get('owner') or user['id']
         con.execute('UPDATE room_scenes SET revision=?,payload=? WHERE room_id=?',(old+1,json.dumps(objects,separators=(',',':')),room_id))
-    publish({'type':'scene-changed','revision':old+1,'room':room_id},room_id=room_id)
+    publish({'type':'scene-changed','revision':old+1,'room':room_id,'by':user['id'],'action':'bulk'},room_id=room_id)
     return jsonify(revision=old+1,ok=True)
 
 
@@ -415,16 +511,23 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar') if key in obj}
         if len(str(obj.get('name','')))>100:return json_error('Object name too long')
+        avatar=str(obj.get('avatar',''))
+        if avatar and not (avatar=='./assets/solvi-character.glb' or (re.fullmatch(r'\./assets/avatars/[A-Za-z0-9_-]+\.glb',avatar) or re.fullmatch(r'/api/avatars/[0-9a-f]{32}\.glb',avatar))):
+            return json_error('Invalid avatar reference')
         if obj.get('texture','none') not in ('none','checker','gradient','stripes','dots','custom'):return json_error('Unsupported texture preset')
         if not isinstance(obj.get('color'),(str,type(None))) or len(obj.get('color') or '')>24:return json_error('Invalid color')
     with db() as con:
         con.execute('BEGIN IMMEDIATE')
         row=con.execute('SELECT revision,payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
         items=json.loads(row['payload'])
+        existing=next((item for item in items if item.get('id')==obj_id),None)
+        if existing and existing.get('owner') and existing['owner']!=user['id']:
+            return json_error('Object is owned by another user',403)
         if action=='remove':items=[item for item in items if item.get('id')!=obj_id]
         else:
+            obj['owner']=existing.get('owner') if existing and existing.get('owner') else user['id']
             for i,item in enumerate(items):
                 if item.get('id')==obj_id:items[i]=obj;break
             else:
@@ -432,7 +535,11 @@ def patch_scene_object():
                 items.append(obj)
         revision=row['revision']+1
         con.execute('UPDATE room_scenes SET revision=?,payload=? WHERE room_id=?',(revision,json.dumps(items,separators=(',',':')),room_id))
-    publish({'type':'scene-changed','revision':revision,'room':room_id,'by':user['id']},room_id=room_id)
+    # Send the single changed object, not a trigger to reload every GLB in the realm.
+    delta={'type':'scene-changed','revision':revision,'room':room_id,'by':user['id'],
+           'action':action,'id':obj_id}
+    if action=='upsert':delta['object']=obj
+    publish(delta,room_id=room_id)
     return jsonify(ok=True,revision=revision)
 
 def verify_admin(passwd):
@@ -549,7 +656,29 @@ def websocket(ws):
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
                 if mode not in ('idle','walk','run','wave'):continue
                 if not all(isinstance(v,list) and len(v)==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000 for x in v) for v in (position,rotation)):continue
+                with db() as con:
+                    itemrow=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+                    objects=json.loads(itemrow['payload']) if itemrow else []
+                    controlled=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
+                if not controlled or (controlled.get('owner') and controlled['owner']!=uid):continue
                 publish({'type':'robot-motion','room':room_id,'by':uid,'id':identifier,'position':position,'rotation':rotation,'mode':mode},except_id=uid,room_id=room_id)
+            elif msg.get('type')=='robot-input':
+                identifier=str(msg.get('id',''))
+                if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
+                try:
+                    f=int(msg.get('f',0));t=int(msg.get('t',0));r=int(msg.get('r',0));moving=int(msg.get('m',0))
+                    x=float(msg.get('x',0));y=float(msg.get('y',0));z=float(msg.get('z',0));yaw=float(msg.get('yaw',0))
+                except (ValueError,TypeError,OverflowError):continue
+                if any(v not in (-1,0,1) for v in (f,t)) or r not in (0,1) or moving not in (0,1):continue
+                if not all(math.isfinite(v) and abs(v)<1000 for v in (x,y,z,yaw)):continue
+                with db() as con:
+                    row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+                    objects=json.loads(row['payload']) if row else []
+                    controlled=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
+                if not controlled or (controlled.get('owner') and controlled['owner']!=uid):continue
+                publish({'type':'robot-input','room':room_id,'by':uid,'id':identifier,
+                        'f':f,'t':t,'r':r,'m':moving,'x':round(x,2),'y':round(y,2),
+                        'z':round(z,2),'yaw':round(yaw,3)},except_id=uid,room_id=room_id)
             elif msg.get('type')=='signal' and isinstance(msg.get('payload'),dict):
                 to=msg.get('to')
                 with room_lock:peer=room.get(to)

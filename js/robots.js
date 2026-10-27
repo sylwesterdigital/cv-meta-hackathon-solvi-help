@@ -6,12 +6,15 @@ import {MotionController,computeMode} from './animations.js';
 const loader=new GLTFLoader();
 const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');loader.setDRACOLoader(draco);
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
+export const DEFAULT_ROBOT_AVATAR='./assets/solvi-character.glb';
+export const resolveAvatarPath=(name)=>typeof name==='string'&&/^[A-Za-z0-9_-]+\.glb$/.test(name)?'./assets/avatars/'+name:DEFAULT_ROBOT_AVATAR;
 export async function hydrateRobot(group){
-  if(group.userData.robotLoading||group.userData.robotReady)return;
+  if(group.userData.robotReady)return;
+  const token=(group.userData.robotLoadToken||0)+1;group.userData.robotLoadToken=token;
   group.userData.robotLoading=true;
   try{
-    const gltf=await loader.loadAsync('./assets/solvi-character.glb');
-    if(!group.parent)return;
+    const gltf=await loader.loadAsync(group.userData.avatarUrl||DEFAULT_ROBOT_AVATAR);
+    if(!group.parent||group.userData.robotLoadToken!==token)return;
     const model=gltf.scene;
     const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
     if(size.y>.001){const s=1.75/size.y;model.scale.setScalar(s);model.position.set(-center.x*s,-box.min.y*s,-center.z*s);}
@@ -21,14 +24,14 @@ export async function hydrateRobot(group){
     group.userData.robotAnimator=new MotionController(THREE,model,gltf.animations);
     group.userData.robotAnimator.play('idle');
     group.userData.robotReady=true;group.userData.robotMode='idle';
-  }catch(error){console.warn('Robot asset could not load:',error);group.userData.robotError=error.message;}
-  finally{group.userData.robotLoading=false;}
+  }catch(error){if(group.userData.robotLoadToken===token){console.warn('Robot asset could not load:',error);group.userData.robotError=error.message;}}
+  finally{if(group.userData.robotLoadToken===token)group.userData.robotLoading=false;}
 }
 export function makeRobot(){
   const group=new THREE.Group();group.name='Robot';
   const placeholder=new THREE.Mesh(new THREE.CapsuleGeometry(.29,.86,4,12),new THREE.MeshStandardMaterial({color:'#77bdd2'}));
   placeholder.position.y=.85;placeholder.userData.robotPlaceholder=true;group.add(placeholder);
-  group.userData.robotMode='idle';group.userData.robotGoal=null;
+  group.userData.robotMode='idle';group.userData.robotGoal=null;group.userData.avatarUrl=DEFAULT_ROBOT_AVATAR;
   return group;
 }
 export function robotAction(robot,mode){

@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.5",
+  "currentVersion": "0.2.7",
   "releases": [
+    {
+      "version": "0.2.7",
+      "publishedAt": "2026-10-27T22:10:07Z",
+      "changes": [
+        "Handle locally edited or relocated assets/solvi-character.glb from assets/avatars/solvi-character.glb; preserve model bytes.",
+        "Allow only verified avatar assets to be reconciled; retain Git conflict checks for unrelated code.",
+        "v0.2.7 avatar gallery, Whisper.cpp shared model, object-scoped updates, and deployment log START/END formatting."
+      ]
+    },
     {
       "version": "0.2.5",
       "publishedAt": "2026-10-27T15:44:03Z",

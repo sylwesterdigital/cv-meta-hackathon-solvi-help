@@ -1,52 +1,77 @@
-// Opt-in browser speech recognition and microphone activity: no raw audio is uploaded.
-// Some browsers implement SpeechRecognition with remote transcription services.
+// SOLVI opt-in CC. Browser STT stays on the browser's selected recognition service.
+// Server STT sends 4s encoded audio segments ONLY while explicitly enabled.
+export const supportedLanguage = value => ['auto','pl-PL','en-GB','en-US'].includes(value)?value:'auto';
+export const selectedLocale = (setting,browserLang='en-GB') => supportedLanguage(setting)==='auto'?(browserLang||'en-GB'):setting;
 export function setupVoiceCaptions(world){
-  const captionButton=document.getElementById('captionsButton');
-  const status=document.getElementById('captionStatus');
-  const waveButton=document.getElementById('voiceWavesButton');
-  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-  let recognition=null,recognizing=false,enabled=false,stream=null,ctx=null,analyser=null,source=null,tickId=0;
-  const setStatus=text=>{if(status)status.textContent=text;};
-  const stopMic=()=>{cancelAnimationFrame(tickId);stream?.getTracks().forEach(t=>t.stop());stream=null;source?.disconnect();analyser?.disconnect();ctx?.close().catch(()=>{});ctx=null;world.localVoiceLevel=0;world.localVoiceBands=[0,0,0];};
-  async function startMic(){
-    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
-    ctx=new AudioContext();source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=512;source.connect(analyser);
-    const bytes=new Uint8Array(analyser.fftSize);const freqs=new Uint8Array(analyser.frequencyBinCount);
-    let last=0;
-    const sample=now=>{
-      if(!stream)return;
-      if(now-last>75){last=now;analyser.getByteTimeDomainData(bytes);let sum=0;for(let i=0;i<bytes.length;i++){const v=(bytes[i]-128)/128;sum+=v*v;}
-        const rms=Math.sqrt(sum/bytes.length);world.localVoiceLevel=Math.min(1,Math.max(0,(rms-.02)*12));
-        analyser.getByteFrequencyData(freqs);
-        const hz=ctx.sampleRate/analyser.fftSize;
-        const energy=(low,high)=>{let total=0,n=0;for(let j=Math.max(0,Math.floor(low/hz));j<Math.min(freqs.length,Math.ceil(high/hz));j++){total+=freqs[j];n++;}return n?Math.min(1,Math.max(0,((total/n)/255-.08)*2)):0;};
-        world.localVoiceBands=[energy(90,360),energy(360,1600),energy(1600,7000)].map(v=>+v.toFixed(3));}
-
-      tickId=requestAnimationFrame(sample);
-    };tickId=requestAnimationFrame(sample);
-  }
-  function stopRecognition(){enabled=false;if(recognition){recognition.onend=null;try{recognition.stop();}catch{}}recognizing=false;recognition=null;captionButton.textContent='CC off';}
-  captionButton?.addEventListener('click',()=>{
-    if(enabled){stopRecognition();setStatus('Captions stopped');return;}
-    if(!SpeechRecognition){setStatus('Live captions unavailable in this browser. Use Mic to attach audio.');return;}
-    recognition=new SpeechRecognition();recognition.lang=navigator.language||'en-GB';recognition.continuous=true;recognition.interimResults=true;enabled=true;
-    recognition.onresult=event=>{
-      let interim='';
-      for(let i=event.resultIndex;i<event.results.length;i++){
-        const result=event.results[i],text=result[0]?.transcript?.trim()||'';if(!text)continue;
-        if(result.isFinal){window.solviPublishCaption?.(text);}else interim+=text+' ';
-      }
-      if(interim)setStatus('Listening · '+interim.slice(-100));
-    };
-    recognition.onerror=event=>{setStatus('CC: '+event.error);if(['not-allowed','service-not-allowed','audio-capture'].includes(event.error))stopRecognition();};
-    recognition.onend=()=>{recognizing=false;if(enabled){try{recognition.start();recognizing=true;}catch{enabled=false;captionButton.textContent='CC off';}}};
-    try{recognition.start();recognizing=true;captionButton.textContent='CC on';setStatus('Live captions on · final speech appears in room chat');}
-    catch(error){stopRecognition();setStatus(error.message);}
-  });
-  waveButton?.addEventListener('click',async()=>{
-    if(stream){stopMic();waveButton.textContent='Voice waves';setStatus('Microphone activity off');return;}
-    try{await startMic();waveButton.textContent='Waves on';setStatus('Microphone amplitude shared as numbers, not audio');}
-    catch(error){stopMic();setStatus('Microphone: '+error.message);}
-  });
-  window.addEventListener('pagehide',()=>{stopRecognition();stopMic();});
+ const button=document.getElementById('captionsButton'),status=document.getElementById('captionStatus');
+ const preview=document.getElementById('captionPreview'),phase=document.getElementById('captionPhase'),draft=document.getElementById('captionDraft');
+ const waves=document.getElementById('voiceWavesButton'),engine=document.getElementById('ccEngine'),language=document.getElementById('ccLanguage'),autoSend=document.getElementById('ccAutoSend'),engineStatus=document.getElementById('ccEngineStatus');
+ const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+ let enabled=false,rec=null,epoch=0,mic=null,media=null,loop=null,pendingPromise=Promise.resolve(),transcribing=false,ctx=null,analyser=null,src=null,frame=0;
+ const localStore=(key,element,allowed)=>{const value=localStorage.getItem('solvi-'+key);if(allowed.includes(value))element.value=value;element.addEventListener('change',()=>{localStorage.setItem('solvi-'+key,element.value);if(enabled){stop();start().catch(e=>failed(e.message));}});};
+ localStore('cc-engine',engine,['browser','server']);localStore('cc-language',language,['auto','pl-PL','en-GB','en-US']);
+ const autoSetting=localStorage.getItem('solvi-cc-send');if(autoSetting!==null)autoSend.checked=autoSetting==='true';autoSend.addEventListener('change',()=>localStorage.setItem('solvi-cc-send',String(autoSend.checked)));
+ function show(state,label,text=''){preview.hidden=!state;preview.dataset.state=state||'off';phase.textContent=label;draft.textContent=text;status.textContent=label+(text?' · '+text.slice(-100):'');}
+ function failed(msg){show('error','CC error',msg);setTimeout(()=>{if(!enabled)preview.hidden=true;},6000);}
+ async function publish(text){text=String(text||'').trim();if(!text)return;
+  if(!autoSend.checked){const input=document.getElementById('chatInput');input.value+=(input.value.trim()?' ':'')+text;input.dispatchEvent(new Event('input'));show('listening','Listening · transcript added to input');return;}
+  show('sending','Sending…',text);await window.solviPublishCaption?.(text);if(enabled)show('listening','Listening…');}
+ function finishMic(){if(rec){rec.onend=null;try{rec.abort();}catch{}rec=null;}if(loop)clearTimeout(loop);loop=null;if(media&&media.state!=='inactive'){try{media.stop();}catch{}}media=null;mic?.getTracks().forEach(t=>t.stop());mic=null;}
+ function stop(){enabled=false;++epoch;if(rec){rec.onend=null;try{rec.stop();}catch{}}rec=null;finishMic();button.textContent='CC off';button.setAttribute('aria-pressed','false');show('off','CC off');preview.hidden=true;}
+ async function browserStart(id){
+  if(!Recognition)throw Error('Browser speech recognition is unavailable. Try Ubuntu Whisper.');
+  rec=new Recognition();rec.lang=selectedLocale(language.value,navigator.language);rec.continuous=true;rec.interimResults=true;
+  rec.onresult=event=>{if(!enabled||id!==epoch)return;let interim='';for(let i=event.resultIndex;i<event.results.length;i++){
+    const result=event.results[i],text=result[0]?.transcript?.trim();if(!text)continue;
+    if(result.isFinal){publish(text).catch(e=>failed(e.message));}else interim+=text+' ';
+   }if(interim)show('listening','Hearing words…',interim.trim());};
+  rec.onerror=e=>{if(id!==epoch)return;failed(e.error);if(['not-allowed','service-not-allowed','audio-capture'].includes(e.error))stop();};
+  rec.onend=()=>{if(enabled&&id===epoch){
+   // Many browsers end continuous recognition after a pause; debounce restarts.
+   show('listening','Reconnecting microphone…');
+   loop=setTimeout(()=>{if(!enabled||id!==epoch)return;
+    try{rec.start();show('listening',`Listening (${rec.lang})…`);}catch(e){failed(e.message);stop();}
+   },550);
+  }};
+  rec.start();show('listening',`Listening (${rec.lang})…`);
+ }
+ function mediaMime(){return ['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus'].find(t=>MediaRecorder.isTypeSupported(t))||'';}
+ async function serverStart(id){
+  if(!window.solviAPI?.online||!window.solviAPI?.auth())throw Error('Sign in to use Ubuntu Whisper.');
+  if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder)throw Error('Audio recording unsupported in this browser');
+  mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+  if(!enabled||id!==epoch){finishMic();return;}
+  const type=mediaMime();if(!type)throw Error('No supported audio recording codec');
+  const cycle=()=>{if(!enabled||id!==epoch)return;
+   const parts=[];media=new MediaRecorder(mic,{mimeType:type,audioBitsPerSecond:32000});
+   media.ondataavailable=e=>{if(e.data.size)parts.push(e.data);};
+   media.onstop=()=>{const blob=new Blob(parts,{type});if(blob.size>=1000&&enabled&&id===epoch&&!transcribing){
+    transcribing=true;pendingPromise=pendingPromise.catch(()=>{}).then(async()=>{
+     if(!enabled||id!==epoch)return;
+     show('transcribing','Whisper transcribing…');const form=new FormData();form.append('audio',blob,'speech.'+(type.includes('mp4')?'m4a':type.includes('ogg')?'ogg':'webm'));form.append('language',language.value==='auto'?'auto':language.value.slice(0,2));
+     const result=await window.solviAPI.req('/api/stt',{method:'POST',body:form});if(result.text)await publish(result.text);else if(enabled)show('listening','Listening · no speech detected');
+    }).catch(e=>failed(e.message)).finally(()=>{transcribing=false;});}
+    if(enabled&&id===epoch)cycle();};
+   media.onerror=e=>{failed(e.error?.message||'Recording error');stop();};
+   media.start();show('listening',`Listening · Ubuntu Whisper (${language.value})…`);
+   loop=setTimeout(()=>{if(media?.state==='recording')media.stop();},4000);
+  };cycle();
+ }
+ async function start(){if(enabled)return;enabled=true;const id=++epoch;button.textContent='CC on';button.setAttribute('aria-pressed','true');
+  try{if(engine.value==='server')await serverStart(id);else await browserStart(id);}catch(e){stop();failed(e.message);}}
+ button?.addEventListener('click',()=>{if(enabled){stop();button.setAttribute('aria-pressed','false');}else start();});
+ async function voiceLevels(){
+  if(ctx){cancelAnimationFrame(frame);src?.disconnect();analyser?.disconnect();await ctx.close().catch(()=>{});ctx=null;finishVoice();return;}
+  try{voiceStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});ctx=new AudioContext();src=ctx.createMediaStreamSource(voiceStream);analyser=ctx.createAnalyser();analyser.fftSize=512;src.connect(analyser);
+  const wave=new Uint8Array(analyser.fftSize),fft=new Uint8Array(analyser.frequencyBinCount),hz=ctx.sampleRate/analyser.fftSize;let last=0;
+  function tick(now){if(!ctx)return;if(now-last>80){last=now;analyser.getByteTimeDomainData(wave);let rms=0;for(const x of wave)rms+=((x-128)/128)**2;world.localVoiceLevel=Math.min(1,Math.max(0,(Math.sqrt(rms/wave.length)-.02)*12));
+   analyser.getByteFrequencyData(fft);world.localVoiceBands=[[90,360],[360,1600],[1600,7000]].map(([a,b])=>{let sum=0,n=0;for(let j=Math.floor(a/hz);j<Math.min(fft.length,Math.ceil(b/hz));j++){sum+=fft[j];n++;}return n?Math.min(1,(sum/n)/255):0;});}
+   frame=requestAnimationFrame(tick);
+  }frame=requestAnimationFrame(tick);waves.textContent='Waves on';}catch(e){failed(e.message);finishVoice();}
+ }
+ let voiceStream=null;function finishVoice(){cancelAnimationFrame(frame);voiceStream?.getTracks().forEach(t=>t.stop());voiceStream=null;world.localVoiceLevel=0;world.localVoiceBands=[0,0,0];waves.textContent='Voice waves';}
+ waves?.addEventListener('click',voiceLevels);
+ window.addEventListener('pagehide',()=>{stop();finishVoice();});
+ window.addEventListener('solvi:session-lost',()=>{if(enabled&&engine.value==='server'){stop();failed('Sign in again to use server transcription.');}});
+ engineStatus.textContent='The orange/red OS icon means your microphone is active. Browser CC sends final phrases; Ubuntu Whisper sends 4-second chunks to the shared Rantlist model. Disable CC to release the mic.';
 }

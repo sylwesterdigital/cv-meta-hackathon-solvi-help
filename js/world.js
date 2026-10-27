@@ -32,6 +32,11 @@ export class SolviWorld {
     root.append(this.renderer.domElement);
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);
     this.controls.enableDamping=true;this.controls.target.set(0,1,0);
+    // Editing uses the primary mouse button. Orbit only via RIGHT drag; MIDDLE zoom.
+    // Prevents camera rotation when touching TransformControls or selecting an object.
+    this.controls.mouseButtons={LEFT:null,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
+    this.controls.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};
+    this.controls.enablePan=true;
     this.controls.maxPolarAngle=Math.PI/2.07;
     this.controls.minDistance=3;this.controls.maxDistance=24;
     this.controls.update();
@@ -212,10 +217,16 @@ export class SolviWorld {
   updateRemoteState(id,state){
     if(!state)return;const peer=this.ensurePeer(id,{name:state.name||'Guest'});
     if(Number.isFinite(+state.x)&&Number.isFinite(+state.z))peer.group.position.set(Number(state.x),Math.max(-1,Math.min(12,(Number(state.y)||1.65)-1.65)),Number(state.z));
-    peer.group.rotation.y=Number(state.yaw)||0;
+    // 'yaw' is the calibrated world gaze direction (world +Z is avatar forward).
+    const worldYaw=Number(state.yaw)||0;
+    peer.group.rotation.y+=Math.atan2(Math.sin(worldYaw-peer.group.rotation.y),Math.cos(worldYaw-peer.group.rotation.y))*.32;
     if(Array.isArray(state.headRotation)&&state.headRotation.length===3){
       const [pitch,yaw,roll]=state.headRotation;
-      peer.faceGroup.rotation.set(Number(pitch)||0,Number(yaw)||0,Number(roll)||0,'YXZ');
+      for(const [axis,value] of [['x',pitch],['y',yaw],['z',roll]]){
+        const target=Number(value)||0;
+        peer.faceGroup.rotation[axis]+=Math.atan2(Math.sin(target-peer.faceGroup.rotation[axis]),Math.cos(target-peer.faceGroup.rotation[axis]))*.40;
+      }
+      peer.faceGroup.rotation.order='YXZ';
     }
     peer.voiceLevel=Math.max(0,Math.min(1,Number(state.voiceLevel)||0));peer.voiceBands=Array.isArray(state.voiceBands)?state.voiceBands.slice(0,3).map(x=>Math.min(1,Math.max(0,Number(x)||0))):[0,0,0];
     if(state.body&&typeof state.body==='object')this.updatePeerBody(peer,state.body);
@@ -432,7 +443,10 @@ export class SolviWorld {
     if(this.onPose&&(!this.lastPose||performance.now()-this.lastPose>180)){
       this.lastPose=performance.now();const cam=this.renderer.xr.isPresenting?this.renderer.xr.getCamera():this.camera;
       const position=cam.getWorldPosition(new THREE.Vector3());
-      this.onPose({x:position.x,y:position.y,z:position.z,yaw:cam.rotation.y,face:this.localFace||{},headRotation:this.localHeadRotation||[0,0,0],body:this.localBody||{},voiceLevel:this.localVoiceLevel||0,voiceBands:this.localVoiceBands||[0,0,0]});
+      // Camera's local -Z is the viewing direction. Convert to avatar-forward +Z.
+      const gaze=cam.getWorldDirection(new THREE.Vector3());
+      const facingYaw=Math.atan2(gaze.x,gaze.z);
+      this.onPose({x:position.x,y:position.y,z:position.z,yaw:facingYaw,face:this.localFace||{},headRotation:this.localHeadRotation||[0,0,0],body:this.localBody||{},voiceLevel:this.localVoiceLevel||0,voiceBands:this.localVoiceBands||[0,0,0]});
     }
     this.renderer.render(this.scene,this.camera);
   }

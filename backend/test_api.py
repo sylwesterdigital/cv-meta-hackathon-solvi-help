@@ -10,7 +10,7 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.5')
+health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.7')
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.
@@ -48,7 +48,7 @@ obj={'id':'testcube-001','kind':'cube','name':'Test cube','position':[1,1,0],
 r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':obj})
 assert r.status_code==200,(r.status_code,r.data)
 lab_obj=c.get('/api/scene?room=lab',headers=headers).get_json()['objects']
-assert len(lab_obj)==1 and lab_obj[0]['texture']=='checker'
+assert len(lab_obj)==1 and lab_obj[0]['texture']=='checker' and lab_obj[0]['owner']==data['user']['id']
 assert c.get('/api/scene?room=main',headers=headers).get_json()['objects']==[]
 obj['position']=[2,1,0]
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':obj}).status_code==200
@@ -66,4 +66,35 @@ newtoken=r.get_json()['token']
 assert c.get('/api/me',headers=headers).status_code==401
 assert c.get('/api/me',headers={'Authorization':'Bearer '+newtoken,'X-Solvi-Tab':'test-tab-unique-001'}).status_code==409
 assert c.get('/api/me',headers={'Authorization':'Bearer '+newtoken,'X-Solvi-Tab':'second-tab-test-002'}).status_code==200
+# Subsequent avatar/STT tests must use the recovered session, not the intentionally
+# invalidated token from the expired-session regression immediately above.
+headers = {**headers, 'Authorization': 'Bearer '+newtoken, 'X-Solvi-Tab': 'second-tab-test-002'}
+assert c.get('/api/me',headers=headers).status_code==200
 print('PASS: expired token 401, different tab 409, recovered login succeeds')
+
+# STT requires login and strictly checks language and MIME without running inference.
+assert c.post('/api/stt',headers={'Origin':origin}).status_code==401
+assert c.get('/api/health').get_json()['stt']['engine']=='whisper.cpp'
+r=c.get('/api/avatars',headers=headers)
+assert r.status_code==200,(r.status_code,r.data)
+from io import BytesIO
+# A valid GLB v2 requires a 12-byte file header followed by a 4-byte-aligned
+# JSON chunk (8-byte chunk header + JSON bytes). The previous fixture had a
+# 20-byte length field but provided only 16 bytes; rejection was correct.
+import json as _json
+scene_json=_json.dumps({'asset':{'version':'2.0'},'scene':0,'scenes':[{'nodes':[]}]},separators=(',',':')).encode('utf-8')
+scene_json+=b' '*((-len(scene_json))%4)
+glb_size=12+8+len(scene_json)
+glb=b'glTF'+(2).to_bytes(4,'little')+glb_size.to_bytes(4,'little')+len(scene_json).to_bytes(4,'little')+b'JSON'+scene_json
+assert len(glb)==glb_size and len(glb)%4==0
+# Malformed uploads must still be rejected (the former test incorrectly expected 201).
+invalid_glb=b'glTF'+(2).to_bytes(4,'little')+(20).to_bytes(4,'little')+(8).to_bytes(4,'little')
+r=c.post('/api/avatars',headers=headers,data={'avatar':(BytesIO(invalid_glb),'invalid.glb')})
+assert r.status_code==400,(r.status_code,r.data)
+r=c.post('/api/avatars',headers=headers,data={'avatar':(BytesIO(glb),'unit-test.glb')})
+assert r.status_code==201,(r.status_code,r.data)
+asset_url=r.get_json()['avatar']['url']
+assert c.get(asset_url).status_code==200
+assert len(c.get('/api/avatars',headers=headers).get_json()['avatars'])>=1
+
+print('PASS: speech endpoint authentication, STT health and valid GLB avatar upload')

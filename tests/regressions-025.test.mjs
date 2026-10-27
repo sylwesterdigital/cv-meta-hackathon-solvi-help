@@ -22,5 +22,5 @@ test('dev log renders explicit time seconds and timezone',()=>{
 });
 test('backend and front end version match',()=>{
  const pkg=JSON.parse(read('package.json'));const releases=JSON.parse(read('releases.json'));const server=read('backend/server.py');
- assert.equal(pkg.version,'0.2.5');assert.equal(releases.currentVersion,pkg.version);assert.ok(server.includes("version='0.2.5'"));
+ assert.equal(pkg.version,'0.2.7');assert.equal(releases.currentVersion,pkg.version);assert.ok(server.includes("version='0.2.7'"));
 });

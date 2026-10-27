@@ -20,7 +20,7 @@ test('401/409 prompts for login; preserves recovery details and prevents sending
 test('audio is analysed in bands and all 21 hand landmarks are transmitted',()=>{
  const audio=read('js/voice-captions.js'),face=read('js/face-tracking.js');
  const world=read('js/world.js'),server=read('backend/server.py');
- for(const token of ['getByteFrequencyData','localVoiceBands','energy(90,360)','energy(1600,7000)'])assert.ok(audio.includes(token),token);
+ for(const token of ['getByteFrequencyData','localVoiceBands','[[90,360],[360,1600],[1600,7000]]'])assert.ok(audio.includes(token),token);
  for(const token of ['length===21','left','landmarkToLocal'])assert.ok(face.includes(token),token);
  assert.ok(world.includes('fingerChains'));assert.ok(server.includes("pose.get('voiceBands'"));
 });

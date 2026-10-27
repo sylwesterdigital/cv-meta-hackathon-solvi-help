@@ -9,7 +9,7 @@ SERVICE=/etc/systemd/system/solvi-help.service
 TARGET=/opt/solvi-help
 STATE=/var/lib/solvi-help
 PORT=18765
-EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.5}
+EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.7}
 BACKUP=$(mktemp -d /root/solvi-backend-backup-XXXXXXXX)
 CHANGED=0
 GOOD=0
@@ -39,7 +39,7 @@ trap finish EXIT
 [[ -f "$SITE" ]] || { echo "Missing $SITE" >&2; exit 1; }
 command -v nginx >/dev/null || { echo 'Nginx not installed' >&2; exit 1; }
 command -v apt-get >/dev/null || { echo 'Debian/Ubuntu required' >&2; exit 1; }
-mkdir -p "$TARGET" "$STATE/media" /etc/nginx/snippets
+mkdir -p "$TARGET" "$STATE/media" "$STATE/models" /etc/nginx/snippets
 chown -R www-data:www-data "$STATE"
 chmod 750 "$STATE" "$STATE/media"
 needed=()
@@ -60,6 +60,8 @@ install -m 644 "$SRC/server.py" "$TARGET/server.py"
 install -m 644 "$SRC/requirements.txt" "$TARGET/requirements.txt"
 if [[ ! -x "$TARGET/.venv/bin/python" ]]; then python3 -m venv "$TARGET/.venv"; fi
 "$TARGET/.venv/bin/python" -m pip install -q --disable-pip-version-check -r "$TARGET/requirements.txt"
+# STT reuses the existing Rantlist Whisper.cpp executable and persistent base model.
+# No second model, inference wheel, or automatic download is installed by SOLVI.
 # One-time admin password; no default password. Do not print secret in deployment logs.
 if [[ ! -f /etc/solvi-help.env ]]; then
   install -m 600 /dev/null /etc/solvi-help.env
@@ -110,7 +112,7 @@ for i in $(seq 1 24); do
   if curl -fsS --max-time 2 "http://127.0.0.1:${PORT}/api/health" > "$BACKUP/health.json" 2>/dev/null; then
     if "$TARGET/.venv/bin/python" - "$BACKUP/health.json" <<'PY'
 import json,sys
-x=json.load(open(sys.argv[1]));assert x.get('service')=='solvi-help-api' and x.get('version')==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.5')
+x=json.load(open(sys.argv[1]));assert x.get('service')=='solvi-help-api' and x.get('version')==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.7')
 PY
     then break; fi
   fi
@@ -118,14 +120,14 @@ PY
 done
 "$TARGET/.venv/bin/python" - "$BACKUP/health.json" <<'PY'
 import json,sys
-x=json.load(open(sys.argv[1]));assert x['service']=='solvi-help-api' and x['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.5')
+x=json.load(open(sys.argv[1]));assert x['service']=='solvi-help-api' and x['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.7')
 PY
 systemctl reload nginx
 # Public proxy check: no passing release based solely on HTTP 200 for index.html.
 curl -fsS --max-time 15 https://solvi.help/api/health > "$BACKUP/public.json"
 "$TARGET/.venv/bin/python" - "$BACKUP/public.json" <<'PY'
 import json,sys
-x=json.load(open(sys.argv[1]));assert x['service']=='solvi-help-api' and x['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.5')
+x=json.load(open(sys.argv[1]));assert x['service']=='solvi-help-api' and x['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.7')
 PY
 GOOD=1
 printf '[SOLVI] BACKEND LIVE: v%s | SQLite | API /api/health | WebSocket /ws\n' "$EXPECTED_VERSION"

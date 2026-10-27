@@ -11,9 +11,9 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.5</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.7</small></div>
     <nav aria-label="Tools" id="toolNav"><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="More tools">☰ Tools</button><button type="button" id="messagesToggleButton" aria-pressed="true" title="Show or hide chat messages">Messages</button><button type="button" id="chatModeButton" title="Move chat into a floating window">Float chat</button><button type="button" id="exportChatButton" title="Export room messages">Export chat</button>
-      <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button><button type="button" id="poseButton" title="Track upper body and hand landmarks">Posture + hands</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="objectsButton">Objects</button><button type="button" id="adminButton">Admin</button><button type="button" id="devLogButton">Dev log</button>
+      <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button><button type="button" id="poseButton" title="Track upper body and hand landmarks">Posture + hands</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="adminButton">Admin</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" title="Open in a WebXR headset browser">Enter VR</button>
       <button type="button" id="callButton">Voice / video</button><button type="button" id="settingsButton" aria-label="Settings" title="Appearance and chat settings">⚙</button><button type="button" id="profileButton" aria-label="Your profile" title="Your profile">?</button>
     </nav>
@@ -58,10 +58,10 @@
         <label>Rotation °</label><input aria-label="Rotation X" type="number" step="1" id="rotation-0"><input aria-label="Rotation Y" type="number" step="1" id="rotation-1"><input aria-label="Rotation Z" type="number" step="1" id="rotation-2">
         <label>Scale</label><input aria-label="Scale X" type="number" step="0.1" id="scale-0"><input aria-label="Scale Y" type="number" step="0.1" id="scale-1"><input aria-label="Scale Z" type="number" step="0.1" id="scale-2">
       </div>
-      <label class="field-label">Colour <input id="objectColor" type="color" value="#88bbee"></label>
-      <div class="field-label">Textures</div><div id="textureGrid" class="texture-grid"></div>
-      <label class="field-label">Upload texture <input id="textureUpload" type="file" accept="image/png,image/jpeg,image/webp"></label>
-      <div id="robotControls" hidden><strong>Robot action</strong><div class="transform-modes"><button id="robot-idle">Idle</button><button id="robot-walk">Walk</button><button id="robot-run">Run</button><button id="robot-wave">Wave</button><button id="robot-jump">Jump</button></div><small>Arrow keys steer / walk, Shift runs, Space jumps. Choose Walk or Run, then click the floor to set a destination. Robot view captures from this robot's head.</small></div>
+      <div id="objectAppearance"><label class="field-label">Colour <input id="objectColor" type="color" value="#88bbee"></label>
+      <div class="field-label">Texture <span id="textureGrid" class="texture-grid"></span></div>
+      <label class="field-label">Upload texture <input id="textureUpload" type="file" accept="image/png,image/jpeg,image/webp"></label></div>
+      <div id="robotControls" hidden><strong>Robot action</strong><label class="field-label">Avatar model<select id="robotAvatar" aria-label="Robot avatar"></select><button type="button" id="openAvatarGallery">Gallery</button></label><div class="transform-modes"><button id="robot-idle">Idle</button><button id="robot-walk">Walk</button><button id="robot-run">Run</button><button id="robot-wave">Wave</button><button id="robot-jump">Jump</button></div><small>Arrow keys steer / walk, Shift runs, Space jumps. Choose Walk or Run, then click the floor to set a destination. Robot view captures from this robot's head.</small></div>
       <div class="panel-footer"><button id="confirmProperties" class="primary" title="Save properties and close panel">OK ✓</button></div>
     </div>
 </aside>
@@ -80,7 +80,8 @@
         <button class="media-tool" id="robotVision" title="Attach view from the robot camera">Robot view</button>
         <button id="sendChat" class="primary">Send ↗</button>
       </div>
-      <small id="chatStatus">World chat available without an AI key. AI responses require MODEL_API_KEY.</small><small id="captionStatus" aria-live="polite">CC off · opt-in browser speech recognition</small>
+      <small id="chatStatus">World chat available without an AI key. AI responses require MODEL_API_KEY.</small><small id="captionStatus" aria-live="polite">CC off</small>
+      <div id="captionPreview" role="status" aria-live="polite" hidden><span id="captionDot" aria-hidden="true">●</span> <strong id="captionPhase">Listening</strong><span id="captionDraft" aria-label="Recognised text"></span></div>
     </div>
     <span id="chatResizeGrip" class="chat-resize-grip" title="Resize chat window" aria-label="Resize chat"></span>
   </section>
@@ -101,6 +102,8 @@
     </section>
   </div>
   <div id="settingsDrawer" class="drawer-shell" hidden><aside class="drawer" aria-label="Appearance and chat settings"><div class="drawer-head"><strong>Settings</strong><button id="closeSettings" aria-label="Close settings">×</button></div>
+      <label class="field-label">Interface theme <select id="interfaceTheme">
+ <option value="midnight">Midnight blue</option><option value="light">Light</option><option value="dark">Dark charcoal</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="dusk">Dusk</option><option value="contrastDark">High contrast · dark</option><option value="contrastLight">High contrast · light</option></select></label>
       <label class="field-label">Accent <input id="accentColor" type="color" value="#79cde5"></label>
       <div class="drawer-label">Palettes <button id="generateTheme" type="button">Generate theme</button></div>
       <div id="themeSwatches" class="theme-swatches"></div>
@@ -110,8 +113,20 @@
       <label class="toggle-line"><input id="groupMessages" type="checkbox" checked> Group nearby messages</label>
       <label class="toggle-line"><input id="soundEffects" type="checkbox" checked> Sound cues</label>
       <label class="toggle-line"><input id="flipHead" type="checkbox" checked> Correct avatar facing</label>
+      <div class="drawer-label">Live captions / speech recognition</div>
+      <label class="field-label">Recognition engine<select id="ccEngine"><option value="browser">Browser / device</option><option value="server">Ubuntu Whisper (requires backend)</option></select></label>
+      <label class="field-label">Speech language<select id="ccLanguage"><option value="auto">Auto / device language</option><option value="pl-PL">Polski · pl-PL</option><option value="en-GB">English · en-GB</option><option value="en-US">English · en-US</option></select></label>
+      <label class="toggle-line"><input id="ccAutoSend" type="checkbox" checked> Send final captions to room automatically</label>
+      <small class="small-note" id="ccEngineStatus">Browser recognition depends on device support. Whisper is hosted on Ubuntu.</small>
       <button id="exportChatSettings" type="button">Export room messages</button>
     </aside></div>
+  <div id="avatarGalleryBackdrop" class="backdrop avatar-gallery-backdrop" hidden>
+  <section class="overlay avatar-gallery" role="dialog" aria-modal="true" aria-label="Choose an avatar">
+   <div class="panel-title"><strong>Avatar library</strong><button id="closeAvatarGallery" type="button" aria-label="Close avatar library">×</button></div>
+   <p class="small-note">Select an avatar to place it in the world or apply it to your selected robot.</p>
+   <div id="avatarGalleryGrid" class="avatar-gallery-grid" role="list"></div>
+   <div class="avatar-gallery-upload"><label class="icon-btn">+ Upload your own GLB<input id="uploadRobotAvatar" type="file" accept=".glb,model/gltf-binary" hidden></label><small id="avatarGalleryStatus" aria-live="polite">Upload size limit: 20 MB · public to the realm.</small></div>
+  </section></div>
   <div id="adminBackdrop" class="backdrop" hidden>
     <section class="overlay admin-modal" role="dialog" aria-label="Admin dashboard">
       <div class="panel-title"><strong>Server administration</strong><button id="closeAdmin">×</button></div>

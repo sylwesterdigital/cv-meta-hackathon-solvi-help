@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
 import {captureRobotView} from './robots.js';
-import {readPreferences,updatePreferences,applyPreferences,themePalette,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
+import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
 import {playCue,primeAudio} from './audio-cues.js';
 
 const $=id=>document.getElementById(id);
@@ -247,7 +247,7 @@ function setupSettings(){
  const current=readPreferences();applyPreferences(current);
  const settings=$('settingsDrawer');
  function paint(p){
-  $('accentColor').value=p.accent;$('bubbleOpacity').value=p.opacity;
+  $('accentColor').value=p.accent;$('interfaceTheme').value=p.theme||'midnight';$('bubbleOpacity').value=p.opacity;
   for(const [id,key] of [['bubbleBackgrounds','backgrounds'],['bubbleBorders','borders'],['groupMessages','group'],['soundEffects','sounds'],['flipHead','flipHead']])$(id).checked=!!p[key];
  }
  paint(current);
@@ -256,6 +256,7 @@ function setupSettings(){
  settings.addEventListener('pointerdown',e=>{if(e.target===settings)settings.hidden=true;});
  const apply=(patch)=>{const prefs=updatePreferences(patch);paint(prefs);if('group' in patch){chatSignature='';loadMessages();}};
  $('accentColor').oninput=e=>apply({accent:e.target.value});
+ $('interfaceTheme').onchange=e=>{const key=e.target.value;const theme=THEME_PRESETS[key];apply({theme:key,accent:theme.accent});};
  $('bubbleOpacity').oninput=e=>apply({opacity:Number(e.target.value)});
  for(const [id,key] of [['bubbleBackgrounds','backgrounds'],['bubbleBorders','borders'],['groupMessages','group'],['soundEffects','sounds'],['flipHead','flipHead']])$(id).onchange=e=>apply({[key]:e.target.checked});
  const colors=['#79cde5','#e7b073','#a5db91','#d9a0d7','#a0b5f5','#f3a1a1'];
@@ -311,7 +312,7 @@ function setupChatPresentation(){
 function bindUI(world){
  const editor=new SceneEditor(world,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
- window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail?.revision));
+ window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
  window.addEventListener('solvi:chat-updated',loadMessages);
  $('chatButton').onclick=()=>{show('chatPanel',$('chatPanel').hidden);document.body.classList.remove('chat-muted');$('messagesToggleButton').setAttribute('aria-pressed','true');};$('closeChat').onclick=()=>show('chatPanel',false);
  $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?'Your profile':'Sign in';show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
@@ -326,7 +327,7 @@ function bindUI(world){
    const caption='CC: '+text.trim().slice(0,500);
    if(!online||!auth){if(online&&!auth){needSignIn('Sign in to send captions.');return;}await bubble({role:'user',text:caption,speaker:me.name,user_id:me.id,created:new Date().toISOString()});return;}
    try{const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:caption,media:[]})});await bubble(response.message);}
-   catch(error){toast('Captions not sent: '+error.message);}
+   catch(error){toast('Captions not sent: '+error.message);throw error;}
  };
  $('sendChat').onclick=send;$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
  $('chatFile').onchange=e=>attach(e.target.files[0]);$('recordAudio').onclick=()=>startRecording(false);

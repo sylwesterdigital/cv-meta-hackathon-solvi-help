@@ -142,6 +142,83 @@ def verify_zip(archive,stage):
         return manifest
 
 
+# Locally owned avatar files are intentionally not in the immutable release ZIP.
+# Import only fixed, known paths and catalogued, valid GLBs. Preserve the exact
+# original bytes; never delete, reset, stash or rewrite the user's local files.
+_LOCAL_ASSETS=set()
+
+def valid_glb(path,max_size=100*1024*1024):
+    if path.is_symlink() or not path.is_file():return False
+    size=path.stat().st_size
+    if not 20 <= size <= max_size:return False
+    with path.open('rb') as f:head=f.read(12)
+    return len(head)==12 and head[:4]==b'glTF' and int.from_bytes(head[4:8],'little')==2 and int.from_bytes(head[8:12],'little')==size
+
+def safe_owned_asset(path,rel):
+    # The historical SOLVI GLB was edited by the user and must never be
+    # discarded because of a decoder-specific header heuristic. Strict
+    # GLB validation still applies to new gallery uploads.
+    if rel in ('assets/solvi-character.glb','assets/facecap.glb'):
+        return path.is_file() and not path.is_symlink() and 0 < path.stat().st_size <= 100*1024*1024
+    return valid_glb(path,24*1024*1024)
+
+def owned_source(rel):
+    local=ROOT/rel
+    if local.is_file() and not local.is_symlink():
+        return local
+    # The user moved the original GLB into the avatar library. Continue to
+    # publish the legacy URL without deleting or moving the gallery copy.
+    if rel=='assets/solvi-character.glb':
+        replacement=ROOT/'assets/avatars/solvi-character.glb'
+        if replacement.is_file() and not replacement.is_symlink():
+            return replacement
+    return None
+
+def stage_local_assets(stage):
+    global _LOCAL_ASSETS
+    _LOCAL_ASSETS=set()
+    catalog=stage/'assets/avatars/catalog.json'
+    library=[]
+    if catalog.is_file():
+        for item in json.loads(catalog.read_text()).get('avatars',[]):
+            rel=item.get('url','').removeprefix('./')
+            if re.fullmatch(r'assets/avatars/[A-Za-z0-9_-]+\.glb',rel):library.append(rel)
+    for rel in ('assets/solvi-character.glb','assets/facecap.glb',*sorted(set(library))):
+        src=owned_source(rel)
+        if src is None:continue
+        if not safe_owned_asset(src,rel):
+            raise ReleaseError('Local avatar is not a valid GLB v2: '+rel)
+        destination=stage/rel
+        destination.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(src,destination)
+        if destination.read_bytes()!=src.read_bytes():
+            raise ReleaseError('Local avatar copy failed: '+rel)
+        _LOCAL_ASSETS.add(rel)
+    if _LOCAL_ASSETS:
+        display(f'LOCAL AVATARS INCLUDED: {len(_LOCAL_ASSETS)} file(s), original bytes preserved','EVENT')
+
+def verify_owned_asset(rel,stage):
+    if rel not in _LOCAL_ASSETS:return False
+    source=owned_source(rel)
+    staged=stage/rel
+    return source is not None and safe_owned_asset(source,rel) and staged.is_file() and source.read_bytes()==staged.read_bytes()
+
+def release_banner(title,version='?',details=''):
+    border='-'*72
+    stamp=dt.datetime.now().astimezone().isoformat(timespec='seconds')
+    print('\n'+border,flush=True)
+    print(f'SOLVI.help  |  {title}  |  VERSION v{version}',flush=True)
+    print(f'SERVICE: {PUBLIC}  |  {stamp}',flush=True)
+    if details:print(details,flush=True)
+    print(border+'\n',flush=True)
+    if _log:
+        with _log.open('a',encoding='utf-8') as f:
+            f.write('\n'+border+'\n')
+            f.write(f'SOLVI.help | {title} | VERSION v{version}\n')
+            f.write(f'SERVICE: {PUBLIC} | {stamp}\n')
+            if details:f.write(details+'\n')
+            f.write(border+'\n\n')
+
 def merge_history(stage,manifest):
     """Append deployment history instead of discarding earlier releases."""
     history=[]
@@ -218,8 +295,26 @@ def git_preflight(stage):
     # README.md is documentation, not part of the public deployment.
     # Preserve local README edits rather than blocking a release or overwriting them.
     conflicts=sorted((changed & incoming)-{'solvi-watch.sh','README.md'})
-    dangerous=[rel for rel in conflicts if not ((ROOT/rel).is_file() and
-               (stage/rel).is_file() and (ROOT/rel).read_bytes()==(stage/rel).read_bytes())]
+    # The repo's locally modified avatar is the source of truth. The build stage
+    # may have replaced it during npm/vendor preparation; reconcile just these
+    # explicitly imported assets immediately before Git conflict validation.
+    # NEVER exempt an arbitrary dirty application/source file.
+    for rel in conflicts:
+        if rel not in _LOCAL_ASSETS:
+            continue
+        local=owned_source(rel)
+        staged=stage/rel
+        if local is None or not safe_owned_asset(local,rel):
+            raise ReleaseError('Local avatar not readable/valid; preserving without deployment: '+rel)
+        if not staged.is_file() or staged.read_bytes()!=local.read_bytes():
+            staged.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(local,staged)
+            display('LOCAL ASSET RESTORED FROM REPOSITORY: '+rel,'EVENT')
+        if not verify_owned_asset(rel,stage):
+            raise ReleaseError('Local asset changed during validation: '+rel)
+    dangerous=[rel for rel in conflicts if not (verify_owned_asset(rel,stage) or
+               ((ROOT/rel).is_file() and (stage/rel).is_file() and
+                (ROOT/rel).read_bytes()==(stage/rel).read_bytes()))]
     if dangerous:
         raise ReleaseError('Uncommitted edits conflict with release: '+', '.join(dangerous))
     try:origin=run(['git','remote','get-url','origin'],cwd=ROOT)
@@ -245,7 +340,7 @@ def update_git(stage,manifest):
     # Stage ONLY files explicitly declared and SHA-256 verified in the release
     # manifest, never derived build/test artifacts (__pycache__, .pyc, caches).
     # Locally modified README.md and .gitignore remain untouched.
-    manifest_files=sorted(manifest['sha256'])
+    manifest_files=sorted(set(manifest['sha256']) | {rel for rel in _LOCAL_ASSETS if rel.startswith('assets/avatars/')})
     for name in manifest_files:
         rel=Path(name)
         if rel.parts[0] in ('node_modules','vendor') or rel==Path('.gitignore'):
@@ -255,15 +350,34 @@ def update_git(stage,manifest):
             raise ReleaseError('Invalid generated file in release manifest: '+name)
         source=stage/rel
         if not source.is_file():raise ReleaseError('Manifest source disappeared: '+name)
-        if digest(source.read_bytes()) != manifest['sha256'][name] and name!='releases.json':
-            raise ReleaseError('Manifest source modified unexpectedly: '+name)
+        if name not in manifest['sha256']:
+            if not verify_owned_asset(name,stage):
+                raise ReleaseError('Local gallery avatar changed unexpectedly: '+name)
+        elif digest(source.read_bytes()) != manifest['sha256'][name] and name!='releases.json':
+            if not verify_owned_asset(name,stage):
+                raise ReleaseError('Manifest source modified unexpectedly: '+name)
+            display('LOCAL ASSET VERIFIED (not from ZIP): '+name,'EVENT')
         if rel==Path('README.md') and 'README.md' in set(run(['git','diff','--name-only','--','README.md'],cwd=ROOT).splitlines()):
             display('Preserving local README.md edits (not included in this release commit)','WARN')
             continue
         dest=ROOT/rel
         if dest.is_symlink():raise ReleaseError('Refusing local symlink overwrite: '+str(rel))
-        dest.parent.mkdir(parents=True,exist_ok=True)
-        shutil.copy2(source,dest)
+        if name in _LOCAL_ASSETS:
+            if not verify_owned_asset(name,stage):
+                raise ReleaseError('Local model changed after preflight; aborting: '+name)
+            if not dest.is_file():
+                # Restore compatibility path from the verified developer-owned
+                # avatar library copy; leave the library file untouched.
+                if name!='assets/solvi-character.glb' or owned_source(name)==dest:
+                    raise ReleaseError('Local asset path disappeared: '+name)
+                dest.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(source,dest)
+                display('RESTORED LEGACY MODEL PATH FROM AVATAR LIBRARY: '+name,'EVENT')
+            elif dest.read_bytes()!=source.read_bytes():
+                raise ReleaseError('Refusing to overwrite changed local model: '+name)
+        else:
+            dest.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(source,dest)
         changed.append(name)
     # releases.json is regenerated with the merged release history, so it may
     # differ from the archive hash. It is nevertheless an explicitly listed file.
@@ -369,6 +483,7 @@ def process(archive,dry):
         _RUN['version']=manifest['version']
         display(f'[1/5] ZIP OK — v{manifest["version"]}, {len(manifest["sha256"])} files','EVENT')
         merge_history(stage,manifest)
+        stage_local_assets(stage)
         announce('tests','[2/5] Building assets and running tests…')
         test_stage(stage)
         display('[2/5] TESTS PASSED','EVENT')
@@ -433,12 +548,16 @@ def main():
         if not args.once and not args.dry_run:
             display('WAITING FOR ZIP… Drop the release into updates/ (Ctrl+C to stop).')
         failed=False
+        active_watcher_hash=digest((ROOT/'solvi-watch.sh').read_bytes())
         while True:
             for file in sorted(UPDATES.glob('*.zip')):
                 if not(args.once or args.dry_run) and time.time()-file.stat().st_mtime<3:continue
                 stamp=dt.datetime.now().strftime('%Y%m%d-%H%M%S')
                 _log=STATE/f'logs/{stamp}-{file.stem}.log';_log.parent.mkdir(exist_ok=True)
+                filename_version=re.search(r'v(\d+\.\d+\.\d+)',file.name)
+                release_banner('DEPLOYMENT START',filename_version.group(1) if filename_version else '?',file.name)
                 display(f'ZIP DETECTED: {file.name}','EVENT')
+                succeeded=False
                 try:
                     process(file,args.dry_run)
                     if not args.dry_run:
@@ -446,6 +565,7 @@ def main():
                         if dest.exists():dest=dest.with_name(dest.stem+'-'+stamp+'.zip')
                         file.rename(dest)
                         display(f'ARCHIVED: updates/processed/{dest.name}')
+                    succeeded=True
                 except Exception as exc:
                     failed=True
                     website='UPDATED' if _RUN['server'] else 'NOT DEPLOYED / ROLLBACK ATTEMPTED' if _RUN['phase']=='server' else 'UNCHANGED'
@@ -459,8 +579,18 @@ def main():
                         display(f'RETRY ZIP: updates/failed/{dest.name}','WARN')
                 finally:
                     display(f'DETAILED LOG: {_log}')
+                    release_banner('DEPLOYMENT END — '+('SUCCESS' if succeeded else 'FAILED'),
+                                   _RUN['version'] if _RUN['version']!='?' else
+                                   (filename_version.group(1) if filename_version else '?'),
+                                   ('LIVE: '+PUBLIC if succeeded else 'NOT DEPLOYED — '+PUBLIC))
                     _log=None
             if args.once or args.dry_run:return 1 if failed else 0
+            # Reload updated watcher implementation automatically on future releases.
+            if digest((ROOT/'solvi-watch.sh').read_bytes()) != active_watcher_hash:
+                display('WATCHER UPDATED — reloading without user action','EVENT')
+                fcntl.flock(lf,fcntl.LOCK_UN)
+                lf.close()
+                os.execv('/bin/bash',['bash',str(ROOT/'solvi-watch.sh'),'--interval',str(args.interval)]+(['--verbose'] if args.verbose else []))
             time.sleep(args.interval)
 
 if __name__=='__main__':

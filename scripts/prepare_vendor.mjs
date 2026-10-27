@@ -1,8 +1,16 @@
 import { mkdir, copyFile, cp, access, readFile, realpath } from 'node:fs/promises';
+import { preserveLocalAssets } from './preserve-local-assets.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// If a release ships watcher log enhancements, preserve the executable bit
+// when the existing watcher copies this tested file into the repository.
+try {
+  const { chmod } = await import('node:fs/promises');
+  await chmod(path.join(root, 'solvi-watch.sh'), 0o755);
+} catch (err) { if (err?.code !== 'ENOENT') throw err; }
+
 const pkgRoot = path.join(root, 'node_modules', 'three');
 const examples = path.join(pkgRoot, 'examples', 'jsm');
 const vendor = path.join(root, 'vendor', 'three');
@@ -58,3 +66,39 @@ while (queue.length) {
 await cp(path.join(examples, 'libs', 'draco'), path.join(vendor, 'draco'), { recursive: true, force: true });
 await cp(path.join(examples, 'libs', 'basis'), path.join(vendor, 'basis'), {recursive:true,force:true});
 console.log(`Three.js bundled with ${visited.size} recursively resolved addon modules and Draco decoder.`);
+
+// All tracked local assets must be preserved *byte-for-byte* in the verified stage,
+// not skipped because a developer-edited GLB fails a heuristic header check.
+// The running watcher checks equality during Git preflight, before writing anything.
+await preserveLocalAssets(root);
+
+// Import user-supplied library models from assets/avatars as part of the normal build.
+try {
+  const repo = path.resolve(root, '..', '..');
+  await access(path.join(repo, '.git'));
+  const {lstat, open} = await import('node:fs/promises');
+  const catalog = JSON.parse(await readFile(path.join(root, 'assets/avatars/catalog.json'), 'utf8'));
+  const seen = new Set();let total=0,copied=0;
+  for (const item of catalog.avatars||[]) {
+    const filename = item.url?.split('/').at(-1);
+    if (!filename || !/^[A-Za-z0-9_-]+\.glb$/.test(filename) || seen.has(filename)) continue;
+    seen.add(filename);
+    const src = path.join(repo, 'assets', 'avatars', filename);
+    let info;try {info=await lstat(src);}catch {continue;}
+    if (!info.isFile() || info.isSymbolicLink() || info.size>24*1024*1024 || total+info.size>90*1024*1024) {
+      console.warn(`Avatar not staged (unsupported type or size): ${filename}`);continue;
+    }
+    const fh=await open(src,'r');const header=Buffer.alloc(12);
+    try{await fh.read(header,0,12,0);}finally{await fh.close();}
+    if(header.toString('ascii',0,4)!=='glTF'||header.readUInt32LE(4)!==2||header.readUInt32LE(8)!==info.size){
+      console.warn('Ignoring invalid GLB avatar: '+filename);continue;
+    }
+    const dest=path.join(root,'assets','avatars',filename);
+    if(path.resolve(src)===path.resolve(dest))continue;
+    await copy(src,dest);total+=info.size;copied++;
+  }
+  if(copied)console.log(`Local avatar library: ${copied} GLB(s), ${(total/1048576).toFixed(1)} MiB staged for Git + Ubuntu deployment.`);
+} catch (e) {
+  // Running this build directly (outside the watcher) has no repository parent.
+  console.log('No local watcher avatar repository detected; using release-bundled assets.');
+}

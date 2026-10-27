@@ -199,3 +199,64 @@ button:focus-visible{outline:2px solid var(--solvi-accent)}
 /* Theme toggles must override every earlier bubble styling rule. */
 html[data-chat-bg="false"] .chat-row .chat-bubble{background:transparent!important;box-shadow:none!important}
 html[data-chat-border="false"] .chat-row .chat-bubble{border:0!important}
+
+/* 0.2.6 — opt-in transcription state without obscuring 3D */
+#captionPreview{display:flex;gap:6px;align-items:center;max-width:100%;padding:5px 9px;background:rgba(9,20,33,.64);border-radius:10px;font-size:11px;color:#daefff;min-height:24px}
+#captionPreview[hidden]{display:none}
+#captionDraft{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+#captionDot{color:#62d8a9;animation:solviPulse 1.25s ease-in-out infinite}
+#captionPreview[data-state="transcribing"] #captionDot{color:#e6b178}
+#captionPreview[data-state="error"] #captionDot{color:#ff7777;animation:none}
+@keyframes solviPulse{50%{opacity:.25}}
+#ccEngine,#ccLanguage,#robotAvatar{width:100%;background:#142639;color:#e8f5ff;border:1px solid #506278;padding:7px;border-radius:7px}
+
+/* v0.2.7 — compact floating properties, no wasted vertical rows */
+.properties-panel{width:min(264px,calc(100vw - 12px))!important;max-height:min(70svh,570px)!important;overflow-y:auto!important;background:rgba(13,22,35,.95)!important;border-radius:10px!important;box-shadow:0 7px 26px #0008!important;backdrop-filter:none!important;}
+.properties-panel>.panel-title{padding:6px 9px!important;min-height:31px!important;margin:0!important;border-bottom:1px solid #334256}
+.properties-panel>.panel-title strong{font-size:11px!important}
+.properties-panel #objectInspector{padding:4px 9px 7px!important;overflow:visible!important}
+.properties-panel #objectInspector>.panel-title{padding:2px 0 5px!important;min-height:26px!important;margin:0!important;border-bottom:0!important}
+.properties-panel .panel-title strong{font-size:11px!important}
+.properties-panel button{padding:4px 6px!important;font-size:10px!important;min-height:25px!important;line-height:1.1!important;border-radius:6px!important}
+.properties-panel .transform-modes{padding:4px 0!important;gap:3px!important;flex-wrap:nowrap!important}
+.properties-panel .property-grid{grid-template-columns:55px repeat(3,minmax(0,1fr))!important;gap:3px 4px!important}
+.properties-panel .property-grid label{font-size:10px!important}
+.properties-panel .property-grid input{min-width:0!important;width:100%!important;height:26px!important;font-size:10px!important;padding:2px!important;border-radius:5px!important}
+.properties-panel .field-label{margin:4px 0!important;font-size:10px!important}
+.properties-panel .field-label:has(>input[type="color"]){display:flex!important;gap:9px!important;align-items:center!important}
+.properties-panel input[type="color"]{height:23px!important;width:34px!important}
+.properties-panel .texture-grid{gap:3px!important;padding:2px 0!important;flex-wrap:nowrap!important;overflow-x:auto!important;scrollbar-width:none}
+.properties-panel .texture-grid::-webkit-scrollbar{display:none}
+.properties-panel input[type="file"]{font-size:9px!important;max-width:178px!important}
+.properties-panel #robotControls{margin:3px 0 0!important}
+.properties-panel #robotControls strong{font-size:11px!important}
+.properties-panel #robotControls small{font-size:9px!important;line-height:1.3!important;display:block!important;margin-top:3px}
+.properties-panel #robotAvatar{font-size:11px!important;width:100%!important;max-width:100%!important;padding:5px 3px!important;background:#142436!important;color:#eef6ff!important;border:1px solid #40566b;border-radius:6px}
+.properties-panel .panel-footer{padding:6px 0 0!important;margin:4px 0 0!important}
+.properties-panel #confirmProperties{min-width:49px!important;min-height:26px!important;padding:4px 9px!important}
+@media(max-width:750px){.properties-panel{left:6px!important;top:100px!important;max-height:calc(100svh - 160px)!important}}
+
+/* v0.2.7: one predictable control scale throughout desktop and mobile */
+:root{--ui-bg:#101b2e;--ui-panel:#17243a;--ui-fg:#f4f8ff;--ui-button:#20344e;--ui-button-text:#f4f8ff;--ui-accent-text:#000000;--ui-control-size:30px;}
+button,select,input[type="button"],input[type="submit"],.icon-btn{font-family:inherit!important;font-size:12px!important;font-weight:550!important;line-height:1.25!important;letter-spacing:0!important;min-height:var(--ui-control-size)!important;border-radius:7px!important;}
+button,.icon-btn{background:var(--ui-button)!important;color:var(--ui-button-text)!important;border:1px solid color-mix(in srgb,var(--ui-fg) 30%,transparent)!important;padding:6px 10px!important;}
+button.primary,.primary,#confirmProperties,#sendChat{background:var(--solvi-accent)!important;color:var(--ui-accent-text)!important;border-color:var(--solvi-accent)!important;}
+button:hover:not(:disabled){filter:brightness(1.13)!important;}
+.overlay,.drawer,.properties-panel,.scene-panel,.add-menu,.chat-panel.windowed,.chat-composer,.avatar-gallery{background:var(--ui-panel)!important;color:var(--ui-fg)!important;border-color:color-mix(in srgb,var(--ui-fg) 27%,transparent)!important;}
+.drawer input:not([type=checkbox]):not([type=range]):not([type=color]),.drawer select,.properties-panel select{background:var(--ui-bg)!important;color:var(--ui-fg)!important;border:1px solid color-mix(in srgb,var(--ui-fg) 27%,transparent)!important;}
+.drawer .field-label,.drawer .small-note,.properties-panel .field-label{color:var(--ui-fg)!important;}
+.properties-panel button{font-size:12px!important;min-height:29px!important;padding:5px 6px!important;}
+.properties-panel .texture-grid button{font-size:11px!important;padding:3px 5px!important;min-height:25px!important;}
+.avatar-gallery-backdrop{z-index:130!important;background:#050a13aa!important;}
+.avatar-gallery{width:min(800px,96vw)!important;max-height:85svh!important;display:flex;flex-direction:column;overflow:hidden;padding:14px!important;}
+.avatar-gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;overflow-y:auto;scrollbar-width:none;padding:6px 3px;}
+.avatar-gallery-grid::-webkit-scrollbar{display:none}
+.avatar-gallery .avatar-card{display:flex;flex-direction:column;gap:5px;text-align:left;padding:7px!important;min-width:0;min-height:190px!important;}
+.avatar-card .avatar-preview{width:100%;aspect-ratio:176/142;border-radius:6px;background:color-mix(in srgb,var(--ui-bg) 88%,#999);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:11px;color:var(--ui-fg);}
+.avatar-card .avatar-preview canvas,.avatar-card .avatar-preview img{width:100%;height:100%;object-fit:contain;}
+.avatar-card strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.avatar-card small{font-size:10px;opacity:.8}
+.avatar-gallery-upload{display:flex;align-items:center;gap:10px;padding-top:9px;flex-wrap:wrap;}
+.avatar-gallery-upload small{font-size:11px;}
+.properties-panel #openAvatarGallery{margin-left:5px;}
+@media(max-width:750px){.avatar-gallery{max-height:85svh!important}.avatar-gallery-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "avatars": [
+    {
+      "id": "solvi-character",
+      "label": "SOLVI cat",
+      "genderPresentation": "stylised",
+      "description": "Animated legacy avatar",
+      "traits": [],
+      "url": "./assets/solvi-character.glb"
+    },
+    {
+      "id": "catintracksuit3dmodel",
+      "label": "Cat in tracksuit",
+      "genderPresentation": "stylised",
+      "description": "Mixamo-style character",
+      "traits": [],
+      "url": "./assets/avatars/catintracksuit3dmodel.glb"
+    },
+    {
+      "id": "cyberpunkcharacter3dmodel",
+      "label": "Cyberpunk",
+      "genderPresentation": "stylised",
+      "description": "Cyberpunk character",
+      "traits": [],
+      "url": "./assets/avatars/cyberpunkcharacter3dmodel.glb"
+    },
+    {
+      "id": "fashionablewoman3dmodel-fr",
+      "label": "Fashionable woman",
+      "genderPresentation": "feminine",
+      "description": "Fashion model",
+      "traits": [],
+      "url": "./assets/avatars/fashionablewoman3dmodel-fr.glb"
+    },
+    {
+      "id": "fashionmodel3dmodel-yella",
+      "label": "Fashion model Yella",
+      "genderPresentation": "feminine",
+      "description": "Fashion character",
+      "traits": [],
+      "url": "./assets/avatars/fashionmodel3dmodel-yella.glb"
+    },
+    {
+      "id": "humancharacter3dmodel-rev",
+      "label": "Human character",
+      "genderPresentation": "neutral",
+      "description": "Humanoid",
+      "traits": [],
+      "url": "./assets/avatars/humancharacter3dmodel-rev.glb"
+    },
+    {
+      "id": "humanfigure3dmodel-fr-pink",
+      "label": "Human figure Pink",
+      "genderPresentation": "neutral",
+      "description": "Humanoid",
+      "traits": [],
+      "url": "./assets/avatars/humanfigure3dmodel-fr-pink.glb"
+    },
+    {
+      "id": "leoparddress3dmodel",
+      "label": "Leopard dress",
+      "genderPresentation": "feminine",
+      "description": "Fashion character",
+      "traits": [],
+      "url": "./assets/avatars/leoparddress3dmodel.glb"
+    }
+  ]
+}
