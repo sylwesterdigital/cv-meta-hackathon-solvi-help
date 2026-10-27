@@ -37,20 +37,41 @@ PUBLIC='https://solvi.help/'
 VERSION_PATTERN=re.compile(r'^\d+\.\d+\.\d+$')
 SHA_PATTERN=re.compile(r'^[0-9a-f]{64}$')
 PUBLIC_ITEMS=('index.html','styles.css','js','assets','vendor','releases.json')
-REQUIRED=('index.html','styles.css','js/main.js','js/world.js','js/animations.js','js/devlog.js','assets/solvi-character.glb','releases.json','package.json','backend/server.py','scripts/prepare_vendor.mjs','tests/animations.test.mjs')
-REQUIRED_VENDOR=('vendor/three/three.module.js','vendor/three/three.core.js','vendor/three/addons/controls/OrbitControls.js','vendor/three/addons/loaders/GLTFLoader.js','vendor/three/addons/loaders/DRACOLoader.js','vendor/three/draco/draco_decoder.wasm')
+REQUIRED=('index.html','styles.css','js/main.js','js/world.js','js/animations.js','js/devlog.js','assets/solvi-character.glb','releases.json','package.json','backend/server.py','scripts/prepare_vendor.mjs','tests/animations.test.mjs','tests/browser-imports.test.mjs','scripts/check_browser_modules.mjs')
+REQUIRED_VENDOR=('vendor/three/three.module.js','vendor/three/three.core.js','vendor/three/addons/controls/OrbitControls.js','vendor/three/addons/loaders/GLTFLoader.js','vendor/three/addons/loaders/DRACOLoader.js','vendor/three/addons/utils/BufferGeometryUtils.js','vendor/three/draco/draco_decoder.wasm')
 _log=None
+_VERBOSE=False
+_RUN={"version":"?","git":False,"server":False,"phase":"waiting","started":None}
 
 class ReleaseError(Exception):pass
 
 def display(message,level='INFO'):
-    s=f'{dt.datetime.now().strftime("%H:%M:%S")} [{level:5}] {message}'
-    codes={'INFO':'\033[36m','PASS':'\033[32m','FAIL':'\033[31m','STEP':'\033[34m','WARN':'\033[33m'}
-    if sys.stdout.isatty() and not os.environ.get('NO_COLOR'):
-        print(codes.get(level,'')+s+'\033[0m',flush=True)
-    else:print(s,flush=True)
+    """Short human-readable console; complete command trace stays in per-release log."""
+    stamp=dt.datetime.now().strftime('%H:%M:%S')
+    original=f'{stamp} [{level:5}] {message}'
     if _log:
-        with _log.open('a') as f:f.write(s+'\n')
+        with _log.open('a',encoding='utf-8') as f:f.write(original+'\n')
+    # Hide routine internal details; --verbose restores the complete trace.
+    if not _VERBOSE and (
+        message.startswith('$ ') or
+        level=='STEP' or
+        (level=='PASS' and not message.startswith(('RELEASE ','DRY-RUN '))) or
+        message.startswith(('Log: ', 'Server backup: '))
+    ):
+        return
+    colors={
+        'INFO':'\033[36m','PASS':'\033[1;32m','FAIL':'\033[1;31m',
+        'STEP':'\033[34m','WARN':'\033[33m',
+        'EVENT':'\033[1;36m','LIVE':'\033[1;34m'
+    }
+    rendered=f'{stamp} [{level:5}] {message}'
+    if sys.stdout.isatty() and not os.environ.get('NO_COLOR'):
+        rendered=colors.get(level,'')+rendered+'\033[0m'
+    print(rendered,flush=True)
+
+def announce(phase,message):
+    _RUN['phase']=phase
+    display(message,'EVENT')
 
 def run(args,cwd=None,timeout=180,output=True):
     args=[str(x) for x in args]
@@ -59,7 +80,7 @@ def run(args,cwd=None,timeout=180,output=True):
     if _log and p.stdout:
         with _log.open('a') as f:f.write(p.stdout+'\n')
     if p.returncode:
-        if p.stdout:print('\n'.join(p.stdout.splitlines()[-16:]),flush=True)
+        if p.stdout:print('\n'.join(p.stdout.splitlines()[-6:]),flush=True)
         raise ReleaseError(f'Command failed ({p.returncode}): {args[0]} {args[1] if len(args)>1 else ""}')
     return p.stdout.strip()
 
@@ -142,7 +163,9 @@ def test_stage(stage):
     display('Running JavaScript, Python and HTTP smoke tests','STEP')
     for js in list((stage/'js').rglob('*.js'))+list((stage/'scripts').rglob('*.mjs')):
         run(['node','--check',js],cwd=stage)
-    run(['node','--test','tests/animations.test.mjs'],cwd=stage)
+    run(['node','--test','tests/animations.test.mjs','tests/browser-imports.test.mjs'],cwd=stage)
+    dependency_list=json.loads(run(['node','scripts/check_browser_modules.mjs','--json'],cwd=stage))['modules']
+    if not dependency_list:raise ReleaseError('Browser import graph is empty')
     # compile-only: Flask packages are optional until live backend enabled
     import ast
     ast.parse((stage/'backend/server.py').read_text())
@@ -158,7 +181,8 @@ def test_stage(stage):
     with http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler) as server:
         t=threading.Thread(target=server.serve_forever,daemon=True);t.start()
         try:
-            for path in ('','index.html','styles.css','js/main.js','js/world.js','releases.json','assets/solvi-character.glb','vendor/three/three.module.js','vendor/three/draco/draco_decoder.wasm'):
+            paths=set(('', 'index.html', 'styles.css', 'releases.json', 'assets/solvi-character.glb', 'vendor/three/draco/draco_decoder.wasm', *dependency_list))
+            for path in sorted(paths):
                 with urllib.request.urlopen(f'http://127.0.0.1:{server.server_port}/{path}',timeout=12) as resp:
                     if resp.status!=200 or not resp.read():raise ReleaseError('HTTP failed: '+path)
         finally:server.shutdown();t.join(timeout=5)
@@ -285,7 +309,9 @@ def publish(stage,version):
         nginx -t >/dev/null 2>&1
         ''')
         display('Public HTTPS smoke test','STEP')
-        for path in ('','releases.json','js/main.js','assets/solvi-character.glb','vendor/three/three.module.js'):
+        dependency_list=json.loads(run(['node','scripts/check_browser_modules.mjs','--json'],cwd=stage))['modules']
+        paths=set(('', 'releases.json', 'styles.css', 'assets/solvi-character.glb', 'vendor/three/draco/draco_decoder.wasm', *dependency_list))
+        for path in sorted(paths):
             with urllib.request.urlopen(PUBLIC+path+'?v='+version,timeout=25) as resp:
                 if resp.status!=200 or not resp.read():raise ReleaseError('Public site unavailable: '+path)
         with urllib.request.urlopen(PUBLIC+'releases.json?v='+version,timeout=20) as resp:
@@ -305,54 +331,102 @@ def publish(stage,version):
     display('Server backup: '+backup)
 
 def process(archive,dry):
+    _RUN.update(version='?',git=False,server=False,phase='validate',started=time.monotonic())
     with tempfile.TemporaryDirectory(prefix='solvi-validate-',dir=STATE) as tmp:
         stage=Path(tmp)
+        announce('validate','[1/5] Checking ZIP manifest, hashes and version…')
         manifest=verify_zip(archive,stage)
+        _RUN['version']=manifest['version']
+        display(f'[1/5] ZIP OK — v{manifest["version"]}, {len(manifest["sha256"])} files','EVENT')
         merge_history(stage,manifest)
+        announce('tests','[2/5] Building assets and running tests…')
         test_stage(stage)
+        display('[2/5] TESTS PASSED','EVENT')
+        announce('preflight','[3/5] Checking GitHub and Ubuntu access…')
         git_preflight(stage)
+        display('[3/5] CONNECTIONS OK','EVENT')
         if dry:
-            display('DRY-RUN PASS (no Git commit/push or server file changes)','PASS')
+            display(f'DRY RUN PASSED — v{manifest["version"]}; NOT deployed or pushed','PASS')
             return
+        announce('github','[4/5] Committing and pushing to GitHub main…')
         update_git(stage,manifest)
+        _RUN['git']=True
+        display('[4/5] GITHUB UPDATED — main','EVENT')
+        announce('server','[5/5] Deploying Ubuntu files and checking public HTTPS…')
         try:publish(stage,manifest['version'])
         except Exception:
-            display('GitHub already has the release; server rollback attempted. Retry the same ZIP after fixing the server.','WARN')
+            display('GitHub already updated; Ubuntu deployment failed. Server rollback attempted.','WARN')
             raise
+        _RUN['server']=True
         (STATE/'deployed.json').write_text(json.dumps({'version':manifest['version'],'utc':dt.datetime.now(dt.timezone.utc).isoformat()})+'\n')
-        display(f'RELEASE v{manifest["version"]} SUCCESS','PASS')
+        seconds=round(time.monotonic()-_RUN['started'])
+        display(f'LIVE! v{manifest["version"]} DEPLOYED — {PUBLIC} | GitHub: UPDATED | {seconds}s','LIVE')
+
+def show_status():
+    local=last_deployed()
+    display(f'LAST CONFIRMED BY WATCHER: {"v"+local if local!="0.0.0" else "none"}')
+    try:
+        with urllib.request.urlopen(PUBLIC+'releases.json?t='+str(int(time.time())),timeout=12) as resp:
+            live=json.load(resp).get('currentVersion')
+        with urllib.request.urlopen(PUBLIC+'vendor/three/addons/utils/BufferGeometryUtils.js?t='+str(int(time.time())),timeout=12) as asset:
+            if asset.status!=200 or not asset.read():raise ReleaseError('Browser dependency unavailable: BufferGeometryUtils.js')
+        display(f'LIVE WEBSITE: v{live}, browser dependency OK — {PUBLIC}','LIVE')
+    except Exception as exc:
+        display(f'LIVE WEBSITE: BROKEN / unverified — {exc}','FAIL')
 
 def main():
-    global _log
+    global _log,_VERBOSE
     arg=argparse.ArgumentParser(description='SOLVI.help versioned deployment watcher')
-    group=arg.add_mutually_exclusive_group();group.add_argument('--once',action='store_true');group.add_argument('--dry-run',action='store_true')
-    arg.add_argument('--interval',type=int,default=3)
+    group=arg.add_mutually_exclusive_group()
+    group.add_argument('--once',action='store_true',help='Process all ZIPs now, then exit')
+    group.add_argument('--dry-run',action='store_true',help='Check ZIP without pushing or deploying')
+    group.add_argument('--status',action='store_true',help='Check deployed version locally and on the live site')
+    arg.add_argument('--interval',type=int,default=3,help='Seconds between ZIP checks (default: 3)')
+    arg.add_argument('--verbose',action='store_true',help='Print all commands and detailed test output')
     args=arg.parse_args()
+    _VERBOSE=args.verbose
     if args.interval<1:arg.error('interval must be >= 1 second')
+    if args.status:
+        show_status()
+        return 0
     UPDATES.mkdir(exist_ok=True);STATE.mkdir(exist_ok=True)
     for d in ('processed','failed'): (UPDATES/d).mkdir(exist_ok=True)
     import fcntl
     with (STATE/'watch.lock').open('w') as lf:
         try:fcntl.flock(lf,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:raise ReleaseError('Another watcher instance is running')
-        display(f'WATCH READY — {UPDATES} → {REMOTE_USER}:{WEBROOT}')
+        display(f'WATCHING: {UPDATES} (every {args.interval}s)')
+        display(f'TARGET: {PUBLIC} | GitHub: main | last confirmed: v{last_deployed()}')
+        if not args.once and not args.dry_run:
+            display('WAITING FOR ZIP… Drop the release into updates/ (Ctrl+C to stop).')
         failed=False
         while True:
             for file in sorted(UPDATES.glob('*.zip')):
                 if not(args.once or args.dry_run) and time.time()-file.stat().st_mtime<3:continue
                 stamp=dt.datetime.now().strftime('%Y%m%d-%H%M%S')
                 _log=STATE/f'logs/{stamp}-{file.stem}.log';_log.parent.mkdir(exist_ok=True)
+                display(f'ZIP DETECTED: {file.name}','EVENT')
                 try:
                     process(file,args.dry_run)
-                    if not args.dry_run:file.rename(UPDATES/'processed'/file.name)
+                    if not args.dry_run:
+                        dest=UPDATES/'processed'/file.name
+                        if dest.exists():dest=dest.with_name(dest.stem+'-'+stamp+'.zip')
+                        file.rename(dest)
+                        display(f'ARCHIVED: updates/processed/{dest.name}')
                 except Exception as exc:
-                    failed=True;display(str(exc),'FAIL')
+                    failed=True
+                    website='UPDATED' if _RUN['server'] else 'NOT DEPLOYED / ROLLBACK ATTEMPTED' if _RUN['phase']=='server' else 'UNCHANGED'
+                    github='UPDATED' if _RUN['git'] else 'UNCHANGED'
+                    display(f'FAILED v{_RUN["version"]} in {_RUN["phase"]}: {exc}','FAIL')
+                    display(f'GitHub: {github} | Website: {website}','FAIL')
                     if not args.dry_run:
                         dest=UPDATES/'failed'/file.name
                         if dest.exists():dest=dest.with_name(dest.stem+'-'+stamp+'.zip')
                         file.rename(dest)
-                        display(f'Archive moved to {dest}','WARN')
-                finally:display(f'Log: {_log}');_log=None
+                        display(f'RETRY ZIP: updates/failed/{dest.name}','WARN')
+                finally:
+                    display(f'DETAILED LOG: {_log}')
+                    _log=None
             if args.once or args.dry_run:return 1 if failed else 0
             time.sleep(args.interval)
 

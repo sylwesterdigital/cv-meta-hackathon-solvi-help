@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.1.0",
+  "currentVersion": "0.1.1",
   "releases": [
+    {
+      "version": "0.1.1",
+      "publishedAt": "2026-10-27T00:30:48Z",
+      "changes": [
+        "Fix missing Three.js BufferGeometryUtils module that prevented the scene loading.",
+        "Bundle all transitive Three.js addon dependencies instead of just three selected files.",
+        "Add automatic static ES module import-graph checks to catch missing browser modules.",
+        "Strengthen deployment verification to check module URLs before marking a release live."
+      ]
+    },
     {
       "version": "0.1.0",
       "publishedAt": "2026-10-26T21:38:13Z",
