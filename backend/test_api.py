@@ -10,7 +10,7 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.7')
+health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.8')
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.
@@ -55,6 +55,24 @@ assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'u
 assert len(c.get('/api/scene?room=lab',headers=headers).get_json()['objects'])==1
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testcube-001'}}).status_code==200
 assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects']==[]
+light={'id':'testlight-001','kind':'light','name':'Lamp','position':[0,2,0],
+       'rotation':[0,0,0],'scale':[1,1,1],
+       'light':{'type':'spot','intensity':3.5,'range':15,'decay':2,'angle':35,'penumbra':.3,
+                'color':'#ffe7aa','groundColor':'#46566d'}}
+r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':light})
+assert r.status_code==200,(r.status_code,r.data)
+stored_light=c.get('/api/scene?room=lab',headers=headers).get_json()['objects'][0]
+assert stored_light['light']['type']=='spot' and stored_light['light']['intensity']==3.5
+light['light']['type']='invalid'
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':light}).status_code==400
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testlight-001'}}).status_code==200
+robot={'id':'testrobot-001','kind':'robot','name':'Pilot','position':[0,0,0],
+       'rotation':[0,0,0],'scale':[1,1,1],'speed':1.65}
+r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot})
+assert r.status_code==200,(r.status_code,r.data)
+assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects'][0]['speed']==1.65
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-001'}}).status_code==200
+print('PASS: typed light settings and robot speed persist per object')
 print('PASS: atomic object create/update/delete with room isolation')
 print('PASS: rooms and isolation')
 print('PASS: Flask health, SQLite profile, auth, human chat, messages, scene and admin protection')

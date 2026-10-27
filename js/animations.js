@@ -3,6 +3,9 @@ export const MOTION_ALIASES=Object.freeze({
   idle:['idle','breathing idle','standing idle','standing'],
   walk:['walking','walk','stroll'],
   run:['running','run','sprint','jogging','jog'],
+  strafeLeft:['strafe left','left strafe','walk left','side step left'],
+  strafeRight:['strafe right','right strafe','walk right','side step right'],
+  walkBackward:['walk backwards','walking backwards','backward walk','walk backward'],
   wave:['waving','wave'],
   jump:['jump','jumping']
 });
@@ -26,7 +29,7 @@ export class MotionController{
     this.play('idle',0);
   }
   play(kind,fade=.25){
-    const action=this.actions.get(kind)||this.actions.get('idle');
+    const action=this.actions.get(kind)||(kind.startsWith('strafe')||kind==='walkBackward'?this.actions.get('walk'):null)||this.actions.get('idle');
     if(!action||action===this.current)return;
     action.reset().setEffectiveWeight(1).setEffectiveTimeScale(1).play();
     action.setLoop(['wave','jump'].includes(kind)?this.THREE.LoopOnce:this.THREE.LoopRepeat,['wave','jump'].includes(kind)?1:Infinity);

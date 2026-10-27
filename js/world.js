@@ -32,9 +32,8 @@ export class SolviWorld {
     root.append(this.renderer.domElement);
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);
     this.controls.enableDamping=true;this.controls.target.set(0,1,0);
-    // Editing uses the primary mouse button. Orbit only via RIGHT drag; MIDDLE zoom.
-    // Prevents camera rotation when touching TransformControls or selecting an object.
-    this.controls.mouseButtons={LEFT:null,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
+    // Left drag = orbit, right drag = pan, wheel = dolly; gizmos temporarily lock orbit.
+    this.controls.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN};
     this.controls.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};
     this.controls.enablePan=true;
     this.controls.maxPolarAngle=Math.PI/2.07;
@@ -45,9 +44,17 @@ export class SolviWorld {
     this.character=new THREE.Group();this.scene.add(this.character);
     this.actor=new THREE.Group();this.character.add(this.actor);
     this.pending=null;this.roam=false;this.allowFloorWalk=false;this.editorDragging=false;this.desiredSpeed=1.4;this.idleTimer=2;this.currentMode='idle';this.gestureUntil=0;
-    this.keys=new Set();this.animator=null;this.ready=false;this.others=new Map();
+    this.keys=new Set();this.animator=null;this.ready=false;this.others=new Map();this.cameraMoveSpeed=Number(localStorage.getItem('solvi-camera-speed')||2.6);
     this.raycaster=new THREE.Raycaster();this.mouse=new THREE.Vector2();
     this.setupEnvironment();this.setupEvents();this.setupXR();
+    const fly=document.getElementById('cameraFlyButton');
+    document.getElementById('cameraSpeed').value=this.cameraMoveSpeed;document.getElementById('cameraSpeed').oninput=e=>{this.cameraMoveSpeed=Number(e.target.value);localStorage.setItem('solvi-camera-speed',String(this.cameraMoveSpeed));};
+    fly.onclick=async()=>{if(document.pointerLockElement===this.renderer.domElement){document.exitPointerLock();return;}try{await this.renderer.domElement.requestPointerLock();}catch{fly.title='Pointer lock is unavailable in this browser';}};
+    document.addEventListener('pointerlockchange',()=>{const locked=document.pointerLockElement===this.renderer.domElement;fly.textContent=locked?'Camera: fly · Esc':'Camera: orbit';this.controls.enabled=!locked;});
+    document.addEventListener('mousemove',event=>{if(document.pointerLockElement!==this.renderer.domElement)return;
+       const euler=new THREE.Euler().setFromQuaternion(this.camera.quaternion,'YXZ');euler.y-=event.movementX*.002;euler.x=Math.max(-1.53,Math.min(1.53,euler.x-event.movementY*.002));this.camera.quaternion.setFromEuler(euler);
+       const distance=Math.max(2,this.camera.position.distanceTo(this.controls.target));this.controls.target.copy(this.camera.position).addScaledVector(this.camera.getWorldDirection(new THREE.Vector3()),distance);
+    });
     window.addEventListener('solvi:prefs-changed',event=>{for(const peer of this.others.values())if(peer.faceModel)peer.faceModel.rotation.y=event.detail.flipHead?Math.PI:0;});
     this.renderer.setAnimationLoop(()=>this.frame());
   }
@@ -101,8 +108,12 @@ export class SolviWorld {
   }
   setupEvents(){
     window.addEventListener('resize',()=>{this.camera.aspect=innerWidth/innerHeight;this.camera.updateProjectionMatrix();this.renderer.setSize(innerWidth,innerHeight);});
-    window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]'))return;if(/^(KeyW|KeyA|KeyS|KeyD|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|ShiftLeft|ShiftRight)$/.test(e.code)){
-      this.keys.add(e.code);if(e.code.startsWith('Arrow'))e.preventDefault();this.pending=null;}});
+    window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||e.ctrlKey||e.metaKey||e.altKey)return;
+      if(e.shiftKey&&['KeyA','KeyD'].includes(e.code))return;
+      if(e.code==='KeyS'&&this.robotEditor?.selected?.userData.editorKind!=='robot')return; // S remains Blender's scale shortcut while editing.
+      if(/^(KeyW|KeyA|KeyS|KeyD|KeyQ|KeyE|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|ShiftLeft|ShiftRight)$/.test(e.code)){
+       this.keys.add(e.code);if(e.code.startsWith('Arrow'))e.preventDefault();this.pending=null;
+      }});
     window.addEventListener('keyup',e=>this.keys.delete(e.code));
     let dragX=0,dragY=0;
     this.renderer.domElement.addEventListener('pointerdown',e=>{dragX=e.clientX;dragY=e.clientY;});
@@ -299,8 +310,9 @@ export class SolviWorld {
   setupXR(){
     const btn=document.getElementById('xrButton');
     const toast=(message)=>{const el=document.getElementById('toast');el.textContent=message;el.hidden=false;};
-    // Keep the XR button visible even on desktop. It can explain why XR is unavailable.
-    btn.disabled=false;btn.textContent='Enter VR';btn.title='WebXR: Meta Quest / compatible headset browser';
+    const stage=document.getElementById('xrStageButton');btn.hidden=true;stage.hidden=true;
+    if(navigator.xr?.isSessionSupported){navigator.xr.isSessionSupported('immersive-vr').then(supported=>{btn.hidden=!supported;stage.hidden=!supported;}).catch(()=>{btn.hidden=true;stage.hidden=true;});}
+    stage.onclick=()=>btn.click();btn.disabled=false;btn.textContent='Enter VR';btn.title='WebXR: Meta Quest / compatible headset browser';
     btn.addEventListener('click',async()=>{
       if(this.renderer.xr.isPresenting){await this.renderer.xr.getSession()?.end();return;}
       if(!navigator.xr){toast('VR requires a WebXR-enabled browser on a supported headset (e.g. Meta Quest Browser).');return;}
@@ -319,10 +331,10 @@ export class SolviWorld {
           session=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['hand-tracking']});
         }
         try{await this.renderer.xr.setSession(session);}catch(e){await session.end().catch(()=>{});throw e;}
-        btn.textContent='Exit VR';this.xrMenuPlaced=false;this.teleportAim=null;
+        btn.textContent='Exit VR';stage.hidden=true;this.xrMenuPlaced=false;this.teleportAim=null;
         this.renderer.xr.setFoveation?.(.8);
         session.addEventListener('end',()=>{
-          btn.textContent='Enter VR';this.xrMenu.visible=false;
+          btn.textContent='Enter VR';stage.hidden=false;this.xrMenu.visible=false;
           this.teleportIndicator.visible=false;this.teleportAim=null;
           this.renderer.xr.setReferenceSpaceType('local-floor');
         },{once:true});
@@ -435,9 +447,24 @@ export class SolviWorld {
     }
     this.teleportIndicator.visible=found;
   }
+  navigateCamera(dt){
+    if(this.renderer.xr.isPresenting)return;
+    const isRobot=!!this.robotEditor?.robot()&&this.robotEditor.canEdit(this.robotEditor.robot());
+    let f=Number(this.keys.has('KeyW'))-Number(this.keys.has('KeyS'));
+    let side=Number(this.keys.has('KeyD'))-Number(this.keys.has('KeyA'));
+    if(!isRobot){f+=Number(this.keys.has('ArrowUp'))-Number(this.keys.has('ArrowDown'));side+=Number(this.keys.has('ArrowRight'))-Number(this.keys.has('ArrowLeft'));}
+    let vertical=Number(this.keys.has('KeyE'))-Number(this.keys.has('KeyQ'));
+    if(!f&&!side&&!vertical)return;
+    const look=this.camera.getWorldDirection(new THREE.Vector3());look.y=0;look.normalize();
+    const right=new THREE.Vector3(-look.z,0,look.x);
+    const delta=look.multiplyScalar(f).addScaledVector(right,side);delta.y+=vertical;
+    const boost=this.keys.has('ShiftLeft')||this.keys.has('ShiftRight')?2.4:1;
+    if(delta.lengthSq()>0){delta.normalize().multiplyScalar(dt*this.cameraMoveSpeed*boost);this.camera.position.add(delta);this.controls.target.add(delta);}
+  }
   frame(){
     const dt=Math.min(.05,this.clock.getDelta());
-    this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging;
+    this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.robotEditor?.transform?.axis&&document.pointerLockElement!==this.renderer.domElement;
+    this.navigateCamera(dt);
     if(!this.renderer.xr.isPresenting)this.controls.update();
     this.updateXR();this.robotEditor?.tick(dt);this.updateVoiceRings(dt);
     if(this.onPose&&(!this.lastPose||performance.now()-this.lastPose>180)){

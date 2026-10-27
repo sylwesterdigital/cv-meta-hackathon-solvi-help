@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.7",
+  "currentVersion": "0.2.8",
   "releases": [
+    {
+      "version": "0.2.8",
+      "publishedAt": "2026-10-27T22:59:56Z",
+      "changes": [
+        "Desktop camera: left-drag orbit, right-drag pan, wheel zoom, directional keyboard movement, optional pointer-lock fly mode and configurable camera speed.",
+        "Robots: adjustable per-avatar movement speed, arrow-down 180-degree turnaround with reverse-walk clip fallback, left/right strafing, airborne directional jumping; small movement packets.",
+        "Reorganised navigation and draggable vertical World tools; Add menu appears at pointer and dismisses on outside click; minimized draggable Objects list.",
+        "Object inspector shows object name only: compact transform rows, texture selector and direct texture uploader, no OK button; live save.",
+        "Five light types with contextual intensity, distance, falloff, cone, softness and colour controls; temporary light helpers and room-scoped delta persistence.",
+        "Profile-photo badge opens upload; Enter VR visible only when immersive WebXR is supported, with central green stage button."
+      ]
+    },
     {
       "version": "0.2.7",
       "publishedAt": "2026-10-27T22:10:07Z",

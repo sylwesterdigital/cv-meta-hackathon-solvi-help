@@ -260,3 +260,65 @@ button:hover:not(:disabled){filter:brightness(1.13)!important;}
 .avatar-gallery-upload small{font-size:11px;}
 .properties-panel #openAvatarGallery{margin-left:5px;}
 @media(max-width:750px){.avatar-gallery{max-height:85svh!important}.avatar-gallery-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v0.2.8: independent floating world toolbox, pointer-anchored add menu, compact inspector. */
+[hidden]{display:none!important}
+#toolNav{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+#toolNav #mobileMenuButton{display:inline-flex!important}
+#toolNav>:not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:none!important}
+#toolNav.nav-expanded>:not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:inline-flex!important}
+#toolNav #mobileMenuButton{font-size:12px!important}
+.editor-toolbox{position:fixed;left:18px;top:92px;z-index:19;width:116px;padding:6px;border:1px solid #43586d;border-radius:11px;background:var(--ui-panel);color:var(--ui-fg);box-shadow:0 8px 26px #0005}
+.toolbox-title{display:flex;align-items:center;justify-content:space-between;gap:4px;cursor:grab;padding:2px 2px 6px;font-size:11px;user-select:none}
+.toolbox-title button{padding:2px 5px!important;min-height:22px!important;font-size:12px!important}
+.toolbox-actions{display:grid;gap:4px}
+.toolbox-actions button{display:block!important;width:100%;text-align:left;padding:6px!important;min-height:29px!important}
+.editor-toolbox.minimized{width:102px}.editor-toolbox.minimized .toolbox-actions{display:none}
+.add-menu{width:min(275px,calc(100vw - 16px))!important;max-height:min(69svh,500px)!important;overflow-y:auto!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:5px!important;padding:9px!important;box-shadow:0 16px 42px #0009}
+.add-menu>.drag-handle,.add-menu>.add-search{grid-column:1/-1}
+.add-menu .add-group{display:flex;flex-direction:column;gap:3px}
+.add-menu .add-group strong{padding:4px 0 1px;font-size:10px}
+.add-menu .add-group button{min-height:27px!important;text-align:left!important;padding:4px 6px!important;font-size:11px!important}
+.add-menu .add-group button:hover{filter:brightness(1.2)}
+.properties-panel{width:min(256px,calc(100vw - 16px))!important;min-width:0!important;top:92px!important;left:145px!important;max-height:75svh!important;padding:0!important;overflow-y:auto!important}
+.properties-panel>.panel-title{min-height:33px!important;padding:4px 9px!important;border-bottom:1px solid #435569}
+.properties-panel>.panel-title strong{font-size:12px!important;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.properties-panel #objectInspector{padding:6px 8px!important}
+.properties-panel .object-actions{display:flex;justify-content:flex-end;padding:0 0 4px}
+.properties-panel .object-actions button{color:var(--ui-fg)!important}
+.properties-panel .transform-modes{padding:4px 0!important;gap:3px!important}
+.properties-panel .transform-modes button{flex:1;min-width:0;padding:5px 3px!important;font-size:10px!important}
+.properties-panel .property-grid{grid-template-columns:50px repeat(3,minmax(0,1fr))!important;gap:4px!important}
+.properties-panel .property-grid label{font-size:10px!important}
+.properties-panel .property-grid input{height:25px!important;min-width:0!important;width:100%!important;font-size:10px!important;padding:3px 1px!important}
+.object-appearance{display:flex;align-items:center;gap:5px;margin-top:8px}
+.object-appearance #objectColor{flex:none;width:33px!important;height:27px!important;padding:1px;border:1px solid #698096;border-radius:5px}
+.object-appearance #texturePreset{min-width:0;flex:1;height:27px;font-size:11px!important}
+.object-appearance #textureUploadButton{width:auto;white-space:nowrap;padding:4px 6px!important;font-size:10px!important}
+.light-controls{display:grid;grid-template-columns:1fr 1fr;gap:5px 7px;padding-top:8px}
+.light-controls label{display:flex;align-items:center;flex-direction:column;gap:2px;font-size:10px;color:var(--ui-fg)}
+.light-controls label:first-child{grid-column:1/-1;flex-direction:row;justify-content:space-between}
+.light-controls input,.light-controls select{width:100%;max-width:100%;height:26px;background:var(--ui-bg);color:var(--ui-fg);border:1px solid #4b6380;border-radius:5px;padding:2px;font-size:11px!important}
+.light-controls label:first-child select{width:68%}
+.light-controls input[type=color]{padding:1px}
+.robot-speed{display:flex;align-items:center;gap:5px;margin:6px 0;color:var(--ui-fg);font-size:10px}
+.robot-speed input{flex:1;width:70px;min-width:0}
+.robot-speed output{min-width:34px;text-align:right}
+.profile-photo-badge{width:56px!important;height:56px!important;border-radius:50%!important;font-size:16px!important;font-weight:700!important;display:grid!important;place-items:center;overflow:hidden;background:#355c77!important;cursor:pointer}
+.profile-photo-badge img{width:100%;height:100%;object-fit:cover}
+.xr-stage-button{position:fixed;top:45%;left:50%;transform:translate(-50%,-50%);z-index:15;background:#24b560!important;color:#061b10!important;border:2px solid #95ffd0!important;box-shadow:0 4px 35px #19d27755;min-height:56px!important;padding:14px 29px!important;border-radius:16px!important;font-size:18px!important;font-weight:780!important}
+#xrButton:not([hidden]){background:#24b560!important;color:#061b10!important}
+@media(max-width:750px){.editor-toolbox{top:116px!important;left:7px!important;width:95px}.properties-panel{top:115px!important;left:107px!important;max-height:calc(100svh - 160px)!important}.add-menu{max-height:60svh!important}#toolNav.nav-expanded{max-height:54svh;overflow-y:auto}#toolNav #mobileMenuButton{display:inline-flex!important}}
+
+#scenePanel{width:225px!important;top:273px!important;left:13px!important;bottom:auto!important;max-height:55svh;overflow:hidden}
+#scenePanel.minimized{width:145px!important;height:auto!important;max-height:none!important}
+#scenePanel.minimized .scene-items,#scenePanel.minimized .panel-footer{display:none!important}
+#scenePanel.minimized>.panel-title{min-height:29px;padding:4px 6px}
+#scenePanel .panel-title{gap:4px}
+#minimizeScenePanel{margin-left:auto;padding:2px 5px!important;min-height:22px!important}
+.camera-speed{display:flex;flex-direction:column;gap:3px;font-size:10px;padding:2px 1px 4px}
+.camera-speed input{width:100%;accent-color:var(--solvi-accent)}
+#editorToolbox{touch-action:none}
+@media(max-width:750px){#scenePanel{left:6px!important;top:295px!important;max-height:40svh!important}.editor-toolbox .camera-speed{display:none}}
+
+body:has(#xrButton:not([hidden])) .xr-stage-button{display:block}

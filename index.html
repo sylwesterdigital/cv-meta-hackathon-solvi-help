@@ -11,8 +11,8 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.7</small></div>
-    <nav aria-label="Tools" id="toolNav"><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="More tools">☰ Tools</button><button type="button" id="messagesToggleButton" aria-pressed="true" title="Show or hide chat messages">Messages</button><button type="button" id="chatModeButton" title="Move chat into a floating window">Float chat</button><button type="button" id="exportChatButton" title="Export room messages">Export chat</button>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.8</small></div>
+    <nav aria-label="Navigation" id="toolNav"><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="More tools">More</button><button type="button" id="messagesToggleButton" aria-pressed="true" title="Show or hide chat messages">Messages</button><button type="button" id="chatModeButton" title="Move chat into a floating window">Float chat</button><button type="button" id="exportChatButton" title="Export room messages">Export chat</button>
       <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button><button type="button" id="poseButton" title="Track upper body and hand landmarks">Posture + hands</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="adminButton">Admin</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" title="Open in a WebXR headset browser">Enter VR</button>
       <button type="button" id="callButton">Voice / video</button><button type="button" id="settingsButton" aria-label="Settings" title="Appearance and chat settings">⚙</button><button type="button" id="profileButton" aria-label="Your profile" title="Your profile">?</button>
@@ -27,6 +27,11 @@
     <button data-motion="run">Run</button>
     <button data-motion="wave">Wave</button>
   </section>
+  <aside id="editorToolbox" class="editor-toolbox" aria-label="World edit tools">
+    <div class="toolbox-title drag-handle"><strong>World tools</strong><button type="button" id="toolboxMinimize" title="Minimize tools">−</button></div>
+    <div id="toolboxActions" class="toolbox-actions"><button type="button" id="cameraFlyButton" title="Mouse look + WASD; Escape to exit">Camera: orbit</button><label class="camera-speed">Camera speed <input id="cameraSpeed" type="range" min="0.5" max="12" step="0.5" value="2.5" /></label></div>
+  </aside>
+  <button type="button" id="xrStageButton" class="xr-stage-button" hidden>Enter VR</button>
   <div id="toast" role="status" class="toast" hidden></div>
   <div id="devBackdrop" class="backdrop open dev-backdrop">
     <section class="overlay" role="dialog" aria-modal="true" aria-labelledby="devTitle">
@@ -45,24 +50,32 @@
     </section>
   </div>
   <aside id="addMenu" class="add-menu" hidden aria-label="Add an object"><input id="addSearch" aria-label="Search objects" placeholder="Add object · type and press Enter"></aside>
-  <aside id="scenePanel" class="scene-panel" hidden aria-label="Scene editor">
-    <div class="panel-title drag-handle"><strong>Scene objects</strong><button id="closeScenePanel" aria-label="Close editor">×</button></div>
+  <aside id="scenePanel" class="scene-panel minimized" aria-label="Scene editor">
+    <div class="panel-title drag-handle"><strong>Objects</strong><button id="minimizeScenePanel" type="button" aria-label="Expand or minimize objects">▣</button><button id="closeScenePanel" aria-label="Close editor">×</button></div>
     <div id="sceneItems" class="scene-items"></div>
     <div class="panel-footer"><button id="reloadScene">Load</button><button id="saveScene" class="primary">Save scene</button></div>
   </aside>
-  <aside id="propertiesPanel" class="scene-panel properties-panel" hidden><div class="panel-title drag-handle"><strong>Object properties</strong><button id="closeProperties" title="Hide properties">×</button></div>    <div id="objectInspector" hidden>
-      <div class="panel-title"><strong id="objectName">Object</strong><button id="deleteObject">Delete</button></div>
+  <aside id="propertiesPanel" class="scene-panel properties-panel" hidden><div class="panel-title drag-handle"><strong id="objectName">Object</strong><button id="closeProperties" title="Hide properties">×</button></div><div id="objectInspector" hidden>
+      <div class="object-actions"><button id="deleteObject" title="Delete selected object">Delete</button></div>
       <div class="transform-modes"><button id="transform-translate">Move (G)</button><button id="transform-rotate">Rotate (R)</button><button id="transform-scale">Scale (S)</button></div>
       <div id="propertyGrid" class="property-grid">
         <label>Position</label><input aria-label="Position X" type="number" step="0.1" id="position-0"><input aria-label="Position Y" type="number" step="0.1" id="position-1"><input aria-label="Position Z" type="number" step="0.1" id="position-2">
         <label>Rotation °</label><input aria-label="Rotation X" type="number" step="1" id="rotation-0"><input aria-label="Rotation Y" type="number" step="1" id="rotation-1"><input aria-label="Rotation Z" type="number" step="1" id="rotation-2">
         <label>Scale</label><input aria-label="Scale X" type="number" step="0.1" id="scale-0"><input aria-label="Scale Y" type="number" step="0.1" id="scale-1"><input aria-label="Scale Z" type="number" step="0.1" id="scale-2">
       </div>
-      <div id="objectAppearance"><label class="field-label">Colour <input id="objectColor" type="color" value="#88bbee"></label>
-      <div class="field-label">Texture <span id="textureGrid" class="texture-grid"></span></div>
-      <label class="field-label">Upload texture <input id="textureUpload" type="file" accept="image/png,image/jpeg,image/webp"></label></div>
-      <div id="robotControls" hidden><strong>Robot action</strong><label class="field-label">Avatar model<select id="robotAvatar" aria-label="Robot avatar"></select><button type="button" id="openAvatarGallery">Gallery</button></label><div class="transform-modes"><button id="robot-idle">Idle</button><button id="robot-walk">Walk</button><button id="robot-run">Run</button><button id="robot-wave">Wave</button><button id="robot-jump">Jump</button></div><small>Arrow keys steer / walk, Shift runs, Space jumps. Choose Walk or Run, then click the floor to set a destination. Robot view captures from this robot's head.</small></div>
-      <div class="panel-footer"><button id="confirmProperties" class="primary" title="Save properties and close panel">OK ✓</button></div>
+      <div id="objectAppearance" class="object-appearance"><input id="objectColor" type="color" title="Colour" aria-label="Object colour" value="#88bbee"><select id="texturePreset" aria-label="Texture" title="Texture"><option value="none">No texture</option><option value="checker">Checker</option><option value="gradient">Gradient</option><option value="stripes">Stripes</option><option value="dots">Dots</option><option value="custom">Custom</option></select><button type="button" id="textureUploadButton">Upload texture</button><input id="textureUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden></div>
+      <section id="lightControls" class="light-controls" hidden>
+        <label>Type<select id="lightType"><option value="point">Point</option><option value="spot">Spot</option><option value="directional">Directional</option><option value="ambient">Ambient</option><option value="hemisphere">Hemisphere</option></select></label>
+        <label>Intensity<input type="number" id="lightIntensity" min="0" max="50" step="0.1" value="2"></label>
+        <label id="lightRangeRow">Range<input type="number" id="lightRange" min="0" max="100" step="0.5" value="10"></label>
+        <label id="lightDecayRow">Decay<input type="number" id="lightDecay" min="0" max="3" step="0.1" value="2"></label>
+        <label id="lightAngleRow">Cone °<input type="number" id="lightAngle" min="1" max="89" step="1" value="35"></label>
+        <label id="lightPenumbraRow">Softness<input type="number" id="lightPenumbra" min="0" max="1" step="0.1" value="0.2"></label>
+        <label>Colour<input id="lightColor" type="color" value="#d0efff"></label>
+        <label id="lightGroundRow">Ground<input id="lightGround" type="color" value="#46566d"></label>
+      </section>
+      <div id="robotControls" hidden><strong>Robot action</strong><label class="robot-speed">Movement speed <input type="range" id="robotSpeed" min="0.35" max="3" step="0.05" value="1"><output id="robotSpeedLabel">1.00×</output></label><label class="field-label">Avatar model<select id="robotAvatar" aria-label="Robot avatar"></select><button type="button" id="openAvatarGallery">Gallery</button></label><div class="transform-modes"><button id="robot-idle">Idle</button><button id="robot-walk">Walk</button><button id="robot-run">Run</button><button id="robot-wave">Wave</button><button id="robot-jump">Jump</button></div><small>↑ forward · ↓ turn 180° and walk · ← → strafe · Shift run · Space jump</small></div>
+      
     </div>
 </aside>
   <section id="chatPanel" class="chat-panel" aria-label="Chat">
@@ -95,7 +108,7 @@
       <label class="field-label">Bio (optional) <textarea id="profileBio" maxlength="500" rows="2" placeholder="About you"></textarea></label>
       <label class="field-label">Links (optional) <input id="profileLinks" maxlength="600" placeholder="https://…"></label>
       <small id="profileIdentity"></small>
-      <div class="profile-media"><label class="icon-btn">Upload photo<input id="avatarUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden></label><button id="takeAvatarPhoto">Camera photo</button><button id="recordIntro">15s video → GIF</button></div>
+      <div class="profile-media"><button type="button" id="profilePhotoBadge" class="profile-photo-badge" title="Change profile photo" aria-label="Change profile photo">TS</button><input id="avatarUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden><button id="takeAvatarPhoto">Camera photo</button><button id="recordIntro">15s video → GIF</button></div>
       <img id="introPreview" alt="Intro GIF preview" hidden style="max-height:82px;width:auto;border-radius:8px">
       <p class="small-note" id="profileStatus">Your UUID is created when you save. Only your name is required.</p>
       <div class="panel-footer"><button id="exportProfile">Export profile</button><label class="icon-btn">Import profile<input type="file" id="importProfile" accept="application/json" hidden></label><button class="primary" id="saveProfile">Save / Sign in</button></div>

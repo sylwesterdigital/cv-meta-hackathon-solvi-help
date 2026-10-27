@@ -20,7 +20,7 @@ test('robot can be placed, animated and used to capture first-person image',()=>
  const ui=read('index.html'),robot=read('js/robots.js'),editor=read('js/editor.js'),studio=read('js/studio.js');
  assert.match(editor,/'robot'/);assert.match(editor,/makeRobot/);assert.match(editor,/hydrateRobot/);
  assert.match(robot,/MotionController/);assert.match(robot,/captureRobotView/);assert.match(studio,/captureRobotView\(world,robot\)/);
- for(const id of ['robotControls','robot-walk','robot-run','robot-idle','confirmProperties'])assert.match(ui,new RegExp(`id="${id}"`));
+ for(const id of ['robotControls','robot-walk','robot-run','robot-idle','robotSpeed'])assert.match(ui,new RegExp(`id="${id}"`));
  assert.ok(statSync(new URL('assets/solvi-character.glb',root)).size>1_000_000);
 });
 test('objects persist as atomic room-scoped operations, and remote clients auto-refresh',()=>{

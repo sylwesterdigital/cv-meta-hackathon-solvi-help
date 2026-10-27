@@ -132,7 +132,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.7',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.8',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 @app.get('/api/avatars')
 def list_avatars():
@@ -511,13 +511,23 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed') if key in obj}
         if len(str(obj.get('name','')))>100:return json_error('Object name too long')
         avatar=str(obj.get('avatar',''))
         if avatar and not (avatar=='./assets/solvi-character.glb' or (re.fullmatch(r'\./assets/avatars/[A-Za-z0-9_-]+\.glb',avatar) or re.fullmatch(r'/api/avatars/[0-9a-f]{32}\.glb',avatar))):
             return json_error('Invalid avatar reference')
         if obj.get('texture','none') not in ('none','checker','gradient','stripes','dots','custom'):return json_error('Unsupported texture preset')
         if not isinstance(obj.get('color'),(str,type(None))) or len(obj.get('color') or '')>24:return json_error('Invalid color')
+        if 'speed' in obj and (not isinstance(obj['speed'],(float,int)) or not math.isfinite(obj['speed']) or not .35<=obj['speed']<=3):return json_error('Invalid robot speed')
+        if 'light' in obj:
+            light=obj['light']
+            if obj['kind']!='light' or not isinstance(light,dict):return json_error('Invalid light configuration')
+            if light.get('type') not in ('point','spot','directional','ambient','hemisphere'):return json_error('Invalid light type')
+            for key,limit in (('intensity',50),('range',100),('decay',3),('angle',89),('penumbra',1)):
+                val=light.get(key,0)
+                if not isinstance(val,(int,float)) or not math.isfinite(val) or not 0<=val<=limit:return json_error('Invalid light setting')
+            for key in ('color','groundColor'):
+                if not re.fullmatch(r'#[0-9a-fA-F]{6}',str(light.get(key,''))):return json_error('Invalid light colour')
     with db() as con:
         con.execute('BEGIN IMMEDIATE')
         row=con.execute('SELECT revision,payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
@@ -666,10 +676,10 @@ def websocket(ws):
                 identifier=str(msg.get('id',''))
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
                 try:
-                    f=int(msg.get('f',0));t=int(msg.get('t',0));r=int(msg.get('r',0));moving=int(msg.get('m',0))
-                    x=float(msg.get('x',0));y=float(msg.get('y',0));z=float(msg.get('z',0));yaw=float(msg.get('yaw',0))
+                    f=int(msg.get('f',0));t=int(msg.get('t',0));r=int(msg.get('r',0));reverse=int(msg.get('b',0));moving=int(msg.get('m',0))
+                    x=float(msg.get('x',0));y=float(msg.get('y',0));z=float(msg.get('z',0));yaw=float(msg.get('yaw',0));speed=float(msg.get('s',1));jump=int(msg.get('j',0))
                 except (ValueError,TypeError,OverflowError):continue
-                if any(v not in (-1,0,1) for v in (f,t)) or r not in (0,1) or moving not in (0,1):continue
+                if any(v not in (-1,0,1) for v in (f,t)) or r not in (0,1) or reverse not in (0,1) or moving not in (0,1) or jump not in (0,1) or not math.isfinite(speed) or not .35<=speed<=3:continue
                 if not all(math.isfinite(v) and abs(v)<1000 for v in (x,y,z,yaw)):continue
                 with db() as con:
                     row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
@@ -677,8 +687,8 @@ def websocket(ws):
                     controlled=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
                 if not controlled or (controlled.get('owner') and controlled['owner']!=uid):continue
                 publish({'type':'robot-input','room':room_id,'by':uid,'id':identifier,
-                        'f':f,'t':t,'r':r,'m':moving,'x':round(x,2),'y':round(y,2),
-                        'z':round(z,2),'yaw':round(yaw,3)},except_id=uid,room_id=room_id)
+                        'f':f,'t':t,'r':r,'b':reverse,'m':moving,'x':round(x,2),'y':round(y,2),
+                        'z':round(z,2),'yaw':round(yaw,3),'s':round(speed,2),'j':jump},except_id=uid,room_id=room_id)
             elif msg.get('type')=='signal' and isinstance(msg.get('payload'),dict):
                 to=msg.get('to')
                 with room_lock:peer=room.get(to)

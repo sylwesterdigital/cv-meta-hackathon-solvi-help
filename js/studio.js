@@ -70,7 +70,8 @@ async function begin(){const p=stored();fillProfile(p);await checkBackend();
  if(p.token){auth={token:p.token};try{const out=await api.req('/api/me');me=out.user;identity();await afterLogin();return;}catch(e){toast(e.message);}}
  $('profileBackdrop').classList.remove('profile-drawer-mode');show('profileBackdrop',true);$('profileStatus').textContent='Reconnect or take over this profile to continue.';
 }
-function identity(){const text=me?.name||'Guest';$('profileButton').textContent=text.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'?';$('profileButton').title='Profile · '+text;
+function identity(){const text=me?.name||'Guest';$('profileButton').textContent=text.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'?';$('profilePhotoBadge').textContent=$('profileButton').textContent;$('profileButton').title='Profile · '+text;
+ if(me?.avatar&&online&&auth){api.mediaBlob(me.avatar).then(url=>{if(!me||!document.getElementById('profilePhotoBadge'))return;for(const id of ['profilePhotoBadge','profileButton']){const el=$(id);el.replaceChildren();const img=document.createElement('img');img.src=url;img.alt='';img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';el.append(img);}}).catch(()=>{});}
  $('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;}
 async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
  try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();
@@ -213,7 +214,7 @@ async function configureRooms(){
  };
 }
 function configureDragging(){
- for(const id of ['scenePanel','propertiesPanel','addMenu','chatPanel']){
+ for(const id of ['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox']){
   const panel=$(id),handle=panel?.querySelector('.drag-handle');if(!panel||!handle)continue;
   let delta=null;
   handle.addEventListener('pointerdown',event=>{
@@ -319,8 +320,9 @@ function bindUI(world){
  $('closeProfile').onclick=()=>{if(me&&auth)show('profileBackdrop',false);else{$('profileStatus').textContent='Sign in to continue.';$('profileName').focus();}};
  $('saveProfile').onclick=submitProfile;$('exportProfile').onclick=exportProfile;
  $('importProfile').onchange=e=>importProfile(e.target.files[0]);
+ $('profilePhotoBadge').onclick=()=>$('avatarUpload').click();
  $('avatarUpload').onchange=async e=>{try{const m=await uploadFile(e.target.files[0]);$('profileStatus').textContent='Uploaded '+m.name;
- if(me){const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...profileFields(),avatar:m.id})});me=data.user;saveLocal({...stored(),...me});}}catch(e){toast(e.message);}};
+ if(me){const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...profileFields(),avatar:m.id})});me=data.user;saveLocal({...stored(),...me});identity();}}catch(e){toast(e.message);}};
  $('takeAvatarPhoto').onclick=cameraAvatar;$('recordIntro').onclick=()=>startRecording(true,true);
  window.solviPublishCaption=async text=>{
    if(!me||!text?.trim())return;
