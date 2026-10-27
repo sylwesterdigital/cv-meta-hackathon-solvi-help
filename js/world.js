@@ -91,7 +91,7 @@ export class SolviWorld {
   }
   setupEvents(){
     window.addEventListener('resize',()=>{this.camera.aspect=innerWidth/innerHeight;this.camera.updateProjectionMatrix();this.renderer.setSize(innerWidth,innerHeight);});
-    window.addEventListener('keydown',e=>{if(/^(KeyW|KeyA|KeyS|KeyD|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|ShiftLeft|ShiftRight)$/.test(e.code)){
+    window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]'))return;if(/^(KeyW|KeyA|KeyS|KeyD|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|ShiftLeft|ShiftRight)$/.test(e.code)){
       this.keys.add(e.code);if(e.code.startsWith('Arrow'))e.preventDefault();this.pending=null;}});
     window.addEventListener('keyup',e=>this.keys.delete(e.code));
     let dragX=0,dragY=0;

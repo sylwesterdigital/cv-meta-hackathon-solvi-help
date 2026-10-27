@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.1.2",
+  "currentVersion": "0.2.0",
   "releases": [
+    {
+      "version": "0.2.0",
+      "publishedAt": "2026-10-27T12:17:08Z",
+      "changes": [
+        "Add compact messenger chat overlay, Meta model catalog and authenticated Responses API integration.",
+        "Add SQLite accounts with UUID, single active session, optional profile fields, portable recovery and media uploads.",
+        "Add admin-password gated server statistics, WebSocket room notifications and chat history.",
+        "Add Shift+A Three.js scene editor with transform gizmos, object inspector, colours, procedural texture choices and scene storage.",
+        "Add opt-in microphone, video, webcam profile photo, robot-view screenshot and FFmpeg intro GIF conversion.",
+        "Keep WebXR controllers, hands, teleportation and existing Mixamo animations."
+      ]
+    },
     {
       "version": "0.1.2",
       "publishedAt": "2026-10-27T00:45:09Z",
