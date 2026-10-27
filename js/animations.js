@@ -30,8 +30,18 @@ export class MotionController{
   }
   play(kind,fade=.25){
     const action=this.actions.get(kind)||(kind.startsWith('strafe')||kind==='walkBackward'?this.actions.get('walk'):null)||this.actions.get('idle');
-    if(!action||action===this.current)return;
-    action.reset().setEffectiveWeight(1).setEffectiveTimeScale(1).play();
+    if(!action)return;
+    const fallbackReverse=kind==='walkBackward'&&!this.actions.has('walkBackward')&&this.actions.has('walk');
+    if(action===this.current){
+      if(this.currentKind!==kind){
+        action.setEffectiveTimeScale(fallbackReverse?-1:1);
+        action.time=fallbackReverse?Math.max(0,action.getClip().duration-.001):0;
+        this.currentKind=kind;
+      }
+      return;
+    }
+    action.reset().setEffectiveWeight(1).setEffectiveTimeScale(fallbackReverse?-1:1).play();
+    if(fallbackReverse)action.time=Math.max(0,action.getClip().duration-.001);
     action.setLoop(['wave','jump'].includes(kind)?this.THREE.LoopOnce:this.THREE.LoopRepeat,['wave','jump'].includes(kind)?1:Infinity);
     action.clampWhenFinished=['wave','jump'].includes(kind);
     if(this.current&&fade)action.crossFadeFrom(this.current,fade,true);

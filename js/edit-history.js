@@ -8,3 +8,16 @@ export class EditHistory {
  clear(){this.undoStack.length=0;this.redoStack.length=0;}
 }
 export function duplicateElevation(height){return Math.max(.32,Number.isFinite(height)?height+.16:.5);}
+
+// Blender-like numbered names, even when cloning an existing copy.
+export function nextDuplicateName(name,existing=[]){
+ const base=String(name||'Object').replace(/(?:\s+copy\d*)+$/i,'');
+ const prefix=base+' copy';let max=0;
+ for(const candidate of existing){
+  if(candidate===prefix){max=Math.max(max,1);continue;}
+  if(!String(candidate).startsWith(prefix))continue;
+  const suffix=String(candidate).slice(prefix.length);
+  if(/^\d+$/.test(suffix))max=Math.max(max,Number(suffix));
+ }
+ return prefix+(max+1);
+}

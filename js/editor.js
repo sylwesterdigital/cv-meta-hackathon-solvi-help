@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import {setupAvatarGallery} from './avatar-gallery.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
-import {EditHistory,duplicateElevation} from './edit-history.js';
+import {EditHistory,duplicateElevation,nextDuplicateName} from './edit-history.js';
 import {makeRobot,hydrateRobot,robotAction,tickRobots,setRobotDestination,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
-import {intent,active,packetFor,stepIntent,signedAngle} from './robot-net.js';
+import {intent,active,packetFor,stepRobotMotion,signedAngle} from './robot-net.js';
 
 const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot'];
 const byId=id=>document.getElementById(id);
@@ -150,6 +150,11 @@ export class SceneEditor{
   // 1/front, 3/right, 7/top; Ctrl/Meta reverses; 2/4/6/8 orbit steps.
   window.addEventListener('keydown',e=>{
    if(e.target?.closest?.('input,textarea,select,[contenteditable]')||e.altKey||this.world.renderer.xr.isPresenting)return;
+   const zoomIn=e.code==='NumpadAdd'||(e.code==='Equal'&&e.shiftKey)||e.key==='+';
+   const zoomOut=e.code==='NumpadSubtract'||e.code==='Minus'||e.key==='-';
+   if((zoomIn||zoomOut)&&this.selected&&!e.ctrlKey&&!e.metaKey){
+     e.preventDefault();this.world.zoomOnSelectedObject(zoomIn?1:-1);return;
+   }
    const m=/^(?:Numpad|Digit)([0-9])$/.exec(e.code);
    if(!m||e.shiftKey)return;
    e.preventDefault();this.world.cameraPreset(Number(m[1]),e.ctrlKey||e.metaKey);
@@ -174,7 +179,7 @@ export class SceneEditor{
    else if(this.selected&&e.shiftKey&&e.code==='KeyD'){e.preventDefault();this.duplicate();}
    else if(this.selected&&e.code==='KeyX'){e.preventDefault();this.remove();}
    else if(this.selected?.userData.editorKind==='robot'&&['ShiftLeft','ShiftRight'].includes(e.code)){this.robotKeys.add(e.code);}
-   else if(this.selected?.userData.editorKind==='robot'&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)){e.preventDefault();this.robotKeys.add(e.code);if(e.code==='ArrowDown'&&!e.repeat){this.selected.rotation.y+=Math.PI;}if(e.code==='Space'&&!e.repeat){robotAction(this.selected,'jump');/* Jump is synchronised through the compact robot-input event. */}}
+   else if(this.selected?.userData.editorKind==='robot'&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)){e.preventDefault();this.robotKeys.add(e.code);this.world.keys.delete(e.code);if(e.code==='Space'&&!e.repeat){robotAction(this.selected,'jump');/* Jump is synchronised through the compact robot-input event. */}}
    else if(this.selected&&['KeyG','KeyR','KeyS'].includes(e.code))this.transform.setMode({KeyG:'translate',KeyR:'rotate',KeyS:'scale'}[e.code]);
    else if(this.selected&&['Delete','Backspace'].includes(e.key)){e.preventDefault();this.remove();}
   });
@@ -184,7 +189,7 @@ export class SceneEditor{
  canEdit(obj){const uid=window.solviAPI?.auth()?.profile?.id;return !obj?.userData?.ownerId||!uid||obj.userData.ownerId===uid;}
  duplicate(){
   if(!this.selected)return;if(!this.canEdit(this.selected))return this.toast('Owner only');const source=this.selected,entry=this.snapshot(source);if(!entry)return;
-  const duplicate=objectFor(entry.kind);duplicate.name=source.name+' copy';duplicate.position.copy(source.position);duplicate.quaternion.copy(source.quaternion);duplicate.scale.copy(source.scale);
+  const duplicate=objectFor(entry.kind);duplicate.name=nextDuplicateName(source.name,this.items.map(x=>x.name));duplicate.position.copy(source.position);duplicate.quaternion.copy(source.quaternion);duplicate.scale.copy(source.scale);
   const box=new THREE.Box3().setFromObject(source);
   const measured=box.isEmpty()?0:box.getSize(new THREE.Vector3()).y;
   const height=entry.kind==='robot'?Math.max(1.9,measured):Math.max(.32,measured);
@@ -198,6 +203,7 @@ export class SceneEditor{
  const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.raycaster.intersectObject(this.world.floor)?.[0]?.point;if(point){object.position.x=point.x;object.position.z=point.z;}
  object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;this.items.push(object);this.world.scene.add(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}this.recordEdit(null,this.snapshot(object));this.queueSave(object);return object;}
  select(obj){this.clearLightHelper();this.robotKeys.clear();this.localRobotInput=null;this.selected=obj;
+  if(obj?.userData.editorKind==='robot')for(const key of ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'])this.world.keys.delete(key);
   // Robots are controlled with arrows, not a permanent transform gizmo.
   if(this.canEdit(obj)&&obj.userData.editorKind!=='robot')this.transform.attach(obj);
   else{this.transform.detach();if(!this.canEdit(obj))this.toast('Read-only object · owned by another user');}
@@ -341,35 +347,38 @@ export class SceneEditor{
     if(this.lightHelper&&!byId('propertiesPanel').hidden){this.lightHelper.visible=!this.world.renderer.xr.isPresenting;this.lightHelper.update?.();}
     if(this.lightHelper&&byId('propertiesPanel').hidden)this.clearLightHelper();
     const robot=this.robot(),canControl=robot&&this.canEdit(robot);
-    const input=canControl?{...intent(this.robotKeys),s:robot.userData.robotSpeed||1,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,s:1,j:0};
+    const input=canControl?{...intent(this.robotKeys),s:robot.userData.robotSpeed||1,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1,j:0};
     const now=performance.now();
     if(canControl){
-      if(active(input)){
-        const next=stepIntent(robot.position.x,robot.position.z,robot.rotation.y,input,dt);
-        robot.position.x=next.x;robot.position.z=next.z;robot.rotation.y=next.yaw;
-        robot.userData.robotGoal=null;if(robot.userData.jumpVel===undefined)robot.userData.robotMode=input.f?(input.r?'run':input.b?'walkBackward':'walk'):(input.t?(input.t<0?'strafeLeft':'strafeRight'):'idle');
-      }else if(this.localRobotInput&&robot.userData.robotMode!=='jump'){robot.userData.robotMode='idle';}
+      const motion=stepRobotMotion({x:robot.position.x,z:robot.position.z,yaw:robot.rotation.y,velocity:robot.userData.robotVelocity||0},input,dt);
+      robot.position.x=motion.x;robot.position.z=motion.z;robot.rotation.y=motion.yaw;
+      robot.userData.robotVelocity=motion.velocity;
+      const walking=Math.abs(motion.velocity)>.04;
+      if(walking)robot.userData.robotGoal=null;
+      if(robot.userData.jumpVel===undefined){
+       robot.userData.robotMode=!walking?'idle':motion.velocity<0?'walkBackward':(input.r&&motion.velocity>1.4?'run':'walk');
+      }
     }
     const previous=this.localRobotInput;
     if(canControl){
-      const moving=active(input),wasMoving=active(previous);
+      const moving=active(input)||Math.abs(robot.userData.robotVelocity||0)>.04;
+      const wasMoving=previous&&(active(previous)||previous.moving);
       const changed=!previous||input.f!==previous.f||input.t!==previous.t||input.r!==previous.r||input.b!==previous.b||input.s!==previous.s||input.j!==previous.j;
       if(changed||((moving||wasMoving)&&now-this.lastRobotPacket>1800)){
         window.solviRoomSocket?.send(packetFor(robot.userData.editorId,{...input,j:input.j&&!previous?.j?1:0},robot,!moving&&!input.j));
         this.lastRobotPacket=now;
       }
       if(wasMoving&&!moving){this.queueSave(robot);}
-      this.localRobotInput=input;
+      this.localRobotInput={...input,moving};
     }else this.localRobotInput=null;
-    // Remote input packets are applied predictively; occasional snapshots correct drift.
+    // Remote robots integrate the same acceleration and turn-rate equations.
     for(const [id,remote] of this.remoteInput){
       const other=this.items.find(o=>o.userData.editorId===id);
-      if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotMode='idle';}continue;}
-      if(remote.f||remote.t){const next=stepIntent(other.position.x,other.position.z,other.rotation.y,remote,dt);
-        other.position.x=next.x;other.position.z=next.z;other.rotation.y=next.yaw;
-        if(other.userData.jumpVel===undefined)other.userData.robotMode=remote.f?(remote.r?'run':remote.b?'walkBackward':'walk'):(remote.t?(remote.t<0?'strafeLeft':'strafeRight'):'idle');}
+      if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotMode='idle';other.userData.robotVelocity=0;}continue;}
+      const next=stepRobotMotion({x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0},remote,dt);
+      other.position.x=next.x;other.position.z=next.z;other.rotation.y=next.yaw;other.userData.robotVelocity=next.velocity;
+      if(other.userData.jumpVel===undefined){other.userData.robotMode=Math.abs(next.velocity)<.04?'idle':next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
     }
-    // Walk-to-point is deterministic client-side. Persist completed positions once.
     tickRobots(this.items,dt,(o,arrived)=>{
       if(arrived&&this.canEdit(o))this.queueSave(o);
     });
@@ -381,7 +390,7 @@ export class SceneEditor{
     if(diff>.18){const factor=diff>1?1:.35;robot.position.x+=(Number(packet.x)-robot.position.x)*factor;robot.position.z+=(Number(packet.z)-robot.position.z)*factor;}
     robot.rotation.y+=signedAngle(Number(packet.yaw)||0,robot.rotation.y)*.95;
     if(packet.j&&!robot.userData.jumpVel)robotAction(robot,'jump');
-    if(!packet.m){this.remoteInput.delete(packet.id);if(robot.userData.jumpVel===undefined)robot.userData.robotMode='idle';robot.position.x=Number(packet.x)||0;robot.position.z=Number(packet.z)||0;if(robot.userData.jumpVel===undefined)robot.position.y=Number(packet.y)||0;robot.rotation.y=Number(packet.yaw)||0;}
+    if(!packet.m){this.remoteInput.delete(packet.id);robot.userData.robotVelocity=0;if(robot.userData.jumpVel===undefined)robot.userData.robotMode='idle';robot.position.x=Number(packet.x)||0;robot.position.z=Number(packet.z)||0;if(robot.userData.jumpVel===undefined)robot.position.y=Number(packet.y)||0;robot.rotation.y=Number(packet.yaw)||0;}
     else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,received:performance.now()});
   }
   applyRobotMotion(state){this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});}

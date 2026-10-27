@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {intent,stepIntent,packetFor} from '../js/robot-net.js';
 const root=new URL('../',import.meta.url),read=f=>readFileSync(new URL(f,root),'utf8');
-test('Strafing is lateral without yaw, backwards turns use a one-time PI change',()=>{
+test('Robot steering is bicycle-like, backward is signed motion without snap turns',()=>{
   const left=intent(new Set(['ArrowLeft'])),right=intent(new Set(['ArrowRight']));
-  assert.ok(stepIntent(0,0,0,left,.05).x<0);
-  assert.ok(stepIntent(0,0,0,right,.05).x>0);
+  assert.equal(stepIntent(0,0,0,left,.05).x,0);
   assert.equal(stepIntent(0,0,.5,right,.05).yaw,.5);
-  assert.equal(intent(new Set(['ArrowDown'])).f,1);assert.equal(intent(new Set(['ArrowDown'])).b,1);
-  assert.match(read('js/editor.js'),/rotation\.y\+=Math\.PI/);
+  assert.equal(intent(new Set(['ArrowDown'])).f,-1);
+  assert.equal(intent(new Set(['ArrowDown'])).b,1);
+  assert.doesNotMatch(read('js/editor.js'),/rotation\.y\+=Math\.PI/);
 });
 test('Robot speed affects prediction; compact network packet carries speed and jump',()=>{
   const slow=stepIntent(0,0,0,{f:1,r:0,s:.5},.05).z;

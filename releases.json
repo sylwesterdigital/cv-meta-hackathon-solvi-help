@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.9",
+  "currentVersion": "0.2.10",
   "releases": [
+    {
+      "version": "0.2.10",
+      "publishedAt": "2026-10-27T23:50:34Z",
+      "changes": [
+        "Camera +/- zoom is centred on selected object; Blender-style numeric views unaffected.",
+        "Duplicated objects receive next available numeric copy suffix and appear above the source.",
+        "Robot arrows control signed forward/reverse velocity and bicycle steering dependent on motion speed. Down brakes before reversing; no instant 180 turn.",
+        "Camera arrows do not conflict with robot arrow controls; backward clip plays reversed fallback; prediction remains lightweight."
+      ]
+    },
     {
       "version": "0.2.9",
       "publishedAt": "2026-10-27T23:25:59Z",

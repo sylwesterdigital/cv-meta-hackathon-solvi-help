@@ -113,6 +113,8 @@ export class SolviWorld {
     // W/A/S/D/G/R are reserved for editor shortcuts (Blender-like).
     window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||e.ctrlKey||e.metaKey||e.altKey)return;
       if(/^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|ShiftLeft|ShiftRight)$/.test(e.code)){
+       const robot=this.robotEditor?.robot();
+       if(robot&&this.robotEditor.canEdit(robot)&&e.code.startsWith('Arrow')){this.keys.delete(e.code);return;}
        this.keys.add(e.code);if(e.code.startsWith('Arrow')||e.code.startsWith('Page'))e.preventDefault();this.pending=null;
       }});
     window.addEventListener('keyup',e=>this.keys.delete(e.code));
@@ -457,6 +459,25 @@ export class SolviWorld {
     const delta=center.clone().sub(this.controls.target);
     this.camera.position.add(delta);this.controls.target.copy(center);
     this.controls.update();
+  }
+  zoomOnSelectedObject(direction){
+    if(this.renderer.xr.isPresenting)return false;
+    const selected=this.robotEditor?.selected;
+    if(!selected)return false;
+    const bounds=new THREE.Box3().setFromObject(selected);
+    const center=new THREE.Vector3();
+    if(bounds.isEmpty())center.copy(selected.position);else bounds.getCenter(center);
+    const size=bounds.isEmpty()?1:bounds.getSize(new THREE.Vector3()).length();
+    const minDistance=Math.max(.2,size*.2),maxDistance=120;
+    const vector=this.camera.position.clone().sub(center);
+    if(vector.lengthSq()<.0001)vector.set(0,.3,1);
+    const currentDistance=vector.length();
+    const nextDistance=THREE.MathUtils.clamp(currentDistance*(direction>0?.8:1.25),minDistance,maxDistance);
+    this.camera.position.copy(center).addScaledVector(vector.normalize(),nextDistance);
+    this.controls.target.copy(center);
+    this.camera.lookAt(center);
+    this.controls.update();
+    return true;
   }
   cameraPreset(key,reverse=false){
     if(this.renderer.xr.isPresenting)return;
