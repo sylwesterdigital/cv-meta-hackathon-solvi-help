@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.3",
+  "currentVersion": "0.2.4",
   "releases": [
+    {
+      "version": "0.2.4",
+      "publishedAt": "2026-10-27T14:56:47Z",
+      "changes": [
+        "Dev log timestamps include date and time; auto closes after 3 seconds; page refreshes on published new version.",
+        "Compact translucent bottom-aligned chat; floating chat mode; mobile messages toggle, collapsed media tools and compact toolbar.",
+        "Session expiry or duplicate-tab conflict opens the profile sign-in modal and pauses authenticated actions.",
+        "Frequency-aware voice rings and 21-point palm/finger landmarks for each tracked hand."
+      ]
+    },
     {
       "version": "0.2.3",
       "publishedAt": "2026-10-27T14:08:46Z",

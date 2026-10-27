@@ -7,16 +7,21 @@ export function setupVoiceCaptions(world){
   const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
   let recognition=null,recognizing=false,enabled=false,stream=null,ctx=null,analyser=null,source=null,tickId=0;
   const setStatus=text=>{if(status)status.textContent=text;};
-  const stopMic=()=>{cancelAnimationFrame(tickId);stream?.getTracks().forEach(t=>t.stop());stream=null;source?.disconnect();analyser?.disconnect();ctx?.close().catch(()=>{});ctx=null;world.localVoiceLevel=0;};
+  const stopMic=()=>{cancelAnimationFrame(tickId);stream?.getTracks().forEach(t=>t.stop());stream=null;source?.disconnect();analyser?.disconnect();ctx?.close().catch(()=>{});ctx=null;world.localVoiceLevel=0;world.localVoiceBands=[0,0,0];};
   async function startMic(){
     stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
     ctx=new AudioContext();source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=512;source.connect(analyser);
-    const bytes=new Uint8Array(analyser.fftSize);
+    const bytes=new Uint8Array(analyser.fftSize);const freqs=new Uint8Array(analyser.frequencyBinCount);
     let last=0;
     const sample=now=>{
       if(!stream)return;
       if(now-last>75){last=now;analyser.getByteTimeDomainData(bytes);let sum=0;for(let i=0;i<bytes.length;i++){const v=(bytes[i]-128)/128;sum+=v*v;}
-        const rms=Math.sqrt(sum/bytes.length);world.localVoiceLevel=Math.min(1,Math.max(0,(rms-.02)*12));}
+        const rms=Math.sqrt(sum/bytes.length);world.localVoiceLevel=Math.min(1,Math.max(0,(rms-.02)*12));
+        analyser.getByteFrequencyData(freqs);
+        const hz=ctx.sampleRate/analyser.fftSize;
+        const energy=(low,high)=>{let total=0,n=0;for(let j=Math.max(0,Math.floor(low/hz));j<Math.min(freqs.length,Math.ceil(high/hz));j++){total+=freqs[j];n++;}return n?Math.min(1,Math.max(0,((total/n)/255-.08)*2)):0;};
+        world.localVoiceBands=[energy(90,360),energy(360,1600),energy(1600,7000)].map(v=>+v.toFixed(3));}
+
       tickId=requestAnimationFrame(sample);
     };tickId=requestAnimationFrame(sample);
   }

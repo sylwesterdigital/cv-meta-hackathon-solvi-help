@@ -10,7 +10,7 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.3')
+health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.4')
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.
@@ -58,3 +58,12 @@ assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects']==[]
 print('PASS: atomic object create/update/delete with room isolation')
 print('PASS: rooms and isolation')
 print('PASS: Flask health, SQLite profile, auth, human chat, messages, scene and admin protection')
+
+# Expired/rotated token and conflicting tabs must return explicit auth failures.
+r=c.post('/api/onboard',json={'name':name,'id':data['user']['id'],'recovery':data['recovery'],'tab':'second-tab-test-002'},headers={'Origin':origin})
+assert r.status_code==200,(r.status_code,r.data)
+newtoken=r.get_json()['token']
+assert c.get('/api/me',headers=headers).status_code==401
+assert c.get('/api/me',headers={'Authorization':'Bearer '+newtoken,'X-Solvi-Tab':'test-tab-unique-001'}).status_code==409
+assert c.get('/api/me',headers={'Authorization':'Bearer '+newtoken,'X-Solvi-Tab':'second-tab-test-002'}).status_code==200
+print('PASS: expired token 401, different tab 409, recovered login succeeds')

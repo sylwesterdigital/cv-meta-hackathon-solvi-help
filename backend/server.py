@@ -123,7 +123,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.3',ai=bool(MODEL_KEY),backend=True,websocket=True)
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.4',ai=bool(MODEL_KEY),backend=True,websocket=True)
 
 @app.post('/api/onboard')
 def onboard():
@@ -493,7 +493,9 @@ def websocket(ws):
         if not room_id:return
         with db() as con:
             user=con.execute('SELECT id,name,avatar,tab_id FROM users WHERE token_hash=?',(sha(token),)).fetchone()
-        if not user or user['tab_id']!=tab:return
+        if not user or user['tab_id']!=tab:
+            ws.send(json.dumps({'type':'auth-required','reason':'Session expired or this profile is active in another window.'}))
+            return
         uid=user['id'];name=user['name']
         with room_lock:
             if uid in room or len(room)>100:return
@@ -523,14 +525,21 @@ def websocket(ws):
                 posture=pose.get('body',{})
                 if isinstance(posture,dict):
                     limbs={}
-                    for label in ('leftShoulder','rightShoulder','leftElbow','rightElbow','leftWrist','rightWrist','leftIndex','rightIndex'):
+                    for label in ('leftShoulder','rightShoulder','leftElbow','rightElbow','leftWrist','rightWrist','leftIndex','rightIndex','leftPalm','rightPalm'):
                         item=posture.get(label)
                         if isinstance(item,list) and len(item)==3 and all(isinstance(n,(float,int)) and math.isfinite(n) and abs(n)<4 for n in item):
                             limbs[label]=[round(float(n),3) for n in item]
+                    for side in ('left','right'):
+                        values=posture.get(side+'Hand')
+                        if isinstance(values,list) and len(values)==21 and all(isinstance(pt,list) and len(pt)==3 and all(isinstance(n,(int,float)) and math.isfinite(n) and abs(n)<4 for n in pt) for pt in values):
+                            limbs[side+'Hand']=[[round(float(n),3) for n in pt] for pt in values]
                     filtered['body']=limbs
                 volume=pose.get('voiceLevel',0)
                 if isinstance(volume,(float,int)) and math.isfinite(volume):
                     filtered['voiceLevel']=max(0,min(1,round(float(volume),3)))
+                raw_bands=pose.get('voiceBands',[])
+                if isinstance(raw_bands,list) and len(raw_bands)==3 and all(isinstance(n,(float,int)) and math.isfinite(n) for n in raw_bands):
+                    filtered['voiceBands']=[max(0,min(1,round(float(v),3))) for v in raw_bands]
                 with room_lock:
                     if uid in room:room[uid]['state']=filtered
                 publish({'type':'state','id':uid,'name':name,'state':filtered},uid,room_id)

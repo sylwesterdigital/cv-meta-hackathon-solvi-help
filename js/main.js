@@ -20,7 +20,8 @@ const room=new LiveRoom(
 world.onPose=pose=>room.state(pose);
 // Enable shared room only once the Flask backend and Nginx /ws proxy are configured.
 // Test explicitly with https://solvi.help/?live=1
-window.addEventListener('solvi:authenticated',()=>{if(window.solviAPI?.online)room.connect();});
+window.addEventListener('solvi:authenticated',()=>{if(window.solviAPI?.online){room.stopped=false;room.attempts=0;room.connect();}});
+window.addEventListener('solvi:session-lost',()=>room.close());
 const buttons=[];
 for(const btn of buttons){btn.addEventListener('click',()=>{
   const mode=btn.id==='autoButton'?'auto':btn.dataset.motion;

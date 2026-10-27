@@ -34,7 +34,7 @@ export class SolviWorld {
     this.controls.maxPolarAngle=Math.PI/2.07;
     this.controls.minDistance=3;this.controls.maxDistance=24;
     this.controls.update();
-    this.localHeadRotation=[0,0,0];this.localBody={};this.localVoiceLevel=0;
+    this.localHeadRotation=[0,0,0];this.localBody={};this.localVoiceLevel=0;this.localVoiceBands=[0,0,0];
     this.clock=new THREE.Clock();
     this.character=new THREE.Group();this.scene.add(this.character);
     this.actor=new THREE.Group();this.character.add(this.actor);
@@ -195,7 +195,7 @@ export class SolviWorld {
       ring.position.set(0,0,.35+j*.12);faceGroup.add(ring);rings.push(ring);
     }
     const limbs=new THREE.Group();group.add(limbs);
-    const peer={group,faceGroup,fallback,label,limbs,rings,voiceLevel:0,name:state.name||'Guest',faceModel:null,balloon:null,balloonTimeout:0};
+    const peer={group,faceGroup,fallback,label,limbs,rings,voiceLevel:0,voiceBands:[0,0,0],name:state.name||'Guest',faceModel:null,balloon:null,balloonTimeout:0};
     this.others.set(id,peer);this.addFaceToPeer(peer);
     this.loadRemoteFace();return peer;
   }
@@ -214,7 +214,7 @@ export class SolviWorld {
       const [pitch,yaw,roll]=state.headRotation;
       peer.faceGroup.rotation.set(Number(pitch)||0,Number(yaw)||0,Number(roll)||0,'YXZ');
     }
-    peer.voiceLevel=Math.max(0,Math.min(1,Number(state.voiceLevel)||0));
+    peer.voiceLevel=Math.max(0,Math.min(1,Number(state.voiceLevel)||0));peer.voiceBands=Array.isArray(state.voiceBands)?state.voiceBands.slice(0,3).map(x=>Math.min(1,Math.max(0,Number(x)||0))):[0,0,0];
     if(state.body&&typeof state.body==='object')this.updatePeerBody(peer,state.body);
     const dict=state.face||{};
     peer.faceModel?.traverse(obj=>{if(!obj.morphTargetDictionary||!obj.morphTargetInfluences)return;
@@ -240,6 +240,19 @@ export class SolviWorld {
     for(const [a,b] of links){const p1=point(a),p2=point(b);if(!p1||!p2)continue;
       const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1,p2]),new THREE.LineBasicMaterial({color:0x93dbea,transparent:true,opacity:.75}));peer.limbs.add(line);
     }
+    // Palm and finger joints: thumb, index, middle, ring and pinky. 21 landmarks per hand.
+    const fingerChains=[[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]];
+    for(const side of ['left','right']){
+      const hand=body[side+'Hand'];if(!Array.isArray(hand)||hand.length!==21)continue;
+      const points=hand.map(item=>Array.isArray(item)&&item.length===3?new THREE.Vector3(...item):null);
+      for(const chain of [...fingerChains,[0,5,9,13,17,0]])for(let i=1;i<chain.length;i++){
+        const a=points[chain[i-1]],b=points[chain[i]];if(!a||!b)continue;
+        peer.limbs.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]),new THREE.LineBasicMaterial({color:0xb7f7f0,transparent:true,opacity:.85})));
+      }
+      for(const tip of [0,4,8,12,16,20])if(points[tip]){
+        const joint=new THREE.Mesh(new THREE.SphereGeometry(.028,7,5),new THREE.MeshBasicMaterial({color:0xdafef7}));joint.position.copy(points[tip]);peer.limbs.add(joint);
+      }
+    }
     for(const name of ['leftWrist','rightWrist','leftIndex','rightIndex']){const p=point(name);if(!p)continue;
       const marker=new THREE.Mesh(new THREE.SphereGeometry(.055,8,6),new THREE.MeshBasicMaterial({color:0xb4f8d8}));marker.position.copy(p);peer.limbs.add(marker);
     }
@@ -251,9 +264,11 @@ export class SolviWorld {
       peer.voiceLevel=Math.max(0,loud-dt*.9);
       peer.rings?.forEach((ring,index)=>{
         const phase=(now*.85+index/3)%1;
-        const gain=Math.min(1,peer.voiceLevel*3.5);
-        ring.material.opacity=gain*(1-phase)*.43;
-        ring.scale.setScalar(.9+phase*2.7);
+        const band=peer.voiceBands?.[index]||0;
+        const gain=Math.min(1,peer.voiceLevel*2.4+band*.6);
+        ring.material.opacity=gain*(1-phase)*(.24+band*.34);
+        ring.material.color.setHSL(.52+index*.065,.48+band*.36,.66);
+        ring.scale.setScalar(.85+phase*(1.6+band*2.3));
       });
     }
   }
@@ -404,7 +419,7 @@ export class SolviWorld {
     if(this.onPose&&(!this.lastPose||performance.now()-this.lastPose>180)){
       this.lastPose=performance.now();const cam=this.renderer.xr.isPresenting?this.renderer.xr.getCamera():this.camera;
       const position=cam.getWorldPosition(new THREE.Vector3());
-      this.onPose({x:position.x,y:position.y,z:position.z,yaw:cam.rotation.y,face:this.localFace||{},headRotation:this.localHeadRotation||[0,0,0],body:this.localBody||{},voiceLevel:this.localVoiceLevel||0});
+      this.onPose({x:position.x,y:position.y,z:position.z,yaw:cam.rotation.y,face:this.localFace||{},headRotation:this.localHeadRotation||[0,0,0],body:this.localBody||{},voiceLevel:this.localVoiceLevel||0,voiceBands:this.localVoiceBands||[0,0,0]});
     }
     this.renderer.render(this.scene,this.camera);
   }

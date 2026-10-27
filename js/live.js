@@ -17,6 +17,7 @@ export class LiveRoom{
     ws.onopen=()=>{this.attempts=0;this.send({type:'join',token:auth.token,tab:auth.tab,room:window.solviRoom||'main'});this.updateStatus(true,'Shared room connected');};
     ws.onmessage=(event)=>{
       try {const m=JSON.parse(event.data);
+        if(m.type==='auth-required'){this.close();window.dispatchEvent(new CustomEvent('solvi:auth-required',{detail:{reason:m.reason||'Please sign in again.'}}));return;}
         if(m.type==='snapshot'){this.peers=new Map((m.peers||[]).map(p=>[p.id,{...p,state:p.state||{}}]));this.onPresence(this.peers);}
         if(m.type==='presence'){if(m.event==='left')this.peers.delete(m.id);else if(m.id!==this.id)this.peers.set(m.id,{name:m.name||'Guest',state:m.state||{}});this.onPresence(this.peers);}
         if(m.type==='state'&&m.id!==this.id){this.peers.set(m.id,{name:m.name||this.peers.get(m.id)?.name||'Guest',state:m.state});this.onState(m.id,{...m.state,name:m.name||this.peers.get(m.id)?.name});}

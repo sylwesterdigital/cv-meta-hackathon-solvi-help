@@ -12,17 +12,32 @@ function establishTabChannel(uid){
   tabChannel=new BroadcastChannel('solvi-active-'+uid);
   tabChannel.onmessage=e=>{const m=e.data;if(m.page===pageNonce)return;
     if(m.type==='HELLO'&&auth)tabChannel.postMessage({type:'ACTIVE',page:pageNonce});
-    if(m.type==='ACTIVE'&&auth){auth=null;show('profileBackdrop',true);$('profileStatus').textContent='Another window is using this profile. Save / Sign in to take over.';}
+    if(m.type==='ACTIVE'&&auth)needSignIn('This profile is active in another window.');
   };
   tabChannel.postMessage({type:'HELLO',page:pageNonce});
 }
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
-let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;
+let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;let sessionPrompt=false;
 const toast=text=>{const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5200);};
 const show=(id,yes=true)=>{$(id).hidden=!yes;};
 const stored=()=>{try{return JSON.parse(localStorage.getItem('solvi-profile')||'null');}catch{return null;}};
 const saveLocal=(o)=>localStorage.setItem('solvi-profile',JSON.stringify(o));
+function needSignIn(message='Session expired. Sign in to continue.'){
+  if(sessionPrompt)return;
+  sessionPrompt=true;
+  const previous=stored();
+  if(previous){delete previous.token;saveLocal(previous);}
+  auth=null;me=null;adminToken=null;
+  window.dispatchEvent(new Event('solvi:session-lost'));
+  fillProfile(previous);
+  $('profileStatus').textContent=message+' Enter your name and press Save / Sign in to reconnect.';
+  show('profileBackdrop',true);
+  $('profileName').focus();
+  $('chatStatus').textContent='Sign-in required before sending messages.';
+  $('backendLabel').textContent='Session expired · sign in';
+  toast(message);
+}
 const api={
  online:false,
  auth:()=>auth?{token:auth.token,tab,profile:me}:null,
@@ -32,10 +47,12 @@ const api={
   headers['X-Solvi-Tab']=tab;
   const res=await fetch(url,{...options,headers,cache:'no-store'});
   const data=await res.json().catch(()=>({error:'Invalid server response'}));
-  if(!res.ok)throw Error(data.error||`${res.status} ${res.statusText}`);
+  if(!res.ok){if([401,409].includes(res.status)&&auth)needSignIn(data.error||'Session expired or active in another window.');
+    if(res.status===403&&url.includes('/api/admin/stats')){adminToken=null;show('adminBackdrop',true);$('adminStats').textContent='Admin session expired. Enter the administrator password again.';}
+    throw Error(data.error||`${res.status} ${res.statusText}`);}
   return data;
  },
- async mediaBlobInfo(id){const res=await fetch(`/api/media/${encodeURIComponent(id)}`,{headers:{Authorization:'Bearer '+auth.token,'X-Solvi-Tab':tab}});if(!res.ok)throw Error('Media unavailable');const blob=await res.blob();return {url:URL.createObjectURL(blob),mime:blob.type};},
+ async mediaBlobInfo(id){if(!auth)throw Error('Sign in to view media');const res=await fetch(`/api/media/${encodeURIComponent(id)}`,{headers:{Authorization:'Bearer '+auth.token,'X-Solvi-Tab':tab}});if([401,409].includes(res.status))needSignIn('Media session expired');if(!res.ok)throw Error('Media unavailable');const blob=await res.blob();return {url:URL.createObjectURL(blob),mime:blob.type};},
  async mediaBlob(id){return (await this.mediaBlobInfo(id)).url;}
 };
 window.solviAPI=api;
@@ -52,7 +69,7 @@ async function begin(){const p=stored();fillProfile(p);await checkBackend();
 }
 function identity(){const text=me?.name||'Guest';$('profileButton').textContent=text.length>15?text.slice(0,14)+'…':text;
  $('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;}
-async function afterLogin(){show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
+async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
  try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();
   select.add(new Option('World chat · people',''));
   for(const id of modelIds)select.add(new Option('AI · '+id,id));
@@ -62,7 +79,7 @@ async function afterLogin(){show('profileBackdrop',false);show('chatPanel',true)
  window.dispatchEvent(new CustomEvent('solvi:scene-ready'));
 }
 async function submitProfile(){const fields=profileFields();if(!fields.name){$('profileStatus').textContent='Name is required';return;}
- if(!online){me={...fields,id:me?.id||random(),avatar:me?.avatar||''};saveLocal(me);show('profileBackdrop',false);show('chatPanel',true);identity();return;}
+ if(!online){sessionPrompt=false;me={...fields,id:me?.id||random(),avatar:me?.avatar||''};saveLocal(me);show('profileBackdrop',false);show('chatPanel',true);identity();return;}
  try{const previous=stored();if(!auth || !me){
   const data=await api.req('/api/onboard',{method:'POST',body:JSON.stringify({...fields,id:previous?.recovery?previous.id:undefined,recovery:previous?.recovery||undefined,tab})});
   auth={token:data.token};me=data.user;saveLocal({...me,token:data.token,recovery:data.recovery||previous?.recovery});
@@ -90,12 +107,13 @@ async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask 
 function updatePending(){const p=$('pendingMedia');p.replaceChildren();for(const m of pending){const badge=document.createElement('button');badge.textContent=`${m.name} ×`;badge.title='Remove attachment';badge.onclick=()=>{pending=pending.filter(x=>x!==m);updatePending();};p.append(badge);}}
 async function attach(file){if(!file)return;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');}catch(e){toast(e.message);}}
 async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.length)return;if(!me){show('profileBackdrop',true);return;}
- const ids=pending.map(x=>x.id);$('chatInput').value='';pending=[];updatePending();
+ if(online&&!auth){needSignIn('Sign in before sending messages.');return;}
+ const ids=pending.map(x=>x.id);
  if(!online){await bubble({role:'user',text,speaker:me.name,user_id:me.id,created:new Date().toISOString()});toast('Local demo only. AI requires backend and MODEL_API_KEY.');return;}
  const useAI=!!$('modelSelect').value;
  $('sendChat').disabled=true;$('chatStatus').textContent='Model processing…';
  try{const response=await api.req(useAI?'/api/chat':'/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text,model:$('modelSelect').value,media:ids})});
-  await bubble(response.message);if(response.answer)await bubble(response.answer);$('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
+  $('chatInput').value='';pending=[];updatePending();await bubble(response.message);if(response.answer)await bubble(response.answer);$('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
  }catch(e){$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
  finally{$('sendChat').disabled=false;}
 }
@@ -163,7 +181,7 @@ async function configureRooms(){
  };
 }
 function configureDragging(){
- for(const id of ['scenePanel','propertiesPanel','addMenu']){
+ for(const id of ['scenePanel','propertiesPanel','addMenu','chatPanel']){
   const panel=$(id),handle=panel?.querySelector('.drag-handle');if(!panel||!handle)continue;
   let delta=null;
   handle.addEventListener('pointerdown',event=>{
@@ -172,8 +190,11 @@ function configureDragging(){
     handle.setPointerCapture(event.pointerId);event.preventDefault();
   });
   handle.addEventListener('pointermove',event=>{if(!delta)return;
-    panel.style.left=Math.max(4,Math.min(innerWidth-panel.offsetWidth-4,event.clientX-delta.x))+'px';
-    panel.style.top=Math.max(55,Math.min(innerHeight-90,event.clientY-delta.y))+'px';panel.style.right='auto';panel.style.bottom='auto';
+    if(id==='chatPanel'&&!panel.classList.contains('windowed'))return;
+    const x=Math.max(4,Math.min(innerWidth-panel.offsetWidth-4,event.clientX-delta.x));
+    const y=Math.max(55,Math.min(innerHeight-90,event.clientY-delta.y));
+    if(id==='chatPanel'){panel.style.setProperty('--chat-left',x+'px');panel.style.setProperty('--chat-top',y+'px');}
+    else{panel.style.left=x+'px';panel.style.top=y+'px';panel.style.right='auto';panel.style.bottom='auto';}
   });
   const release=()=>delta=null;handle.addEventListener('pointerup',release);handle.addEventListener('pointercancel',release);
  }
@@ -190,14 +211,45 @@ function setupNewRoom(){
   }catch(e){$('roomError').textContent=e.message;}
  };
 }
+function setupChatPresentation(){
+  const feed=$('chatFeed'),panel=$('chatPanel'),composer=panel.querySelector('.chat-composer');
+  const messages=$('messagesToggleButton');
+  messages.addEventListener('click',()=>{
+    const hidden=document.body.classList.toggle('chat-muted');
+    messages.setAttribute('aria-pressed',String(!hidden));
+    messages.textContent=hidden?'Show chat':'Hide chat';
+  });
+  $('chatModeButton').addEventListener('click',()=>{
+    const floating=panel.classList.toggle('windowed');
+    $('chatModeButton').textContent=floating?'Overlay chat':'Float chat';
+    if(!floating){panel.style.removeProperty('--chat-left');panel.style.removeProperty('--chat-top');}
+    else{panel.style.setProperty('--chat-left',Math.max(4,window.innerWidth-Math.min(390,window.innerWidth-10)-14)+'px');panel.style.setProperty('--chat-top',window.innerWidth<=750?'100px':'72px');}
+    $('floatChatButton').textContent='Overlay';
+    feed.scrollTop=feed.scrollHeight;
+  });
+  $('floatChatButton').onclick=()=>$('chatModeButton').click();
+  const mobileTools=$('composerToolsButton');
+  mobileTools.onclick=()=>{
+    const expanded=composer.classList.toggle('tools-open');
+    mobileTools.setAttribute('aria-expanded',String(expanded));
+  };
+  const mobileNav=$('mobileMenuButton'),nav=$('toolNav');
+  mobileNav.onclick=()=>{
+    const expanded=nav.classList.toggle('nav-expanded');mobileNav.setAttribute('aria-expanded',String(expanded));
+  };
+  // Multiline by default: Enter sends, Shift+Enter inserts a newline.
+  const input=$('chatInput');
+  const resize=()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,118)+'px';};
+  input.addEventListener('input',resize);resize();
+}
 function bindUI(world){
  const editor=new SceneEditor(world,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail?.revision));
  window.addEventListener('solvi:chat-updated',loadMessages);
- $('chatButton').onclick=()=>show('chatPanel',$('chatPanel').hidden);$('closeChat').onclick=()=>show('chatPanel',false);
+ $('chatButton').onclick=()=>{show('chatPanel',$('chatPanel').hidden);document.body.classList.remove('chat-muted');$('messagesToggleButton').setAttribute('aria-pressed','true');};$('closeChat').onclick=()=>show('chatPanel',false);
  $('profileButton').onclick=()=>{fillProfile(me||stored());show('profileBackdrop',true);};
- $('closeProfile').onclick=()=>{if(me)show('profileBackdrop',false);else toast('Enter a name to start');};
+ $('closeProfile').onclick=()=>{if(me&&auth)show('profileBackdrop',false);else{$('profileStatus').textContent='Sign in to continue.';$('profileName').focus();}};
  $('saveProfile').onclick=submitProfile;$('exportProfile').onclick=exportProfile;
  $('importProfile').onchange=e=>importProfile(e.target.files[0]);
  $('avatarUpload').onchange=async e=>{try{const m=await uploadFile(e.target.files[0]);$('profileStatus').textContent='Uploaded '+m.name;
@@ -206,7 +258,7 @@ function bindUI(world){
  window.solviPublishCaption=async text=>{
    if(!me||!text?.trim())return;
    const caption='CC: '+text.trim().slice(0,500);
-   if(!online||!auth){await bubble({role:'user',text:caption,speaker:me.name,user_id:me.id,created:new Date().toISOString()});return;}
+   if(!online||!auth){if(online&&!auth){needSignIn('Sign in to send captions.');return;}await bubble({role:'user',text:caption,speaker:me.name,user_id:me.id,created:new Date().toISOString()});return;}
    try{const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:caption,media:[]})});await bubble(response.message);}
    catch(error){toast('Captions not sent: '+error.message);}
  };
@@ -217,6 +269,8 @@ function bindUI(world){
  $('adminButton').onclick=()=>show('adminBackdrop',true);$('closeAdmin').onclick=()=>show('adminBackdrop',false);
  $('adminLogin').onclick=adminLogin;$('adminRefresh').onclick=stats;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){show('addMenu',false);show('adminBackdrop',false);if(me)show('profileBackdrop',false);}});
- setupNewRoom();configureRooms();configureDragging();begin();
+ window.addEventListener('solvi:auth-required',event=>needSignIn(event.detail?.reason||'Session expired.'));
+ setupChatPresentation();setupNewRoom();configureRooms();configureDragging();begin();
+ setInterval(async()=>{if(online&&auth){try{await api.req('/api/me');}catch{ /* expiry handler opens sign-in */ }}},45000);
 }
 export function initStudio(world){bindUI(world);}

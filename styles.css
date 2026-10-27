@@ -57,3 +57,79 @@
 #captionStatus{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;color:#a3d8ee;max-width:100%}
 #captionsButton:focus-visible,#voiceWavesButton:focus-visible{outline:2px solid #6edac8}
 #poseButton{max-width:160px}
+
+
+/* v0.2.4 — compact transparent world-first chat, mobile navigation and hidden scrollbars */
+body { overflow:hidden; }
+button,.overlay,.backdrop,.chat-panel,.chat-bubble,.scene-panel,.add-menu,.chat-composer {backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}
+.backdrop{background:rgba(5,9,17,.24);}
+.dev-backdrop{background:transparent;pointer-events:none;align-items:flex-start;justify-content:center;padding-top:8vh;}
+.dev-backdrop .overlay{pointer-events:auto;max-height:64svh;box-shadow:0 14px 60px #0009;}
+.log-scroll,.chat-feed,.scene-items,.scene-panel,.add-menu,.overlay,.chat-composer,.chat-panel{scrollbar-width:none!important;-ms-overflow-style:none!important;}
+.log-scroll::-webkit-scrollbar,.chat-feed::-webkit-scrollbar,.scene-items::-webkit-scrollbar,.scene-panel::-webkit-scrollbar,.add-menu::-webkit-scrollbar,.overlay::-webkit-scrollbar{display:none!important;}
+#mobileMenuButton{display:none}
+#messagesToggleButton{font-weight:600}
+.chat-panel{inset:53px 0 0!important;pointer-events:none;}
+.chat-feed{display:flex;min-height:0;max-height:none!important;flex:1;gap:8px!important;padding:12px 10px 7px!important;mask-image:linear-gradient(to bottom,transparent,#000 9%,#000 100%);-webkit-mask-image:linear-gradient(to bottom,transparent,#000 9%,#000 100%);}
+.chat-feed::before{content:'';flex:1 0 0px;}
+.chat-row{max-width:min(42vw,510px);margin:0;gap:6px!important;}
+.chat-row.mine{margin-right:0;align-self:flex-end;}
+.chat-row.theirs{margin-left:0;align-self:flex-start;}
+.chat-avatar{width:23px;min-width:23px;height:23px;font-size:9px;}
+.chat-bubble{padding:6px 10px!important;background:rgba(16,31,51,.72)!important;border-color:#6379918a!important;border-radius:12px!important;box-shadow:0 5px 14px #07152833!important;}
+.chat-row.mine .chat-bubble{background:rgba(31,76,111,.8)!important;}
+.chat-meta{font-size:9px;margin-bottom:2px;gap:10px;}
+.chat-meta strong{font-size:10px;}
+.chat-body{font-size:12px;line-height:1.3;}
+.chat-composer{width:min(660px,calc(100vw - 20px));margin:0 auto max(6px,env(safe-area-inset-bottom));padding:6px 9px;background:rgba(12,23,38,.69)!important;border:1px solid #536e8980!important;box-shadow:0 5px 16px #0005!important;border-radius:13px;}
+.composer-line{margin-bottom:1px;line-height:1.2;}
+.composer-line select{max-width:175px;font-size:10px;padding:2px;}
+.chat-composer textarea{min-height:30px;height:32px;padding:6px 5px;max-height:118px;font-size:13px;line-height:1.4;overflow-y:auto;}
+.composer-actions{margin-top:3px!important;gap:3px!important;flex-wrap:nowrap;}
+.composer-actions button,.composer-actions .icon-btn{font-size:10px;padding:5px 7px;border-radius:7px;white-space:nowrap;}
+#composerToolsButton{display:none}
+#sendChat{margin-left:auto!important}
+.chat-composer>small{display:none!important;}
+body.chat-muted .chat-feed{visibility:hidden;pointer-events:none;}
+.chat-panel.windowed{inset:auto!important;position:fixed;top:var(--chat-top,70px)!important;left:var(--chat-left,calc(100vw - 410px))!important;right:auto!important;bottom:auto!important;width:min(390px,90vw)!important;height:min(66svh,600px)!important;max-height:min(66svh,600px)!important;overflow:hidden;border:1px solid #59718a!important;border-radius:14px!important;background:rgba(10,22,36,.91)!important;box-shadow:0 12px 45px #0008!important;pointer-events:auto;}
+.chat-panel.windowed>.panel-title{display:flex!important;cursor:move;touch-action:none;padding:8px 10px;}
+.chat-panel.windowed .chat-feed{max-height:none!important;padding:7px!important;}
+.chat-panel.windowed .chat-row{max-width:92%!important;}
+.chat-panel.windowed .chat-composer{width:calc(100% - 10px);margin:5px;padding:5px;}
+.chat-panel.windowed .composer-actions{flex-wrap:wrap;}
+@media(max-width:750px){
+ .topbar{display:flex;align-items:center;flex-direction:column;gap:2px!important;padding:max(6px,env(safe-area-inset-top)) 8px 4px!important;}
+ .wordmark{font-size:15px;align-self:flex-start;line-height:24px;}
+ .topbar nav{display:flex;align-self:stretch;overflow:visible;flex-wrap:wrap;gap:4px;justify-content:flex-start;max-width:100%;}
+ #mobileMenuButton{display:inline-flex;order:3!important;}
+ #chatButton{order:0}
+ #roomSelect{order:1;max-width:125px;min-width:98px;font-size:11px;height:29px}
+ #messagesToggleButton{order:2}
+ .topbar nav>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton){display:none;}
+ .topbar nav.nav-expanded>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton){display:inline-flex;}
+ .topbar nav button{font-size:10px;padding:5px 7px;height:29px;}
+ .statusbar{top:77px;left:9px;font-size:9px;gap:6px;}
+ .chat-panel{top:98px!important;}
+ .chat-feed{padding:12px 5px 5px!important;gap:6px!important;}
+ .chat-row{max-width:91vw!important;}
+ .chat-body{font-size:12px;}
+ .chat-avatar{min-width:21px;width:21px;height:21px;}
+ .chat-bubble{padding:6px 8px!important;}
+ .chat-composer{width:calc(100vw - 10px)!important;margin-bottom:max(5px,env(safe-area-inset-bottom))!important;padding:5px 7px!important;}
+ .composer-line{font-size:9px;}
+ .composer-line select{max-width:135px;min-width:70px;}
+ .chat-composer textarea{font-size:13px;min-height:30px;}
+ .composer-actions{flex-wrap:wrap!important;}
+ #composerToolsButton{display:inline-flex;order:0;}
+ .composer-actions .media-tool{display:none;}
+ .chat-composer.tools-open .composer-actions .media-tool{display:inline-flex;}
+ .composer-actions #sendChat{order:1;}
+ .chat-composer.tools-open .composer-actions .media-tool{order:2;}
+ .scene-panel{max-height:61svh;top:116px;}
+ .properties-panel{left:7px;top:116px;}
+ .add-menu{top:117px;}
+ .chat-panel.windowed{top:var(--chat-top,100px)!important;left:var(--chat-left,5px)!important;right:auto!important;width:calc(100vw - 10px)!important;max-height:64svh!important;}
+ .dev-backdrop{padding-top:8vh;}
+ .dev-backdrop .overlay{max-width:calc(100vw - 14px);}
+}
+@media(hover:none){button{min-height:28px} .composer-actions button{min-height:28px}}

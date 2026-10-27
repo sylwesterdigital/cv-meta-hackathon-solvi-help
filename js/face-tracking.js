@@ -37,7 +37,9 @@ export async function setupFaceTracking(world){
             if(points){const pairs={leftShoulder:11,rightShoulder:12,leftElbow:13,rightElbow:14,leftWrist:15,rightWrist:16,leftIndex:19,rightIndex:20};
               const body={};for(const [name,index] of Object.entries(pairs)){const p=points[index];if(p&&(p.visibility??1)>.32)body[name]=landmarkToLocal(p);}world.localBody=body;}
             if(handTask){const h=handTask.detectForVideo(preview,now);for(let i=0;i<(h.landmarks||[]).length;i++){
-              const isLeft=h.handedness?.[i]?.[0]?.categoryName==='Left';const label=isLeft?'leftIndex':'rightIndex';const tip=h.landmarks[i]?.[8];if(tip)world.localBody[label]=landmarkToLocal(tip);
+              const isLeft=h.handedness?.[i]?.[0]?.categoryName==='Left';const prefix=isLeft?'left':'right';
+              const hand=h.landmarks[i];
+              if(hand?.length===21){world.localBody[prefix+'Hand']=hand.map(landmarkToLocal);world.localBody[prefix+'Palm']=landmarkToLocal(hand[0]);world.localBody[prefix+'Index']=landmarkToLocal(hand[8]);}
             }}
           }catch(err){console.debug('Pose frame skipped',err);}
         }
