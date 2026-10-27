@@ -1,6 +1,7 @@
 """SOLVI.help API: SQLite profiles, chat, media, Meta Model API and authenticated WebSocket presence.
 Run behind TLS reverse proxy. No default admin credentials. No API key in browser.
 """
+import math
 import base64
 import datetime as dt
 import hashlib
@@ -122,7 +123,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.2',ai=bool(MODEL_KEY),backend=True,websocket=True)
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.3',ai=bool(MODEL_KEY),backend=True,websocket=True)
 
 @app.post('/api/onboard')
 def onboard():
@@ -386,7 +387,7 @@ def set_scene():
     if not room_id:return json_error('Unknown room',404)
     objects=data.get('objects',[]);revision=data.get('revision')
     if not isinstance(objects,list) or len(objects)>128 or not isinstance(revision,int):return json_error('Invalid scene')
-    allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light'}
+    allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot'}
     for o in objects:
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
         if not all(isinstance(o.get(n),list) and len(o[n])==3 and all(isinstance(x,(int,float)) and abs(x)<1000 for x in o[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
@@ -396,6 +397,43 @@ def set_scene():
         con.execute('UPDATE room_scenes SET revision=?,payload=? WHERE room_id=?',(old+1,json.dumps(objects,separators=(',',':')),room_id))
     publish({'type':'scene-changed','revision':old+1,'room':room_id},room_id=room_id)
     return jsonify(revision=old+1,ok=True)
+
+
+@app.post('/api/scene/object')
+def patch_scene_object():
+    """Atomic per-object update: preserves objects edited by other participants."""
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    action=data.get('action')
+    obj=data.get('object') or {}
+    obj_id=str(obj.get('id',''))
+    if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',obj_id):return json_error('Invalid object id')
+    if action not in ('upsert','remove'):return json_error('Invalid object action')
+    if action=='upsert':
+        if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot'}:return json_error('Unsupported object type')
+        if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture') if key in obj}
+        if len(str(obj.get('name','')))>100:return json_error('Object name too long')
+        if obj.get('texture','none') not in ('none','checker','gradient','stripes','dots','custom'):return json_error('Unsupported texture preset')
+        if not isinstance(obj.get('color'),(str,type(None))) or len(obj.get('color') or '')>24:return json_error('Invalid color')
+    with db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        row=con.execute('SELECT revision,payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+        items=json.loads(row['payload'])
+        if action=='remove':items=[item for item in items if item.get('id')!=obj_id]
+        else:
+            for i,item in enumerate(items):
+                if item.get('id')==obj_id:items[i]=obj;break
+            else:
+                if len(items)>=128:return json_error('Room object limit reached',409)
+                items.append(obj)
+        revision=row['revision']+1
+        con.execute('UPDATE room_scenes SET revision=?,payload=? WHERE room_id=?',(revision,json.dumps(items,separators=(',',':')),room_id))
+    publish({'type':'scene-changed','revision':revision,'room':room_id,'by':user['id']},room_id=room_id)
+    return jsonify(ok=True,revision=revision)
 
 def verify_admin(passwd):
     try:
@@ -479,9 +517,30 @@ def websocket(ws):
                 if isinstance(expressions,dict):
                     filtered['face']={str(k)[:40]:max(0.,min(1.,float(v))) for k,v in list(expressions.items())[:52] if isinstance(v,(float,int))}
                 else:filtered['face']={}
+                rotation=pose.get('headRotation',[])
+                if isinstance(rotation,list) and len(rotation)==3 and all(isinstance(n,(float,int)) and math.isfinite(n) and abs(n)<4 for n in rotation):
+                    filtered['headRotation']=[round(float(n),3) for n in rotation]
+                posture=pose.get('body',{})
+                if isinstance(posture,dict):
+                    limbs={}
+                    for label in ('leftShoulder','rightShoulder','leftElbow','rightElbow','leftWrist','rightWrist','leftIndex','rightIndex'):
+                        item=posture.get(label)
+                        if isinstance(item,list) and len(item)==3 and all(isinstance(n,(float,int)) and math.isfinite(n) and abs(n)<4 for n in item):
+                            limbs[label]=[round(float(n),3) for n in item]
+                    filtered['body']=limbs
+                volume=pose.get('voiceLevel',0)
+                if isinstance(volume,(float,int)) and math.isfinite(volume):
+                    filtered['voiceLevel']=max(0,min(1,round(float(volume),3)))
                 with room_lock:
                     if uid in room:room[uid]['state']=filtered
                 publish({'type':'state','id':uid,'name':name,'state':filtered},uid,room_id)
+            elif msg.get('type')=='robot-motion':
+                identifier=str(msg.get('id',''))
+                position=msg.get('position');rotation=msg.get('rotation');mode=msg.get('mode','idle')
+                if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
+                if mode not in ('idle','walk','run','wave'):continue
+                if not all(isinstance(v,list) and len(v)==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000 for x in v) for v in (position,rotation)):continue
+                publish({'type':'robot-motion','room':room_id,'by':uid,'id':identifier,'position':position,'rotation':rotation,'mode':mode},except_id=uid,room_id=room_id)
             elif msg.get('type')=='signal' and isinstance(msg.get('payload'),dict):
                 to=msg.get('to')
                 with room_lock:peer=room.get(to)

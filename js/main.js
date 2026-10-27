@@ -4,13 +4,14 @@ import {LiveRoom} from './live.js';
 import {initDevLog} from './devlog.js';
 import {initMedia} from './media.js';
 import {setupFaceTracking} from './face-tracking.js';
+import {setupVoiceCaptions} from './voice-captions.js';
 
 initDevLog();initMedia();
 const world=new SolviWorld(document.getElementById('viewport'),(status)=>{
   if(!status.loaded){const toast=document.getElementById('toast');toast.textContent='Model load issue: '+status.error;toast.hidden=false;}
 });
 // An empty realm: no roaming character or starter geometry.
-initStudio(world);setupFaceTracking(world);
+initStudio(world);setupFaceTracking(world);setupVoiceCaptions(world);
 const room=new LiveRoom(
   peers=>world.setRemotePeers(peers),
   (id,state)=>world.updateRemoteState(id,state),
@@ -31,3 +32,4 @@ window.addEventListener('pagehide',()=>room.close());
 window.addEventListener('solvi:peer-message',event=>world.showPeerMessage(event.detail.userId,event.detail.text));
 
 window.addEventListener('solvi:room-changed',()=>room.switchRoom());
+window.solviRoomSocket=room;

@@ -11,9 +11,9 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.2</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.3</small></div>
     <nav aria-label="Tools">
-      <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="objectsButton">Objects</button><button type="button" id="profileButton">Profile</button><button type="button" id="adminButton">Admin</button><button type="button" id="devLogButton">Dev log</button>
+      <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button><button type="button" id="poseButton" title="Track upper body and hand landmarks">Posture + hands</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="objectsButton">Objects</button><button type="button" id="profileButton">Profile</button><button type="button" id="adminButton">Admin</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" title="Open in a WebXR headset browser">Enter VR</button>
       <button type="button" id="callButton">Voice / video</button>
     </nav>
@@ -61,6 +61,8 @@
       <label class="field-label">Colour <input id="objectColor" type="color" value="#88bbee"></label>
       <div class="field-label">Textures</div><div id="textureGrid" class="texture-grid"></div>
       <label class="field-label">Upload texture <input id="textureUpload" type="file" accept="image/png,image/jpeg,image/webp"></label>
+      <div id="robotControls" hidden><strong>Robot action</strong><div class="transform-modes"><button id="robot-idle">Idle</button><button id="robot-walk">Walk</button><button id="robot-run">Run</button><button id="robot-wave">Wave</button></div><small>Choose Walk or Run, then click the floor to set a destination. Robot view captures from this robot's head.</small></div>
+      <div class="panel-footer"><button id="confirmProperties" class="primary" title="Save properties and close panel">OK ✓</button></div>
     </div>
 </aside>
   <section id="chatPanel" class="chat-panel" aria-label="Chat">
@@ -72,12 +74,12 @@
       <textarea id="chatInput" rows="2" maxlength="3000" placeholder="Message or challenge a robot…"></textarea>
       <div class="composer-actions">
         <label class="icon-btn" title="Attach media">Attach<input id="chatFile" type="file" accept="image/*,audio/*,video/*" hidden></label>
-        <button id="recordAudio" title="Record audio (click again to stop)">Mic</button>
+        <button id="recordAudio" title="Record audio file (click again to stop)">Mic</button><button id="captionsButton" title="Live speech captions to shared room chat">CC off</button><button id="voiceWavesButton" title="Share microphone loudness as abstract visual rings, no audio uploaded">Voice waves</button>
         <button id="recordVideo" title="Record video (click again to stop)">Video</button>
         <button id="robotVision" title="Attach view from the robot camera">Robot view</button>
         <button id="sendChat" class="primary">Send ↗</button>
       </div>
-      <small id="chatStatus">World chat available without an AI key. AI responses require MODEL_API_KEY.</small>
+      <small id="chatStatus">World chat available without an AI key. AI responses require MODEL_API_KEY.</small><small id="captionStatus" aria-live="polite">CC off · opt-in browser speech recognition</small>
     </div>
   </section>
   <div id="roomBackdrop" class="backdrop" hidden><section class="overlay" role="dialog" aria-label="Create realm"><div class="panel-title"><strong>New room / realm</strong><button id="closeRoom">×</button></div><label class="field-label">Room title<input id="roomTitle" maxlength="80" placeholder="Robot laboratory"></label><label class="field-label">Room slug<input id="roomSlug" maxlength="40" placeholder="robot-lab"></label><div class="panel-footer"><button class="primary" id="saveRoom">Create realm</button></div><small id="roomError"></small></section></div>

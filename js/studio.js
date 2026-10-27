@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
+import {captureRobotView} from './robots.js';
 
 const $=id=>document.getElementById(id);
 const random=()=>crypto.randomUUID();
@@ -121,14 +122,9 @@ async function cameraAvatar(){try{const stream=await navigator.mediaDevices.getU
  $('profileStatus').textContent='Profile photo saved.';
  }catch(e){$('profileStatus').textContent=e.message;}}
 async function robotView(world){
- const camera=new THREE.PerspectiveCamera(70,1,.05,80);world.actor.add(camera);camera.position.set(0,1.55,-.18);
- const rt=new THREE.WebGLRenderTarget(512,512);const old=world.renderer.getRenderTarget();world.scene.updateMatrixWorld(true);
- world.renderer.setRenderTarget(rt);world.renderer.render(world.scene,camera);
- const arr=new Uint8Array(512*512*4);world.renderer.readRenderTargetPixels(rt,0,0,512,512,arr);
- world.renderer.setRenderTarget(old);world.actor.remove(camera);rt.dispose();
- const c=document.createElement('canvas');c.width=c.height=512;const ctx=c.getContext('2d');const pixels=ctx.createImageData(512,512);
- for(let y=0;y<512;y++)pixels.data.set(arr.subarray((511-y)*512*4,(512-y)*512*4),y*512*4);
- ctx.putImageData(pixels,0,0);return new Promise(resolve=>c.toBlob(resolve,'image/jpeg',.84));
+ const robot=window.solviEditor?.robot();
+ if(!robot)throw Error('Select a robot in Objects first, then choose Robot view.');
+ return captureRobotView(world,robot);
 }
 function exportProfile(){if(!me)return;const p=stored()||me;const data={format:'solvi-profile-v1',id:p.id,name:p.name,email:p.email,bio:p.bio,links:p.links,recovery:p.recovery||null};
  const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='solvi-profile-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);
@@ -197,7 +193,7 @@ function setupNewRoom(){
 function bindUI(world){
  const editor=new SceneEditor(world,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
- window.addEventListener('solvi:scene-changed',()=>toast('Scene updated by another user — select Objects → Load to refresh'));
+ window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail?.revision));
  window.addEventListener('solvi:chat-updated',loadMessages);
  $('chatButton').onclick=()=>show('chatPanel',$('chatPanel').hidden);$('closeChat').onclick=()=>show('chatPanel',false);
  $('profileButton').onclick=()=>{fillProfile(me||stored());show('profileBackdrop',true);};
@@ -207,6 +203,13 @@ function bindUI(world){
  $('avatarUpload').onchange=async e=>{try{const m=await uploadFile(e.target.files[0]);$('profileStatus').textContent='Uploaded '+m.name;
  if(me){const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...profileFields(),avatar:m.id})});me=data.user;saveLocal({...stored(),...me});}}catch(e){toast(e.message);}};
  $('takeAvatarPhoto').onclick=cameraAvatar;$('recordIntro').onclick=()=>startRecording(true,true);
+ window.solviPublishCaption=async text=>{
+   if(!me||!text?.trim())return;
+   const caption='CC: '+text.trim().slice(0,500);
+   if(!online||!auth){await bubble({role:'user',text:caption,speaker:me.name,user_id:me.id,created:new Date().toISOString()});return;}
+   try{const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:caption,media:[]})});await bubble(response.message);}
+   catch(error){toast('Captions not sent: '+error.message);}
+ };
  $('sendChat').onclick=send;$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
  $('chatFile').onchange=e=>attach(e.target.files[0]);$('recordAudio').onclick=()=>startRecording(false);
  $('recordVideo').onclick=()=>startRecording(true);

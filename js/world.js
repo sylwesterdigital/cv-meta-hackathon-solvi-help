@@ -34,6 +34,7 @@ export class SolviWorld {
     this.controls.maxPolarAngle=Math.PI/2.07;
     this.controls.minDistance=3;this.controls.maxDistance=24;
     this.controls.update();
+    this.localHeadRotation=[0,0,0];this.localBody={};this.localVoiceLevel=0;
     this.clock=new THREE.Clock();
     this.character=new THREE.Group();this.scene.add(this.character);
     this.actor=new THREE.Group();this.character.add(this.actor);
@@ -188,7 +189,13 @@ export class SolviWorld {
     const fallback=new THREE.Mesh(new THREE.SphereGeometry(.26,24,16),new THREE.MeshStandardMaterial({color:'#a6d9ee',roughness:.65}));faceGroup.add(fallback);
     const label=this.labelSprite(state.name||'Guest');label.position.y=2.12;group.add(label);
     this.scene.add(group);
-    const peer={group,faceGroup,fallback,label,name:state.name||'Guest',faceModel:null,balloon:null,balloonTimeout:0};
+    const rings=[];
+    for(let j=0;j<3;j++){
+      const ring=new THREE.Mesh(new THREE.RingGeometry(.27,.295,48),new THREE.MeshBasicMaterial({color:0x9adcf9,transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false}));
+      ring.position.set(0,0,.35+j*.12);faceGroup.add(ring);rings.push(ring);
+    }
+    const limbs=new THREE.Group();group.add(limbs);
+    const peer={group,faceGroup,fallback,label,limbs,rings,voiceLevel:0,name:state.name||'Guest',faceModel:null,balloon:null,balloonTimeout:0};
     this.others.set(id,peer);this.addFaceToPeer(peer);
     this.loadRemoteFace();return peer;
   }
@@ -203,6 +210,12 @@ export class SolviWorld {
     if(!state)return;const peer=this.ensurePeer(id,{name:state.name||'Guest'});
     if(Number.isFinite(+state.x)&&Number.isFinite(+state.z))peer.group.position.set(Number(state.x),Math.max(-1,Math.min(12,(Number(state.y)||1.65)-1.65)),Number(state.z));
     peer.group.rotation.y=Number(state.yaw)||0;
+    if(Array.isArray(state.headRotation)&&state.headRotation.length===3){
+      const [pitch,yaw,roll]=state.headRotation;
+      peer.faceGroup.rotation.set(Number(pitch)||0,Number(yaw)||0,Number(roll)||0,'YXZ');
+    }
+    peer.voiceLevel=Math.max(0,Math.min(1,Number(state.voiceLevel)||0));
+    if(state.body&&typeof state.body==='object')this.updatePeerBody(peer,state.body);
     const dict=state.face||{};
     peer.faceModel?.traverse(obj=>{if(!obj.morphTargetDictionary||!obj.morphTargetInfluences)return;
       for(const [key,value] of Object.entries(dict)){
@@ -215,6 +228,34 @@ export class SolviWorld {
     if(peer.balloon){peer.group.remove(peer.balloon);peer.balloon.material.map.dispose();peer.balloon.material.dispose();}
     peer.balloon=this.labelSprite(text.slice(0,42),'#27506a');peer.balloon.position.y=2.54;peer.balloon.scale.set(2.2,.40,1);peer.group.add(peer.balloon);
     const token=++peer.balloonTimeout;setTimeout(()=>{if(peer.balloonTimeout===token&&peer.balloon){peer.group.remove(peer.balloon);peer.balloon.material.map.dispose();peer.balloon.material.dispose();peer.balloon=null;}},6500);
+  }
+  updatePeerBody(peer,body){
+    // Stylised upper-body: shoulders, elbows, wrists and palm/index landmarks.
+    const links=[['leftShoulder','rightShoulder'],['leftShoulder','leftElbow'],['leftElbow','leftWrist'],['rightShoulder','rightElbow'],['rightElbow','rightWrist'],['leftWrist','leftIndex'],['rightWrist','rightIndex']];
+    while(peer.limbs.children.length){const child=peer.limbs.children[0];peer.limbs.remove(child);child.geometry?.dispose();child.material?.dispose();}
+    const point=name=>{
+      const a=body[name];if(!Array.isArray(a)||a.length!==3)return null;
+      return new THREE.Vector3(Math.max(-2,Math.min(2,a[0])),Math.max(.15,Math.min(2.8,a[1])),Math.max(-1,Math.min(1,a[2])));
+    };
+    for(const [a,b] of links){const p1=point(a),p2=point(b);if(!p1||!p2)continue;
+      const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1,p2]),new THREE.LineBasicMaterial({color:0x93dbea,transparent:true,opacity:.75}));peer.limbs.add(line);
+    }
+    for(const name of ['leftWrist','rightWrist','leftIndex','rightIndex']){const p=point(name);if(!p)continue;
+      const marker=new THREE.Mesh(new THREE.SphereGeometry(.055,8,6),new THREE.MeshBasicMaterial({color:0xb4f8d8}));marker.position.copy(p);peer.limbs.add(marker);
+    }
+  }
+  updateVoiceRings(dt){
+    const now=performance.now()/1000;
+    for(const peer of this.others.values()){
+      const loud=peer.voiceLevel||0;
+      peer.voiceLevel=Math.max(0,loud-dt*.9);
+      peer.rings?.forEach((ring,index)=>{
+        const phase=(now*.85+index/3)%1;
+        const gain=Math.min(1,peer.voiceLevel*3.5);
+        ring.material.opacity=gain*(1-phase)*.43;
+        ring.scale.setScalar(.9+phase*2.7);
+      });
+    }
   }
   setupXR(){
     const btn=document.getElementById('xrButton');
@@ -359,11 +400,11 @@ export class SolviWorld {
     const dt=Math.min(.05,this.clock.getDelta());
     this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging;
     if(!this.renderer.xr.isPresenting)this.controls.update();
-    this.updateXR();
+    this.updateXR();this.robotEditor?.tick(dt);this.updateVoiceRings(dt);
     if(this.onPose&&(!this.lastPose||performance.now()-this.lastPose>180)){
       this.lastPose=performance.now();const cam=this.renderer.xr.isPresenting?this.renderer.xr.getCamera():this.camera;
       const position=cam.getWorldPosition(new THREE.Vector3());
-      this.onPose({x:position.x,y:position.y,z:position.z,yaw:cam.rotation.y,face:this.localFace||{}});
+      this.onPose({x:position.x,y:position.y,z:position.z,yaw:cam.rotation.y,face:this.localFace||{},headRotation:this.localHeadRotation||[0,0,0],body:this.localBody||{},voiceLevel:this.localVoiceLevel||0});
     }
     this.renderer.render(this.scene,this.camera);
   }

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
+import {makeRobot,hydrateRobot,robotAction,tickRobots,setRobotDestination} from './robots.js';
 
-const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light'];
+const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot'];
 const byId=id=>document.getElementById(id);
 const material=(color='#8bc3ff')=>new THREE.MeshStandardMaterial({color,roughness:.7,side:THREE.DoubleSide});
 const xyz=v=>[+v.x.toFixed(4),+v.y.toFixed(4),+v.z.toFixed(4)];
@@ -26,11 +27,12 @@ function objectFor(kind){
  case 'curve':{const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(-.8,.1,-.6),new THREE.Vector3(-.25,.65,0),new THREE.Vector3(.4,.15,.25),new THREE.Vector3(.8,.7,.1)]);object=new THREE.Mesh(new THREE.TubeGeometry(curve,42,.035,8,false),material());break;}
  case 'points':{const coords=[];for(let i=0;i<95;i++)coords.push((Math.random()-.5)*1.4,Math.random()*1.2,(Math.random()-.5)*1.4);const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(coords,3));object=new THREE.Points(geo,new THREE.PointsMaterial({color:'#88e1d5',size:.07}));break;}
  case 'text':{const c=document.createElement('canvas');c.width=1024;c.height=256;const ctx=c.getContext('2d');ctx.fillStyle='#f2f5ff';ctx.font='bold 132px system-ui';ctx.textAlign='center';ctx.fillText('SOLVI',512,176);const tex=new THREE.CanvasTexture(c);object=new THREE.Mesh(new THREE.PlaneGeometry(2,.5),new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide}));break;}
+ case 'robot':object=makeRobot();break;
  case 'light':{object=new THREE.Group();const lamp=new THREE.PointLight('#d0efff',7,8);object.add(lamp);object.add(new THREE.Mesh(new THREE.SphereGeometry(.15,12,8),new THREE.MeshBasicMaterial({color:'#d0efff'})));break;}
  default:throw Error('Unsupported kind');
  }
  object.name='New '+kind;object.userData.editorKind=kind;object.userData.editorId=crypto.randomUUID();
- if(kind==='light')object.position.set(0,2.2,0);else object.position.set(0,kind==='plane'?.015:.8,0);
+ if(kind==='light')object.position.set(0,2.2,0);else object.position.set(0,kind==='plane'?.015:kind==='robot'?0:.8,0);
  object.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
  return object;
 }
@@ -43,12 +45,12 @@ export class SceneEditor{
   // Recent Three.js exposes TransformControls as an Object3D wrapper plus a helper gizmo.
   world.scene.add(this.transform.getHelper());
   this.transform.addEventListener('dragging-changed',e=>{world.editorDragging=Boolean(e.value);world.controls.enabled=!e.value;});
-  this.transform.addEventListener('objectChange',()=>{this.updateInspector();});
-  this.setupUI();this.events();this.refreshList();window.solviEditor=this;
+  this.transform.addEventListener('objectChange',()=>{this.updateInspector();this.queueSave(this.selected);});
+  this.setupUI();this.events();this.refreshList();window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();
  }
  setupUI(){
   const menu=byId('addMenu');
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Lighting',['light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Robots',['robot']],['Lighting',['light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';menu.append(bar);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';menu.append(search);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
   search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
@@ -58,13 +60,15 @@ export class SceneEditor{
   byId('objectsButton').onclick=()=>{byId('scenePanel').hidden=!byId('scenePanel').hidden;this.refreshList();};
   byId('closeScenePanel').onclick=()=>byId('scenePanel').hidden=true;
   byId('closeProperties').onclick=()=>byId('propertiesPanel').hidden=true;
+  byId('confirmProperties').onclick=async()=>{if(this.selected)await this.persistObject(this.selected);byId('propertiesPanel').hidden=true;this.transform.detach();};
+  for(const mode of ['idle','walk','run','wave'])byId('robot-'+mode).onclick=()=>{if(this.selected){robotAction(this.selected,mode);this.queueSave(this.selected);}};
   for(const mode of ['translate','rotate','scale'])byId('transform-'+mode).onclick=()=>this.transform.setMode(mode);
   byId('deleteObject').onclick=()=>this.remove();
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
    const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected)return;const v=Number(el.value);if(!Number.isFinite(v))return;
     const vec=this.selected[field];const name=['x','y','z'][axis];vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
-    this.refreshList();};}
-  byId('objectColor').oninput=e=>{const obj=this.selected;if(!obj)return;obj.traverse(o=>{if(o.material?.color)o.material.color.set(e.target.value);});};
+    this.refreshList();this.queueSave(this.selected);};}
+  byId('objectColor').oninput=e=>{const obj=this.selected;if(!obj)return;obj.traverse(o=>{if(o.material?.color)o.material.color.set(e.target.value);});this.queueSave(obj);};
   byId('textureGrid').replaceChildren();for(const name of ['none','checker','gradient','stripes','dots']){
    const b=document.createElement('button');b.textContent=name;b.onclick=()=>this.texture(name);byId('textureGrid').append(b);}
   byId('textureUpload').onchange=async e=>{const file=e.target.files[0];if(!file||!file.type.startsWith('image/')||file.size>5_000_000)return this.toast('Select an image under 5 MB');
@@ -81,6 +85,8 @@ export class SceneEditor{
    const hits=this.raycaster.intersectObjects(this.items,true);
    if(hits.length){let node=hits[0].object;while(node.parent&&!this.items.includes(node))node=node.parent;
     if(this.items.includes(node)){this.select(node);e.stopImmediatePropagation();}}
+   else if(this.selected?.userData.editorKind==='robot'&&this.selected?.userData.robotMode!=='idle'){
+    const ground=this.raycaster.intersectObject(this.world.floor)[0];if(ground){setRobotDestination(this.selected,ground.point);this.queueSave(this.selected);}}
   },true);
   window.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||e.metaKey||e.ctrlKey||e.altKey)return;
    if(e.shiftKey&&e.code==='KeyA'){e.preventDefault();byId('addMenu').hidden=!byId('addMenu').hidden;if(!byId('addMenu').hidden)byId('addSearch')?.focus();}
@@ -88,9 +94,10 @@ export class SceneEditor{
    else if(this.selected&&['Delete','Backspace'].includes(e.key)){e.preventDefault();this.remove();}
   });
  }
- add(kind){const object=objectFor(kind);this.items.push(object);this.world.scene.add(object);this.select(object);byId('addMenu').hidden=true;byId('scenePanel').hidden=false;this.refreshList();}
+ add(kind){const object=objectFor(kind);this.items.push(object);this.world.scene.add(object);this.select(object);byId('addMenu').hidden=true;byId('scenePanel').hidden=false;this.refreshList();if(kind==='robot')hydrateRobot(object);this.queueSave(object);}
  select(obj){this.selected=obj;this.transform.attach(obj);this.updateInspector();this.refreshList();}
  updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
+  byId('robotControls').hidden=obj.userData.editorKind!=='robot';
   byId('objectName').textContent=obj.name;
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
     const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);
@@ -99,18 +106,50 @@ export class SceneEditor{
   byId('objectColor').value=color?'#'+color.getHexString():'#88bbdd';
  }
  refreshList(){const list=byId('sceneItems');list.replaceChildren();for(const obj of this.items){const b=document.createElement('button');b.className=obj===this.selected?'selected':'';b.textContent=`${obj.userData.editorKind} · ${obj.name}`;b.onclick=()=>this.select(obj);list.append(b);}}
- remove(){if(!this.selected)return;const o=this.selected;this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);o.traverse(x=>{x.geometry?.dispose();if(x.material?.map)x.material.map.dispose();x.material?.dispose?.();});this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();}
- texture(name){this.assignTexture(name==='none'?null:makeTexture(name));}
- assignTexture(tex){if(!this.selected)return;this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
- serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null}));}
- apply(data){for(const o of [...this.items]){this.select(o);this.remove();}for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;
+ remove(){if(!this.selected)return;const o=this.selected;this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);o.traverse(x=>{x.geometry?.dispose();if(x.material?.map)x.material.map.dispose();x.material?.dispose?.();});this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.persistRemoval(o.userData.editorId);}
+ texture(name){if(this.selected)this.selected.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
+ assignTexture(tex){if(!this.selected)return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
+ serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none'}));}
+ apply(data){for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);o.traverse(x=>{x.geometry?.dispose();x.material?.dispose?.();});}this.items=[];this.selected=null;byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
-   this.items.push(o);this.world.scene.add(o);}this.refreshList();}
+   o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
+   this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);}this.refreshList();}
  async load(){const api=window.solviAPI;const local=localStorage.getItem('solvi-scene-'+(window.solviRoom||'main'));
   if(!api?.online){if(local)this.apply(JSON.parse(local));this.toast('Local scene loaded (not shared)');return;}
   try{const data=await api.req('/api/scene?room='+encodeURIComponent(window.solviRoom||'main'));this.revision=data.revision;this.apply(data.objects);this.toast('Shared scene loaded');}catch(e){this.toast(e.message);}}
  async save(){const list=this.serialize();const api=window.solviAPI;
   if(!api?.online){localStorage.setItem('solvi-scene-'+(window.solviRoom||'main'),JSON.stringify(list));this.toast('Scene saved locally (not shared)');return;}
   try{const data=await api.req('/api/scene',{method:'PUT',body:JSON.stringify({room:window.solviRoom||'main',revision:this.revision,objects:list})});this.revision=data.revision;this.toast('Shared scene saved');}catch(e){this.toast(e.message);}}
+
+  snapshot(o){return this.serialize().find(item=>item.id===o?.userData.editorId);}
+  queueSave(o){if(!o)return;const id=o.userData.editorId;clearTimeout(this.pendingSaves.get(id));this.pendingSaves.set(id,setTimeout(()=>{this.pendingSaves.delete(id);this.persistObject(o);},650));}
+  async persistObject(o){
+    if(!o||!this.items.includes(o))return;
+    const data=this.snapshot(o),api=window.solviAPI;
+    if(!api?.online){localStorage.setItem('solvi-scene-'+(window.solviRoom||'main'),JSON.stringify(this.serialize()));return;}
+    try{await api.req('/api/scene/object',{method:'POST',body:JSON.stringify({room:window.solviRoom||'main',action:'upsert',object:data})});}
+    catch(error){this.toast('Save failed: '+error.message);}
+  }
+  async persistRemoval(id){const api=window.solviAPI;
+    if(!api?.online){localStorage.setItem('solvi-scene-'+(window.solviRoom||'main'),JSON.stringify(this.serialize()));return;}
+    try{await api.req('/api/scene/object',{method:'POST',body:JSON.stringify({room:window.solviRoom||'main',action:'remove',object:{id}})});}
+    catch(error){this.toast('Remove failed: '+error.message);}
+  }
+  tick(dt){tickRobots(this.items,dt,(robot,arrived)=>{
+    if(!arrived&&performance.now()-(robot.userData.lastSync||0)<280)return;
+    robot.userData.lastSync=performance.now();
+    window.solviRoomSocket?.send({type:'robot-motion',id:robot.userData.editorId,position:xyz(robot.position),rotation:xyz(robot.rotation),mode:robot.userData.robotMode||'idle'});
+    if(arrived)this.persistObject(robot);
+  });}
+  applyRobotMotion(state){const o=this.items.find(o=>o.userData.editorId===state.id&&o.userData.editorKind==='robot');
+    if(!o||this.world.editorDragging)return;
+    if(Array.isArray(state.position)&&state.position.length===3)o.position.fromArray(state.position);
+    if(Array.isArray(state.rotation)&&state.rotation.length===3)o.rotation.fromArray(state.rotation);
+    if(typeof state.mode==='string'&&['idle','walk','run','wave'].includes(state.mode))robotAction(o,state.mode);
+    // Remote motion must not start a separate local pathfinding walk.
+    o.userData.robotGoal=null;
+  }
+  robot(){return this.selected?.userData.editorKind==='robot'?this.selected:null;}
+  acceptRemoteRevision(revision){if(!this.world.editorDragging&&!this.pendingSaves.size){this.load();}else{this.toast('Room changed: finish editing and press Load to refresh');}}
 }

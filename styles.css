@@ -49,3 +49,11 @@
 @media(max-width:750px){.topbar{padding:10px;gap:7px}.wordmark{font-size:16px}.topbar nav{max-width:100%;overflow-x:auto;flex-wrap:nowrap;justify-content:flex-start}.topbar nav button{flex-shrink:0}.topbar nav #roomSelect{min-width:90px}.statusbar{top:112px;font-size:10px}.chat-panel{top:90px!important}.chat-feed{padding:30px 12px 15px!important;max-height:calc(100svh - 280px)}.chat-row{max-width:90vw}.chat-composer{margin-bottom:9px;width:calc(100vw - 14px)}.properties-panel{left:8px;top:145px}.scene-panel{top:140px}.add-menu{top:140px;right:8px}}
 
 .chat-feed{pointer-events:none}.chat-row{pointer-events:auto;touch-action:pan-y}
+
+/* v0.2.3: action confirmation and mic captions */
+#robotControls{margin-top:10px;padding:11px 4px;border-top:1px solid #344256;font-size:11px;color:#b8d8f1}
+#robotControls small{display:block;line-height:1.4;color:#99adbf}
+#confirmProperties{min-width:74px;min-height:32px}
+#captionStatus{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;color:#a3d8ee;max-width:100%}
+#captionsButton:focus-visible,#voiceWavesButton:focus-visible{outline:2px solid #6edac8}
+#poseButton{max-width:160px}

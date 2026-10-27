@@ -10,7 +10,7 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.2')
+health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.3')
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.
@@ -42,5 +42,19 @@ assert len(main)==1 and len(lab)==1 and main[0]['text']!=lab[0]['text']
 assert c.put('/api/scene',headers=headers,json={'room':'lab','revision':0,'objects':[]}).status_code==200
 assert c.get('/api/scene?room=lab',headers=headers).get_json()['revision']==1
 assert c.get('/api/scene?room=main',headers=headers).get_json()['revision']==0
+# Atomic per-object updates preserve changes and remain room-specific.
+obj={'id':'testcube-001','kind':'cube','name':'Test cube','position':[1,1,0],
+     'rotation':[0,0,0],'scale':[1,1,1],'color':'#abcdef','texture':'checker'}
+r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':obj})
+assert r.status_code==200,(r.status_code,r.data)
+lab_obj=c.get('/api/scene?room=lab',headers=headers).get_json()['objects']
+assert len(lab_obj)==1 and lab_obj[0]['texture']=='checker'
+assert c.get('/api/scene?room=main',headers=headers).get_json()['objects']==[]
+obj['position']=[2,1,0]
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':obj}).status_code==200
+assert len(c.get('/api/scene?room=lab',headers=headers).get_json()['objects'])==1
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testcube-001'}}).status_code==200
+assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects']==[]
+print('PASS: atomic object create/update/delete with room isolation')
 print('PASS: rooms and isolation')
 print('PASS: Flask health, SQLite profile, auth, human chat, messages, scene and admin protection')
