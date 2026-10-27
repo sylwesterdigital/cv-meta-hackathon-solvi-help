@@ -220,6 +220,8 @@ function configureDragging(){
   handle.addEventListener('pointerdown',event=>{
     if(event.target.closest('button,input'))return;
     const rect=panel.getBoundingClientRect();delta={x:event.clientX-rect.left,y:event.clientY-rect.top};
+    // Position the window explicitly; its original top/bottom constraints must not stretch it while dragging.
+    if(id==='scenePanel'||id==='propertiesPanel')panel.style.bottom='auto';
     handle.setPointerCapture(event.pointerId);event.preventDefault();
   });
   handle.addEventListener('pointermove',event=>{if(!delta)return;

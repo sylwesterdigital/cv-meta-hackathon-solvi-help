@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {setupAvatarGallery} from './avatar-gallery.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
+import {EditHistory,duplicateElevation} from './edit-history.js';
 import {makeRobot,hydrateRobot,robotAction,tickRobots,setRobotDestination,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
 import {intent,active,packetFor,stepIntent,signedAngle} from './robot-net.js';
 
@@ -67,15 +68,17 @@ export class SceneEditor{
  constructor(world,onToast){
   this.world=world;this.toast=onToast;this.items=[];this.selected=null;this.revision=0;
   this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
+  this.history=new EditHistory(120);this.transformBefore=null;
   this.transform=new TransformControls(world.camera,world.renderer.domElement);
   // Recent Three.js exposes TransformControls as an Object3D wrapper plus a helper gizmo.
   world.scene.add(this.transform.getHelper());
   this.transform.addEventListener('dragging-changed',e=>{
    world.editorDragging=Boolean(e.value);
-   world.controls.enabled=!e.value&&!world.renderer.xr.isPresenting;
+   if(e.value){world.editorGizmoPointer=true;world.controls.enabled=false;}
+   else{world.editorGizmoPointer=false;world.cameraOrbitGesture=null;}
   });
-  this.transform.addEventListener('mouseDown',()=>{world.editorDragging=true;world.controls.enabled=false;});
-  this.transform.addEventListener('mouseUp',()=>{world.editorDragging=false;});
+  this.transform.addEventListener('mouseDown',()=>{this.transformBefore=this.snapshot(this.selected);world.editorDragging=true;world.editorGizmoPointer=true;world.controls.enabled=false;});
+  this.transform.addEventListener('mouseUp',()=>{world.editorDragging=false;this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
   this.transform.addEventListener('objectChange',()=>{if(!this.canEdit(this.selected))return;this.updateInspector();this.queueSave(this.selected);});
   this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.remoteInput=new Map();
  }
@@ -98,9 +101,9 @@ export class SceneEditor{
   byId('minimizeScenePanel').onclick=()=>byId('scenePanel').classList.toggle('minimized');
   byId('closeScenePanel').onclick=()=>byId('scenePanel').hidden=true;
   byId('closeProperties').onclick=()=>{byId('propertiesPanel').hidden=true;this.clearLightHelper();};
-  const speed=byId('robotSpeed');speed.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotSpeed=Number(speed.value);byId('robotSpeedLabel').textContent=Number(speed.value).toFixed(2)+'×';this.queueSave(this.selected);};
+  const speed=byId('robotSpeed');speed.addEventListener('pointerdown',()=>this.speedBefore=this.snapshot(this.selected));speed.addEventListener('change',()=>{this.recordEdit(this.speedBefore,this.snapshot(this.selected));this.speedBefore=null;});speed.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotSpeed=Number(speed.value);byId('robotSpeedLabel').textContent=Number(speed.value).toFixed(2)+'×';this.queueSave(this.selected);};
   for(const id of ['lightType','lightIntensity','lightRange','lightDecay','lightAngle','lightPenumbra','lightColor','lightGround'])byId(id).addEventListener('change',()=>{const o=this.selected;if(!o||o.userData.editorKind!=='light'||!this.canEdit(o))return;
-   setLight(o,{type:byId('lightType').value,intensity:+byId('lightIntensity').value,range:+byId('lightRange').value,decay:+byId('lightDecay').value,angle:+byId('lightAngle').value,penumbra:+byId('lightPenumbra').value,color:byId('lightColor').value,groundColor:byId('lightGround').value});this.refreshLightControls();this.queueSave(o);});
+   const before=this.snapshot(o);setLight(o,{type:byId('lightType').value,intensity:+byId('lightIntensity').value,range:+byId('lightRange').value,decay:+byId('lightDecay').value,angle:+byId('lightAngle').value,penumbra:+byId('lightPenumbra').value,color:byId('lightColor').value,groundColor:byId('lightGround').value});this.refreshLightControls();this.recordEdit(before,this.snapshot(o));this.queueSave(o);});
 
   for(const mode of ['idle','walk','run','wave','jump'])byId('robot-'+mode).onclick=()=>{if(this.selected&&this.canEdit(this.selected)){robotAction(this.selected,mode);this.queueSave(this.selected);}else this.toast('Only the owner can control this robot.');};
   fetch('./assets/avatars/catalog.json').then(r=>r.ok?r.json():{avatars:[]}).then(data=>{
@@ -113,9 +116,9 @@ export class SceneEditor{
    if(!this.selected||!this.canEdit(this.selected))return this.toast('Owner only');
    const url=e.target.value;
    if(url!==DEFAULT_ROBOT_AVATAR){try{const response=await fetch(url,{method:'HEAD'});if(!response.ok)throw Error();}catch{this.toast('This avatar is catalogued but not deployed yet. Package the GLB first.');return;}}
-   const obj=this.selected;obj.userData.avatarUrl=url;obj.userData.robotReady=false;
+   const obj=this.selected,before=this.snapshot(this.selected);obj.userData.avatarUrl=url;obj.userData.robotReady=false;
    for(const child of [...obj.children])if(!child.userData.robotPlaceholder){obj.remove(child);}
-   hydrateRobot(obj);this.queueSave(obj);
+   hydrateRobot(obj);this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
   };
   for(const mode of ['translate','rotate','scale'])byId('transform-'+mode).onclick=()=>{
    if(!this.selected||!this.canEdit(this.selected))return;
@@ -124,18 +127,33 @@ export class SceneEditor{
   };
   byId('deleteObject').onclick=()=>this.remove();
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
-   const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canEdit(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v))return;
+   const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canEdit(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v))return;const before=this.snapshot(this.selected);
     const vec=this.selected[field];const name=['x','y','z'][axis];vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
-    this.refreshList();this.queueSave(this.selected);};}
+    this.recordEdit(before,this.snapshot(this.selected));this.refreshList();this.queueSave(this.selected);};}
+  byId('objectColor').addEventListener('focus',()=>this.colorBefore=this.snapshot(this.selected));byId('objectColor').addEventListener('change',()=>{this.recordEdit(this.colorBefore,this.snapshot(this.selected));this.colorBefore=null;});
   byId('objectColor').oninput=e=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||obj.userData.editorKind==='robot')return;obj.traverse(o=>{if(o.material?.color)o.material.color.set(e.target.value);});this.queueSave(obj);};
-  byId('texturePreset').onchange=e=>this.texture(e.target.value);byId('textureUploadButton').onclick=()=>byId('textureUpload').click();
+  byId('texturePreset').onchange=e=>{const before=this.snapshot(this.selected);this.texture(e.target.value);this.recordEdit(before,this.snapshot(this.selected));};byId('textureUploadButton').onclick=()=>byId('textureUpload').click();
   byId('textureUpload').onchange=async e=>{const file=e.target.files[0];if(!file||!file.type.startsWith('image/')||file.size>5_000_000)return this.toast('Select an image under 5 MB');
-   const blob=URL.createObjectURL(file);new THREE.TextureLoader().load(blob,tex=>{tex.colorSpace=THREE.SRGBColorSpace;this.selected.userData.textureName='custom';this.assignTexture(tex);URL.revokeObjectURL(blob);},undefined,()=>URL.revokeObjectURL(blob));};
+   const before=this.snapshot(this.selected);const blob=URL.createObjectURL(file);new THREE.TextureLoader().load(blob,tex=>{tex.colorSpace=THREE.SRGBColorSpace;this.selected.userData.textureName='custom';this.assignTexture(tex);this.recordEdit(before,this.snapshot(this.selected));URL.revokeObjectURL(blob);},undefined,()=>URL.revokeObjectURL(blob));};
   byId('saveScene').onclick=()=>this.save();byId('reloadScene').onclick=()=>this.load();
  }
  events(){
   const canvas=this.world.renderer.domElement;let startX,startY;this.lastPointer={x:innerWidth/2,y:innerHeight/2};window.addEventListener('pointermove',e=>{if(!document.pointerLockElement)this.lastPointer={x:e.clientX,y:e.clientY};},{passive:true});
-  canvas.addEventListener('pointerdown',e=>{startX=e.clientX;startY=e.clientY;},true);
+  canvas.addEventListener('pointerdown',e=>{
+   startX=e.clientX;startY=e.clientY;
+   this.world.cameraOrbitGesture=!this.transform.dragging&&!this.transform.axis;
+   this.world.editorGizmoPointer=!this.world.cameraOrbitGesture;
+   if(this.world.editorGizmoPointer)this.world.controls.enabled=false;
+  },true);
+  const endGesture=()=>{queueMicrotask(()=>{if(!this.transform.dragging){this.world.cameraOrbitGesture=null;this.world.editorGizmoPointer=false;}});};
+  window.addEventListener('pointerup',endGesture,true);window.addEventListener('pointercancel',endGesture,true);
+  // 1/front, 3/right, 7/top; Ctrl/Meta reverses; 2/4/6/8 orbit steps.
+  window.addEventListener('keydown',e=>{
+   if(e.target?.closest?.('input,textarea,select,[contenteditable]')||e.altKey||this.world.renderer.xr.isPresenting)return;
+   const m=/^(?:Numpad|Digit)([0-9])$/.exec(e.code);
+   if(!m||e.shiftKey)return;
+   e.preventDefault();this.world.cameraPreset(Number(m[1]),e.ctrlKey||e.metaKey);
+  });
   canvas.addEventListener('pointerup',e=>{
    if(this.transform.dragging||this.transform.axis||Math.hypot(e.clientX-startX,e.clientY-startY)>4||this.world.renderer.xr.isPresenting)return;
    this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
@@ -146,7 +164,12 @@ export class SceneEditor{
    else if(this.selected?.userData.editorKind==='robot'&&this.selected?.userData.robotMode!=='idle'){
     const ground=this.raycaster.intersectObject(this.world.floor)[0];if(ground){setRobotDestination(this.selected,ground.point);this.queueSave(this.selected);}}
   },true);
-  window.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||e.metaKey||e.ctrlKey||e.altKey)return;
+  window.addEventListener('keydown',e=>{
+   if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||document.activeElement?.isContentEditable)return;
+   const cmd=e.metaKey||e.ctrlKey;
+   if(cmd&&e.code==='KeyZ'){e.preventDefault();e.shiftKey?this.redo():this.undo();return;}
+   if(cmd&&e.code==='KeyY'){e.preventDefault();this.redo();return;}
+   if(e.metaKey||e.ctrlKey||e.altKey)return;
    if(e.shiftKey&&e.code==='KeyA'){e.preventDefault();if(byId('addMenu').hidden){this.showAddMenu(this.lastPointer.x,this.lastPointer.y);byId('addSearch')?.focus();}else byId('addMenu').hidden=true;}
    else if(this.selected&&e.shiftKey&&e.code==='KeyD'){e.preventDefault();this.duplicate();}
    else if(this.selected&&e.code==='KeyX'){e.preventDefault();this.remove();}
@@ -162,19 +185,24 @@ export class SceneEditor{
  duplicate(){
   if(!this.selected)return;if(!this.canEdit(this.selected))return this.toast('Owner only');const source=this.selected,entry=this.snapshot(source);if(!entry)return;
   const duplicate=objectFor(entry.kind);duplicate.name=source.name+' copy';duplicate.position.copy(source.position);duplicate.quaternion.copy(source.quaternion);duplicate.scale.copy(source.scale);
+  const box=new THREE.Box3().setFromObject(source);
+  const measured=box.isEmpty()?0:box.getSize(new THREE.Vector3()).y;
+  const height=entry.kind==='robot'?Math.max(1.9,measured):Math.max(.32,measured);
+  duplicate.position.y+=duplicateElevation(height);
   if(entry.color)duplicate.traverse(mesh=>{if(mesh.material?.color)mesh.material.color.set(entry.color);});
   duplicate.userData.textureName=entry.texture||'none';
   if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')duplicate.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.map=makeTexture(entry.texture);mesh.material.needsUpdate=true;}});
-  if(entry.kind==='light')setLight(duplicate,entry.light||{});duplicate.userData.robotSpeed=entry.speed||1;duplicate.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;duplicate.userData.avatarUrl=source.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;this.items.push(duplicate);this.world.scene.add(duplicate);this.select(duplicate);if(entry.kind==='robot')hydrateRobot(duplicate);this.queueSave(duplicate);this.toast('Duplicated in place');
+  if(entry.kind==='light')setLight(duplicate,entry.light||{});duplicate.userData.robotSpeed=entry.speed||1;duplicate.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;duplicate.userData.avatarUrl=source.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;this.items.push(duplicate);this.world.scene.add(duplicate);this.select(duplicate);if(entry.kind==='robot')hydrateRobot(duplicate);this.recordEdit(null,this.snapshot(duplicate));this.queueSave(duplicate);this.toast('Duplicated above original');
  }
  add(kind,showGallery=true,lightType=undefined){const object=objectFor(kind);if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
  const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.raycaster.intersectObject(this.world.floor)?.[0]?.point;if(point){object.position.x=point.x;object.position.z=point.z;}
- object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;this.items.push(object);this.world.scene.add(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}this.queueSave(object);return object;}
+ object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;this.items.push(object);this.world.scene.add(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}this.recordEdit(null,this.snapshot(object));this.queueSave(object);return object;}
  select(obj){this.clearLightHelper();this.robotKeys.clear();this.localRobotInput=null;this.selected=obj;
   // Robots are controlled with arrows, not a permanent transform gizmo.
   if(this.canEdit(obj)&&obj.userData.editorKind!=='robot')this.transform.attach(obj);
   else{this.transform.detach();if(!this.canEdit(obj))this.toast('Read-only object · owned by another user');}
-  this.updateInspector();this.refreshList();}
+  this.updateInspector();this.refreshList();
+  if(obj)this.world.focusCameraOn(obj);}
  updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
   byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;
@@ -186,11 +214,11 @@ export class SceneEditor{
   byId('objectColor').value=color?'#'+color.getHexString():'#88bbdd';byId('texturePreset').value=obj.userData.textureName||'none';
  }
  refreshList(){const list=byId('sceneItems');list.replaceChildren();for(const obj of this.items){const b=document.createElement('button');b.className=obj===this.selected?'selected':'';b.textContent=`${obj.userData.editorKind} · ${obj.name}`;b.onclick=()=>this.select(obj);list.append(b);}}
- remove(){if(!this.selected)return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.persistRemoval(o.userData.editorId);}
+ remove(){if(!this.selected)return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
  texture(name){if(!this.selected||this.selected.userData.editorKind==='robot')return;if(this.canEdit(this.selected))this.selected.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
   serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed||1):undefined}));}
- apply(data){this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);o.traverse(x=>{x.geometry?.dispose();x.material?.dispose?.();});}this.items=[];this.selected=null;byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed||1;if(entry.kind==='light')setLight(o,entry.light||{});
+ apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);o.traverse(x=>{x.geometry?.dispose();x.material?.dispose?.();});}this.items=[];this.selected=null;byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed||1;if(entry.kind==='light')setLight(o,entry.light||{});
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
@@ -268,6 +296,22 @@ export class SceneEditor{
    for(const child of [...obj.children])if(!child.userData.robotPlaceholder){obj.remove(child);}
    hydrateRobot(obj);this.queueSave(obj);
   }
+  recordEdit(before,after){this.history.push(before,after);}
+  applyHistorySnapshot(wanted,opposite){
+   const id=wanted?.id||opposite?.id;if(!id)return;
+   const existing=this.items.find(o=>o.userData.editorId===id);
+   if(wanted){
+    if(existing){const timer=this.pendingSaves.get(id);clearTimeout(timer);this.pendingSaves.delete(id);}
+    this.applyObjectPatch({action:'upsert',object:wanted});
+    const next=this.items.find(o=>o.userData.editorId===id);
+    if(next){this.select(next);this.persistObject(next);}
+   }else{
+    if(existing){const timer=this.pendingSaves.get(id);clearTimeout(timer);this.pendingSaves.delete(id);}
+    this.applyObjectPatch({action:'remove',id});this.persistRemoval(id);
+   }
+  }
+  undo(){if(this.history.undo((wanted,old)=>this.applyHistorySnapshot(wanted,old)))this.toast('Undo');}
+  redo(){if(this.history.redo((wanted,old)=>this.applyHistorySnapshot(wanted,old)))this.toast('Redo');}
   snapshot(o){return this.serialize().find(item=>item.id===o?.userData.editorId);}
   queueSave(o){if(!o||!this.canEdit(o))return;const id=o.userData.editorId;clearTimeout(this.pendingSaves.get(id));this.pendingSaves.set(id,setTimeout(()=>{this.pendingSaves.delete(id);this.persistObject(o);},650));}
   async persistObject(o){

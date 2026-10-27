@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.8",
+  "currentVersion": "0.2.9",
   "releases": [
+    {
+      "version": "0.2.9",
+      "publishedAt": "2026-10-27T23:25:59Z",
+      "changes": [
+        "Camera orbit no longer spins on pointer hover; locks during gizmo gestures, no damping drift, selected-object orbit pivot and arrow-key camera translation.",
+        "Blender-style numeric perspectives: 1 front, 3 side, 7 top, Ctrl reverse, 2/4/6/8 incremental orbit, 0 home, 9 opposite, 5 refocus.",
+        "Undo/redo via Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z or Ctrl+Y; 120 object command history; shared object-specific updates.",
+        "Shift+D clones above original bounding volume rather than overlapping existing geometry.",
+        "Objects window draggable at its title; CSS no longer pins its top-left coordinates.",
+        "Avatar gallery previews fill each card with image and bottom-left gradient-backed name/metadata.",
+        "No WASD/QE camera movement conflicts with Blender editor shortcuts."
+      ]
+    },
     {
       "version": "0.2.8",
       "publishedAt": "2026-10-27T22:59:56Z",

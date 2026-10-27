@@ -31,13 +31,14 @@ export class SolviWorld {
     this.renderer.xr.setReferenceSpaceType('local-floor');
     root.append(this.renderer.domElement);
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);
-    this.controls.enableDamping=true;this.controls.target.set(0,1,0);
+    this.controls.enableDamping=false;this.controls.target.set(0,1,0);
+    this.cameraOrbitGesture=null;this.editorGizmoPointer=false;
     // Left drag = orbit, right drag = pan, wheel = dolly; gizmos temporarily lock orbit.
     this.controls.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN};
     this.controls.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};
     this.controls.enablePan=true;
-    this.controls.maxPolarAngle=Math.PI/2.07;
-    this.controls.minDistance=3;this.controls.maxDistance=24;
+    this.controls.minPolarAngle=.02;this.controls.maxPolarAngle=Math.PI-.02;
+    this.controls.minDistance=.35;this.controls.maxDistance=125;
     this.controls.update();
     this.localHeadRotation=[0,0,0];this.localBody={};this.localVoiceLevel=0;this.localVoiceBands=[0,0,0];
     this.clock=new THREE.Clock();
@@ -108,13 +109,14 @@ export class SolviWorld {
   }
   setupEvents(){
     window.addEventListener('resize',()=>{this.camera.aspect=innerWidth/innerHeight;this.camera.updateProjectionMatrix();this.renderer.setSize(innerWidth,innerHeight);});
+    // Camera locomotion is arrow-only while no owned robot is selected.
+    // W/A/S/D/G/R are reserved for editor shortcuts (Blender-like).
     window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||e.ctrlKey||e.metaKey||e.altKey)return;
-      if(e.shiftKey&&['KeyA','KeyD'].includes(e.code))return;
-      if(e.code==='KeyS'&&this.robotEditor?.selected?.userData.editorKind!=='robot')return; // S remains Blender's scale shortcut while editing.
-      if(/^(KeyW|KeyA|KeyS|KeyD|KeyQ|KeyE|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|ShiftLeft|ShiftRight)$/.test(e.code)){
-       this.keys.add(e.code);if(e.code.startsWith('Arrow'))e.preventDefault();this.pending=null;
+      if(/^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|ShiftLeft|ShiftRight)$/.test(e.code)){
+       this.keys.add(e.code);if(e.code.startsWith('Arrow')||e.code.startsWith('Page'))e.preventDefault();this.pending=null;
       }});
     window.addEventListener('keyup',e=>this.keys.delete(e.code));
+    window.addEventListener('blur',()=>{this.keys.clear();this.cameraOrbitGesture=null;this.editorGizmoPointer=false;});
     let dragX=0,dragY=0;
     this.renderer.domElement.addEventListener('pointerdown',e=>{dragX=e.clientX;dragY=e.clientY;});
     this.renderer.domElement.addEventListener('pointerup',e=>{
@@ -148,8 +150,8 @@ export class SolviWorld {
   updateMovement(dt){
     if(!this.ready)return;
     let vx=0,vz=0,speed=0;
-    const forward=(this.keys.has('KeyW')||this.keys.has('ArrowUp'))?1:(this.keys.has('KeyS')||this.keys.has('ArrowDown'))?-1:0;
-    const strafe=(this.keys.has('KeyD')||this.keys.has('ArrowRight'))?1:(this.keys.has('KeyA')||this.keys.has('ArrowLeft'))?-1:0;
+    const forward=this.keys.has('ArrowUp')?1:this.keys.has('ArrowDown')?-1:0;
+    const strafe=this.keys.has('ArrowRight')?1:this.keys.has('ArrowLeft')?-1:0;
     if(forward||strafe){
       const camdir=new THREE.Vector3();this.camera.getWorldDirection(camdir);camdir.y=0;camdir.normalize();
       const right=new THREE.Vector3(-camdir.z,0,camdir.x);
@@ -447,23 +449,69 @@ export class SolviWorld {
     }
     this.teleportIndicator.visible=found;
   }
-  navigateCamera(dt){
+  focusCameraOn(object){
+    // Preserve orientation and distance when changing the orbit pivot; do not orbit around scene origin.
+    const center=new THREE.Vector3();
+    const bounds=new THREE.Box3().setFromObject(object);
+    if(bounds.isEmpty())center.copy(object.position);else bounds.getCenter(center);
+    const delta=center.clone().sub(this.controls.target);
+    this.camera.position.add(delta);this.controls.target.copy(center);
+    this.controls.update();
+  }
+  cameraPreset(key,reverse=false){
     if(this.renderer.xr.isPresenting)return;
+    const selected=this.robotEditor?.selected;
+    const bounds=selected?new THREE.Box3().setFromObject(selected):null;
+    const center=new THREE.Vector3();
+    if(bounds&&!bounds.isEmpty())bounds.getCenter(center);
+    else if(selected)center.copy(selected.position);
+    else center.copy(this.controls.target);
+    const radius=bounds&&!bounds.isEmpty()?bounds.getSize(new THREE.Vector3()).length()*.5:1.25;
+    const distance=Math.max(2.8,Math.min(35,radius*3.5));
+    const current=this.camera.position.clone().sub(this.controls.target).normalize();
+    let offset=null;
+    if(key===1)offset=new THREE.Vector3(0,0,reverse?-1:1);
+    if(key===3)offset=new THREE.Vector3(reverse?-1:1,0,0);
+    if(key===7)offset=new THREE.Vector3(0,reverse?-1:1,0);
+    if(key===9)offset=current.clone().negate();
+    if(key===0)offset=new THREE.Vector3(.7,.42,1);
+    if(key===5){if(selected)this.focusCameraOn(selected);else{this.controls.target.copy(this.camera.position).addScaledVector(this.camera.getWorldDirection(new THREE.Vector3()),Math.max(3,distance));this.controls.update();}return;}
+    if([2,4,6,8].includes(key)){
+      const v=current.clone();const spherical=new THREE.Spherical().setFromVector3(v);
+      if(key===4)spherical.theta-=Math.PI/12;
+      if(key===6)spherical.theta+=Math.PI/12;
+      if(key===2)spherical.phi+=Math.PI/12;
+      if(key===8)spherical.phi-=Math.PI/12;
+      spherical.phi=THREE.MathUtils.clamp(spherical.phi,.06,Math.PI-.06);
+      offset=new THREE.Vector3().setFromSpherical(spherical);
+    }
+    if(!offset)return;
+    offset.normalize();this.controls.target.copy(center);
+    this.camera.up.set(0,1,0);
+    if(Math.abs(offset.y)>.995)this.camera.up.set(0,0,reverse?1:-1);
+    this.camera.position.copy(center).addScaledVector(offset,distance);
+    this.camera.lookAt(center);this.controls.update();
+  }
+  navigateCamera(dt){
+    if(this.renderer.xr.isPresenting||this.editorDragging||this.editorGizmoPointer)return;
     const isRobot=!!this.robotEditor?.robot()&&this.robotEditor.canEdit(this.robotEditor.robot());
-    let f=Number(this.keys.has('KeyW'))-Number(this.keys.has('KeyS'));
-    let side=Number(this.keys.has('KeyD'))-Number(this.keys.has('KeyA'));
-    if(!isRobot){f+=Number(this.keys.has('ArrowUp'))-Number(this.keys.has('ArrowDown'));side+=Number(this.keys.has('ArrowRight'))-Number(this.keys.has('ArrowLeft'));}
-    let vertical=Number(this.keys.has('KeyE'))-Number(this.keys.has('KeyQ'));
+    if(isRobot)return;
+    const f=Number(this.keys.has('ArrowUp'))-Number(this.keys.has('ArrowDown'));
+    const side=Number(this.keys.has('ArrowRight'))-Number(this.keys.has('ArrowLeft'));
+    const vertical=Number(this.keys.has('PageUp'))-Number(this.keys.has('PageDown'));
     if(!f&&!side&&!vertical)return;
     const look=this.camera.getWorldDirection(new THREE.Vector3());look.y=0;look.normalize();
-    const right=new THREE.Vector3(-look.z,0,look.x);
+    const right=new THREE.Vector3().crossVectors(look,new THREE.Vector3(0,1,0)).normalize();
     const delta=look.multiplyScalar(f).addScaledVector(right,side);delta.y+=vertical;
     const boost=this.keys.has('ShiftLeft')||this.keys.has('ShiftRight')?2.4:1;
     if(delta.lengthSq()>0){delta.normalize().multiplyScalar(dt*this.cameraMoveSpeed*boost);this.camera.position.add(delta);this.controls.target.add(delta);}
   }
   frame(){
     const dt=Math.min(.05,this.clock.getDelta());
-    this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.robotEditor?.transform?.axis&&document.pointerLockElement!==this.renderer.domElement;
+    const axis=this.robotEditor?.transform?.axis;
+    // Never give OrbitControls ownership of a TransformControls gesture.
+    const cameraAllowed=this.cameraOrbitGesture===null?!axis:this.cameraOrbitGesture;
+    this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.editorGizmoPointer&&cameraAllowed&&document.pointerLockElement!==this.renderer.domElement;
     this.navigateCamera(dt);
     if(!this.renderer.xr.isPresenting)this.controls.update();
     this.updateXR();this.robotEditor?.tick(dt);this.updateVoiceRings(dt);
