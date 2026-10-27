@@ -1,0 +1,42 @@
+{
+  "version": "0.2.1",
+  "changes": [
+    "Fix Flask endpoint collision that prevented backend from starting (public_asset instead of static)",
+    "Add HTTP and Flask endpoint regression tests, keeping previous v0.2.1 frontend and features unchanged",
+    "Automatic full-stack deployment with Flask, SQLite and Nginx API/WebSocket proxy"
+  ],
+  "sha256": {
+    ".gitignore": "02a627ca2394354e0d201f53dad8ebce6cdf3fe2bc2e2b8ef3d9fe7341c66091",
+    "README.md": "f8525c327f62d908b8fad9decf1cdcf757476a5a092cd1d96bb9ed38cb503821",
+    "assets/solvi-character.glb": "5196cf2cfa93fdd3c7a08ea52e6bda4ac34c65e76f254e90a4389290bb10c963",
+    "backend/configure-nginx.py": "f6a5a44832c67d2e709cf13c55c3dc186cc1071047a5ebd7b4ed54d80c583320",
+    "backend/deploy-from-mac.sh": "85302df236a1bc10fde2ed128c9957073585149c3337f15100d1e000d1e1179d",
+    "backend/hash_admin_password.py": "0e6983d6cad8336d766a17428d431d6b429eb21b3d9cfe4a5872aa747a3ae6e8",
+    "backend/install-ubuntu.sh": "6f9a6475b997ce364a1721626ee8351a3c48553da07bfe05b39af5a40bfd7329",
+    "backend/nginx-locations.example": "ffe7a77fe7119ccaea32a0a7e8553f24f523ecb9ab322862748cf224300bfda5",
+    "backend/requirements.txt": "7fa9109411eb5d848ef300c8c672fdfef52494b522541dafcf496743cee8d7f5",
+    "backend/server.py": "b67dae6b3cddc47d939378fdf8e4725093d827194003a6634e55d89202b47ffe",
+    "backend/solvi-help.service.example": "2e8ac78e3f8eb1dbe203b0e23d3f2cb69cbea23523af2a6f487164b608fc622c",
+    "backend/test_api.py": "43c96fa729b0b046e8055b3dc918ca01d7ec73fc6b39a9689bfc737cdbb7e895",
+    "backend/test_nginx.py": "36e6c1b22f8da51e8d1e809c846c3eec02ceaabc1535f28b3b5c98b14d33453b",
+    "index.html": "58a902e27668b55231383d460877b30110fb920814ad330009ff1cb25bd1dff6",
+    "js/animations.js": "524112f03cc16d1b466b9ffd76788482bd56af86489a93b09c034a9b5ae44da8",
+    "js/devlog.js": "88731307c333c1b4c2f94856ea64a41101b69356482dda7829e982e1afc4b0ed",
+    "js/editor.js": "155df4fec8f963587dc9e8afa97c459e704f7ab6ded5acc454b38b5e74832841",
+    "js/live.js": "72084cf0c4839c256ac788424b9d712b600685efd4a7b7458f04e0970c40c8e0",
+    "js/main.js": "c3c9b7e7bb58546f1398e2232a2cc5a6076f906429441c0299fe2f4446b966d3",
+    "js/media.js": "0cac42f757752430f561f0a2aa0dac5a69627ea6fc4b40e90e32393612e77be9",
+    "js/studio.js": "18babf39057903b2c3dec6598046e0fc6312d2fe609fcaf1b015d2182cd46624",
+    "js/world.js": "0164e16810736a71d11e2503f505e54f990bd42f1eff71c99ec17259a1902a97",
+    "js/xr-navigation.js": "5d6279f9d34b9da64dc9597138dd36de56514282e935a063578ed19ba77a85ba",
+    "package.json": "69fd733ce20140f32e5dab8a4d12e5b1a8aec33ff672abf27222a132794b81bd",
+    "releases.json": "116b07bfee687ddf8bb0b1e919754dc51f5533827f5bcdd2b8b1a0d37a862b69",
+    "scripts/check_browser_modules.mjs": "9974999db6ddc2ec8b03562818feeb844553bd3002a439ee08935423ff072575",
+    "scripts/prepare_vendor.mjs": "2d4ba95b2fe934f62c3cafba2a731904ae33d20f98eeb5067ae47106bb1009a7",
+    "styles.css": "659268fc6182a5502640f602447f178f351f24f136291edd11713bfed79d2a95",
+    "tests/animations.test.mjs": "fcccf3535ee3f478546c156648b5338e48da9448cdf9887eaed721b6d7642cf4",
+    "tests/browser-imports.test.mjs": "3667525190881ae35376c73d67eb7741cccfdaff615f2ea6e1d5337db4375bf6",
+    "tests/studio.test.mjs": "33e7332d1d2d30a90fe594fc112455c26e007ef7603308bfa21c1096e231155d",
+    "tests/xr.test.mjs": "1998ce64747f09c39b70ae82ce1d6e0330ce3cf95f8a5b3e8f044509753c2d90"
+  }
+}

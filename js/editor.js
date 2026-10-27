@@ -42,19 +42,22 @@ export class SceneEditor{
   this.transform=new TransformControls(world.camera,world.renderer.domElement);
   // Recent Three.js exposes TransformControls as an Object3D wrapper plus a helper gizmo.
   world.scene.add(this.transform.getHelper());
-  this.transform.addEventListener('dragging-changed',e=>{world.controls.enabled=!e.value;});
+  this.transform.addEventListener('dragging-changed',e=>{world.editorDragging=Boolean(e.value);world.controls.enabled=!e.value;});
   this.transform.addEventListener('objectChange',()=>{this.updateInspector();});
-  this.setupUI();this.events();this.refreshList();
+  this.setupUI();this.events();this.refreshList();window.solviEditor=this;
  }
  setupUI(){
   const menu=byId('addMenu');
   const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Lighting',['light']]];
-  menu.replaceChildren();
+  menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';menu.append(bar);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';menu.append(search);
+  search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
+  search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
    for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.onclick=()=>this.add(k);group.append(button);}menu.append(group);}
-  byId('addObjectButton').onclick=()=>{menu.hidden=!menu.hidden;};
+  byId('addObjectButton').onclick=()=>{menu.hidden=!menu.hidden;if(!menu.hidden)byId('addSearch')?.focus();};
   byId('objectsButton').onclick=()=>{byId('scenePanel').hidden=!byId('scenePanel').hidden;this.refreshList();};
   byId('closeScenePanel').onclick=()=>byId('scenePanel').hidden=true;
+  byId('closeProperties').onclick=()=>byId('propertiesPanel').hidden=true;
   for(const mode of ['translate','rotate','scale'])byId('transform-'+mode).onclick=()=>this.transform.setMode(mode);
   byId('deleteObject').onclick=()=>this.remove();
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
@@ -80,14 +83,14 @@ export class SceneEditor{
     if(this.items.includes(node)){this.select(node);e.stopImmediatePropagation();}}
   },true);
   window.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||e.metaKey||e.ctrlKey||e.altKey)return;
-   if(e.shiftKey&&e.code==='KeyA'){e.preventDefault();byId('addMenu').hidden=!byId('addMenu').hidden;}
+   if(e.shiftKey&&e.code==='KeyA'){e.preventDefault();byId('addMenu').hidden=!byId('addMenu').hidden;if(!byId('addMenu').hidden)byId('addSearch')?.focus();}
    else if(this.selected&&['KeyG','KeyR','KeyS'].includes(e.code))this.transform.setMode({KeyG:'translate',KeyR:'rotate',KeyS:'scale'}[e.code]);
    else if(this.selected&&['Delete','Backspace'].includes(e.key)){e.preventDefault();this.remove();}
   });
  }
  add(kind){const object=objectFor(kind);this.items.push(object);this.world.scene.add(object);this.select(object);byId('addMenu').hidden=true;byId('scenePanel').hidden=false;this.refreshList();}
  select(obj){this.selected=obj;this.transform.attach(obj);this.updateInspector();this.refreshList();}
- updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;if(!obj)return;
+ updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
   byId('objectName').textContent=obj.name;
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
     const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);
@@ -96,7 +99,7 @@ export class SceneEditor{
   byId('objectColor').value=color?'#'+color.getHexString():'#88bbdd';
  }
  refreshList(){const list=byId('sceneItems');list.replaceChildren();for(const obj of this.items){const b=document.createElement('button');b.className=obj===this.selected?'selected':'';b.textContent=`${obj.userData.editorKind} · ${obj.name}`;b.onclick=()=>this.select(obj);list.append(b);}}
- remove(){if(!this.selected)return;const o=this.selected;this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);o.traverse(x=>{x.geometry?.dispose();if(x.material?.map)x.material.map.dispose();x.material?.dispose?.();});this.selected=null;this.updateInspector();this.refreshList();}
+ remove(){if(!this.selected)return;const o=this.selected;this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);o.traverse(x=>{x.geometry?.dispose();if(x.material?.map)x.material.map.dispose();x.material?.dispose?.();});this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();}
  texture(name){this.assignTexture(name==='none'?null:makeTexture(name));}
  assignTexture(tex){if(!this.selected)return;this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null}));}
@@ -104,10 +107,10 @@ export class SceneEditor{
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    this.items.push(o);this.world.scene.add(o);}this.refreshList();}
- async load(){const api=window.solviAPI;const local=localStorage.getItem('solvi-scene-demo');
+ async load(){const api=window.solviAPI;const local=localStorage.getItem('solvi-scene-'+(window.solviRoom||'main'));
   if(!api?.online){if(local)this.apply(JSON.parse(local));this.toast('Local scene loaded (not shared)');return;}
-  try{const data=await api.req('/api/scene');this.revision=data.revision;this.apply(data.objects);this.toast('Shared scene loaded');}catch(e){this.toast(e.message);}}
+  try{const data=await api.req('/api/scene?room='+encodeURIComponent(window.solviRoom||'main'));this.revision=data.revision;this.apply(data.objects);this.toast('Shared scene loaded');}catch(e){this.toast(e.message);}}
  async save(){const list=this.serialize();const api=window.solviAPI;
-  if(!api?.online){localStorage.setItem('solvi-scene-demo',JSON.stringify(list));this.toast('Scene saved locally (not shared)');return;}
-  try{const data=await api.req('/api/scene',{method:'PUT',body:JSON.stringify({revision:this.revision,objects:list})});this.revision=data.revision;this.toast('Shared scene saved');}catch(e){this.toast(e.message);}}
+  if(!api?.online){localStorage.setItem('solvi-scene-'+(window.solviRoom||'main'),JSON.stringify(list));this.toast('Scene saved locally (not shared)');return;}
+  try{const data=await api.req('/api/scene',{method:'PUT',body:JSON.stringify({room:window.solviRoom||'main',revision:this.revision,objects:list})});this.revision=data.revision;this.toast('Shared scene saved');}catch(e){this.toast(e.message);}}
 }

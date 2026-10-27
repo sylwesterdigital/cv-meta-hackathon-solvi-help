@@ -11,16 +11,16 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.1</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.2</small></div>
     <nav aria-label="Tools">
-      <button type="button" id="chatButton">Chat</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="objectsButton">Objects</button><button type="button" id="profileButton">Profile</button><button type="button" id="adminButton">Admin</button><button type="button" id="devLogButton">Dev log</button>
+      <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="objectsButton">Objects</button><button type="button" id="profileButton">Profile</button><button type="button" id="adminButton">Admin</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" title="Open in a WebXR headset browser">Enter VR</button>
       <button type="button" id="callButton">Voice / video</button>
     </nav>
   </header>
   <div class="statusbar" aria-live="polite"><span class="signal"></span> <span id="networkStatus">Connecting…</span> <span class="sep">/</span> <span id="visitorCount">1 viewer</span></div>
-  <section class="instructions" aria-label="Controls">Drag to orbit · Click floor to walk · WASD / Shift · VR: trigger to teleport, point at menu for actions</section>
-  <section class="controls" aria-label="Character controls">
+  <section hidden class="instructions" aria-label="Controls">Drag to orbit · Click floor to walk · WASD / Shift · VR: trigger to teleport, point at menu for actions</section>
+  <section hidden class="controls" aria-label="Character controls">
     <button id="autoButton" class="selected">Auto roam</button>
     <button data-motion="idle">Idle</button>
     <button data-motion="walk">Walk</button>
@@ -44,11 +44,13 @@
       <div id="callStatus" class="call-status">Not broadcasting.</div>
     </section>
   </div>
-  <aside id="addMenu" class="add-menu" hidden aria-label="Add an object"></aside>
+  <aside id="addMenu" class="add-menu" hidden aria-label="Add an object"><input id="addSearch" aria-label="Search objects" placeholder="Add object · type and press Enter"></aside>
   <aside id="scenePanel" class="scene-panel" hidden aria-label="Scene editor">
-    <div class="panel-title"><strong>Scene objects</strong><button id="closeScenePanel" aria-label="Close editor">×</button></div>
+    <div class="panel-title drag-handle"><strong>Scene objects</strong><button id="closeScenePanel" aria-label="Close editor">×</button></div>
     <div id="sceneItems" class="scene-items"></div>
-    <div id="objectInspector" hidden>
+    <div class="panel-footer"><button id="reloadScene">Load</button><button id="saveScene" class="primary">Save scene</button></div>
+  </aside>
+  <aside id="propertiesPanel" class="scene-panel properties-panel" hidden><div class="panel-title drag-handle"><strong>Object properties</strong><button id="closeProperties" title="Hide properties">×</button></div>    <div id="objectInspector" hidden>
       <div class="panel-title"><strong id="objectName">Object</strong><button id="deleteObject">Delete</button></div>
       <div class="transform-modes"><button id="transform-translate">Move (G)</button><button id="transform-rotate">Rotate (R)</button><button id="transform-scale">Scale (S)</button></div>
       <div id="propertyGrid" class="property-grid">
@@ -60,10 +62,9 @@
       <div class="field-label">Textures</div><div id="textureGrid" class="texture-grid"></div>
       <label class="field-label">Upload texture <input id="textureUpload" type="file" accept="image/png,image/jpeg,image/webp"></label>
     </div>
-    <div class="panel-footer"><button id="reloadScene">Load</button><button id="saveScene" class="primary">Save scene</button></div>
-  </aside>
-  <section id="chatPanel" class="chat-panel" aria-label="Chat" hidden>
-    <div class="panel-title"><div><strong>SOLVI · World chat</strong><small id="backendLabel">Checking backend…</small></div><button id="closeChat" aria-label="Close chat">×</button></div>
+</aside>
+  <section id="chatPanel" class="chat-panel" aria-label="Chat">
+    <div class="panel-title"><div><strong id="roomChatTitle">Main realm · messages</strong><small id="backendLabel">Checking backend…</small></div><button id="closeChat" aria-label="Close chat">×</button></div>
     <div id="chatFeed" class="chat-feed" aria-live="polite"></div>
     <div class="chat-composer">
       <div class="composer-line"><span id="composerName">Guest</span><select id="modelSelect" aria-label="Meta model"><option value="">AI unavailable</option></select></div>
@@ -79,6 +80,8 @@
       <small id="chatStatus">World chat available without an AI key. AI responses require MODEL_API_KEY.</small>
     </div>
   </section>
+  <div id="roomBackdrop" class="backdrop" hidden><section class="overlay" role="dialog" aria-label="Create realm"><div class="panel-title"><strong>New room / realm</strong><button id="closeRoom">×</button></div><label class="field-label">Room title<input id="roomTitle" maxlength="80" placeholder="Robot laboratory"></label><label class="field-label">Room slug<input id="roomSlug" maxlength="40" placeholder="robot-lab"></label><div class="panel-footer"><button class="primary" id="saveRoom">Create realm</button></div><small id="roomError"></small></section></div>
+  <video id="facePreview" autoplay muted playsinline hidden></video>
   <div id="profileBackdrop" class="backdrop profile-backdrop" hidden>
     <section class="overlay profile-modal" role="dialog" aria-label="Your SOLVI profile">
       <div class="panel-title"><div><strong>Welcome to SOLVI.help</strong><small>Choose a name to enter the world.</small></div><button id="closeProfile">×</button></div>

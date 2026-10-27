@@ -17,6 +17,7 @@ function establishTabChannel(uid){
 }
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
+let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;
 const toast=text=>{const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5200);};
 const show=(id,yes=true)=>{$(id).hidden=!yes;};
 const stored=()=>{try{return JSON.parse(localStorage.getItem('solvi-profile')||'null');}catch{return null;}};
@@ -56,7 +57,7 @@ async function afterLogin(){show('profileBackdrop',false);show('chatPanel',true)
   for(const id of modelIds)select.add(new Option('AI · '+id,id));
   select.value=modelIds.includes('muse-spark-1.3')?'muse-spark-1.3':'';select.disabled=false;
   if(!modelIds.length)$('chatStatus').textContent=data.note||'Human chat available. AI key not configured.';}catch(e){$('modelSelect').replaceChildren(new Option('Model catalog unavailable',''));toast(e.message);}
- try{const data=await api.req('/api/messages');$('chatFeed').replaceChildren();for(const row of data.messages||[])await bubble(row);}catch(e){toast(e.message);}
+ await configureRooms();await loadMessages();
  window.dispatchEvent(new CustomEvent('solvi:scene-ready'));
 }
 async function submitProfile(){const fields=profileFields();if(!fields.name){$('profileStatus').textContent='Name is required';return;}
@@ -72,7 +73,7 @@ async function submitProfile(){const fields=profileFields();if(!fields.name){$('
 }
 function safeTime(t){const d=new Date(t||Date.now());return isNaN(+d)?'':d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
 async function bubble(entry){
- const feed=$('chatFeed');const wrap=document.createElement('article');const role=entry.role==='assistant'?'assistant':'user';wrap.className='chat-row '+role;
+ const feed=$('chatFeed');const wrap=document.createElement('article');const role=entry.role==='assistant'?'assistant':'user';const mine=role==='user'&&(entry.user_id===me?.id||(!entry.user_id&&entry.speaker===me?.name));wrap.className='chat-row '+(mine?'mine':'theirs');wrap.dataset.messageId=entry.id||'';wrap.addEventListener('wheel',event=>{event.preventDefault();feed.scrollTop+=event.deltaY;},{passive:false});
  const pic=document.createElement('span');pic.className='chat-avatar';pic.textContent=role==='assistant'?'AI':(entry.speaker||me?.name||'?').slice(0,2).toUpperCase();
  const panel=document.createElement('div');panel.className='chat-bubble';const meta=document.createElement('div');meta.className='chat-meta';
  const name=document.createElement('strong');name.textContent=entry.role==='assistant'?(entry.model||'Meta Model API'):(entry.speaker||me?.name||'Guest');
@@ -89,10 +90,10 @@ function updatePending(){const p=$('pendingMedia');p.replaceChildren();for(const
 async function attach(file){if(!file)return;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');}catch(e){toast(e.message);}}
 async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.length)return;if(!me){show('profileBackdrop',true);return;}
  const ids=pending.map(x=>x.id);$('chatInput').value='';pending=[];updatePending();
- if(!online){await bubble({role:'user',text,speaker:me.name,created:new Date().toISOString()});toast('Local demo only. AI requires backend and MODEL_API_KEY.');return;}
+ if(!online){await bubble({role:'user',text,speaker:me.name,user_id:me.id,created:new Date().toISOString()});toast('Local demo only. AI requires backend and MODEL_API_KEY.');return;}
  const useAI=!!$('modelSelect').value;
  $('sendChat').disabled=true;$('chatStatus').textContent='Model processing…';
- try{const response=await api.req(useAI?'/api/chat':'/api/message',{method:'POST',body:JSON.stringify({text,model:$('modelSelect').value,media:ids})});
+ try{const response=await api.req(useAI?'/api/chat':'/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text,model:$('modelSelect').value,media:ids})});
   await bubble(response.message);if(response.answer)await bubble(response.answer);$('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
  }catch(e){$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
  finally{$('sendChat').disabled=false;}
@@ -140,10 +141,64 @@ async function importProfile(file){try{const data=JSON.parse(await file.text());
 async function adminLogin(){try{const data=await api.req('/api/admin/login',{method:'POST',body:JSON.stringify({password:$('adminPassword').value})});adminToken=data.token;$('adminPassword').value='';await stats();}
  catch(e){$('adminStats').textContent=e.message;}}
 async function stats(){if(!adminToken)return;try{const data=await api.req('/api/admin/stats',{headers:{'X-Solvi-Admin':adminToken}});$('adminStats').textContent=JSON.stringify(data,null,2);}catch(e){$('adminStats').textContent=e.message;}}
+async function loadMessages(){
+ if(!online||!auth)return;
+ try{
+   const data=await api.req('/api/messages?room='+encodeURIComponent(activeRoom));
+   const feed=$('chatFeed');const previous=new Map([...feed.children].map(e=>[e.dataset.messageId,e]));
+   for(const entry of data.messages||[]){if(previous.has(entry.id))continue;
+      await bubble(entry);
+      if(entry.user_id!==me?.id&&entry.role==='user')window.dispatchEvent(new CustomEvent('solvi:peer-message',{detail:{userId:entry.user_id,text:entry.text}}));
+   }
+   const keep=new Set((data.messages||[]).map(m=>m.id));for(const old of previous.values())if(!keep.has(old.dataset.messageId))old.remove();
+ }catch(e){toast(e.message);}
+}
+async function configureRooms(){
+ const select=$('roomSelect');if(!select)return;
+ let rooms=[{id:'main',title:'Main realm'}];
+ if(online&&auth){try{rooms=(await api.req('/api/rooms')).rooms||rooms;}catch(e){toast(e.message);}}
+ if(!rooms.some(room=>room.id===activeRoom))activeRoom='main';window.solviRoom=activeRoom;
+ select.replaceChildren(...rooms.map(room=>new Option(room.title,room.id)));select.value=activeRoom;
+ $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
+ select.onchange=()=>{
+   activeRoom=select.value;window.solviRoom=activeRoom;sessionStorage.setItem('solvi-room',activeRoom);
+   $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
+   window.dispatchEvent(new CustomEvent('solvi:room-changed',{detail:{room:activeRoom}}));
+ };
+}
+function configureDragging(){
+ for(const id of ['scenePanel','propertiesPanel','addMenu']){
+  const panel=$(id),handle=panel?.querySelector('.drag-handle');if(!panel||!handle)continue;
+  let delta=null;
+  handle.addEventListener('pointerdown',event=>{
+    if(event.target.closest('button,input'))return;
+    const rect=panel.getBoundingClientRect();delta={x:event.clientX-rect.left,y:event.clientY-rect.top};
+    handle.setPointerCapture(event.pointerId);event.preventDefault();
+  });
+  handle.addEventListener('pointermove',event=>{if(!delta)return;
+    panel.style.left=Math.max(4,Math.min(innerWidth-panel.offsetWidth-4,event.clientX-delta.x))+'px';
+    panel.style.top=Math.max(55,Math.min(innerHeight-90,event.clientY-delta.y))+'px';panel.style.right='auto';panel.style.bottom='auto';
+  });
+  const release=()=>delta=null;handle.addEventListener('pointerup',release);handle.addEventListener('pointercancel',release);
+ }
+}
+function setupNewRoom(){
+ $('createRoom').onclick=()=>{show('roomBackdrop',true);$('roomTitle').focus();};
+ $('closeRoom').onclick=()=>show('roomBackdrop',false);
+ $('roomTitle').addEventListener('input',()=>{if(!$('roomSlug').dataset.touched)$('roomSlug').value=$('roomTitle').value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');});
+ $('roomSlug').addEventListener('input',()=>{$('roomSlug').dataset.touched='1';});
+ $('saveRoom').onclick=async()=>{
+  if(!online||!auth){$('roomError').textContent='Backend required';return;}
+  try{const room=(await api.req('/api/rooms',{method:'POST',body:JSON.stringify({id:$('roomSlug').value,title:$('roomTitle').value})})).room;
+    show('roomBackdrop',false);await configureRooms();$('roomSelect').value=room.id;$('roomSelect').dispatchEvent(new Event('change'));
+  }catch(e){$('roomError').textContent=e.message;}
+ };
+}
 function bindUI(world){
  const editor=new SceneEditor(world,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
+ window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',()=>toast('Scene updated by another user — select Objects → Load to refresh'));
- window.addEventListener('solvi:chat-updated',async()=>{if(!online||!auth)return;try{const data=await api.req('/api/messages');$('chatFeed').replaceChildren();for(const row of data.messages||[])await bubble(row);}catch(e){toast(e.message);}});
+ window.addEventListener('solvi:chat-updated',loadMessages);
  $('chatButton').onclick=()=>show('chatPanel',$('chatPanel').hidden);$('closeChat').onclick=()=>show('chatPanel',false);
  $('profileButton').onclick=()=>{fillProfile(me||stored());show('profileBackdrop',true);};
  $('closeProfile').onclick=()=>{if(me)show('profileBackdrop',false);else toast('Enter a name to start');};
@@ -159,6 +214,6 @@ function bindUI(world){
  $('adminButton').onclick=()=>show('adminBackdrop',true);$('closeAdmin').onclick=()=>show('adminBackdrop',false);
  $('adminLogin').onclick=adminLogin;$('adminRefresh').onclick=stats;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){show('addMenu',false);show('adminBackdrop',false);if(me)show('profileBackdrop',false);}});
- begin();
+ setupNewRoom();configureRooms();configureDragging();begin();
 }
 export function initStudio(world){bindUI(world);}

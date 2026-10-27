@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.1",
+  "currentVersion": "0.2.2",
   "releases": [
+    {
+      "version": "0.2.2",
+      "publishedAt": "2026-10-27T13:28:00Z",
+      "changes": [
+        "New realms: independent SQLite chat history, scene data, and room-scoped WebSocket participants.",
+        "Empty starter world, persistent 3D chat overlay, own messages right and other participants / AI left.",
+        "Draggable Add, Objects and Properties panes, Shift+A search and Enter to add, camera-safe transform controls.",
+        "Remote-user heads from FaceCap GLB, name labels, temporary chat balloons, opt-in webcam facial expression tracking.",
+        "WebXR controller input, hand models and teleportation remain available.",
+        "Fix Flask integration test Origin to match the watcher environment without weakening origin protection."
+      ]
+    },
     {
       "version": "0.2.1",
       "publishedAt": "2026-10-27T12:44:45Z",

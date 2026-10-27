@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MotionController, computeMode} from './animations.js';
 import {teleportOffset,validTeleport} from './xr-navigation.js';
@@ -35,7 +37,7 @@ export class SolviWorld {
     this.clock=new THREE.Clock();
     this.character=new THREE.Group();this.scene.add(this.character);
     this.actor=new THREE.Group();this.character.add(this.actor);
-    this.pending=null;this.roam=true;this.desiredSpeed=1.4;this.idleTimer=2;this.currentMode='idle';this.gestureUntil=0;
+    this.pending=null;this.roam=false;this.allowFloorWalk=false;this.editorDragging=false;this.desiredSpeed=1.4;this.idleTimer=2;this.currentMode='idle';this.gestureUntil=0;
     this.keys=new Set();this.animator=null;this.ready=false;this.others=new Map();
     this.raycaster=new THREE.Raycaster();this.mouse=new THREE.Vector2();
     this.setupEnvironment();this.setupEvents();this.setupXR();
@@ -53,7 +55,7 @@ export class SolviWorld {
     const boxGeo=new THREE.BoxGeometry(1,1,1);
     const palette=['#d1b29b','#638c9c','#8c89af','#8c9b83','#b78e78'];
     this.obstacles=[];
-    for(let i=0;i<16;i++){
+    for(let i=0;i<0;i++){
       const x=random(-13,13),z=random(-12,12);
       if(Math.hypot(x,z)<3.5)continue;
       const h=random(.5,2.6);
@@ -61,8 +63,8 @@ export class SolviWorld {
       m.position.set(x,h/2,z);m.scale.set(random(.5,1.8),h,random(.6,1.6));m.castShadow=true;m.receiveShadow=true;this.scene.add(m);
       this.obstacles.push(m);
     }
-    const rings=new THREE.Mesh(new THREE.TorusGeometry(1.4,.012,8,60),new THREE.MeshBasicMaterial({color:'#87bdc9',transparent:true,opacity:.4}));
-    rings.rotation.x=Math.PI/2;rings.position.y=.02;this.scene.add(rings);
+    // The world begins empty: only the ground plane and grid are visible.
+    this.remoteFaceSource=null;this.remoteFaceLoading=null;
   }
   async loadAvatar(url='./assets/solvi-character.glb'){
     const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');
@@ -100,6 +102,7 @@ export class SolviWorld {
       if(Math.hypot(e.clientX-dragX,e.clientY-dragY)>5||this.renderer.xr.isPresenting)return;
       this.mouse.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
       this.raycaster.setFromCamera(this.mouse,this.camera);
+      if(!this.allowFloorWalk)return;
       const hits=this.raycaster.intersectObject(this.floor);
       if(hits.length){this.pending=new THREE.Vector3(hits[0].point.x,0,hits[0].point.z);this.idleTimer=0;}
     });
@@ -149,17 +152,70 @@ export class SolviWorld {
     this.animator?.update(dt);
     this.onPose?.({x:+this.character.position.x.toFixed(2),z:+this.character.position.z.toFixed(2),yaw:+this.character.rotation.y.toFixed(2),mode});
   }
-  setRemotePeers(peers){
-    for(const [id,mesh] of this.others){if(!peers.has(id)){this.scene.remove(mesh);mesh.traverse(o=>{o.geometry?.dispose();o.material?.dispose();});this.others.delete(id);}}
-    for(const [id,state] of peers){if(!this.others.has(id)){
-      const group=new THREE.Group(),mat=new THREE.MeshStandardMaterial({color:'#6fcaba',transparent:true,opacity:.72});
-      const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.22,.85,4,8),mat);torso.position.y=.85;group.add(torso);
-      const head=new THREE.Mesh(new THREE.SphereGeometry(.18,12,10),mat);head.position.y=1.62;group.add(head);
-      this.scene.add(group);this.others.set(id,group);
-    }this.updateRemoteState(id,state);}
-    document.getElementById('visitorCount').textContent=`${peers.size+1} viewer${peers.size?'s':''}`;
+  async loadRemoteFace(){
+    if(this.remoteFaceLoading)return this.remoteFaceLoading;
+    this.remoteFaceLoading=(async()=>{
+      const loader=new GLTFLoader();const ktx=new KTX2Loader();
+      ktx.setTranscoderPath('./vendor/three/basis/');ktx.detectSupport(this.renderer);
+      loader.setKTX2Loader(ktx);loader.setMeshoptDecoder(MeshoptDecoder);
+      try{
+        const gltf=await loader.loadAsync('./assets/facecap.glb');
+        this.remoteFaceSource=gltf.scene;
+        for(const peer of this.others.values())this.addFaceToPeer(peer);
+      }catch(error){console.warn('FaceCap GLB unavailable; using visible fallback heads.',error);}
+      finally{ktx.dispose();}
+    })();return this.remoteFaceLoading;
   }
-  updateRemoteState(id,state){const group=this.others.get(id);if(group&&state){group.position.set(Number(state.x)||0,0,Number(state.z)||0);group.rotation.y=Number(state.yaw)||0;}}
+  labelSprite(text,background='#142539'){
+    const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;
+    const ctx=canvas.getContext('2d');ctx.fillStyle=background;ctx.beginPath();ctx.roundRect(4,8,504,104,22);ctx.fill();
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='600 37px system-ui';ctx.fillStyle='#ffffff';ctx.fillText(String(text||'Guest').slice(0,25),256,60,478);
+    const texture=new THREE.CanvasTexture(canvas);
+    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));sprite.scale.set(1.38,.35,1);
+    return sprite;
+  }
+  addFaceToPeer(peer){
+    if(!this.remoteFaceSource||peer.faceModel)return;
+    const model=this.remoteFaceSource.clone(true);
+    const box=new THREE.Box3().setFromObject(model);const size=box.getSize(new THREE.Vector3());
+    if(size.y>.001){const k=.52/size.y;model.scale.setScalar(k);model.position.set(-box.getCenter(new THREE.Vector3()).x*k,-box.getCenter(new THREE.Vector3()).y*k,-box.getCenter(new THREE.Vector3()).z*k);}
+    peer.faceGroup.add(model);peer.faceModel=model;peer.fallback.visible=false;
+  }
+  ensurePeer(id,state={}){
+    if(this.others.has(id))return this.others.get(id);
+    const group=new THREE.Group();
+    const faceGroup=new THREE.Group();faceGroup.position.y=1.65;group.add(faceGroup);
+    const fallback=new THREE.Mesh(new THREE.SphereGeometry(.26,24,16),new THREE.MeshStandardMaterial({color:'#a6d9ee',roughness:.65}));faceGroup.add(fallback);
+    const label=this.labelSprite(state.name||'Guest');label.position.y=2.12;group.add(label);
+    this.scene.add(group);
+    const peer={group,faceGroup,fallback,label,name:state.name||'Guest',faceModel:null,balloon:null,balloonTimeout:0};
+    this.others.set(id,peer);this.addFaceToPeer(peer);
+    this.loadRemoteFace();return peer;
+  }
+  setRemotePeers(peers){
+    for(const [id,peer] of this.others){if(!peers.has(id)){
+      this.scene.remove(peer.group);peer.label.material.map.dispose();peer.label.material.dispose();this.others.delete(id);
+    }}
+    for(const [id,data] of peers){const state=data.state||data;const peer=this.ensurePeer(id,{name:data.name||state.name||'Guest'});this.updateRemoteState(id,state);}
+    const out=document.getElementById('visitorCount');if(out)out.textContent=`${peers.size+1} in room`;
+  }
+  updateRemoteState(id,state){
+    if(!state)return;const peer=this.ensurePeer(id,{name:state.name||'Guest'});
+    if(Number.isFinite(+state.x)&&Number.isFinite(+state.z))peer.group.position.set(Number(state.x),Math.max(-1,Math.min(12,(Number(state.y)||1.65)-1.65)),Number(state.z));
+    peer.group.rotation.y=Number(state.yaw)||0;
+    const dict=state.face||{};
+    peer.faceModel?.traverse(obj=>{if(!obj.morphTargetDictionary||!obj.morphTargetInfluences)return;
+      for(const [key,value] of Object.entries(dict)){
+        const index=obj.morphTargetDictionary[key]??obj.morphTargetDictionary[key.replace('Left','_L').replace('Right','_R')];
+        if(index!==undefined)obj.morphTargetInfluences[index]=Math.max(0,Math.min(1,Number(value)||0));
+      }
+    });
+  }
+  showPeerMessage(id,text){const peer=this.others.get(id);if(!peer||!text)return;
+    if(peer.balloon){peer.group.remove(peer.balloon);peer.balloon.material.map.dispose();peer.balloon.material.dispose();}
+    peer.balloon=this.labelSprite(text.slice(0,42),'#27506a');peer.balloon.position.y=2.54;peer.balloon.scale.set(2.2,.40,1);peer.group.add(peer.balloon);
+    const token=++peer.balloonTimeout;setTimeout(()=>{if(peer.balloonTimeout===token&&peer.balloon){peer.group.remove(peer.balloon);peer.balloon.material.map.dispose();peer.balloon.material.dispose();peer.balloon=null;}},6500);
+  }
   setupXR(){
     const btn=document.getElementById('xrButton');
     const toast=(message)=>{const el=document.getElementById('toast');el.textContent=message;el.hidden=false;};
@@ -198,7 +254,7 @@ export class SolviWorld {
       new THREE.MeshBasicMaterial({color:0x102136,transparent:true,opacity:.94,side:THREE.DoubleSide,depthTest:false}));
     this.xrMenu.add(panel);
     this.xrButtons=[];
-    for(const [index,mode] of ['idle','walk','run','wave'].entries()){
+    for(const [index,mode] of ['cube','sphere','light','room'].entries()){
       const cv=document.createElement('canvas');cv.width=256;cv.height=72;
       const ctx=cv.getContext('2d');ctx.fillStyle='#294960';ctx.fillRect(0,0,256,72);
       ctx.fillStyle='#ffffff';ctx.textAlign='center';ctx.font='600 30px system-ui';
@@ -206,7 +262,7 @@ export class SolviWorld {
       const tex=new THREE.CanvasTexture(cv);
       const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.68,.19),
         new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide,depthTest:false}));
-      mesh.position.set(0,.35-index*.23,.01);mesh.userData.motion=mode;
+      mesh.position.set(0,.35-index*.23,.01);mesh.userData.action=mode;
       this.xrMenu.add(mesh);this.xrButtons.push(mesh);
     }
     this.xrMenu.visible=false;this.scene.add(this.xrMenu);
@@ -228,7 +284,7 @@ export class SolviWorld {
       controller.addEventListener('selectstart',()=>{
         if(!this.renderer.xr.isPresenting)return;
         const selection=this.xrRaycast(controller);
-        if(selection.menu){this.setMode(selection.menu.userData.motion);return;}
+        if(selection.menu){const action=selection.menu.userData.action;if(action==='room'){const select=document.getElementById('roomSelect');if(select&&select.options.length>1){select.selectedIndex=(select.selectedIndex+1)%select.options.length;select.dispatchEvent(new Event('change'));}}else window.solviEditor?.add(action);return;}
         this.xrInputs[i].selecting=true;
         this.xrInputs[i].landing=selection.floor?.point.clone()||null;
       });
@@ -300,10 +356,15 @@ export class SolviWorld {
     this.teleportIndicator.visible=found;
   }
   frame(){
-    const dt=Math.min(.05,this.clock.getDelta());this.updateMovement(dt);
-    this.controls.enabled=!this.renderer.xr.isPresenting;
+    const dt=Math.min(.05,this.clock.getDelta());
+    this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging;
     if(!this.renderer.xr.isPresenting)this.controls.update();
     this.updateXR();
+    if(this.onPose&&(!this.lastPose||performance.now()-this.lastPose>180)){
+      this.lastPose=performance.now();const cam=this.renderer.xr.isPresenting?this.renderer.xr.getCamera():this.camera;
+      const position=cam.getWorldPosition(new THREE.Vector3());
+      this.onPose({x:position.x,y:position.y,z:position.z,yaw:cam.rotation.y,face:this.localFace||{}});
+    }
     this.renderer.render(this.scene,this.camera);
   }
 }

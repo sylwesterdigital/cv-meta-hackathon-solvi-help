@@ -30,7 +30,7 @@ function imports(source) {
   return [...new Set(found)];
 }
 
-const queue = ['controls/OrbitControls.js', 'controls/TransformControls.js', 'loaders/GLTFLoader.js', 'loaders/DRACOLoader.js', 'webxr/XRControllerModelFactory.js', 'webxr/XRHandModelFactory.js'];
+const queue = ['controls/OrbitControls.js', 'controls/TransformControls.js', 'loaders/GLTFLoader.js', 'loaders/DRACOLoader.js', 'loaders/KTX2Loader.js', 'libs/meshopt_decoder.module.js', 'webxr/XRControllerModelFactory.js', 'webxr/XRHandModelFactory.js'];
 const visited = new Set();
 while (queue.length) {
   const rel = queue.shift();
@@ -56,4 +56,5 @@ while (queue.length) {
   }
 }
 await cp(path.join(examples, 'libs', 'draco'), path.join(vendor, 'draco'), { recursive: true, force: true });
+await cp(path.join(examples, 'libs', 'basis'), path.join(vendor, 'basis'), {recursive:true,force:true});
 console.log(`Three.js bundled with ${visited.size} recursively resolved addon modules and Draco decoder.`);

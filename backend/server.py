@@ -68,7 +68,14 @@ def init_db():
         CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS scene (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, payload TEXT NOT NULL);
         INSERT OR IGNORE INTO scene VALUES(1,0,'[]');
+        CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, title TEXT NOT NULL, created TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS room_scenes (room_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL DEFAULT '[]');
+        INSERT OR IGNORE INTO rooms VALUES('main','Main realm','2026-10-27T00:00:00Z');
+        INSERT OR IGNORE INTO room_scenes VALUES('main',0,'[]');
         ''')
+        cols={r[1] for r in con.execute('PRAGMA table_info(messages)').fetchall()}
+        if 'room_id' not in cols:con.execute("ALTER TABLE messages ADD COLUMN room_id TEXT NOT NULL DEFAULT 'main'")
+        con.execute('CREATE INDEX IF NOT EXISTS messages_room_created ON messages(room_id,created)')
 init_db()
 
 
@@ -115,7 +122,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.1',ai=bool(MODEL_KEY),backend=True,websocket=True)
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.2',ai=bool(MODEL_KEY),backend=True,websocket=True)
 
 @app.post('/api/onboard')
 def onboard():
@@ -165,12 +172,42 @@ def profile():
         row=con.execute('SELECT * FROM users WHERE id=?',(user['id'],)).fetchone()
     return jsonify(user=public_user(row))
 
+ROOM_RE=re.compile(r'^[a-z0-9][a-z0-9_-]{0,39}$')
+def selected_room(value):
+    name=str(value or 'main').lower()
+    if not ROOM_RE.fullmatch(name):return None
+    with db() as con:exists=con.execute('SELECT 1 FROM rooms WHERE id=?',(name,)).fetchone()
+    return name if exists else None
+
+@app.get('/api/rooms')
+def list_rooms():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:rows=con.execute('SELECT id,title,created FROM rooms ORDER BY created,id LIMIT 100').fetchall()
+    return jsonify(rooms=[dict(r) for r in rows])
+
+@app.post('/api/rooms')
+def create_room():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    rid=str(data.get('id','')).lower().strip();title=str(data.get('title','')).strip()[:80]
+    if not ROOM_RE.fullmatch(rid) or not title:return json_error('Room needs a slug (letters, numbers, dash) and a title')
+    with db() as con:
+        if con.execute('SELECT COUNT(*) AS n FROM rooms').fetchone()['n']>=100:return json_error('Room capacity reached',409)
+        if con.execute('SELECT 1 FROM rooms WHERE id=?',(rid,)).fetchone():return json_error('Room already exists',409)
+        con.execute('INSERT INTO rooms VALUES(?,?,?)',(rid,title,now()))
+        con.execute('INSERT INTO room_scenes(room_id) VALUES(?)',(rid,))
+    return jsonify(room={'id':rid,'title':title})
+
 @app.get('/api/messages')
 def messages():
     user,msg,status=actor()
     if not user:return json_error(msg,status)
+    room_id=selected_room(request.args.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
     with db() as con:
-        rows=con.execute('SELECT messages.*,users.name AS speaker,users.avatar AS avatar FROM messages JOIN users ON users.id=messages.user_id ORDER BY messages.created DESC LIMIT 80').fetchall()
+        rows=con.execute('SELECT messages.*,users.name AS speaker,users.avatar AS avatar FROM messages JOIN users ON users.id=messages.user_id WHERE messages.room_id=? ORDER BY messages.created DESC LIMIT 80',(room_id,)).fetchall()
     return jsonify(messages=[dict(r) for r in reversed(rows)])
 
 MEDIA_TYPES={'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/gif':'.gif',
@@ -260,6 +297,8 @@ def human_message():
     if not user:return json_error(msg,status)
     data=request.get_json(silent=True) or {}
     text=str(data.get('text','')).strip()[:3000]
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
     ids=data.get('media',[])
     if not isinstance(ids,list) or len(ids)>3:return json_error('Maximum three attachments')
     if not text and not ids:return json_error('Empty message')
@@ -268,10 +307,10 @@ def human_message():
             if not isinstance(mid,str) or not con.execute('SELECT 1 FROM media WHERE id=? AND user_id=?',(mid,user['id'])).fetchone():
                 return json_error('Invalid attachment')
         message_id=str(uuid.uuid4());ts=now()
-        con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created) VALUES(?,?,?,?,?,?,?)',
-                    (message_id,user['id'],'user','',text,json.dumps(ids),ts))
-    publish({'type':'chat-created','id':message_id})
-    return jsonify(message={'id':message_id,'role':'user','speaker':user['name'],'avatar':user['avatar'],
+        con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id) VALUES(?,?,?,?,?,?,?,?)',
+                    (message_id,user['id'],'user','',text,json.dumps(ids),ts,room_id))
+    publish({'type':'chat-created','id':message_id,'room':room_id},room_id=room_id)
+    return jsonify(message={'id':message_id,'user_id':user['id'],'role':'user','speaker':user['name'],'avatar':user['avatar'],
                             'text':text,'media':json.dumps(ids),'created':ts})
 
 @app.post('/api/chat')
@@ -280,6 +319,8 @@ def chat():
     if not user:return json_error(msg,status)
     data=request.get_json(silent=True) or {}
     text=str(data.get('text','')).strip()[:3000]
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
     model=str(data.get('model','muse-spark-1.3'))
     media_ids=data.get('media',[])
     if not isinstance(media_ids,list) or len(media_ids)>3:return json_error('Maximum three attachments')
@@ -312,7 +353,7 @@ def chat():
         else:skipped.append(m['name'])
     if skipped:return json_error('Audio/video attachments can be stored, but sending them to this model is not implemented yet',422)
     uid=user['id'];ts=now();first_id=str(uuid.uuid4())
-    with db() as con:con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created) VALUES(?,?,?,?,?,?,?)',(first_id,uid,'user','',text,json.dumps(media_ids),ts))
+    with db() as con:con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id) VALUES(?,?,?,?,?,?,?,?)',(first_id,uid,'user','',text,json.dumps(media_ids),ts,room_id))
     started=time.monotonic()
     try:
         answer=meta_request('POST','/responses',{'model':model,'input':[{'role':'user','content':items}],'store':False})
@@ -322,16 +363,18 @@ def chat():
     except Exception as exc:
         return jsonify(error=str(exc),message_id=first_id),502
     elapsed=round((time.monotonic()-started)*1000);aid=str(uuid.uuid4())
-    with db() as con:con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,latency_ms) VALUES(?,?,?,?,?,?,?,?)',(aid,uid,'assistant',model,output,'[]',now(),elapsed))
-    publish({'type':'chat-created','id':aid})
-    return jsonify(message={'id':first_id,'role':'user','speaker':user['name'],'text':text,'media':json.dumps(media_ids),'created':ts,'avatar':user['avatar']},
+    with db() as con:con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,latency_ms,room_id) VALUES(?,?,?,?,?,?,?,?,?)',(aid,uid,'assistant',model,output,'[]',now(),elapsed,room_id))
+    publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
+    return jsonify(message={'id':first_id,'user_id':user['id'],'role':'user','speaker':user['name'],'text':text,'media':json.dumps(media_ids),'created':ts,'avatar':user['avatar']},
                    answer={'id':aid,'role':'assistant','model':model,'speaker':model,'text':output,'media':'[]','created':now(),'avatar':''},latency_ms=elapsed)
 
 @app.get('/api/scene')
 def get_scene():
     user,msg,status=actor()
     if not user:return json_error(msg,status)
-    with db() as con:row=con.execute('SELECT revision,payload FROM scene WHERE id=1').fetchone()
+    room_id=selected_room(request.args.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    with db() as con:row=con.execute('SELECT revision,payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
     return jsonify(revision=row['revision'],objects=json.loads(row['payload']))
 
 @app.put('/api/scene')
@@ -339,6 +382,8 @@ def set_scene():
     user,msg,status=actor()
     if not user:return json_error(msg,status)
     data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
     objects=data.get('objects',[]);revision=data.get('revision')
     if not isinstance(objects,list) or len(objects)>128 or not isinstance(revision,int):return json_error('Invalid scene')
     allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light'}
@@ -346,10 +391,10 @@ def set_scene():
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
         if not all(isinstance(o.get(n),list) and len(o[n])==3 and all(isinstance(x,(int,float)) and abs(x)<1000 for x in o[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
     with db() as con:
-        old=con.execute('SELECT revision FROM scene WHERE id=1').fetchone()['revision']
+        old=con.execute('SELECT revision FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['revision']
         if old!=revision:return jsonify(error='Scene changed on another client; reload before saving',revision=old),409
-        con.execute('UPDATE scene SET revision=?,payload=? WHERE id=1',(old+1,json.dumps(objects,separators=(',',':'))))
-    publish({'type':'scene-changed','revision':old+1})
+        con.execute('UPDATE room_scenes SET revision=?,payload=? WHERE room_id=?',(old+1,json.dumps(objects,separators=(',',':')),room_id))
+    publish({'type':'scene-changed','revision':old+1,'room':room_id},room_id=room_id)
     return jsonify(revision=old+1,ok=True)
 
 def verify_admin(passwd):
@@ -390,53 +435,63 @@ def admin_stats():
     with room_lock:connections=len(room)
     return jsonify(users=users,active_sessions=active,connections=connections,messages=messages,media_bytes=bytes_used,avg_inference_ms=round(latency),db_bytes=DB.stat().st_size,api_enabled=bool(MODEL_KEY))
 
-def publish(message,except_id=None):
+def publish(message,except_id=None,room_id=None):
     data=json.dumps(message)
-    with room_lock: peers=list(room.items())
-    for id_,sock_ in peers:
-        if id_==except_id:continue
-        try:sock_.send(data)
-        except Exception:pass
+    with room_lock:peers=list(room.items())
+    for uid,item in peers:
+        if uid==except_id or (room_id is not None and item['room']!=room_id):continue
+        try:item['ws'].send(data)
+        except (ConnectionError,OSError):pass
 
 @sock.route('/ws')
 def websocket(ws):
     if request.headers.get('Origin') not in ALLOWED_ORIGINS:ws.close();return
-    uid=None
+    uid=None;room_id=None
     try:
         first=json.loads(ws.receive() or '{}')
         if first.get('type')!='join':return
         tab=str(first.get('tab',''));token=str(first.get('token',''))
+        room_id=selected_room(first.get('room','main'))
+        if not room_id:return
         with db() as con:
-            user=con.execute('SELECT id,tab_id FROM users WHERE token_hash=?',(sha(token),)).fetchone()
+            user=con.execute('SELECT id,name,avatar,tab_id FROM users WHERE token_hash=?',(sha(token),)).fetchone()
         if not user or user['tab_id']!=tab:return
-        uid=user['id']
+        uid=user['id'];name=user['name']
         with room_lock:
             if uid in room or len(room)>100:return
-            room[uid]=ws
-            ws.send(json.dumps({'type':'snapshot','peers':[{'id':p,'state':{}} for p in room if p!=uid]}))
-        publish({'type':'presence','event':'joined','id':uid},uid)
+            peers=[{'id':key,'name':val['name'],'state':val['state']} for key,val in room.items() if val['room']==room_id]
+            room[uid]={'ws':ws,'room':room_id,'name':name,'state':{}}
+            ws.send(json.dumps({'type':'snapshot','room':room_id,'peers':peers}))
+        publish({'type':'presence','event':'joined','id':uid,'name':name,'state':{}},uid,room_id)
         last=0
         while True:
             raw=ws.receive()
             if raw is None:break
+            if len(raw)>32768:break
             msg=json.loads(raw)
-            if msg.get('type')=='state' and time.monotonic()-last>.12:
-                last=time.monotonic()
-                pose=msg.get('state',{})
+            if msg.get('type')=='state' and time.monotonic()-last>.10:
+                last=time.monotonic();pose=msg.get('state',{})
                 if not isinstance(pose,dict):continue
-                filtered={k:float(pose.get(k,0)) for k in ('x','z','yaw')}
-                if any(abs(v)>1000 for v in filtered.values()):continue
-                filtered['mode']=str(pose.get('mode','idle'))[:12]
-                publish({'type':'state','id':uid,'state':filtered},uid)
+                try:filtered={k:float(pose.get(k,0)) for k in ('x','y','z','yaw')}
+                except (ValueError,TypeError):continue
+                if any(not (-1000<v<1000) for v in filtered.values()):continue
+                expressions=pose.get('face',{})
+                if isinstance(expressions,dict):
+                    filtered['face']={str(k)[:40]:max(0.,min(1.,float(v))) for k,v in list(expressions.items())[:52] if isinstance(v,(float,int))}
+                else:filtered['face']={}
+                with room_lock:
+                    if uid in room:room[uid]['state']=filtered
+                publish({'type':'state','id':uid,'name':name,'state':filtered},uid,room_id)
             elif msg.get('type')=='signal' and isinstance(msg.get('payload'),dict):
                 to=msg.get('to')
                 with room_lock:peer=room.get(to)
-                if peer:peer.send(json.dumps({'type':'signal','id':uid,'to':to,'payload':msg['payload']}))
+                if peer and peer['room']==room_id:
+                    peer['ws'].send(json.dumps({'type':'signal','id':uid,'to':to,'payload':msg['payload']}))
     except (ValueError,TypeError,ConnectionError,OSError):pass
     finally:
         if uid:
             with room_lock:room.pop(uid,None)
-            publish({'type':'presence','event':'left','id':uid})
+            publish({'type':'presence','event':'left','id':uid},room_id=room_id)
 
 @app.get('/')
 def index():return send_from_directory(ROOT,'index.html')
