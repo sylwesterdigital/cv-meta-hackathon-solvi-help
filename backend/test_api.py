@@ -241,6 +241,45 @@ with speech_patch('server._robot_speech_audio',side_effect=mock_speech):
     assert invalid.status_code==400,(invalid.status_code,invalid.data)
 print('PASS: robot speech honours saved messages, room isolation, preview defaults and overrides')
 
+# v0.2.41: ElevenLabs errors are explicit, and authenticated voice selection
+# does not expose the API key to other users or store it in room data.
+from io import BytesIO as SpeechBytesIO
+from urllib.error import HTTPError as SpeechHTTPError
+class FakeElevenAudio:
+    headers={'Content-Type':'audio/mpeg'}
+    def __enter__(self):return self
+    def __exit__(self,*args):return False
+    def read(self,size=-1):return b'ID3'+b'x'*500
+with speech_patch('server.urlopen',return_value=FakeElevenAudio()) as client:
+    generated=c.post('/api/robots/speech',headers={**headers,'X-Solvi-Voice-Key':'a'*24},json={
+        'room':'lab','robot_id':robot['id'],'test':True,'provider':'elevenlabs',
+        'voice_id':'21m00Tcm4TlvDq8ikWAM'})
+    assert generated.status_code==200,(generated.status_code,generated.get_data(as_text=True))
+    assert generated.mimetype=='audio/mpeg' and generated.headers['X-Solvi-Voice-Provider']=='elevenlabs'
+    sent=client.call_args.args[0]
+    assert 'api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM' in sent.full_url
+    assert sent.get_header('Xi-api-key')=='a'*24
+    assert json.loads(sent.data)['model_id']=='eleven_multilingual_v2'
+err=SpeechHTTPError('https://api.elevenlabs.io',401,'Unauthorized',{},SpeechBytesIO(b'{"detail":{"status":"invalid_api_key","message":"bad key"}}'))
+with speech_patch('server.urlopen',side_effect=err):
+    rejected=c.post('/api/robots/speech',headers={**headers,'X-Solvi-Voice-Key':'b'*24},json={
+        'room':'lab','robot_id':robot['id'],'test':True,'provider':'elevenlabs',
+        'voice_id':'21m00Tcm4TlvDq8ikWAM'})
+    assert rejected.status_code==401,(rejected.status_code,rejected.data)
+    assert 'ElevenLabs rejected' in rejected.get_json()['error']
+    assert 'bad key' not in rejected.get_json()['error']
+class FakeVoiceList:
+    def __enter__(self):return self
+    def __exit__(self,*args):return False
+    def read(self,size=-1):return json.dumps({'voices':[{'voice_id':'21m00Tcm4TlvDq8ikWAM','name':'Example Voice','other':'secret'}],'has_more':False}).encode()
+with speech_patch('server.urlopen',return_value=FakeVoiceList()):
+    voices=c.get('/api/robots/voices',headers={**headers,'X-Solvi-Voice-Key':'a'*24})
+    assert voices.status_code==200,(voices.status_code,voices.data)
+    assert voices.get_json()['voices']==[{'id':'21m00Tcm4TlvDq8ikWAM','name':'Example Voice'}]
+    assert c.get('/api/robots/voices').status_code==401
+print('PASS: ElevenLabs generation, sanitized errors, and voice selection')
+
+
 # v0.2.38: speech must execute Cybert's physical turn/walk commands, not
 # fall through to a plausible but idle Muse Spark conversational answer.
 cybert={'id':'testrobot-cybert037','kind':'robot','name':'Cybert','position':[0,0,0],

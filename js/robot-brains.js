@@ -151,8 +151,11 @@ export function initRobotBrains(world,api,getRoom,toast){
    const voiceName=$('brainsVoiceName'),available=window.speechSynthesis?.getVoices?.()||[];voiceName.replaceChildren(new Option('Default device voice',''));
    for(const item of available)voiceName.add(new Option(item.name+' · '+item.lang,item.name));
    const savedVoice=String(robot.userData.robotBrain?.voiceName||'');if(savedVoice&&!available.some(item=>item.name===savedVoice))voiceName.add(new Option(savedVoice,savedVoice));voiceName.value=savedVoice;
-   for(const id of ['brainsVoiceProvider','brainsVoiceId','brainsVoiceLang','brainsVoiceName','brainsVoiceRate','brainsVoicePitch'])$(id).disabled=!window.solviEditor.canEdit(robot);
-   $('robotVoiceStatus').textContent='Voice settings are saved with the robot.';
+   for(const id of ['brainsVoiceProvider','brainsVoiceId','brainsElevenVoiceList','loadElevenVoices','brainsVoiceLang','brainsVoiceName','brainsVoiceRate','brainsVoicePitch'])$(id).disabled=!window.solviEditor.canEdit(robot);
+   $('robotVoiceStatus').textContent='Select ElevenLabs and load voices or enter an ID, then Test voice.';
+   const list=$('brainsElevenVoiceList');list.replaceChildren(new Option('Load voices from your account',''));
+   if($('brainsVoiceId').value)list.add(new Option('Saved voice · '+$('brainsVoiceId').value,$('brainsVoiceId').value));
+   list.value=$('brainsVoiceId').value||'';
    $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);
    $('saveRobotBrains').disabled=!window.solviEditor.canEdit(robot);$('saveRobotChatPortrait').disabled=!window.solviEditor.canEdit(robot);
    $('brainsVisionResult').textContent='Capture eyes, then Describe scene with Muse Spark or Find object with SAM 3.1.';
@@ -185,10 +188,37 @@ export function initRobotBrains(world,api,getRoom,toast){
    window.solviEditor.queueSave(activeRobot);
    toast(activeRobot.name+' identity saved');
  };
+ $('brainsElevenVoiceList').onchange=()=>{
+  if($('brainsElevenVoiceList').value)$('brainsVoiceId').value=$('brainsElevenVoiceList').value;
+ };
+ $('loadElevenVoices').onclick=async()=>{
+   if(!activeRobot)return;
+   const button=$('loadElevenVoices'),status=$('robotVoiceStatus');button.disabled=true;
+   status.textContent='Loading ElevenLabs voices…';
+   try{
+     const auth=api.auth?.();
+     const headers={'X-Solvi-Tab':auth?.tab||sessionStorage.getItem('solvi-tab')||''};
+     if(auth?.token)headers.Authorization='Bearer '+auth.token;
+     const key=sessionStorage.getItem('solvi-elevenlabs-key');if(key)headers['X-Solvi-Voice-Key']=key;
+     const response=await fetch('/api/robots/voices',{headers,cache:'no-store'});
+     const data=await response.json();if(!response.ok)throw Error(data.error||`ElevenLabs HTTP ${response.status}`);
+     const list=$('brainsElevenVoiceList'),saved=$('brainsVoiceId').value.trim();
+     list.replaceChildren(new Option('Choose a voice',''));
+     for(const voice of data.voices||[])list.add(new Option(voice.name,voice.id));
+     if(saved&&!Array.from(list.options).some(o=>o.value===saved))list.add(new Option('Saved voice · '+saved,saved));
+     if(saved)list.value=saved;
+     status.textContent=`${(data.voices||[]).length} ElevenLabs voices available${data.more?' (first page)':''}. Choose a voice, then Test voice.`;
+   }catch(error){status.textContent='Voice list failed: '+error.message;}
+   finally{button.disabled=!window.solviEditor.canEdit(activeRobot);}
+ };
+ window.addEventListener('solvi:robot-voice-status',event=>{
+   if(activeRobot?.userData.editorId!==event.detail?.robotId)return;
+   $('robotVoiceStatus').textContent=event.detail.message;
+ });
  $('testRobotVoice').onclick=()=>{
    if(!activeRobot)return;
+   $('robotVoiceStatus').textContent='Preparing voice sample…';
    window.dispatchEvent(new CustomEvent('solvi:test-robot-voice',{detail:{robotId:activeRobot.userData.editorId,name:activeRobot.name,config:{voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value,voiceLang:$('brainsVoiceLang').value,voiceName:$('brainsVoiceName').value,voiceRate:$('brainsVoiceRate').value,voicePitch:$('brainsVoicePitch').value}}}));
-   $('robotVoiceStatus').textContent='Playing sample voice from the robot position…';
  };
  $('saveRobotChatPortrait').onclick=async()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot))return toast('Select a robot you can edit.');

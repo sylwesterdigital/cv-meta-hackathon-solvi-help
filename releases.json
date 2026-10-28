@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.40",
+  "currentVersion": "0.2.41",
   "releases": [
+    {
+      "version": "0.2.41",
+      "publishedAt": "2026-10-28T22:09:58Z",
+      "changes": [
+        "Make ElevenLabs voice generation failures visible and actionable; never silently replace cloud audio with a local browser voice.",
+        "Add authenticated ElevenLabs voice catalogue in Robot Brains, with named voice selection and a real synthesize/playback status.",
+        "Return sanitized provider errors for invalid API keys, inaccessible voices, insufficient quota, rate limiting and connectivity.",
+        "Protect voice cache against provider key changes; test provider audio and error mapping without sending real billable requests."
+      ]
+    },
     {
       "version": "0.2.40",
       "publishedAt": "2026-10-28T21:52:30Z",
@@ -300,16 +310,6 @@
         "Settings and profile side drawers, colour palettes, message styling, sound preferences and avatar orientation controls.",
         "Shift+D duplicate, X delete, arrow/Shift drive robot and Space jump; upper body linked to head and corrected head direction.",
         "Dev log displays exact deployment timestamp including time and timezone."
-      ]
-    },
-    {
-      "version": "0.2.4",
-      "publishedAt": "2026-10-27T14:56:47Z",
-      "changes": [
-        "Dev log timestamps include date and time; auto closes after 3 seconds; page refreshes on published new version.",
-        "Compact translucent bottom-aligned chat; floating chat mode; mobile messages toggle, collapsed media tools and compact toolbar.",
-        "Session expiry or duplicate-tab conflict opens the profile sign-in modal and pauses authenticated actions.",
-        "Frequency-aware voice rings and 21-point palm/finger landmarks for each tracked hand."
       ]
     }
   ]

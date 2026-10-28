@@ -32,3 +32,31 @@ test('ElevenLabs voice generation is server-side with no key bundled',()=>{
  assert.match(server,/xi-api-key/);
  assert.match(script,/espeak-ng/);
 });
+
+test('ElevenLabs failure is exposed, never silently replaced with a device voice',async()=>{
+ const {RobotSpeech}=await import('../js/robot-speech.js');
+ const original={fetch:globalThis.fetch,window:globalThis.window,sessionStorage:globalThis.sessionStorage};
+ globalThis.window={};globalThis.sessionStorage={getItem:()=>null};
+ globalThis.fetch=async()=>({ok:false,status:401,json:async()=>({error:'ElevenLabs rejected the API key (HTTP 401).'})});
+ try{
+  const client=Object.create(RobotSpeech.prototype);
+  client.api={online:true,auth:()=>({token:'example-token',tab:'example-tab'})};
+  client.room=()=> 'lab';
+  client.playSpatial=async()=>{throw Error('Should never play audio');};
+  client.playBrowser=async()=>{throw Error('Should never use device TTS when cloud fails');};
+  client.robot=()=>({});
+  const job={room:'lab',robotId:'robot-01',test:true,entry:{text:'Hello'},settings:{provider:'elevenlabs',voiceId:'21m00Tcm4TlvDq8ikWAM',lang:'en',rate:1,pitch:1}};
+  await assert.rejects(()=>client.play(job,{}),/ElevenLabs rejected the API key/);
+ }finally{globalThis.fetch=original.fetch;globalThis.window=original.window;globalThis.sessionStorage=original.sessionStorage;}
+});
+test('voice catalogue, ElevenLabs status and preview configuration are wired',()=>{
+ const server=read('backend/server.py'),brains=read('js/robot-brains.js'),voice=read('js/robot-speech.js'),html=read('index.html');
+ assert.match(server,/@app.get\('\/api\/robots\/voices'\)/);
+ assert.match(server,/api.elevenlabs.io\/v2\/voices/);
+ assert.match(server,/_elevenlabs_failure/);
+ assert.match(brains,/solvi:robot-voice-status/);
+ assert.match(brains,/Voice list failed:/);
+ assert.match(voice,/if\(settings.provider==='elevenlabs'\)throw error/);
+ assert.match(html,/id="brainsElevenVoiceList"/);
+ assert.match(html,/id="loadElevenVoices"/);
+});

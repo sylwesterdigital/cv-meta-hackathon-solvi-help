@@ -167,7 +167,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.40',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.41',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1220,6 +1220,54 @@ SPEECH_CACHE = {}
 SPEECH_LOCK = threading.RLock()
 SPEECH_TIMES = {}
 
+# Return actionable provider errors without echoing remote bodies, prompts or API keys.
+def _elevenlabs_failure(exc):
+    status=getattr(exc,'code',0)
+    known={'invalid_api_key':'ElevenLabs rejected the API key; update Settings → Chat & sound.',
+           'voice_not_found':'ElevenLabs could not find this voice ID; use Load voices in Robot Brains.',
+           'quota_exceeded':'ElevenLabs credits or quota exhausted.',
+           'rate_limit_exceeded':'ElevenLabs rate limit reached; retry later.',
+           'concurrent_limit_exceeded':'ElevenLabs has reached the concurrent request limit; retry later.'}
+    code=''
+    if isinstance(exc,HTTPError):
+        try:
+            body=json.loads(exc.read(2048))
+            detail=body.get('detail',{}) if isinstance(body,dict) else {}
+            if isinstance(detail,dict):code=str(detail.get('status') or detail.get('code') or '')
+        except (ValueError,OSError,UnicodeError,TypeError):pass
+    if code in known:return known[code],status if status in (400,401,402,403,404,422,429) else 502
+    defaults={400:'Invalid ElevenLabs request (HTTP 400).',401:'ElevenLabs rejected the API key (HTTP 401).',
+              402:'ElevenLabs requires payment or more credits (HTTP 402).',
+              403:'ElevenLabs key lacks permission for this voice (HTTP 403).',
+              404:'ElevenLabs voice was not found (HTTP 404).',
+              422:'ElevenLabs rejected the voice or synthesis parameters (HTTP 422).',
+              429:'ElevenLabs request limit exceeded (HTTP 429).'}
+    return defaults.get(status,'Unable to reach ElevenLabs; check server connectivity.'),status if status in defaults else 502
+
+@app.get('/api/robots/voices')
+def elevenlabs_voices():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    key=str(request.headers.get('X-Solvi-Voice-Key','')).strip() or os.environ.get('ELEVENLABS_API_KEY','')
+    if not key:return json_error('Set an ElevenLabs key in Settings → Chat & sound, or on the Ubuntu server.',503)
+    if not (16<=len(key)<=256 and all(33<=ord(c)<=126 for c in key)):return json_error('Invalid ElevenLabs API key',400)
+    url='https://api.elevenlabs.io/v2/voices?page_size=50'
+    req=Request(url,headers={'xi-api-key':key,'Accept':'application/json'},method='GET')
+    try:
+        with urlopen(req,timeout=12) as response:content=json.load(response)
+    except (HTTPError,URLError,TimeoutError) as exc:
+        error,code=_elevenlabs_failure(exc)
+        audit_event('elevenlabs-voice-list-failed',status=getattr(exc,'code',0))
+        return json_error(error,code)
+    if not isinstance(content,dict) or not isinstance(content.get('voices'),list):return json_error('Unexpected ElevenLabs voice list',502)
+    voices=[]
+    for item in content['voices']:
+        if not isinstance(item,dict):continue
+        voice_id=str(item.get('voice_id',''))
+        if re.fullmatch(r'[A-Za-z0-9_-]{8,80}',voice_id):
+            voices.append({'id':voice_id,'name':str(item.get('name') or 'Unnamed voice')[:100]})
+    return jsonify(voices=voices,more=bool(content.get('has_more')),provider='elevenlabs')
+
 def _robot_speech_audio(provider, text, voice, lang, rate, pitch, key):
     if provider == 'elevenlabs':
         if not key:return None, 'ElevenLabs key not configured', 503
@@ -1236,7 +1284,8 @@ def _robot_speech_audio(provider, text, voice, lang, rate, pitch, key):
                 return (content,'audio/mpeg'),None,200
         except (HTTPError, URLError, TimeoutError) as exc:
             audit_event('tts-elevenlabs-failed',code=getattr(exc,'code',0))
-            return None, 'ElevenLabs speech generation failed', 502
+            error,code=_elevenlabs_failure(exc)
+            return None,error,code
     executable=shutil.which('espeak-ng')
     if not executable:return None, 'Ubuntu local TTS unavailable; use a device voice', 503
     with tempfile.TemporaryDirectory(prefix='solvi-tts-') as tempdir:
@@ -1298,7 +1347,7 @@ def robot_speech():
     rate=max(.6,min(1.6,rate));pitch=max(.5,min(1.7,pitch))
     key=str(request.headers.get('X-Solvi-Voice-Key','')).strip() or os.environ.get('ELEVENLABS_API_KEY','')
     if key and not (16<=len(key)<=256 and all(33<=ord(c)<=126 for c in key)):return json_error('Invalid voice API key')
-    cache_key=hashlib.sha256(json.dumps([room_id,robot_id,msg_id,provider,voice,language,rate,pitch,text],sort_keys=True).encode()).hexdigest()
+    cache_key=hashlib.sha256(json.dumps([room_id,robot_id,msg_id,provider,voice,language,rate,pitch,text,hashlib.sha256(key.encode()).hexdigest() if provider=='elevenlabs' else ''],sort_keys=True).encode()).hexdigest()
     with SPEECH_LOCK:
         cached=SPEECH_CACHE.get(cache_key)
         if cached and time.monotonic()-cached[0]<1800:

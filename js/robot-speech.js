@@ -39,10 +39,15 @@ export class RobotSpeech{
   const robot=this.robot(name,robotId);if(!robot)return;
   // Preview is a fixed safe phrase, not arbitrary billable text from the browser.
   const settings=robotVoiceConfig(config);
-  if(settings.provider==='mute')return;
+  if(settings.provider==='mute'){this.report({robotId,settings},'error','Robot voice is muted.');return;}
+  if(!this.enabled()){this.report({robotId,settings},'error','Enable Robots speak in 3D in Settings.');return;}
+  if(settings.provider==='elevenlabs'&&!settings.voiceId){this.report({robotId,settings},'error','Select a valid ElevenLabs voice ID first.');return;}
   this.jobs.push({robotId:robot.userData.editorId,room:this.room(),settings,test:true,
     entry:{text:`Hello, I'm ${robot.name}. This is my voice.`,speaker:robot.name}});
   if(!this.playing)this.consume();
+ }
+ report(job,status,message,provider=job.settings.provider){
+  window.dispatchEvent(new CustomEvent('solvi:robot-voice-status',{detail:{robotId:job.robotId,status,provider,message}}));
  }
  stop(){this.jobs=[];this.active?.pause?.();this.active?.dispatchEvent?.(new Event('ended'));if(this.active?.src?.startsWith('blob:'))URL.revokeObjectURL(this.active.src);this.active=null;
   window.speechSynthesis?.cancel?.();window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:false}}));}
@@ -51,8 +56,15 @@ export class RobotSpeech{
   while(this.jobs.length){const job=this.jobs.shift();if(job.room!==this.room()||!this.enabled())continue;
    const robot=this.robot(null,job.robotId);if(!robot)continue;
    const started={active:true,name:robot.name};window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:started}));
-   try{await this.play(job,robot);}catch(error){console.warn('SOLVI robot voice playback:',error.message);this.notify('Robot voice: '+error.message);}
-   finally{window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:false,name:robot.name}}));}
+   try{
+     this.report(job,'pending',`Generating ${job.settings.provider==='elevenlabs'?'ElevenLabs':'local'} audio…`);
+     const source=await this.play(job,robot);
+     this.report(job,'ok',`${source==='elevenlabs'?'ElevenLabs':source==='local'?'Ubuntu local TTS':'Device voice'} audio played successfully.`,source);
+   }catch(error){
+     console.warn('SOLVI robot voice:',error.message);
+     this.report(job,'error',error.message);
+     this.notify('Robot voice: '+error.message);
+   }finally{window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:false,name:robot.name}}));}
   }
   this.playing=false;
  }
@@ -66,11 +78,18 @@ export class RobotSpeech{
     const response=await fetch('/api/robots/speech',{method:'POST',headers,cache:'no-store',body:JSON.stringify({room:job.room,robot_id:job.robotId,message_id:job.entry.id||'',test:!!job.test,provider:settings.provider,voice_id:settings.voiceId,rate:settings.rate,pitch:settings.pitch,lang:settings.lang})});
     if(!response.ok){const error=await response.json().catch(()=>({}));throw Error(error.error||`TTS HTTP ${response.status}`);}
     const blob=await response.blob();if(blob.size<100)throw Error('Empty speech audio');
+    // Generation and playback both have to succeed to report cloud voice as working.
     await this.playSpatial(blob,robot);
-    return;
-   }catch(error){console.warn('SOLVI cloud/local spatial TTS unavailable, falling back to installed voice:',error.message);}
+    return settings.provider;
+   }catch(error){
+    if(settings.provider==='elevenlabs')throw error; // Never silently substitute a browser voice.
+    console.warn('SOLVI local spatial TTS unavailable; using device voice:',error.message);
+   }
+  }else if(settings.provider==='elevenlabs'){
+   throw Error('Sign in before using ElevenLabs voice generation.');
   }
   await this.playBrowser(job.entry.text,robot,settings);
+  return 'device';
  }
  async playSpatial(blob,robot){
   const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)throw Error('Web Audio unsupported');
