@@ -2,6 +2,7 @@
 Run behind TLS reverse proxy. No default admin credentials. No API key in browser.
 """
 import math
+import io
 import tempfile
 import base64
 from collections import deque
@@ -166,7 +167,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.38',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.40',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1213,6 +1214,111 @@ def models():
     try:return jsonify(models=get_models(),enabled=True)
     except (RuntimeError,URLError,TimeoutError) as exc:return json_error(str(exc),502)
 
+# Robot speech synthesis. Audio comes from the saved assistant message, never from
+# caller-supplied arbitrary text. Stored characters are the source of truth.
+SPEECH_CACHE = {}
+SPEECH_LOCK = threading.RLock()
+SPEECH_TIMES = {}
+
+def _robot_speech_audio(provider, text, voice, lang, rate, pitch, key):
+    if provider == 'elevenlabs':
+        if not key:return None, 'ElevenLabs key not configured', 503
+        if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',voice):return None, 'Set an ElevenLabs voice ID in Robot Brains', 400
+        import urllib.parse
+        endpoint='https://api.elevenlabs.io/v1/text-to-speech/'+urllib.parse.quote(voice,safe='')+'?output_format=mp3_44100_128'
+        payload=json.dumps({'text':text,'model_id':'eleven_multilingual_v2'}).encode()
+        req=Request(endpoint,data=payload,headers={'xi-api-key':key,'Content-Type':'application/json','Accept':'audio/mpeg'},method='POST')
+        try:
+            with urlopen(req,timeout=25) as reply:
+                if not reply.headers.get('Content-Type','').startswith('audio/'):return None, 'ElevenLabs did not return audio', 502
+                content=reply.read(2_800_001)
+                if not 100<=len(content)<=2_800_000:return None, 'ElevenLabs audio is empty or too large', 502
+                return (content,'audio/mpeg'),None,200
+        except (HTTPError, URLError, TimeoutError) as exc:
+            audit_event('tts-elevenlabs-failed',code=getattr(exc,'code',0))
+            return None, 'ElevenLabs speech generation failed', 502
+    executable=shutil.which('espeak-ng')
+    if not executable:return None, 'Ubuntu local TTS unavailable; use a device voice', 503
+    with tempfile.TemporaryDirectory(prefix='solvi-tts-') as tempdir:
+        wav=Path(tempdir)/'speech.wav'
+        args=[executable,'-v',lang,'-s',str(round(170*rate)), '-p',str(round(50*pitch)),'-w',str(wav),'--',text]
+        try:subprocess.run(args,check=True,timeout=12,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        except (subprocess.CalledProcessError,subprocess.TimeoutExpired,OSError):return None, 'Local speech synthesis failed',503
+        audio=wav.read_bytes()
+        if not 100<=len(audio)<=2_800_000:return None,'Invalid local speech audio',503
+        return (audio,'audio/wav'),None,200
+
+@app.post('/api/robots/speech')
+def robot_speech():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    robot_id=str(data.get('robot_id',''))
+    if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',robot_id):return json_error('Invalid robot ID')
+    with db() as con:
+        scene=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+        if not scene:return json_error('Room not found',404)
+        robot=next((r for r in json.loads(scene['payload']) if r.get('kind')=='robot' and r.get('id')==robot_id),None)
+        if not robot:return json_error('Robot unavailable in this room',404)
+        sample=data.get('test') is True
+        if sample:
+            # Fixed test phrase; ordinary users cannot send arbitrary billable TTS prompts.
+            text='Hello, I am '+str(robot.get('name','Robot'))[:65]+'. This is my voice.'
+            msg_id='preview-'+user['id']
+        else:
+            msg_id=str(data.get('message_id',''))
+            row=con.execute('SELECT text,role,speaker_override,room_id FROM messages WHERE id=?',(msg_id,)).fetchone()
+            if not row or row['room_id']!=room_id or row['role']!='assistant' or row['speaker_override']!=robot.get('name'):
+                return json_error('Robot message not found or not authorized',403)
+            text=row['text'][:600].strip()
+        if not text:return json_error('Empty robot speech',400)
+    brain=robot.get('brain') or {}
+    provider=brain.get('voiceProvider','local')
+    if provider not in ('local','elevenlabs','mute'):provider='local'
+    if sample:
+        # A preview can override individual saved settings. Omitted fields MUST
+        # fall back to the robot's saved/default values; float(None) used to
+        # reject a valid {"test":true} request with HTTP 400.
+        provider=data.get('provider') if data.get('provider') in ('local','elevenlabs') else provider
+    if provider=='mute':return json_error('This robot has its voice muted',409)
+    def preview_or_saved(request_key, saved_key, fallback):
+        if sample and request_key in data and data[request_key] is not None:
+            return data[request_key]
+        return brain.get(saved_key) or fallback
+    voice=str(preview_or_saved('voice_id','voiceId',''))
+    language=str(preview_or_saved('lang','voiceLang','en'))
+    if language not in ('en','pl','de','es','fr'):language='en'
+    try:
+        rate=float(preview_or_saved('rate','voiceRate',1))
+        pitch=float(preview_or_saved('pitch','voicePitch',1))
+        if not math.isfinite(rate) or not math.isfinite(pitch):raise ValueError()
+    except (ValueError,TypeError):return json_error('Invalid voice parameters')
+    rate=max(.6,min(1.6,rate));pitch=max(.5,min(1.7,pitch))
+    key=str(request.headers.get('X-Solvi-Voice-Key','')).strip() or os.environ.get('ELEVENLABS_API_KEY','')
+    if key and not (16<=len(key)<=256 and all(33<=ord(c)<=126 for c in key)):return json_error('Invalid voice API key')
+    cache_key=hashlib.sha256(json.dumps([room_id,robot_id,msg_id,provider,voice,language,rate,pitch,text],sort_keys=True).encode()).hexdigest()
+    with SPEECH_LOCK:
+        cached=SPEECH_CACHE.get(cache_key)
+        if cached and time.monotonic()-cached[0]<1800:
+            result=cached[1]
+        else:
+            # Bound paid generation to 8 unique requests per session per minute.
+            now_s=time.monotonic();attempts=[v for v in SPEECH_TIMES.get(user['id'],[]) if now_s-v<60]
+            if len(attempts)>=8:return json_error('Speech rate limit exceeded',429)
+            attempts.append(now_s);SPEECH_TIMES[user['id']]=attempts
+            result,error,code=_robot_speech_audio(provider,text,voice,language,rate,pitch,key)
+            if error:return json_error(error,code)
+            SPEECH_CACHE[cache_key]=(now_s,result)
+            while len(SPEECH_CACHE)>40:SPEECH_CACHE.pop(next(iter(SPEECH_CACHE)))
+    raw,mime=result
+    response=send_file(io.BytesIO(raw),mimetype=mime,download_name='robot-voice.'+('mp3' if mime=='audio/mpeg' else 'wav'),as_attachment=False)
+    response.headers['Cache-Control']='private, no-store'
+    response.headers['X-Solvi-Voice-Provider']=provider
+    audit_event('robot-voice-played',room=room_id,robot_id=robot_id,provider=provider,characters=len(text))
+    return response
+
 @app.post('/api/message')
 def human_message():
     user,msg,status=actor()
@@ -1317,7 +1423,7 @@ def set_scene():
         if o['kind']=='robot':
             if 'turnSpeed' in o and (not isinstance(o['turnSpeed'],(float,int)) or isinstance(o['turnSpeed'],bool) or not math.isfinite(o['turnSpeed']) or not .25<=o['turnSpeed']<=4):return json_error('Invalid robot turn speed')
             brain=o.get('brain',{})
-            if not isinstance(brain,dict) or any((k=='initiative' and not isinstance(v,bool)) or (k!='initiative' and (k not in {'personality','history','beliefs','triggers','scenario','portrait'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
+            if not isinstance(brain,dict) or any((k=='initiative' and not isinstance(v,bool)) or (k!='initiative' and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
             if brain.get('portrait') and not re.fullmatch(r'[0-9a-f-]{36}',brain['portrait']):return json_error('Invalid portrait reference')
             if brain.get('portrait'):
                 with db() as con:portrait=con.execute('SELECT mime FROM media WHERE id=?',(brain['portrait'],)).fetchone()
@@ -1369,7 +1475,7 @@ def patch_scene_object():
         if 'turnSpeed' in obj and (not isinstance(obj['turnSpeed'],(float,int)) or isinstance(obj['turnSpeed'],bool) or not math.isfinite(obj['turnSpeed']) or not .25<=obj['turnSpeed']<=4):return json_error('Invalid turn speed')
         if 'brain' in obj:
             if obj['kind']!='robot' or not isinstance(obj['brain'],dict):return json_error('Invalid robot brain')
-            limits={'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36}
+            limits={'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8}
             if any((k=='initiative' and not isinstance(v,bool)) or (k!='initiative' and (k not in limits or not isinstance(v,str) or len(v)>limits[k])) for k,v in obj['brain'].items()):return json_error('Invalid robot brain fields')
             if obj['brain'].get('portrait') and not re.fullmatch(r'[0-9a-f-]{36}',obj['brain']['portrait']):return json_error('Invalid portrait reference')
             if obj['brain'].get('portrait'):

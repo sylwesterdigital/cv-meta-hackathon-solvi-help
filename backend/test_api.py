@@ -204,6 +204,43 @@ r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert
 assert r.status_code==200,(r.status_code,r.data)
 read_robot=[x for x in c.get('/api/scene?room=lab',headers=headers).get_json()['objects'] if x['kind']=='robot'][0]
 assert read_robot['turnSpeed']==3.0 and read_robot['brain']==brain
+# v0.2.39 voice: only the saved robot's own reply can be rendered as sound.
+from unittest.mock import patch as speech_patch
+robot['brain']={**brain,'voiceProvider':'local','voiceLang':'en','voicePitch':'0.85','voiceRate':'1.15'}
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==200
+speech_calls=[]
+def mock_speech(provider, text, voice, lang, rate, pitch, key):
+    speech_calls.append({'provider':provider,'rate':rate,'pitch':pitch,'text':text})
+    return ((b'RIFF'+b'\x00'*500,'audio/wav'),None,200)
+with speech_patch('server._robot_speech_audio',side_effect=mock_speech):
+    ok=c.post('/api/robots/speech',headers=headers,json={'room':'lab','robot_id':robot['id'],
+        'message_id':'test-robot-speaking'})
+    assert ok.status_code==200 and ok.mimetype=='audio/wav',(ok.status_code,ok.data)
+    assert c.post('/api/robots/speech',headers=headers,json={'room':'main','robot_id':robot['id'],
+        'message_id':'test-robot-speaking'}).status_code==404
+    assert c.post('/api/robots/speech',headers=headers,json={'room':'lab','robot_id':robot['id'],
+        'message_id':'not-a-real-message'}).status_code==403
+    preview=c.post('/api/robots/speech',headers=headers,json={'room':'lab','robot_id':robot['id'],'test':True})
+    assert preview.status_code==200,(preview.status_code,preview.data)
+    assert preview.mimetype=='audio/wav'
+    assert speech_calls[-1]['rate']==1.15 and speech_calls[-1]['pitch']==0.85,speech_calls[-1]
+    # Unprovided preview rate/pitch must use the saved robot settings. Explicit
+    # preview overrides are independent, including one-axis-only overrides.
+    for overrides,rate,pitch in (({'rate':1.25},1.25,.85),({'pitch':1.15},1.15,1.15),
+                                  ({'rate':0.8,'pitch':1.3},.8,1.3),
+                                  ({'rate':None,'pitch':None},1.15,.85)):
+        payload={'room':'lab','robot_id':robot['id'],'test':True,**overrides}
+        r=c.post('/api/robots/speech',headers=headers,json=payload)
+        assert r.status_code==200,(payload,r.status_code,r.data)
+        # A duplicate parameter set may hit the cache without synthesizing again.
+        assert r.mimetype=='audio/wav'
+        if overrides != {'rate':None,'pitch':None}:
+            assert speech_calls[-1]['rate']==rate and speech_calls[-1]['pitch']==pitch,speech_calls[-1]
+    invalid=c.post('/api/robots/speech',headers=headers,json={
+        'room':'lab','robot_id':robot['id'],'test':True,'rate':'not-a-number'})
+    assert invalid.status_code==400,(invalid.status_code,invalid.data)
+print('PASS: robot speech honours saved messages, room isolation, preview defaults and overrides')
+
 # v0.2.38: speech must execute Cybert's physical turn/walk commands, not
 # fall through to a plausible but idle Muse Spark conversational answer.
 cybert={'id':'testrobot-cybert037','kind':'robot','name':'Cybert','position':[0,0,0],

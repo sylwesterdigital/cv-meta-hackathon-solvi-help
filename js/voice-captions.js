@@ -7,6 +7,8 @@ export function setupVoiceCaptions(world){
  const preview=document.getElementById('captionPreview'),phase=document.getElementById('captionPhase'),draft=document.getElementById('captionDraft'),settingsStatus=document.getElementById('ccSettingsStatus');
  const waves=document.getElementById('voiceWavesButton'),engine=document.getElementById('ccEngine'),language=document.getElementById('ccLanguage'),autoSend=document.getElementById('ccAutoSend'),engineStatus=document.getElementById('ccEngineStatus');
  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+ let robotSpeechMutedUntil=0,robotSpeaking=false;
+ window.addEventListener('solvi:robot-speaking',event=>{robotSpeaking=Boolean(event.detail?.active);robotSpeechMutedUntil=Date.now()+1200;});
  let enabled=false,rec=null,epoch=0,mic=null,media=null,loop=null,pendingPromise=Promise.resolve(),pendingSegments=0,ctx=null,analyser=null,src=null,frame=0;let retries=0,heardAt=0,switchedToWhisper=false;
  // Keep the button's visible label in sync without replacing its accessible SVG wrapper.
  function setCCLabel(text){
@@ -23,7 +25,7 @@ export function setupVoiceCaptions(world){
    button.setAttribute('aria-pressed',String(enabled));button.title=enabled?'CC on · click to stop microphone transcription':'CC off · click to start microphone transcription';}
 
  function failed(msg){show('error','CC error',msg);setTimeout(()=>{if(!enabled)preview.hidden=true;},6000);}
- async function publish(text){text=String(text||'').trim();if(!text)return;
+ async function publish(text){text=String(text||'').trim();if(!text||robotSpeaking||Date.now()<robotSpeechMutedUntil)return;
   if(!autoSend.checked){const input=document.getElementById('chatInput');input.value+=(input.value.trim()?' ':'')+'CC: '+text;input.dispatchEvent(new Event('input'));show('listening','Listening · transcript added to input');return;}
   if(typeof window.solviPublishCaption!=='function')throw Error('Room caption publisher is unavailable. Open chat and reconnect.');
   show('sending','Publishing CC transcript…',text);await window.solviPublishCaption(text);if(enabled)show('listening','CC sent to room · listening…',text);}
@@ -34,7 +36,7 @@ export function setupVoiceCaptions(world){
   rec=new Recognition();rec.lang=selectedLocale(language.value,navigator.language);rec.continuous=true;rec.interimResults=true;
   rec.onresult=event=>{if(!enabled||id!==epoch)return;let interim='';for(let i=event.resultIndex;i<event.results.length;i++){
     const result=event.results[i],text=result[0]?.transcript?.trim();if(!text)continue;
-    if(result.isFinal){heardAt=Date.now();retries=0;publish(text).catch(e=>failed(e.message));}else{heardAt=Date.now();retries=0;interim+=text+' ';}
+    if(result.isFinal){if(robotSpeaking||Date.now()<robotSpeechMutedUntil)continue;heardAt=Date.now();retries=0;publish(text).catch(e=>failed(e.message));}else{heardAt=Date.now();retries=0;interim+=text+' ';}
    }if(interim)show('listening','Hearing words…',interim.trim());};
   rec.onerror=e=>{if(id!==epoch||!enabled)return;
    if(['not-allowed','service-not-allowed','audio-capture'].includes(e.error)){stop();failed('Microphone permission or capture unavailable: '+e.error);return;}

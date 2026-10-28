@@ -9,7 +9,7 @@ SERVICE=/etc/systemd/system/solvi-help.service
 TARGET=/opt/solvi-help
 STATE=/var/lib/solvi-help
 PORT=18765
-EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.38}
+EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.40}
 export SOLVI_EXPECTED_VERSION="$EXPECTED_VERSION"
 BACKUP=$(mktemp -d /root/solvi-backend-backup-XXXXXXXX)
 CHANGED=0
@@ -44,7 +44,7 @@ mkdir -p "$TARGET" "$STATE/media" "$STATE/models" /etc/nginx/snippets
 chown -R www-data:www-data "$STATE"
 chmod 750 "$STATE" "$STATE/media"
 needed=()
-for pkg in python3 python3-venv python3-pip curl ffmpeg rsync; do
+for pkg in python3 python3-venv python3-pip curl ffmpeg rsync espeak-ng; do
   if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q 'install ok installed'; then needed+=("$pkg"); fi
 done
 if (( ${#needed[@]} )); then

@@ -147,6 +147,12 @@ export function initRobotBrains(world,api,getRoom,toast){
    const brain=cleanBrain(robot.userData.robotBrain);
    for(const [key,id] of Object.entries(fields)){$(id).value=brain[key];$(id).disabled=!window.solviEditor.canEdit(robot);}
    $('brainsInitiative').checked=Boolean(robot.userData.robotBrain?.initiative);
+   for(const [field,id,fallback] of [['voiceProvider','brainsVoiceProvider','local'],['voiceId','brainsVoiceId',''],['voiceLang','brainsVoiceLang','en'],['voiceRate','brainsVoiceRate','1'],['voicePitch','brainsVoicePitch','1']])$(id).value=String(robot.userData.robotBrain?.[field]||fallback);
+   const voiceName=$('brainsVoiceName'),available=window.speechSynthesis?.getVoices?.()||[];voiceName.replaceChildren(new Option('Default device voice',''));
+   for(const item of available)voiceName.add(new Option(item.name+' · '+item.lang,item.name));
+   const savedVoice=String(robot.userData.robotBrain?.voiceName||'');if(savedVoice&&!available.some(item=>item.name===savedVoice))voiceName.add(new Option(savedVoice,savedVoice));voiceName.value=savedVoice;
+   for(const id of ['brainsVoiceProvider','brainsVoiceId','brainsVoiceLang','brainsVoiceName','brainsVoiceRate','brainsVoicePitch'])$(id).disabled=!window.solviEditor.canEdit(robot);
+   $('robotVoiceStatus').textContent='Voice settings are saved with the robot.';
    $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);
    $('saveRobotBrains').disabled=!window.solviEditor.canEdit(robot);$('saveRobotChatPortrait').disabled=!window.solviEditor.canEdit(robot);
    $('brainsVisionResult').textContent='Capture eyes, then Describe scene with Muse Spark or Find object with SAM 3.1.';
@@ -171,10 +177,18 @@ export function initRobotBrains(world,api,getRoom,toast){
  $('saveRobotBrains').onclick=()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot)){toast('Robot is read-only');return;}
    const before=window.solviEditor.snapshot(activeRobot);
-   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),initiative:$('brainsInitiative').checked};
+   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),initiative:$('brainsInitiative').checked,
+     voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value.trim(),voiceName:$('brainsVoiceName').value,
+     voiceLang:$('brainsVoiceLang').value,voiceRate:String(Math.max(.6,Math.min(1.6,Number($('brainsVoiceRate').value)||1))),
+     voicePitch:String(Math.max(.5,Math.min(1.7,Number($('brainsVoicePitch').value)||1)))};
    window.solviEditor.recordEdit(before,window.solviEditor.snapshot(activeRobot));
    window.solviEditor.queueSave(activeRobot);
    toast(activeRobot.name+' identity saved');
+ };
+ $('testRobotVoice').onclick=()=>{
+   if(!activeRobot)return;
+   window.dispatchEvent(new CustomEvent('solvi:test-robot-voice',{detail:{robotId:activeRobot.userData.editorId,name:activeRobot.name,config:{voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value,voiceLang:$('brainsVoiceLang').value,voiceName:$('brainsVoiceName').value,voiceRate:$('brainsVoiceRate').value,voicePitch:$('brainsVoicePitch').value}}}));
+   $('robotVoiceStatus').textContent='Playing sample voice from the robot position…';
  };
  $('saveRobotChatPortrait').onclick=async()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot))return toast('Select a robot you can edit.');

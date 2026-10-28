@@ -4,6 +4,7 @@ import {captureRobotView,captureRobotPortrait} from './robots.js';
 import {initRobotBrains,runRobotVisualSearch,emitBrainTrace} from './robot-brains.js';
 import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,uiScalePercent,safeFontName,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
 import {playCue,primeAudio} from './audio-cues.js';
+import {RobotSpeech} from './robot-speech.js';
 
 const $=id=>document.getElementById(id);
 const random=()=>crypto.randomUUID();
@@ -23,6 +24,7 @@ let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
 let cachedMessages=[],chatSignature='',lastBubbleEntry=null;const runningRobotTasks=new Map();const localBrainTrace=[];const initialRoomLoads=new Set();
 let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};let sessionPrompt=false;
+let robotSpeech=null;let suppressRobotSpeech=false;
 const toast=text=>{const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5200);};
 const show=(id,yes=true)=>{$(id).hidden=!yes;};
 const stored=()=>{try{return JSON.parse(localStorage.getItem('solvi-profile')||'null');}catch{return null;}};
@@ -128,7 +130,7 @@ async function bubble(entry){
  let mids=[];try{mids=typeof entry.media==='string'?JSON.parse(entry.media):entry.media||[];}catch{}
  for(const id of mids){const slot=document.createElement('div');slot.className='chat-attachment';slot.textContent='Attachment';panel.append(slot);
   if(online&&auth){api.mediaBlobInfo(id).then(({url,mime})=>{const el=document.createElement(mime.startsWith('video/')?'video':mime.startsWith('audio/')?'audio':'img');el.src=url;if(el.tagName==='IMG'){el.alt='Image attachment';el.loading='lazy';}else{el.controls=true;el.preload='metadata';}el.onerror=()=>{slot.textContent='Media attachment';URL.revokeObjectURL(url);};slot.replaceChildren(el);if(el.tagName==='IMG')el.addEventListener('load',scrollChatToLatest,{once:true});scrollChatToLatest();}).catch(()=>{});}}
- lastBubbleEntry=entry;scrollChatToLatest();
+ lastBubbleEntry=entry;scrollChatToLatest();if(!suppressRobotSpeech&&role==='assistant'&&!entry.isBrainTrace)robotSpeech?.speak(entry);
 }
 async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask backend to store media');if(file.size>11_000_000)throw Error('File must be under 11 MB');
  const body=new FormData();body.append('file',file,file.name);const response=await api.req('/api/media',{method:'POST',body});return response.media;}
@@ -318,7 +320,7 @@ async function logoutProfile(){
  window.dispatchEvent(new Event('solvi:session-lost'));
  auth=null;me=null;adminToken=null;sessionPrompt=false;
  localStorage.removeItem('solvi-profile');sessionStorage.removeItem('solvi-tab');sessionStorage.removeItem('solvi-room');
- sessionStorage.removeItem('solvi-meta-session-key');sessionStorage.removeItem('solvi-brain-debug');
+ sessionStorage.removeItem('solvi-meta-session-key');sessionStorage.removeItem('solvi-elevenlabs-key');sessionStorage.removeItem('solvi-brain-debug');
  // Reload clears existing room messages, object lists, media blobs and peer states.
  window.location.reload();
 }
@@ -351,11 +353,12 @@ async function loadMessages(){
    const newcomers=hasLoaded?messages.filter(m=>!oldIds.has(m.id)&&m.user_id!==me?.id):[];
    cachedMessages=messages;chatSignature=nextSignature;
    const feed=$('chatFeed');feed.replaceChildren();lastBubbleEntry=null;
-   for(const entry of messages)await bubble(entry);
+   suppressRobotSpeech=true;try{for(const entry of messages)await bubble(entry);}finally{suppressRobotSpeech=false;}
    if($('verboseRobotDebug')?.checked)for(const entry of localBrainTrace.filter(x=>x.room===room).slice(-100))await bubble(entry);
    scrollChatToLatest();
    initialRoomLoads.add(room);
    if(newcomers.length)playCue('incoming');
+   for(const entry of newcomers)if(entry.role==='assistant')robotSpeech?.speak(entry);
    for(const entry of newcomers)if(entry.role==='user')window.dispatchEvent(new CustomEvent('solvi:peer-message',{detail:{userId:entry.user_id,text:entry.text}}));
  }catch(e){toast(e.message);}
 }
@@ -612,8 +615,22 @@ function setupChatPresentation(){
   const resize=()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,118)+'px';};
   input.addEventListener('input',resize);resize();
 }
+function setupRobotVoiceSettings(){
+ const enabled=$('robotSpeechEnabled'),volume=$('robotVoiceVolume'),input=$('elevenLabsKey'),status=$('voiceKeyStatus');
+ enabled.checked=localStorage.getItem('solvi-robot-speech')!=='0';
+ volume.value=localStorage.getItem('solvi-robot-speech-volume')||'75';
+ enabled.onchange=()=>{localStorage.setItem('solvi-robot-speech',enabled.checked?'1':'0');robotSpeech?.stop();};
+ volume.oninput=()=>localStorage.setItem('solvi-robot-speech-volume',volume.value);
+ status.textContent=sessionStorage.getItem('solvi-elevenlabs-key')?'Voice session key loaded.':'Local voice available without a key.';
+ $('saveElevenLabsKey').onclick=()=>{
+  const key=input.value.trim();if(key&&(!/^[\x21-\x7e]{16,256}$/.test(key))){status.textContent='Invalid voice key.';return;}
+  if(key)sessionStorage.setItem('solvi-elevenlabs-key',key);else sessionStorage.removeItem('solvi-elevenlabs-key');input.value='';status.textContent=key?'Voice key saved for this browser session.':'Browser voice key cleared.';
+ };
+ window.addEventListener('solvi:test-robot-voice',e=>robotSpeech?.test(e.detail));
+ window.addEventListener('solvi:session-lost',()=>robotSpeech?.stop());
+}
 function bindUI(world){
- const editor=new SceneEditor(world,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
+ const editor=new SceneEditor(world,toast);robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
  window.addEventListener('solvi:robot-task-update',e=>{
@@ -684,7 +701,7 @@ function bindUI(world){
  window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id)playCue(event.detail.action==='left'?'leave':'join');});
  document.addEventListener('pointerdown',primeAudio,{once:true});
  $('verboseRobotDebug').checked=sessionStorage.getItem('solvi-brain-debug')!=='0';$('verboseRobotDebug').onchange=()=>{sessionStorage.setItem('solvi-brain-debug',$('verboseRobotDebug').checked?'1':'0');chatSignature='';loadMessages();};
- setupChatPresentation();setupSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();initRobotBrains(world,api,()=>activeRoom,toast);begin();
+ setupChatPresentation();setupSettings();setupRobotVoiceSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();initRobotBrains(world,api,()=>activeRoom,toast);begin();
  // Opt-in robot social initiatives: the server enforces a six-minute per-robot
  // cooldown even with multiple connected clients. They are never executable moves.
  let initiativeBusy=false;

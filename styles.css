@@ -1067,3 +1067,13 @@ html body .topbar #toolNav > button#toolsToggleButton{display:inline-flex!import
 html[data-button-labels='icon'] #chatPanel #captionsButton .ui-button-label{
  display:inline-block!important;white-space:nowrap!important;
 }
+
+/* v0.2.39: small, accessible robot voice controls; use native select widgets. */
+.brain-voice-config{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:8px 0;align-items:end}
+.brain-voice-config .field-label{min-width:0;margin:0}
+.brain-voice-config select,.brain-voice-config input{max-width:100%;min-width:0}
+.brain-voice-config .brain-voice-values{display:flex;gap:8px;align-items:center}
+.brain-voice-values label{display:flex;align-items:center;gap:5px;min-width:0}
+.brain-voice-values input{width:65px}
+#robotVoiceStatus{overflow-wrap:anywhere}
+@media(max-width:520px){.brain-voice-config{grid-template-columns:minmax(0,1fr)}}
