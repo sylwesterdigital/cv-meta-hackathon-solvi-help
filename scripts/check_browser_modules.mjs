@@ -37,7 +37,7 @@ export function browserModules(root=defaultRoot) {
       else if(spec.startsWith('./') || spec.startsWith('../'))
         next=path.relative(rootPath,path.resolve(path.dirname(full),spec));
       else throw Error(`Unresolved browser import: ${rel} -> ${spec}`);
-      if (!next.endsWith('.js')) throw Error(`Unexpected browser module: ${rel} -> ${spec}`);
+      if (!/\.(?:js|mjs)$/.test(next)) throw Error(`Unexpected browser module: ${rel} -> ${spec}`);
       if (next.startsWith('..') || path.isAbsolute(next)) throw Error(`Import escaped webroot: ${rel} -> ${spec}`);
       queue.push(next);
     }

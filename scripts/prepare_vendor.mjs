@@ -1,5 +1,6 @@
 import { mkdir, copyFile, cp, access, readFile, realpath } from 'node:fs/promises';
 import { preserveLocalAssets } from './preserve-local-assets.mjs';
+import { stageRapierBundle } from './rapier-vendor.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -65,6 +66,8 @@ while (queue.length) {
 }
 await cp(path.join(examples, 'libs', 'draco'), path.join(vendor, 'draco'), { recursive: true, force: true });
 await cp(path.join(examples, 'libs', 'basis'), path.join(vendor, 'basis'), {recursive:true,force:true});
+// Rapier 0.21 moved its self-contained ESM bundle under dist/rapier.mjs.
+await stageRapierBundle(root);
 console.log(`Three.js bundled with ${visited.size} recursively resolved addon modules and Draco decoder.`);
 
 // All tracked local assets must be preserved *byte-for-byte* in the verified stage,

@@ -88,6 +88,7 @@ def init_db():
         ''')
         cols={r[1] for r in con.execute('PRAGMA table_info(messages)').fetchall()}
         if 'room_id' not in cols:con.execute("ALTER TABLE messages ADD COLUMN room_id TEXT NOT NULL DEFAULT 'main'")
+        if 'physics' not in {r[1] for r in con.execute('PRAGMA table_info(room_policies)').fetchall()}:con.execute('ALTER TABLE room_policies ADD COLUMN physics INTEGER NOT NULL DEFAULT 0')
         con.execute('CREATE INDEX IF NOT EXISTS messages_room_created ON messages(room_id,created)')
 init_db()
 
@@ -135,7 +136,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.15',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.16',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -368,8 +369,8 @@ def create_room():
 
 def room_policy(room_id):
     with db() as con:
-        row=con.execute('SELECT objects,robots FROM room_policies WHERE room_id=?',(room_id,)).fetchone()
-    return dict(row) if row else {'objects':'open','robots':'open'}
+        row=con.execute('SELECT objects,robots,physics FROM room_policies WHERE room_id=?',(room_id,)).fetchone()
+    return dict(row) if row else {'objects':'open','robots':'open','physics':0}
 
 def may_edit(user_id,obj,policy):
     key='robots' if obj.get('kind')=='robot' else 'objects'
@@ -389,12 +390,12 @@ def put_room_settings():
     if not user:return json_error(msg,status)
     data=request.get_json(silent=True) or {};room_id=selected_room(data.get('room','main'))
     if not room_id:return json_error('Unknown room',404)
-    objects=data.get('objects');robots=data.get('robots')
-    if objects not in ('open','owned') or robots not in ('open','owned'):return json_error('Invalid permissions')
+    objects=data.get('objects');robots=data.get('robots');physics=data.get('physics',room_policy(room_id).get('physics',0))
+    if objects not in ('open','owned') or robots not in ('open','owned') or physics not in (0,1):return json_error('Invalid world settings')
     with db() as con:
-        con.execute('INSERT INTO room_policies(room_id,objects,robots) VALUES(?,?,?) ON CONFLICT(room_id) DO UPDATE SET objects=excluded.objects,robots=excluded.robots',(room_id,objects,robots))
-    publish({'type':'room-policy','room':room_id,'policy':{'objects':objects,'robots':robots},'by':user['id']},room_id=room_id)
-    return jsonify(room=room_id,policy={'objects':objects,'robots':robots})
+        con.execute('INSERT INTO room_policies(room_id,objects,robots,physics) VALUES(?,?,?,?) ON CONFLICT(room_id) DO UPDATE SET objects=excluded.objects,robots=excluded.robots,physics=excluded.physics',(room_id,objects,robots,physics))
+    publish({'type':'room-policy','room':room_id,'policy':{'objects':objects,'robots':robots,'physics':physics},'by':user['id']},room_id=room_id)
+    return jsonify(room=room_id,policy={'objects':objects,'robots':robots,'physics':physics})
 
 @app.get('/api/messages')
 def messages():
@@ -619,7 +620,7 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','model') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','physics','model') if key in obj}
         if len(str(obj.get('name','')))>100:return json_error('Object name too long')
         if obj['kind']=='model' and not model_asset_exists(obj.get('model')):return json_error('Unknown scene model')
         if obj['kind']!='model' and obj.get('model'):return json_error('Unexpected model reference')
@@ -629,6 +630,13 @@ def patch_scene_object():
         if obj.get('texture','none') not in ('none','checker','gradient','stripes','dots','custom'):return json_error('Unsupported texture preset')
         if not isinstance(obj.get('color'),(str,type(None))) or len(obj.get('color') or '')>24:return json_error('Invalid color')
         if 'speed' in obj and (not isinstance(obj['speed'],(float,int)) or not math.isfinite(obj['speed']) or not .35<=obj['speed']<=3):return json_error('Invalid robot speed')
+        if 'strafeSpeed' in obj and (not isinstance(obj['strafeSpeed'],(float,int)) or not math.isfinite(obj['strafeSpeed']) or not .5<=obj['strafeSpeed']<=4):return json_error('Invalid strafe speed')
+        if 'physics' in obj:
+            ph=obj['physics']
+            if obj['kind'] in ('light','robot') or not isinstance(ph,dict) or ph.get('mode') not in ('off','dynamic','static','kinematic'):return json_error('Invalid physics mode')
+            for key,limit in (('friction',2),('restitution',1)):
+                value=ph.get(key)
+                if not isinstance(value,(int,float)) or isinstance(value,bool) or not math.isfinite(value) or not 0<=value<=limit:return json_error('Invalid physics property')
         if 'light' in obj:
             light=obj['light']
             if obj['kind']!='light' or not isinstance(light,dict):return json_error('Invalid light configuration')
@@ -797,9 +805,9 @@ def websocket(ws):
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
                 try:
                     f=int(msg.get('f',0));t=int(msg.get('t',0));r=int(msg.get('r',0));reverse=int(msg.get('b',0));moving=int(msg.get('m',0))
-                    x=float(msg.get('x',0));y=float(msg.get('y',0));z=float(msg.get('z',0));yaw=float(msg.get('yaw',0));speed=float(msg.get('s',1));jump=int(msg.get('j',0));seq=int(msg.get('seq',0) or 0)
+                    x=float(msg.get('x',0));y=float(msg.get('y',0));z=float(msg.get('z',0));yaw=float(msg.get('yaw',0));speed=float(msg.get('s',1));strafe=float(msg.get('q',1.8));jump=int(msg.get('j',0));seq=int(msg.get('seq',0) or 0)
                 except (ValueError,TypeError,OverflowError):continue
-                if any(v not in (-1,0,1) for v in (f,t)) or r not in (0,1) or reverse not in (0,1) or moving not in (0,1) or jump not in (0,1) or not math.isfinite(speed) or not .35<=speed<=3:continue
+                if any(v not in (-1,0,1) for v in (f,t)) or r not in (0,1) or reverse not in (0,1) or moving not in (0,1) or jump not in (0,1) or not math.isfinite(speed) or not .35<=speed<=3 or not math.isfinite(strafe) or not .5<=strafe<=4:continue
                 if not all(math.isfinite(v) and abs(v)<1000 for v in (x,y,z,yaw)):continue
                 with db() as con:
                     row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
@@ -808,7 +816,7 @@ def websocket(ws):
                 if not controlled or not may_edit(uid,controlled,room_policy(room_id)):continue
                 publish({'type':'robot-input','room':room_id,'by':uid,'id':identifier,
                         'f':f,'t':t,'r':r,'b':reverse,'m':moving,'x':round(x,2),'y':round(y,2),
-                        'z':round(z,2),'yaw':round(yaw,3),'s':round(speed,2),'j':jump,'seq':max(0,min(2147483647,seq))},except_id=uid,room_id=room_id)
+                        'z':round(z,2),'yaw':round(yaw,3),'s':round(speed,2),'q':round(strafe,2),'j':jump,'seq':max(0,min(2147483647,seq))},except_id=uid,room_id=room_id)
             elif msg.get('type')=='signal' and isinstance(msg.get('payload'),dict):
                 to=msg.get('to')
                 with room_lock:peer=room.get(to)

@@ -384,3 +384,16 @@ body .xr-stage-button{font-size:18px!important}
 #avatarGalleryGrid .avatar-preview{position:absolute!important;inset:0!important}
 #avatarGalleryGrid .avatar-preview img{width:100%;height:100%;object-fit:cover}
 @media(max-width:750px){#chatModeButton.bottom-chat-mode{left:8px;bottom:calc(65px + env(safe-area-inset-bottom));font-size:11px!important}#avatarGalleryGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}}
+
+/* v0.2.16 · import is a first-class action; full-stage drag guidance */
+.scene-drop-overlay{position:fixed;inset:0;z-index:210;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,17,30,.42);border:4px dashed #8de0fa;color:#fff;text-align:center}
+.scene-drop-overlay[hidden]{display:none!important}
+.scene-drop-overlay>div{padding:24px 32px;border-radius:12px;background:#081929ed}
+.scene-drop-overlay strong{display:block;font-size:20px}.scene-drop-overlay small{display:block;margin-top:8px;font-size:12px;color:#c8eeff}
+#toolboxActions #importModelButton{font-weight:750;color:var(--solvi-text,#fff);border:1px solid var(--solvi-accent,#7ed8f9)}
+.physics-object-controls{padding:8px 10px;display:grid;grid-template-columns:1fr;gap:5px}
+.physics-object-controls[hidden]{display:none}.physics-object-controls label{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px}
+.physics-object-controls :is(select,input){font-size:11px;max-width:138px;width:60%;min-width:0}
+
+.quick-model-import{position:fixed;left:16px;bottom:67px;z-index:16;font-size:12px!important;font-weight:750!important;padding:8px 12px!important;border:1px solid var(--solvi-accent,#7ed8f9)!important;background:var(--ui-panel,#152338)!important;color:var(--ui-fg,#fff)!important;}
+@media(max-width:750px){.quick-model-import{left:6px;bottom:75px}}

@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.15",
+  "currentVersion": "0.2.16",
   "releases": [
+    {
+      "version": "0.2.16",
+      "publishedAt": "2026-10-28T03:20:02Z",
+      "changes": [
+        "FIX: Rapier 0.21 browser bundle is now copied from dist/rapier.mjs (not removed rapier.es.js); physics dynamic import updated.",
+        "FIX: browser dependency checker accepts Rapier .mjs module; included vendor source layout regression tests.",
+        "Visible + 3D Model import button, Shift+A model entry and full-stage GLB/FBX drag-and-drop overlay with drop-location placement and size checks.",
+        "Robot strafe-speed control 0.5\u00d7\u20134\u00d7, independently of walking speed, synced as compact remote movement packets.",
+        "Experimental optional Rapier world physics with dynamic/static/kinematic bodies; per-object collider mode, friction, restitution. Off by default."
+      ]
+    },
     {
       "version": "0.2.15",
       "publishedAt": "2026-10-28T02:35:35Z",

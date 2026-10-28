@@ -21,7 +21,7 @@ function establishTabChannel(uid){
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
 let cachedMessages=[],chatSignature='',lastBubbleEntry=null;const initialRoomLoads=new Set();
-let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open'};let sessionPrompt=false;
+let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};let sessionPrompt=false;
 const toast=text=>{const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5200);};
 const show=(id,yes=true)=>{$(id).hidden=!yes;};
 const stored=()=>{try{return JSON.parse(localStorage.getItem('solvi-profile')||'null');}catch{return null;}};
@@ -214,9 +214,11 @@ async function configureRooms(){
  };
 }
 async function loadWorldSettings(){
-  const requestedRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open'};
+  const requestedRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};
   if(online&&auth){try{const data=await api.req('/api/room/settings?room='+encodeURIComponent(requestedRoom));if(requestedRoom!==activeRoom)return;window.solviRoomPolicy=data.policy;}catch(error){toast(error.message);}}
   for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=window.solviRoomPolicy[key]||'open';
+  $('worldPhysicsEnabled').value=String(window.solviRoomPolicy.physics||0);
+  window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics)).catch(e=>toast('Physics unavailable: '+e.message));
   window.solviEditor?.refreshList();
 }
 function setupWorldSettings(){
@@ -224,13 +226,14 @@ function setupWorldSettings(){
   $('closeWorldSettings').onclick=()=>$('worldSettingsDrawer').hidden=true;
   $('worldSettingsDrawer').onpointerdown=e=>{if(e.target===$('worldSettingsDrawer'))$('worldSettingsDrawer').hidden=true;};
   $('saveWorldSettings').onclick=async()=>{
-    const data={room:activeRoom,objects:$('worldObjectsPolicy').value,robots:$('worldRobotsPolicy').value};
+    const data={room:activeRoom,objects:$('worldObjectsPolicy').value,robots:$('worldRobotsPolicy').value,physics:Number($('worldPhysicsEnabled').value)};
     try{if(online&&auth){const response=await api.req('/api/room/settings',{method:'PUT',body:JSON.stringify(data)});window.solviRoomPolicy=response.policy;}
-      else window.solviRoomPolicy={objects:data.objects,robots:data.robots};
-      $('worldSettingsStatus').textContent='Permissions saved for this realm.';window.solviEditor?.refreshList();
+      else window.solviRoomPolicy={objects:data.objects,robots:data.robots,physics:data.physics};
+      $('worldSettingsStatus').textContent='World settings saved.';await window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics));window.solviEditor?.refreshList();
     }catch(e){$('worldSettingsStatus').textContent=e.message;}
   };
   window.addEventListener('solvi:world-policy',e=>{window.solviRoomPolicy=e.detail.policy;
+    $('worldPhysicsEnabled').value=String(e.detail.policy.physics||0);window.solviEditor?.physics.setEnabled(Boolean(e.detail.policy.physics)).catch(err=>toast('Physics unavailable: '+err.message));
     for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=e.detail.policy[key]||'open';
     window.solviEditor?.refreshList();});
 }

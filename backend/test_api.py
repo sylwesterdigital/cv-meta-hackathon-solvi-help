@@ -10,7 +10,7 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.15')
+health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.16')
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.
@@ -53,6 +53,11 @@ assert c.get('/api/scene?room=main',headers=headers).get_json()['objects']==[]
 obj['position']=[2,1,0]
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':obj}).status_code==200
 assert len(c.get('/api/scene?room=lab',headers=headers).get_json()['objects'])==1
+obj['physics']={'mode':'dynamic','friction':.7,'restitution':.15}
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':obj}).status_code==200
+assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects'][0]['physics']['mode']=='dynamic'
+obj['physics']['mode']='invalid'
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':obj}).status_code==400
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testcube-001'}}).status_code==200
 assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects']==[]
 light={'id':'testlight-001','kind':'light','name':'Lamp','position':[0,2,0],
@@ -74,12 +79,16 @@ assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects'][0]['sp
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-001'}}).status_code==200
 # Every room defaults to shared editing; owners can be enforced independently.
 settings=c.get('/api/room/settings?room=lab',headers=headers)
-assert settings.status_code==200 and settings.get_json()['policy']=={'objects':'open','robots':'open'}
+assert settings.status_code==200 and settings.get_json()['policy']=={'objects':'open','robots':'open','physics':0}
 assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'invalid','robots':'open'}).status_code==400
 r=c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'owned','robots':'open'})
 assert r.status_code==200,(r.status_code,r.data)
 assert c.get('/api/room/settings?room=lab',headers=headers).get_json()['policy']['objects']=='owned'
 assert c.get('/api/room/settings?room=main',headers=headers).get_json()['policy']['objects']=='open'
+assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'owned','robots':'open','physics':1}).status_code==200
+assert c.get('/api/room/settings?room=lab',headers=headers).get_json()['policy']['physics']==1
+assert c.get('/api/room/settings?room=main',headers=headers).get_json()['policy']['physics']==0
+assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'owned','robots':'open','physics':4}).status_code==400
 # Another user cannot modify an owned object, but can once objects are opened.
 second=c.post('/api/onboard',json={'name':'Second editor','tab':'other-tab-123'},headers={'Origin':origin})
 assert second.status_code==200

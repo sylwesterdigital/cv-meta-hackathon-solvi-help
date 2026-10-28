@@ -5,6 +5,8 @@ import {EditHistory,duplicateElevation,nextDuplicateName} from './edit-history.j
 import {makeRobot,hydrateRobot,robotAction,tickRobots,setRobotDestination,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
 import {intent,active,packetFor,stepRobotMotion,signedAngle,makeRemoteCorrection,applyRemoteCorrection} from './robot-net.js';
 import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneModelRenderer} from './scene-models.js';
+import {ScenePhysics} from './scene-physics.js';
+import {physicsOptions} from './physics-options.js';
 
 const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'];
 const byId=id=>document.getElementById(id);
@@ -68,7 +70,7 @@ export function setLight(group,settings){
 
 export class SceneEditor{
  constructor(world,onToast){
-  this.world=world;this.toast=onToast;configureSceneModelRenderer(world.renderer);this.items=[];this.selected=null;this.revision=0;
+  this.world=world;this.toast=onToast;configureSceneModelRenderer(world.renderer);this.physics=new ScenePhysics(this);this.items=[];this.selected=null;this.revision=0;
   this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
   this.history=new EditHistory(120);this.transformBefore=null;
   this.transform=new TransformControls(world.camera,world.renderer.domElement);
@@ -87,17 +89,31 @@ export class SceneEditor{
  }
  setupUI(){
   const menu=byId('addMenu');
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Robots',['robot']],['3D models',['import model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';menu.append(bar);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';menu.append(search);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
   search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
-   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.onclick=()=>{if(k==='import model'){menu.hidden=true;byId('modelImportFile').click();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}menu.append(group);}
+   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}menu.append(group);}
   const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton'])toolbox.append(byId(id));
-  byId('importModelButton').onclick=()=>byId('modelImportFile').click();
+  byId('importModelButton').onclick=()=>byId('modelImportFile').click();byId('quickModelImport').onclick=()=>byId('modelImportFile').click();
   byId('modelImportFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(f)await this.importModel(f);e.target.value='';});
-  const canvasDrop=worldCanvas=>{worldCanvas.addEventListener('dragover',e=>{if([...e.dataTransfer?.items||[]].some(i=>i.kind==='file'))e.preventDefault();});worldCanvas.addEventListener('drop',async e=>{const file=[...e.dataTransfer?.files||[]].find(f=>/\.(glb|fbx)$/i.test(f.name));if(!file)return;e.preventDefault();this.lastPointer={x:e.clientX,y:e.clientY};await this.importModel(file);});};
-  canvasDrop(this.world.renderer.domElement);
+  // Canvas-only listeners miss drags over HUD layers; use the whole document.
+  const overlay=byId('sceneDropOverlay');
+  const modelDragging=e=>[...e.dataTransfer?.items||[]].some(i=>i.kind==='file');
+  document.addEventListener('dragenter',e=>{if(modelDragging(e))overlay.hidden=false;});
+  document.addEventListener('dragover',e=>{if(modelDragging(e)){e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';overlay.hidden=false;}});
+  document.addEventListener('dragleave',e=>{if(!e.relatedTarget&&!document.elementFromPoint(e.clientX,e.clientY))overlay.hidden=true;});
+  document.addEventListener('drop',async e=>{
+    overlay.hidden=true;
+    const files=[...e.dataTransfer?.files||[]];if(!files.length)return;
+    if(e.target?.closest?.('.chat-composer,.avatar-gallery,.profile-modal'))return;
+    e.preventDefault();e.stopPropagation();const file=files.find(f=>/\.(glb|fbx)$/i.test(f.name));
+    if(!file)return this.toast('Only .glb and .fbx files can be dropped into the world');
+    this.lastPointer={x:e.clientX,y:e.clientY};await this.importModel(file);
+  });
+  window.addEventListener('dragend',()=>overlay.hidden=true);
+
   byId('toolboxMinimize').onclick=()=>{const collapsed=byId('editorToolbox').classList.toggle('minimized');byId('toolboxMinimize').textContent=collapsed?'+':'−';};
   const openMenu=(x,y)=>{menu.hidden=false;menu.style.right='auto';menu.style.left=Math.max(8,Math.min(innerWidth-275,x))+'px';menu.style.top=Math.max(54,Math.min(innerHeight-370,y))+'px';search.value='';for(const b of menu.querySelectorAll('.add-group button'))b.hidden=false;};
   this.showAddMenu=openMenu;
@@ -108,6 +124,8 @@ export class SceneEditor{
   byId('minimizeScenePanel').onclick=()=>byId('scenePanel').classList.toggle('minimized');
   byId('closeScenePanel').onclick=()=>byId('scenePanel').hidden=true;
   byId('closeProperties').onclick=()=>{byId('propertiesPanel').hidden=true;this.clearLightHelper();};
+  for(const id of ['objectPhysicsMode','objectRestitution','objectFriction'])byId(id).addEventListener('change',()=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||['robot','light'].includes(obj.userData.editorKind))return;obj.userData.physics=physicsOptions({mode:byId('objectPhysicsMode').value,friction:byId('objectFriction').value,restitution:byId('objectRestitution').value});this.physics.sync(obj);this.queueSave(obj);});
+  const strafe=byId('robotStrafeSpeed');strafe.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotStrafeSpeed=Number(strafe.value);byId('robotStrafeLabel').textContent=Number(strafe.value).toFixed(1)+'×';this.queueSave(this.selected);};
   const speed=byId('robotSpeed');speed.addEventListener('pointerdown',()=>this.speedBefore=this.snapshot(this.selected));speed.addEventListener('change',()=>{this.recordEdit(this.speedBefore,this.snapshot(this.selected));this.speedBefore=null;});speed.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotSpeed=Number(speed.value);byId('robotSpeedLabel').textContent=Number(speed.value).toFixed(2)+'×';this.queueSave(this.selected);};
   for(const id of ['lightType','lightIntensity','lightRange','lightDecay','lightAngle','lightPenumbra','lightColor','lightGround'])byId(id).addEventListener('change',()=>{const o=this.selected;if(!o||o.userData.editorKind!=='light'||!this.canEdit(o))return;
    const before=this.snapshot(o);setLight(o,{type:byId('lightType').value,intensity:+byId('lightIntensity').value,range:+byId('lightRange').value,decay:+byId('lightDecay').value,angle:+byId('lightAngle').value,penumbra:+byId('lightPenumbra').value,color:byId('lightColor').value,groundColor:byId('lightGround').value});this.refreshLightControls();this.recordEdit(before,this.snapshot(o));this.queueSave(o);});
@@ -206,11 +224,11 @@ export class SceneEditor{
   duplicate.userData.textureName=entry.texture||'none';
   if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')duplicate.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.map=makeTexture(entry.texture);mesh.material.needsUpdate=true;}});
   if(entry.kind==='model'){duplicate.userData.modelUrl=entry.model;hydrateSceneModel(duplicate);}
-  if(entry.kind==='light')setLight(duplicate,entry.light||{});duplicate.userData.robotSpeed=entry.speed||1;duplicate.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;duplicate.userData.avatarUrl=source.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;this.items.push(duplicate);this.world.scene.add(duplicate);this.select(duplicate);if(entry.kind==='robot')hydrateRobot(duplicate);this.recordEdit(null,this.snapshot(duplicate));this.queueSave(duplicate);this.toast('Duplicated above original');
+  if(entry.kind==='light')setLight(duplicate,entry.light||{});duplicate.userData.robotSpeed=entry.speed||1;duplicate.userData.robotStrafeSpeed=entry.strafeSpeed||1.8;duplicate.userData.physics=physicsOptions(entry.physics);duplicate.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;duplicate.userData.avatarUrl=source.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;this.items.push(duplicate);this.world.scene.add(duplicate);this.physics.sync(duplicate);this.select(duplicate);if(entry.kind==='robot')hydrateRobot(duplicate);this.recordEdit(null,this.snapshot(duplicate));this.queueSave(duplicate);this.toast('Duplicated above original');
  }
  add(kind,showGallery=true,lightType=undefined){const object=objectFor(kind);if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
  const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.raycaster.intersectObject(this.world.floor)?.[0]?.point;if(point){object.position.x=point.x;object.position.z=point.z;}
- object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;this.items.push(object);this.world.scene.add(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}if(kind==='model'&&object.userData.modelUrl)hydrateSceneModel(object);if(kind!=='model'){this.recordEdit(null,this.snapshot(object));this.queueSave(object);}return object;}
+ object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;this.items.push(object);this.world.scene.add(object);this.physics.sync(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}if(kind==='model'&&object.userData.modelUrl)hydrateSceneModel(object);if(kind!=='model'){this.recordEdit(null,this.snapshot(object));this.queueSave(object);}return object;}
  select(obj){if(this.selected&&this.selected!==obj)this.broadcastEdit(false);this.clearLightHelper();this.robotKeys.clear();this.localRobotInput=null;this.selected=obj;
   if(obj?.userData.editorKind==='robot')for(const key of ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'])this.world.keys.delete(key);
   // Robots are controlled with arrows, not a permanent transform gizmo.
@@ -220,10 +238,10 @@ export class SceneEditor{
   if(obj)this.world.focusCameraOn(obj);
   if(obj)this.broadcastEdit(true);}
  updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
-  byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
+  byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
-  byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);byId('sceneModelControls').hidden=obj.userData.editorKind!=='model';if(obj.userData.editorKind==='model')byId('sceneModelPath').textContent=obj.userData.modelUrl||'No model';if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';}
+  byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);byId('sceneModelControls').hidden=obj.userData.editorKind!=='model';if(obj.userData.editorKind==='model')byId('sceneModelPath').textContent=obj.userData.modelUrl||'No model';if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed||1.8;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed||1.8).toFixed(1)+'×';const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';}
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
     const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);
   });
@@ -235,15 +253,15 @@ export class SceneEditor{
   select.value=[...select.options].some(o=>o.value===obj.userData.robotMode)?obj.userData.robotMode:'idle';
  }
   refreshList(){const list=byId('sceneItems');list.replaceChildren();for(const obj of this.items){const row=document.createElement('div');row.className='scene-item-row';const b=document.createElement('button');b.className=obj===this.selected?'selected':'';b.textContent=`${obj.userData.editorKind} · ${obj.name}`;b.onclick=()=>this.select(obj);const remove=document.createElement('button');remove.className='scene-item-delete';remove.textContent='×';remove.title='Delete '+obj.name;remove.setAttribute('aria-label','Delete '+obj.name);remove.disabled=!this.canEdit(obj);remove.onclick=()=>{this.select(obj);this.remove();};row.append(b,remove);list.append(row);}}
- remove(){if(!this.selected)return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
+ remove(){if(!this.selected)return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
  texture(name){if(!this.selected||this.selected.userData.editorKind==='robot')return;if(this.canEdit(this.selected))this.selected.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
-  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed||1):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined}));}
- apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed||1;if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;
+  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed||1.8):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed||1):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined}));}
+ apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.physics.clear();if(this.physics.enabled)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed||1;o.userData.robotStrafeSpeed=entry.strafeSpeed||1.8;o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
-   this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);}this.refreshList();}
+   this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);this.physics.sync(o);}this.refreshList();}
  disposeObject(obj){
   if(obj.userData.editorKind==='model'){invalidateSceneModel(obj);return;}
   obj.traverse(x=>{x.geometry?.dispose();if(x.material?.map)x.material.map.dispose();x.material?.dispose?.();});
@@ -254,16 +272,16 @@ export class SceneEditor{
   if(typeof id!=='string'||!id)return;
   const current=this.items.find(obj=>obj.userData.editorId===id);
   if(action==='remove'){
-   if(!current)return;
+   if(!current)return;this.physics.remove(id);
    if(current===this.selected){this.transform.detach();this.selected=null;byId('propertiesPanel').hidden=true;}
-   this.items=this.items.filter(obj=>obj!==current);this.world.scene.remove(current);this.disposeObject(current);
+   this.items=this.items.filter(obj=>obj!==current);this.world.scene.remove(current);this.physics.remove(id);this.disposeObject(current);
    this.refreshList();return;
   }
   if(action!=='upsert'||!entry||!kinds.includes(entry.kind))return;
   if(!Array.isArray(entry.position)||!Array.isArray(entry.rotation)||!Array.isArray(entry.scale))return;
   if(current&&current.userData.editorKind!==entry.kind){
    if(this.selected===current){this.selected=null;this.transform.detach();byId('propertiesPanel').hidden=true;}
-   this.items=this.items.filter(obj=>obj!==current);this.world.scene.remove(current);this.disposeObject(current);
+   this.items=this.items.filter(obj=>obj!==current);this.world.scene.remove(current);this.physics.remove(id);this.disposeObject(current);
   }
   const obj=current?.userData.editorKind===entry.kind?current:objectFor(entry.kind);
   const isNew=obj!==current;
@@ -283,7 +301,7 @@ export class SceneEditor{
    obj.userData.textureName=newTexture;
   }
   const avatar=entry.avatar||DEFAULT_ROBOT_AVATAR;
-  if(entry.kind==='light')setLight(obj,entry.light||{});obj.userData.robotSpeed=entry.speed||1;
+  if(entry.kind==='light')setLight(obj,entry.light||{});obj.userData.robotSpeed=entry.speed||1;obj.userData.robotStrafeSpeed=entry.strafeSpeed||1.8;obj.userData.physics=physicsOptions(entry.physics);this.physics.sync(obj);
   if(entry.kind==='model'&&(isNew||obj.userData.modelUrl!==entry.model)){if(!isNew)invalidateSceneModel(obj);obj.userData.modelUrl=entry.model;hydrateSceneModel(obj);}
   if(entry.kind==='robot'&&(isNew||obj.userData.avatarUrl!==avatar)){
    obj.userData.avatarUrl=avatar;
@@ -379,12 +397,13 @@ export class SceneEditor{
   broadcastEdit(active){const o=this.selected;if(o&&this.canEdit(o))window.solviRoomSocket?.send({type:'object-edit',id:o.userData.editorId,editing:active});}
   showRemoteEdit(packet){const id=packet.id;const obj=this.items.find(o=>o.userData.editorId===id);if(!obj)return;const previous=this.editMarkers.get(id);if(previous&&packet.editing){previous.expires=performance.now()+6500;return;}if(previous){this.world.scene.remove(previous.sprite);previous.sprite.material.map?.dispose();previous.sprite.material.dispose();this.editMarkers.delete(id);}if(!packet.editing)return;const canvas=document.createElement('canvas');canvas.width=512;canvas.height=80;const ctx=canvas.getContext('2d');ctx.fillStyle='rgba(8,20,37,.87)';ctx.fillRect(0,0,512,80);ctx.fillStyle='#ffffff';ctx.font='bold 32px sans-serif';ctx.fillText('Editing · '+String(packet.name||'Guest').slice(0,21),12,50);const texture=new THREE.CanvasTexture(canvas);const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));sprite.scale.set(2.6,.42,1);this.world.scene.add(sprite);this.editMarkers.set(id,{sprite,expires:performance.now()+6500});}
   tick(dt){
+    this.physics.tick(dt);
     const clock=performance.now();for(const [id,marker] of this.editMarkers){const item=this.items.find(o=>o.userData.editorId===id);if(!item||clock>marker.expires){this.world.scene.remove(marker.sprite);marker.sprite.material.map?.dispose();marker.sprite.material.dispose();this.editMarkers.delete(id);continue;}const bounds=new THREE.Box3().setFromObject(item);marker.sprite.position.copy(bounds.getCenter(new THREE.Vector3()));marker.sprite.position.y=(bounds.isEmpty()?item.position.y+2:bounds.max.y)+.42;}
     if(this.selected&&this.canEdit(this.selected)&&(this.world.editorDragging||this.robotKeys.size)&&clock-this.lastEditPing>2500){this.broadcastEdit(true);this.lastEditPing=clock;}
     if(this.lightHelper&&!byId('propertiesPanel').hidden){this.lightHelper.visible=!this.world.renderer.xr.isPresenting;this.lightHelper.update?.();}
     if(this.lightHelper&&byId('propertiesPanel').hidden)this.clearLightHelper();
     const robot=this.robot(),canControl=robot&&this.canEdit(robot);
-    const input=canControl?{...intent(this.robotKeys),s:robot.userData.robotSpeed||1,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1,j:0};
+    const input=canControl?{...intent(this.robotKeys),s:robot.userData.robotSpeed||1,q:robot.userData.robotStrafeSpeed||1.8,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1,q:1.8,j:0};
     const now=performance.now();
     if(canControl){
       const motion=stepRobotMotion({x:robot.position.x,z:robot.position.z,yaw:robot.rotation.y,velocity:robot.userData.robotVelocity||0,steer:robot.userData.robotSteer||0,lateral:robot.userData.robotLateral||0},input,dt);
@@ -400,7 +419,7 @@ export class SceneEditor{
     if(canControl){
       const moving=active(input)||Math.abs(robot.userData.robotVelocity||0)>.04||Math.abs(robot.userData.robotLateral||0)>.04;
       const wasMoving=previous&&(active(previous)||previous.moving);
-      const changed=!previous||input.f!==previous.f||input.t!==previous.t||input.r!==previous.r||input.b!==previous.b||input.s!==previous.s||input.j!==previous.j;
+      const changed=!previous||input.f!==previous.f||input.t!==previous.t||input.r!==previous.r||input.b!==previous.b||input.s!==previous.s||input.q!==previous.q||input.j!==previous.j;
       if(changed||((moving||wasMoving)&&now-this.lastRobotPacket>950)){
         window.solviRoomSocket?.send({...packetFor(robot.userData.editorId,{...input,j:input.j&&!previous?.j?1:0},robot,!moving&&!input.j),seq:++this.robotPacketSeq});
         this.lastRobotPacket=now;
@@ -442,8 +461,8 @@ export class SceneEditor{
     if(packet.j&&!robot.userData.jumpVel)robotAction(robot,'jump');
     if(!packet.m){
       // Decelerate through the same motion integrator instead of stopping at once.
-      this.remoteInput.set(packet.id,{f:0,t:0,r:0,b:0,s:packet.s||1,received:performance.now()});
-    }else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,received:performance.now()});
+      this.remoteInput.set(packet.id,{f:0,t:0,r:0,b:0,s:packet.s||1,q:packet.q||1.8,received:performance.now()});
+    }else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,q:packet.q||1.8,received:performance.now()});
   }
   applyRobotMotion(state){this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});}
   robot(){return this.selected?.userData.editorKind==='robot'?this.selected:null;}
