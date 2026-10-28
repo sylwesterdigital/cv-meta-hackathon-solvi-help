@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.35",
+  "currentVersion": "0.2.36",
   "releases": [
+    {
+      "version": "0.2.36",
+      "publishedAt": "2026-10-28T19:38:10Z",
+      "changes": [
+        "Move the single webcam launcher to the top-right of the draggable Message composer header instead of the top navigation.",
+        "Keep the webcam button icon-only with accessible Open/Close labels, 28px desktop and 36px phone sizes, plus active indication.",
+        "Preserve robot walk, turn, strafe, jump and go-to/sit behaviour; add regression coverage for the control and movement paths."
+      ]
+    },
     {
       "version": "0.2.35",
       "publishedAt": "2026-10-28T19:17:06Z",
@@ -305,18 +314,6 @@
         "Fix Flask endpoint collision that prevented backend from starting (public_asset instead of static)",
         "Add HTTP and Flask endpoint regression tests, keeping previous v0.2.1 frontend and features unchanged",
         "Automatic full-stack deployment with Flask, SQLite and Nginx API/WebSocket proxy"
-      ]
-    },
-    {
-      "version": "0.2.0",
-      "publishedAt": "2026-10-27T12:17:08Z",
-      "changes": [
-        "Add compact messenger chat overlay, Meta model catalog and authenticated Responses API integration.",
-        "Add SQLite accounts with UUID, single active session, optional profile fields, portable recovery and media uploads.",
-        "Add admin-password gated server statistics, WebSocket room notifications and chat history.",
-        "Add Shift+A Three.js scene editor with transform gizmos, object inspector, colours, procedural texture choices and scene storage.",
-        "Add opt-in microphone, video, webcam profile photo, robot-view screenshot and FFmpeg intro GIF conversion.",
-        "Keep WebXR controllers, hands, teleportation and existing Mixamo animations."
       ]
     }
   ]

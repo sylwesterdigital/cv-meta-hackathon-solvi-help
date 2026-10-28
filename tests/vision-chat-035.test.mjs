@@ -21,10 +21,16 @@ test('Robot and human portraits use front-facing rendered JPEG and a saved image
  assert.match(html,/id="saveRobotChatPortrait"/);
  assert.match(read('backend/server.py'),/['"]portrait['"]:36/);
 });
-test('Direct webcam navigation is reachable independently of world toolbox',()=>{
+test('One webcam launcher lives in the draggable Message composer header',()=>{
  const html=read('index.html'),css=read('styles.css');
  assert.equal((html.match(/id="webcamButton"/g)||[]).length,1);
- assert.ok(html.indexOf('id="webcamButton"')>html.indexOf('id="toolNav"'));
- assert.ok(html.indexOf('id="webcamButton"')<html.indexOf('id="settingsButton"'));
- assert.match(css,/#toolNav>#webcamButton\{display:inline-flex!important/);
+ const start=html.indexOf('class="composer-window-head"');
+ const end=html.indexOf('</div>',start);
+ assert.ok(start>=0&&end>start);
+ const header=html.slice(start,end);
+ assert.ok(header.indexOf('id="composerMove"')<header.indexOf('id="webcamButton"'));
+ assert.ok(header.indexOf('id="webcamButton"')<header.indexOf('id="composerMinimize"'));
+ assert.match(header,/id="webcamButton"[^>]+aria-label="Open webcam"/);
+ assert.doesNotMatch(html.slice(html.indexOf('id="toolNav"'),html.indexOf('</nav>')),/id="webcamButton"/);
+ assert.match(css,/#chatPanel \.composer-window-head #webcamButton/);
 });

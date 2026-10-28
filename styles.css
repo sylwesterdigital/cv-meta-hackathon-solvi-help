@@ -1017,3 +1017,10 @@ html body .topbar #toolNav > button#toolsToggleButton{display:inline-flex!import
 #toolNav>#webcamButton{display:inline-flex!important;align-items:center!important;gap:6px!important;white-space:nowrap!important;}
 .chat-avatar[role="button"]{cursor:pointer;}
 .chat-avatar[role="button"]:focus-visible{outline:3px solid var(--solvi-accent);outline-offset:3px;}
+
+/* v0.2.36 — one accessible webcam control, at the trailing end of the draggable Message header. */
+#chatPanel .composer-window-head #webcamButton{display:inline-flex!important;justify-content:center!important;align-items:center!important;flex:0 0 28px!important;width:28px!important;min-width:28px!important;max-width:28px!important;height:28px!important;min-height:28px!important;max-height:28px!important;padding:4px!important;border-radius:7px!important;line-height:1!important;font-size:0!important;white-space:nowrap!important;gap:0!important}
+#chatPanel .composer-window-head #webcamButton::before{display:block!important;flex:0 0 17px!important;width:17px!important;height:17px!important}
+#chatPanel .composer-window-head #webcamButton[aria-pressed="true"]{border-color:#64dbb0!important;background:color-mix(in srgb,#64dbb0 22%,var(--ui-panel,#152a3c))!important}
+#chatPanel .composer-window-head #webcamButton:focus-visible{outline:2px solid var(--solvi-accent)!important;outline-offset:2px!important}
+@media(max-width:750px){#chatPanel .composer-window-head #webcamButton{flex-basis:36px!important;width:36px!important;min-width:36px!important;max-width:36px!important;height:36px!important;min-height:36px!important;max-height:36px!important}}

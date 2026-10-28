@@ -40,7 +40,7 @@ const words=[
  [/more|options|tools/i,'more'],[/copy|duplicate/i,'copy'],[/share|link/i,'share']
 ];
 const fileIcons=new Set('map attach opened minified reset move rotate scale add config chat rooms avatar-3d render download fullscreen captions mic sound-on sound-mute video camera photo eye brain send close x more profile users edit delete stop play pause copy window sidebar-in sidebar-out history preview file stream link check plus share drawing game chat-3d-orbit change-camera transcript background bottom exit media full grab cancel swap speak avatar-maker chat-3d-capture cube sphere cylinder torus plane curve surface text-object points light model list-objects collapse'.split(' '));
-const utilityIconOnly=new Set(['minimizeScenePanel','toolboxMinimize','composerMinimize','composerFloat','minimapMinimize','minimapClose']);
+const utilityIconOnly=new Set(['webcamButton','minimizeScenePanel','toolboxMinimize','composerMinimize','composerFloat','minimapMinimize','minimapClose']);
 // Header close controls have an accessible name but no extra visible x or text.
 export function shouldUseIconOnlyControl(button){return /^(?:close[A-Z]|close$)/.test(button.id||'')||utilityIconOnly.has(button.id||'')||button.classList.contains('scene-item-delete');}
 export function iconForButton(button){
