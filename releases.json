@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.12",
+  "currentVersion": "0.2.13",
   "releases": [
+    {
+      "version": "0.2.13",
+      "publishedAt": "2026-10-28T00:49:13Z",
+      "changes": [
+        "Idle left/right robot strafing with smoothed acceleration, model animation mixer blend and real GLB clip action selector.",
+        "Room-scoped world settings for independently open/owned editing of geometry and robots (open by default).",
+        "Transient in-world editing presence labels with participant names over selected objects and robots.",
+        "Persist draggable panel positions and floating chat size across page reloads.",
+        "Move Face/Posture to World tools, chat mode control bottom-left, messages toggle beside Settings, export/admin under Settings.",
+        "Rename selected objects, delete via scene list, correct overlapping avatar gallery cards."
+      ]
+    },
     {
       "version": "0.2.12",
       "publishedAt": "2026-10-28T00:11:36Z",

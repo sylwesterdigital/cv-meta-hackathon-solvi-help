@@ -27,6 +27,8 @@ export async function hydrateRobot(group){
     if((group.userData.avatarUrl||DEFAULT_ROBOT_AVATAR)===DEFAULT_ROBOT_AVATAR)avatarVisual.rotation.y=Math.PI;
     avatarVisual.add(model);group.add(avatarVisual);
     group.userData.robotAnimator=new MotionController(THREE,model,gltf.animations);
+    group.userData.robotAvailableActions=group.userData.robotAnimator.clipNames;
+    window.dispatchEvent(new CustomEvent('solvi:robot-model-ready',{detail:{id:group.userData.editorId}}));
     group.userData.robotAnimator.play('idle');
     group.userData.robotReady=true;group.userData.robotMode='idle';
   }catch(error){if(group.userData.robotLoadToken===token){console.warn('Robot asset could not load:',error);group.userData.robotError=error.message;}}
@@ -69,6 +71,7 @@ export function tickRobots(items,dt,onMove=()=>{}){
         const angle=Math.atan2(delta.x,delta.z);robot.rotation.y+=Math.atan2(Math.sin(angle-robot.rotation.y),Math.cos(angle-robot.rotation.y))*clamp(dt*6,0,1);
       }
     }
+    const visual=robot.children.find(c=>c.userData.robotVisual);if(visual){const lean=(robot.userData.robotLateral||0)*-.075;visual.rotation.z+=(lean-visual.rotation.z)*Math.min(1,dt*5);}
     if(robot.userData.robotPlaying!==mode){robot.userData.robotAnimator?.play(mode);robot.userData.robotPlaying=mode;}
     robot.userData.robotAnimator?.update(dt);
     if(robot.userData.robotGoal||robot.userData.robotArrived){onMove(robot,Boolean(robot.userData.robotArrived));robot.userData.robotArrived=false;}

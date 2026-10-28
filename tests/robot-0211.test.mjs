@@ -36,7 +36,7 @@ test('Left always turns facing LEFT, right always RIGHT, including in reverse',(
 
 test('At rest left/right do not pivot in place; reverse brakes progressively',()=>{
   for(const keys of [['ArrowLeft','ArrowRight'],['ArrowLeft']]){
-    const r=frames(start(),keys,90);assert.equal(r.x,0);assert.equal(r.z,0);assert.equal(r.yaw,0);assert.equal(r.velocity,0);
+    const r=frames(start(),keys,90);assert.equal(r.yaw,0);assert.equal(r.velocity,0);if(keys.length===2)assert.equal(r.x,0);else assert.ok(r.x<-.05);
   }
   const previous=start(1.4,1.1);
   const b=stepRobotMotion(previous,{f:-1,t:0,r:0,b:1,s:1},1/60);

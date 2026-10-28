@@ -21,14 +21,15 @@ export function computeMode(speed){return speed<.05?'idle':speed<2?'walk':'run';
 export class MotionController{
   constructor(THREE,root,clips){
     this.THREE=THREE;this.mixer=new THREE.AnimationMixer(root);
-    this.actions=new Map();this.current=null;this.currentKind=null;
+    this.actions=new Map();this.current=null;this.currentKind=null;this.clipNames=clips.map(c=>String(c.name||'')).filter(Boolean);
     for(const kind of Object.keys(MOTION_ALIASES)){
       const clip=findClip(clips,kind);
       if(clip)this.actions.set(kind,this.mixer.clipAction(clip));
     }
+    for(const clip of clips)if(clip.name)this.actions.set('clip:'+clip.name,this.mixer.clipAction(clip));
     this.play('idle',0);
   }
-  play(kind,fade=.25){
+  play(kind,fade=.34){
     // Reverse walking means running the *same forward walk clip* backwards,
     // so leg/foot positions rewind instead of playing a separate forward-timed
     // action. Only use a dedicated backward clip when no walk clip exists.
@@ -48,6 +49,7 @@ export class MotionController{
     if(reverseWalk)action.time=Math.max(0,action.getClip().duration-.001);
     action.setLoop(['wave','jump'].includes(kind)?this.THREE.LoopOnce:this.THREE.LoopRepeat,['wave','jump'].includes(kind)?1:Infinity);
     action.clampWhenFinished=['wave','jump'].includes(kind);
+    // Crossfade between clips using AnimationMixer; avoid snapping pose on mode change.
     if(this.current&&fade)action.crossFadeFrom(this.current,fade,false);
     else if(this.current)this.current.stop();
     this.current=action;this.currentKind=kind;

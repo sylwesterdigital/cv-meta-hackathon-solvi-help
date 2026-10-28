@@ -5,7 +5,7 @@ import {intent,stepIntent,packetFor} from '../js/robot-net.js';
 const root=new URL('../',import.meta.url),read=f=>readFileSync(new URL(f,root),'utf8');
 test('Robot steering is bicycle-like, backward is signed motion without snap turns',()=>{
   const left=intent(new Set(['ArrowLeft'])),right=intent(new Set(['ArrowRight']));
-  assert.equal(stepIntent(0,0,0,left,.05).x,0);
+  assert.ok(stepIntent(0,0,0,left,.05).x<0);
   assert.equal(stepIntent(0,0,.5,right,.05).yaw,.5);
   assert.equal(intent(new Set(['ArrowDown'])).f,-1);
   assert.equal(intent(new Set(['ArrowDown'])).b,1);

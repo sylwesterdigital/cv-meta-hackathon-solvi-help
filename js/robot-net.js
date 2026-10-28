@@ -24,15 +24,19 @@ export function stepRobotMotion(state,input,dt){
  // No turning while stationary; more speed gives stronger, smoothly limited steering.
  const steerTarget=clamp(Number(input?.t)||0,-1,1);
  // Steering wheel inertia: no instant angular jumps on key press/release.
- const steer=approach(Number(state.steer)||0,Math.abs(velocity)>.025?steerTarget:0,time*(steerTarget?6:8));
+ const isStrafing=Math.abs(velocity)<.025&&Math.abs(Number(input?.f)||0)<.001;
+ const steer=approach(Number(state.steer)||0,isStrafing?0:steerTarget,time*(steerTarget?6:8));
+ // Smooth side-step when stationary: keep the avatar looking forward.
+ const lateralTarget=isStrafing?-steerTarget*.85*speedFactor:0;
+ const lateral=approach(Number(state.lateral)||0,lateralTarget,(lateralTarget?4.4:6.2)*speedFactor*time);
  const steerStrength=clamp(Math.abs(velocity)/(.9*speedFactor),0,1);
  const angularRate=(.55+.95*steerStrength)*steerStrength;
  // The input sign is calibrated to match the on-screen avatar steering:
  // left raises yaw, right lowers it. Reversing only flips translation;
  // it must NOT flip the heading or turn the avatar around by 180 degrees.
  const yaw=Number(state.yaw||0)+steer*angularRate*time;
- return {x:(Number(state.x)||0)+Math.sin(yaw)*velocity*time,
-  z:(Number(state.z)||0)+Math.cos(yaw)*velocity*time,yaw,velocity,steer};
+ return {x:(Number(state.x)||0)+(Math.sin(yaw)*velocity+Math.cos(yaw)*lateral)*time,
+  z:(Number(state.z)||0)+(Math.cos(yaw)*velocity-Math.sin(yaw)*lateral)*time,yaw,velocity,steer,lateral};
 }
 // Convenience wrapper for older client consumers; stateful simulation uses stepRobotMotion.
 export function stepIntent(x,z,yaw,input,dt){return stepRobotMotion({x,z,yaw,velocity:Number(input?.v)||0},input,dt);}

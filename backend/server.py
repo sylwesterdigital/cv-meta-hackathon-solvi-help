@@ -79,9 +79,11 @@ def init_db():
         CREATE TABLE IF NOT EXISTS scene (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, payload TEXT NOT NULL);
         INSERT OR IGNORE INTO scene VALUES(1,0,'[]');
         CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, title TEXT NOT NULL, created TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS room_policies (room_id TEXT PRIMARY KEY, objects TEXT NOT NULL DEFAULT 'open', robots TEXT NOT NULL DEFAULT 'open');
         CREATE TABLE IF NOT EXISTS room_scenes (room_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL DEFAULT '[]');
         INSERT OR IGNORE INTO rooms VALUES('main','Main realm','2026-10-27T00:00:00Z');
         INSERT OR IGNORE INTO room_scenes VALUES('main',0,'[]');
+        INSERT OR IGNORE INTO room_policies(room_id) VALUES('main');
         ''')
         cols={r[1] for r in con.execute('PRAGMA table_info(messages)').fetchall()}
         if 'room_id' not in cols:con.execute("ALTER TABLE messages ADD COLUMN room_id TEXT NOT NULL DEFAULT 'main'")
@@ -132,7 +134,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.12',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.13',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 @app.get('/api/avatars')
 def list_avatars():
@@ -287,7 +289,38 @@ def create_room():
         if con.execute('SELECT 1 FROM rooms WHERE id=?',(rid,)).fetchone():return json_error('Room already exists',409)
         con.execute('INSERT INTO rooms VALUES(?,?,?)',(rid,title,now()))
         con.execute('INSERT INTO room_scenes(room_id) VALUES(?)',(rid,))
+        con.execute('INSERT INTO room_policies(room_id) VALUES(?)',(rid,))
     return jsonify(room={'id':rid,'title':title})
+
+def room_policy(room_id):
+    with db() as con:
+        row=con.execute('SELECT objects,robots FROM room_policies WHERE room_id=?',(room_id,)).fetchone()
+    return dict(row) if row else {'objects':'open','robots':'open'}
+
+def may_edit(user_id,obj,policy):
+    key='robots' if obj.get('kind')=='robot' else 'objects'
+    return policy.get(key,'open')!='owned' or not obj.get('owner') or obj['owner']==user_id
+
+@app.get('/api/room/settings')
+def get_room_settings():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    room_id=selected_room(request.args.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    return jsonify(room=room_id,policy=room_policy(room_id))
+
+@app.put('/api/room/settings')
+def put_room_settings():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {};room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    objects=data.get('objects');robots=data.get('robots')
+    if objects not in ('open','owned') or robots not in ('open','owned'):return json_error('Invalid permissions')
+    with db() as con:
+        con.execute('INSERT INTO room_policies(room_id,objects,robots) VALUES(?,?,?) ON CONFLICT(room_id) DO UPDATE SET objects=excluded.objects,robots=excluded.robots',(room_id,objects,robots))
+    publish({'type':'room-policy','room':room_id,'policy':{'objects':objects,'robots':robots},'by':user['id']},room_id=room_id)
+    return jsonify(room=room_id,policy={'objects':objects,'robots':robots})
 
 @app.get('/api/messages')
 def messages():
@@ -473,7 +506,7 @@ def set_scene():
     data=request.get_json(silent=True) or {}
     room_id=selected_room(data.get('room','main'))
     if not room_id:return json_error('Unknown room',404)
-    objects=data.get('objects',[]);revision=data.get('revision')
+    objects=data.get('objects',[]);revision=data.get('revision');policy=room_policy(room_id)
     if not isinstance(objects,list) or len(objects)>128 or not isinstance(revision,int):return json_error('Invalid scene')
     allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot'}
     for o in objects:
@@ -486,7 +519,7 @@ def set_scene():
         previous={o.get('id'):o for o in before}
         submitted={o.get('id'):o for o in objects}
         for identifier,existing in previous.items():
-            if existing.get('owner') and existing['owner']!=user['id'] and submitted.get(identifier)!=existing:
+            if not may_edit(user['id'],existing,policy) and submitted.get(identifier)!=existing:
                 return json_error('Cannot change objects owned by other users',403)
         for o in objects:
             o['owner']=(previous.get(o.get('id')) or {}).get('owner') or user['id']
@@ -528,12 +561,13 @@ def patch_scene_object():
                 if not isinstance(val,(int,float)) or not math.isfinite(val) or not 0<=val<=limit:return json_error('Invalid light setting')
             for key in ('color','groundColor'):
                 if not re.fullmatch(r'#[0-9a-fA-F]{6}',str(light.get(key,''))):return json_error('Invalid light colour')
+    policy=room_policy(room_id)
     with db() as con:
         con.execute('BEGIN IMMEDIATE')
         row=con.execute('SELECT revision,payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
         items=json.loads(row['payload'])
         existing=next((item for item in items if item.get('id')==obj_id),None)
-        if existing and existing.get('owner') and existing['owner']!=user['id']:
+        if existing and not may_edit(user['id'],existing,policy):
             return json_error('Object is owned by another user',403)
         if action=='remove':items=[item for item in items if item.get('id')!=obj_id]
         else:
@@ -626,7 +660,16 @@ def websocket(ws):
             if raw is None:break
             if len(raw)>32768:break
             msg=json.loads(raw)
-            if msg.get('type')=='state' and time.monotonic()-last>.10:
+            if msg.get('type')=='object-edit':
+                identifier=str(msg.get('id',''))
+                if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
+                with db() as con:
+                    record=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+                    objects=json.loads(record['payload']) if record else []
+                obj=next((o for o in objects if o.get('id')==identifier),None)
+                if obj and may_edit(uid,obj,room_policy(room_id)):
+                    publish({'type':'object-edit','id':identifier,'by':uid,'name':name,'editing':msg.get('editing') is True,'room':room_id},except_id=uid,room_id=room_id)
+            elif msg.get('type')=='state' and time.monotonic()-last>.10:
                 last=time.monotonic();pose=msg.get('state',{})
                 if not isinstance(pose,dict):continue
                 try:filtered={k:float(pose.get(k,0)) for k in ('x','y','z','yaw')}
@@ -670,7 +713,7 @@ def websocket(ws):
                     itemrow=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
                     objects=json.loads(itemrow['payload']) if itemrow else []
                     controlled=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
-                if not controlled or (controlled.get('owner') and controlled['owner']!=uid):continue
+                if not controlled or not may_edit(uid,controlled,room_policy(room_id)):continue
                 publish({'type':'robot-motion','room':room_id,'by':uid,'id':identifier,'position':position,'rotation':rotation,'mode':mode},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-input':
                 identifier=str(msg.get('id',''))
@@ -685,7 +728,7 @@ def websocket(ws):
                     row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
                     objects=json.loads(row['payload']) if row else []
                     controlled=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
-                if not controlled or (controlled.get('owner') and controlled['owner']!=uid):continue
+                if not controlled or not may_edit(uid,controlled,room_policy(room_id)):continue
                 publish({'type':'robot-input','room':room_id,'by':uid,'id':identifier,
                         'f':f,'t':t,'r':r,'b':reverse,'m':moving,'x':round(x,2),'y':round(y,2),
                         'z':round(z,2),'yaw':round(yaw,3),'s':round(speed,2),'j':jump},except_id=uid,room_id=room_id)

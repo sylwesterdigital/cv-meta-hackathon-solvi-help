@@ -42,7 +42,7 @@ test('turning input does not rotate robot until it is moving',()=>{
   const l=advance(['ArrowLeft']).state;
   const r=advance(['ArrowRight']).state;
   assert.equal(l.yaw,0);assert.equal(r.yaw,0);
-  assert.equal(l.x,0);assert.equal(r.x,0);
+  assert.ok(l.x<-.1);assert.ok(r.x>.1);assert.equal(l.z,0);assert.equal(r.z,0);
 });
 
 test('editor keyboard and remote predicted motion consume same signed intent',()=>{

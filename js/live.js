@@ -24,6 +24,8 @@ export class LiveRoom{
         if(m.type==='signal'&&m.to===this.id)this.onSignal?.(m);
         if(m.type==='robot-motion'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRobotMotion(m);
         if(m.type==='robot-input'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRobotInput(m);
+        if(m.type==='object-edit'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.showRemoteEdit(m);
+        if(m.type==='room-policy'&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:world-policy',{detail:m}));
         if(m.type==='chat-created'&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:chat-updated'));
         if(m.type==='scene-changed'&&m.by!==this.id&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:scene-changed',{detail:m}));
       }catch(e){console.warn('Invalid room message',e);}

@@ -8,11 +8,11 @@ function stepFrames(state,input,frames=60,dt=1/60){
  let result=state;for(let i=0;i<frames;i++)result=stepRobotMotion(result,input,dt);
  return result;
 }
-test('Left and right do not move or spin a robot at rest',()=>{
+test('Idle left and right strafe without spinning the robot',()=>{
  const origin={x:0,z:0,yaw:0,velocity:0};
  for(const key of ['ArrowLeft','ArrowRight']){
   const result=stepFrames(origin,{...intent(new Set([key])),s:1});
-  assert.deepEqual({x:result.x,z:result.z,yaw:result.yaw,velocity:result.velocity},origin);
+  assert.equal(result.yaw,0);assert.equal(result.velocity,0);assert.ok(Math.abs(result.x)>.05);assert.ok(Math.abs(result.z)<.01);assert.equal(Math.sign(result.x),key==='ArrowLeft'?-1:1);
  }
 });
 test('Up drives heading-forward; steering curves while moving, without strafing',()=>{

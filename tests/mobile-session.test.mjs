@@ -4,8 +4,8 @@ import {readFileSync} from 'node:fs';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 test('mobile show/hide chat, navigation, media tools and floating mode',()=>{
  const html=read('index.html'),js=read('js/studio.js'),css=read('styles.css');
- for(const id of ['mobileMenuButton','messagesToggleButton','composerToolsButton','chatModeButton','floatChatButton'])assert.ok(html.includes(`id="${id}"`));
- for(const token of ['chat-muted','windowed','tools-open','nav-expanded','sessionPrompt'])assert.ok(js.includes(token));
+ for(const id of ['messagesToggleButton','composerToolsButton','chatModeButton','floatChatButton'])assert.ok(html.includes(`id="${id}"`));
+ for(const token of ['chat-muted','windowed','tools-open','sessionPrompt'])assert.ok(js.includes(token));
  assert.ok(css.includes('.chat-feed::before'));
  assert.ok(css.includes('env(safe-area-inset-bottom)'));
 });

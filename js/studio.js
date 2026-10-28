@@ -21,7 +21,7 @@ function establishTabChannel(uid){
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
 let cachedMessages=[],chatSignature='',lastBubbleEntry=null;const initialRoomLoads=new Set();
-let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;let sessionPrompt=false;
+let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open'};let sessionPrompt=false;
 const toast=text=>{const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5200);};
 const show=(id,yes=true)=>{$(id).hidden=!yes;};
 const stored=()=>{try{return JSON.parse(localStorage.getItem('solvi-profile')||'null');}catch{return null;}};
@@ -79,7 +79,7 @@ async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);sh
   for(const id of modelIds)select.add(new Option('AI · '+id,id));
   select.value=modelIds.includes('muse-spark-1.3')?'muse-spark-1.3':'';select.disabled=false;
   if(!modelIds.length)$('chatStatus').textContent=data.note||'Human chat available. AI key not configured.';}catch(e){$('modelSelect').replaceChildren(new Option('Model catalog unavailable',''));toast(e.message);}
- await configureRooms();await loadMessages();
+ await configureRooms();await loadWorldSettings();await loadMessages();
  window.dispatchEvent(new CustomEvent('solvi:scene-ready'));
 }
 async function submitProfile(){const fields=profileFields();if(!fields.name){$('profileStatus').textContent='Name is required';return;}
@@ -207,31 +207,70 @@ async function configureRooms(){
  select.replaceChildren(...rooms.map(room=>new Option(room.title,room.id)));select.value=activeRoom;
  $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
  select.onchange=()=>{
-   activeRoom=select.value;window.solviRoom=activeRoom;sessionStorage.setItem('solvi-room',activeRoom);
+   activeRoom=select.value;window.solviRoom=activeRoom;sessionStorage.setItem('solvi-room',activeRoom);loadWorldSettings();
    $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
    chatSignature='';cachedMessages=[];lastBubbleEntry=null;$('chatFeed').replaceChildren();playCue('leave');
    window.dispatchEvent(new CustomEvent('solvi:room-changed',{detail:{room:activeRoom}}));
  };
 }
+async function loadWorldSettings(){
+  const requestedRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open'};
+  if(online&&auth){try{const data=await api.req('/api/room/settings?room='+encodeURIComponent(requestedRoom));if(requestedRoom!==activeRoom)return;window.solviRoomPolicy=data.policy;}catch(error){toast(error.message);}}
+  for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=window.solviRoomPolicy[key]||'open';
+  window.solviEditor?.refreshList();
+}
+function setupWorldSettings(){
+  $('worldSettingsButton').onclick=()=>{loadWorldSettings();$('worldSettingsDrawer').hidden=false;};
+  $('closeWorldSettings').onclick=()=>$('worldSettingsDrawer').hidden=true;
+  $('worldSettingsDrawer').onpointerdown=e=>{if(e.target===$('worldSettingsDrawer'))$('worldSettingsDrawer').hidden=true;};
+  $('saveWorldSettings').onclick=async()=>{
+    const data={room:activeRoom,objects:$('worldObjectsPolicy').value,robots:$('worldRobotsPolicy').value};
+    try{if(online&&auth){const response=await api.req('/api/room/settings',{method:'PUT',body:JSON.stringify(data)});window.solviRoomPolicy=response.policy;}
+      else window.solviRoomPolicy={objects:data.objects,robots:data.robots};
+      $('worldSettingsStatus').textContent='Permissions saved for this realm.';window.solviEditor?.refreshList();
+    }catch(e){$('worldSettingsStatus').textContent=e.message;}
+  };
+  window.addEventListener('solvi:world-policy',e=>{window.solviRoomPolicy=e.detail.policy;
+    for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=e.detail.policy[key]||'open';
+    window.solviEditor?.refreshList();});
+}
+
 function configureDragging(){
- for(const id of ['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox']){
+ const panelIds=['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox'];
+ const save=(id,panel)=>{
+   const rect=panel.getBoundingClientRect();
+   const data={left:rect.left,top:rect.top,minimized:panel.classList.contains('minimized'),windowed:panel.classList.contains('windowed')};
+   if(id==='chatPanel'){data.width=panel.offsetWidth;data.height=panel.offsetHeight;}
+   localStorage.setItem('solvi-window-'+id,JSON.stringify(data));
+ };
+ window.solviSaveWindow=save;
+ for(const id of panelIds){
   const panel=$(id),handle=panel?.querySelector('.drag-handle');if(!panel||!handle)continue;
+  try{const stored=JSON.parse(localStorage.getItem('solvi-window-'+id)||'null');if(stored){
+    if(stored.minimized!==undefined)panel.classList.toggle('minimized',stored.minimized);
+    if(id==='chatPanel'&&stored.windowed){panel.classList.add('windowed');panel.style.setProperty('--chat-width',stored.width+'px');panel.style.setProperty('--chat-height',stored.height+'px');$('chatModeButton').textContent='Overlay chat';}
+    if(id!=='chatPanel'||stored.windowed){
+      const x=Math.max(4,Math.min(innerWidth-100,Number(stored.left)||0)),y=Math.max(45,Math.min(innerHeight-60,Number(stored.top)||70));
+      if(id==='chatPanel'){panel.style.setProperty('--chat-left',x+'px');panel.style.setProperty('--chat-top',y+'px');}
+      else{panel.style.left=x+'px';panel.style.top=y+'px';panel.style.right='auto';panel.style.bottom='auto';}
+    }
+  }}catch{}
   let delta=null;
   handle.addEventListener('pointerdown',event=>{
-    if(event.target.closest('button,input'))return;
+    if(event.target.closest('button,input,select'))return;
+    if(id==='chatPanel'&&!panel.classList.contains('windowed'))return;
     const rect=panel.getBoundingClientRect();delta={x:event.clientX-rect.left,y:event.clientY-rect.top};
-    // Position the window explicitly; its original top/bottom constraints must not stretch it while dragging.
     if(id==='scenePanel'||id==='propertiesPanel')panel.style.bottom='auto';
     handle.setPointerCapture(event.pointerId);event.preventDefault();
   });
   handle.addEventListener('pointermove',event=>{if(!delta)return;
-    if(id==='chatPanel'&&!panel.classList.contains('windowed'))return;
-    const x=Math.max(4,Math.min(innerWidth-panel.offsetWidth-4,event.clientX-delta.x));
-    const y=Math.max(55,Math.min(innerHeight-90,event.clientY-delta.y));
+    const x=Math.max(4,Math.min(innerWidth-95,event.clientX-delta.x));
+    const y=Math.max(45,Math.min(innerHeight-55,event.clientY-delta.y));
     if(id==='chatPanel'){panel.style.setProperty('--chat-left',x+'px');panel.style.setProperty('--chat-top',y+'px');}
     else{panel.style.left=x+'px';panel.style.top=y+'px';panel.style.right='auto';panel.style.bottom='auto';}
   });
-  const release=()=>delta=null;handle.addEventListener('pointerup',release);handle.addEventListener('pointercancel',release);
+  const release=()=>{if(delta)save(id,panel);delta=null;};handle.addEventListener('pointerup',release);handle.addEventListener('pointercancel',release);
+  panel.addEventListener('click',event=>{if(event.target.closest('#toolboxMinimize,#minimizeScenePanel,#closeScenePanel,#closeProperties'))requestAnimationFrame(()=>save(id,panel));});
  }
 }
 function setupNewRoom(){
@@ -265,7 +304,7 @@ function setupSettings(){
  const colors=['#79cde5','#e7b073','#a5db91','#d9a0d7','#a0b5f5','#f3a1a1'];
  function swatches(){const grid=$('themeSwatches');grid.replaceChildren();for(const color of colors){const b=document.createElement('button');b.className='theme-swatch';b.title='Apply '+color;b.style.background=color;b.onclick=()=>apply({accent:color});grid.append(b);}}
  swatches();$('generateTheme').onclick=()=>{const color=themePalette(Math.floor(Math.random()*10000));colors[colors.length-1]=color;swatches();apply({accent:color});};
- $('exportChatButton').onclick=()=>exportMessages('json');$('exportChatSettings').onclick=()=>exportMessages('md');
+ $('exportChatButton').onclick=()=>exportMessages('json');$('exportChatSettings').onclick=()=>exportMessages('md');$('exportChatSettingsJson').onclick=()=>exportMessages('json');$('openAdminSettings').onclick=()=>{settings.hidden=true;show('adminBackdrop',true);};
 }
 function setupChatPresentation(){
   const feed=$('chatFeed'),panel=$('chatPanel'),composer=panel.querySelector('.chat-composer');
@@ -281,7 +320,7 @@ function setupChatPresentation(){
     if(!floating){panel.style.removeProperty('--chat-left');panel.style.removeProperty('--chat-top');}
     else{panel.style.setProperty('--chat-left',Math.max(4,window.innerWidth-Math.min(390,window.innerWidth-10)-14)+'px');panel.style.setProperty('--chat-top',window.innerWidth<=750?'100px':'72px');}
     $('floatChatButton').textContent='Overlay';
-    feed.scrollTop=feed.scrollHeight;
+    feed.scrollTop=feed.scrollHeight;window.solviSaveWindow?.('chatPanel',panel);
   });
   $('floatChatButton').onclick=()=>$('chatModeButton').click();
   const grip=$('chatResizeGrip');let start=null;
@@ -296,17 +335,14 @@ function setupChatPresentation(){
     const h=Math.min(innerHeight-90,Math.max(200,start.h+event.clientY-start.y));
     panel.style.setProperty('--chat-width',w+'px');panel.style.setProperty('--chat-height',h+'px');
   });
-  for(const name of ['pointerup','pointercancel'])grip.addEventListener(name,()=>start=null);
+  for(const name of ['pointerup','pointercancel'])grip.addEventListener(name,()=>{if(start)window.solviSaveWindow?.('chatPanel',panel);start=null;});
 
   const mobileTools=$('composerToolsButton');
   mobileTools.onclick=()=>{
     const expanded=composer.classList.toggle('tools-open');
     mobileTools.setAttribute('aria-expanded',String(expanded));
   };
-  const mobileNav=$('mobileMenuButton'),nav=$('toolNav');
-  mobileNav.onclick=()=>{
-    const expanded=nav.classList.toggle('nav-expanded');mobileNav.setAttribute('aria-expanded',String(expanded));
-  };
+  // Compact navigation remains horizontally scrollable on small screens; no redundant More button.
   // Multiline by default: Enter sends, Shift+Enter inserts a newline.
   const input=$('chatInput');
   const resize=()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,118)+'px';};
@@ -343,7 +379,7 @@ function bindUI(world){
  window.addEventListener('solvi:auth-required',event=>needSignIn(event.detail?.reason||'Session expired.'));
  window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id)playCue(event.detail.action==='left'?'leave':'join');});
  document.addEventListener('pointerdown',primeAudio,{once:true});
- setupChatPresentation();setupSettings();setupNewRoom();configureRooms();configureDragging();begin();
+ setupChatPresentation();setupSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();begin();
  setInterval(async()=>{if(online&&auth){try{await api.req('/api/me');}catch{ /* expiry handler opens sign-in */ }}},45000);
 }
 export function initStudio(world){bindUI(world);}
