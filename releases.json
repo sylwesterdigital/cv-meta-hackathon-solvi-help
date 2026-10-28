@@ -1,6 +1,13 @@
 {
-  "currentVersion": "0.2.30",
+  "currentVersion": "0.2.31",
   "releases": [
+    {
+      "version": "0.2.31",
+      "publishedAt": "2026-10-28T17:26:39Z",
+      "changes": [
+        "Reissue the v0.2.30 Chat, CC, Objects and Webcam release under a newer semantic version so the existing deployment watcher accepts it; application functionality is unchanged."
+      ]
+    },
     {
       "version": "0.2.30",
       "publishedAt": "2026-10-28T17:13:34Z",
