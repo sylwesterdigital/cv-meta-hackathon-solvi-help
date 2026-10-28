@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.32",
+  "currentVersion": "0.2.33",
   "releases": [
+    {
+      "version": "0.2.33",
+      "publishedAt": "2026-10-28T18:16:46Z",
+      "changes": [
+        "Fix camera profile photography with preview, reliable image capture, immediate round avatar update and explicit failures.",
+        "Record video-only webcam intros up to 15 seconds and convert the entire duration to a persistent animated GIF on the server.",
+        "Add Log out with server token revocation, WebSocket disconnection and browser session cleanup.",
+        "Add a top-right draggable, zoomable and minimizable live top-down minimap of robots, objects and camera.",
+        "Restore independent scene orbit and touch orbit with robot selected without forcing pointer lock; remove duplicate quick model import."
+      ]
+    },
     {
       "version": "0.2.32",
       "publishedAt": "2026-10-28T17:54:13Z",
@@ -304,17 +315,6 @@
         "Bundle all transitive Three.js addon dependencies instead of just three selected files.",
         "Add automatic static ES module import-graph checks to catch missing browser modules.",
         "Strengthen deployment verification to check module URLs before marking a release live."
-      ]
-    },
-    {
-      "version": "0.1.0",
-      "publishedAt": "2026-10-26T21:38:13Z",
-      "changes": [
-        "Create SOLVI.help open-world Three.js and WebXR foundation.",
-        "Add rigged animated character with Idle, Walking, Running and Waving actions.",
-        "Add autonomous roaming, floor navigation, cubes and movement controls.",
-        "Add versioned deployment watcher, dev-log overlay and server verification.",
-        "Scaffold Flask WebSockets, shared presence and opt-in WebRTC media."
       ]
     }
   ]

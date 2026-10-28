@@ -69,14 +69,16 @@ async function checkBackend(){try{const controller=new AbortController();const t
  const data=await res.json();online=!!data.backend;api.online=online;$('backendLabel').textContent=online?`Backend connected · AI ${data.ai?'configured':'key missing'}`:'Local demo · backend not enabled';}
  catch{online=false;api.online=false;$('backendLabel').textContent='Local demo · backend not enabled';}}
 async function begin(){const p=stored();fillProfile(p);await checkBackend();
- if(!p?.name){$('profileBackdrop').classList.remove('profile-drawer-mode');show('profileBackdrop',true);$('profileName').focus();return;}
+ if(!p?.name){$('profileLogout').hidden=true;$('profileBackdrop').classList.remove('profile-drawer-mode');show('profileBackdrop',true);$('profileName').focus();return;}
  if(!online){me=p;show('profileBackdrop',false);show('chatPanel',true);identity();window.dispatchEvent(new CustomEvent('solvi:scene-ready'));return;}
  if(p.token){auth={token:p.token};try{const out=await api.req('/api/me');me=out.user;identity();await afterLogin();return;}catch(e){toast(e.message);}}
  $('profileBackdrop').classList.remove('profile-drawer-mode');show('profileBackdrop',true);$('profileStatus').textContent='Reconnect or take over this profile to continue.';
 }
-function identity(){const text=me?.name||'Guest';$('profileButton').textContent=text.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'?';$('profilePhotoBadge').textContent=$('profileButton').textContent;$('profileButton').title='Profile · '+text;
+function identity(){const text=me?.name||'Guest';$('profilePanelTitle').textContent=text;$('profilePanelNote').textContent='Profile';$('profileButton').textContent=text.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'?';$('profilePhotoBadge').textContent=$('profileButton').textContent;$('profileButton').title='Profile · '+text;
+ if(me?.avatar?.startsWith('data:image/')){for(const id of ['profilePhotoBadge','profileButton']){const el=$(id);el.replaceChildren();const img=document.createElement('img');img.src=me.avatar;img.alt='';el.append(img);}}
  if(me?.avatar&&online&&auth){api.mediaBlob(me.avatar).then(url=>{if(!me||!document.getElementById('profilePhotoBadge'))return;for(const id of ['profilePhotoBadge','profileButton']){const el=$(id);el.replaceChildren();const img=document.createElement('img');img.src=url;img.alt='';img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';el.append(img);}}).catch(()=>{});}
- $('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;}
+ if(me?.intro&&online&&auth){api.mediaBlob(me.intro).then(url=>{if(me?.intro){$('introPreview').src=url;$('introPreview').hidden=false;}}).catch(()=>{});}
+ $('profileLogout').hidden=!me;$('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;}
 async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
  try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();
   select.add(new Option('World chat · people',''));
@@ -208,12 +210,95 @@ async function startRecording(video,forIntro=false){if(recorder?.state==='record
   recorder.start(250);toast(video?'Recording video · max 15s':'Recording audio · max 15s');recTimer=setTimeout(()=>recorder?.state==='recording'&&recorder.stop(),15000);
  }catch(e){toast(e.message);}
 }
-async function cameraAvatar(){try{const stream=await navigator.mediaDevices.getUserMedia({video:true});const video=document.createElement('video');video.srcObject=stream;video.muted=true;await video.play();await new Promise(r=>setTimeout(r,400));
- const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;canvas.getContext('2d').drawImage(video,0,0,256,256);stream.getTracks().forEach(t=>t.stop());const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.85));
- const media=await uploadFile(new File([blob],'avatar.jpg',{type:'image/jpeg'}));
- if(me){const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...profileFields(),avatar:media.id})});me=data.user;saveLocal({...stored(),...me});}
- $('profileStatus').textContent='Profile photo saved.';
- }catch(e){$('profileStatus').textContent=e.message;}}
+// Profile photo and intro GIF deliberately use the same visible, video-only webcam.
+// A user explicitly sees and controls the captured frame; permission failures are surfaced.
+let profileCameraStream=null,profileCameraRecorder=null,profileCameraTimer=null,profilePhotoArmed=false;
+const profilePreview=()=>document.getElementById('profileCameraPreview');
+function closeProfileCamera(){
+ clearInterval(profileCameraTimer);profileCameraTimer=null;
+ if(profileCameraRecorder?.state==='recording')profileCameraRecorder.stop();
+ profileCameraStream?.getTracks().forEach(track=>track.stop());profileCameraStream=null;
+ const video=profilePreview();video.pause();video.srcObject=null;video.hidden=true;
+ $('profileCameraControls').hidden=true;profilePhotoArmed=false;
+ $('takeAvatarPhoto').textContent='Camera photo';
+ if(profileCameraRecorder?.state!=='recording')$('recordIntro').textContent='Record 15s GIF';
+}
+async function openProfileCamera(){
+ if(profileCameraStream?.active&&profilePreview().readyState>=2)return profilePreview();
+ if(!navigator.mediaDevices?.getUserMedia)throw Error('Camera unavailable. Use HTTPS and allow camera access.');
+ const preview=profilePreview();
+ const stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480},facingMode:'user'},audio:false});
+ profileCameraStream=stream;preview.srcObject=stream;preview.muted=true;preview.playsInline=true;
+ preview.hidden=false;$('profileCameraControls').hidden=false;
+ try{await preview.play();
+   if(preview.videoWidth<1||preview.videoHeight<1)await new Promise((resolve,reject)=>{
+     const timer=setTimeout(()=>reject(Error('Webcam did not produce a frame')),6000);
+     preview.addEventListener('loadeddata',()=>{clearTimeout(timer);resolve();},{once:true});
+   });
+   if(preview.videoWidth<1||preview.videoHeight<1)throw Error('Webcam frame unavailable');
+   $('profileCameraHint').textContent='Live camera · ready';return preview;
+ }catch(error){closeProfileCamera();throw error;}
+}
+async function cameraAvatar(){
+ try{
+  if(!profilePhotoArmed){await openProfileCamera();profilePhotoArmed=true;$('takeAvatarPhoto').textContent='Take photo';$('profileCameraHint').textContent='Adjust camera, then Take photo';return;}
+  const video=await openProfileCamera();const canvas=document.createElement('canvas');canvas.width=320;canvas.height=320;
+  const ctx=canvas.getContext('2d');const side=Math.min(video.videoWidth,video.videoHeight);
+  ctx.drawImage(video,(video.videoWidth-side)/2,(video.videoHeight-side)/2,side,side,0,0,320,320);
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.88));if(!blob?.size)throw Error('Unable to capture camera image');
+  let avatar='';
+  if(online&&auth){const media=await uploadFile(new File([blob],'profile-camera.jpg',{type:'image/jpeg'}));avatar=media.id;
+   const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...profileFields(),avatar})});
+   me=data.user;saveLocal({...stored(),...me});
+  }else{
+   avatar=canvas.toDataURL('image/jpeg',.75);if(me){me.avatar=avatar;saveLocal(me);}
+  }
+  const image=$('profilePhotoBadge');image.replaceChildren();const img=document.createElement('img');img.src=online&&auth?URL.createObjectURL(blob):avatar;img.alt='Profile photo';image.append(img);
+  if(me)identity();$('profileStatus').textContent='Camera photo saved';closeProfileCamera();
+ }catch(error){$('profileStatus').textContent='Photo failed: '+error.message;}
+}
+async function recordIntroGif(){
+ if(profileCameraRecorder?.state==='recording'){profileCameraRecorder.stop();return;}
+ if(!online||!auth){$('profileStatus').textContent='Sign in to the backend to save a GIF';return;}
+ try{
+  const video=await openProfileCamera();
+  if(typeof MediaRecorder==='undefined')throw Error('This browser does not support video recording');
+  const mime=['video/webm;codecs=vp8','video/webm','video/mp4'].find(t=>MediaRecorder.isTypeSupported(t));
+  if(!mime)throw Error('This browser cannot record WebM or MP4');
+  const chunks=[],recording=new MediaRecorder(profileCameraStream,{mimeType:mime,videoBitsPerSecond:850000});
+  profileCameraRecorder=recording;const began=Date.now();
+  recording.addEventListener('dataavailable',e=>{if(e.data.size)chunks.push(e.data);});
+  recording.addEventListener('stop',async()=>{
+   clearInterval(profileCameraTimer);profileCameraTimer=null;$('recordIntro').disabled=true;
+   $('recordIntro').textContent='Saving GIF…';
+   try{
+    const type=recording.mimeType.split(';')[0];const blob=new Blob(chunks,{type});
+    if(!blob.size)throw Error('Camera recorded no frames');
+    const media=await uploadFile(new File([blob],`intro-${Date.now()}.${type==='video/mp4'?'mp4':'webm'}`,{type}));
+    const result=await api.req('/api/profile/intro',{method:'POST',body:JSON.stringify({id:media.id})});
+    const image=$('introPreview');image.src=await api.mediaBlob(result.media.id);image.hidden=false;if(me){me.intro=result.media.id;saveLocal({...stored(),...me});}
+    $('profileStatus').textContent=`GIF saved (${Math.min(15,(Date.now()-began)/1000).toFixed(1)} seconds captured)`;
+   }catch(error){$('profileStatus').textContent='GIF failed: '+error.message;}
+   finally{profileCameraRecorder=null;$('recordIntro').disabled=false;closeProfileCamera();}
+  },{once:true});
+  recording.start(500);$('profileStatus').textContent='Recording video from your webcam (no microphone).';
+  const update=()=>{const remain=Math.max(0,Math.ceil((15000-(Date.now()-began))/1000));$('recordIntro').textContent=`Stop · ${remain}s`;if(remain===0&&recording.state==='recording')recording.stop();};
+  update();profileCameraTimer=setInterval(update,200);
+ }catch(error){$('profileStatus').textContent='GIF failed: '+error.message;closeProfileCamera();}
+}
+async function logoutProfile(){
+ if(!confirm('Log out and clear this device’s SOLVI session?'))return;
+ const oldAuth=auth;
+ try{if(online&&oldAuth)await api.req('/api/logout',{method:'POST',body:'{}'});}
+ catch(error){$('profileStatus').textContent='Server logout failed: '+error.message;return;}
+ closeProfileCamera();tabChannel?.close();tabChannel=null;
+ window.dispatchEvent(new Event('solvi:session-lost'));
+ auth=null;me=null;adminToken=null;sessionPrompt=false;
+ localStorage.removeItem('solvi-profile');sessionStorage.removeItem('solvi-tab');sessionStorage.removeItem('solvi-room');
+ sessionStorage.removeItem('solvi-meta-session-key');sessionStorage.removeItem('solvi-brain-debug');
+ // Reload clears existing room messages, object lists, media blobs and peer states.
+ window.location.reload();
+}
 async function robotView(world){
  const robot=window.solviEditor?.robot();
  if(!robot)throw Error('Select a robot in Objects first, then choose Robot view.');
@@ -224,7 +309,7 @@ function exportProfile(){if(!me)return;const p=stored()||me;const data={format:'
  $('profileStatus').textContent='Backup contains your recovery key. Keep it private.';
 }
 async function importProfile(file){try{const data=JSON.parse(await file.text());if(data.format!=='solvi-profile-v1'||!data.name)throw Error('Invalid SOLVI profile file');
-  me=null;auth=null;saveLocal(data);fillProfile(data);$('profileStatus').textContent='Profile loaded. Select Save / Sign in to claim this session.';
+  me=null;auth=null;saveLocal(data);fillProfile(data);$('profileLogout').hidden=true;$('profileStatus').textContent='Profile loaded. Select Save / Sign in to claim this session.';
   show('profileBackdrop',true);
  }catch(e){$('profileStatus').textContent=e.message;}}
 async function adminLogin(){try{const data=await api.req('/api/admin/login',{method:'POST',body:JSON.stringify({password:$('adminPassword').value})});adminToken=data.token;$('adminPassword').value='';await stats();}
@@ -533,14 +618,15 @@ function bindUI(world){
  });
  window.addEventListener('solvi:chat-updated',loadMessages);
  $('chatButton').onclick=()=>{show('chatPanel',$('chatPanel').hidden);document.body.classList.remove('chat-muted');$('messagesToggleButton').setAttribute('aria-pressed','true');};$('closeChat').onclick=()=>show('chatPanel',false);
- $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?'Your profile':'Sign in';show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
- $('closeProfile').onclick=()=>{if(me&&auth)show('profileBackdrop',false);else{$('profileStatus').textContent='Sign in to continue.';$('profileName').focus();}};
+ $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?.name||'Sign in';$('profilePanelNote').textContent=me?'Profile & media':'Create profile';show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
+ $('closeProfile').onclick=()=>{closeProfileCamera();if(me&&auth)show('profileBackdrop',false);else{$('profileStatus').textContent='Sign in to continue.';$('profileName').focus();}};
  $('saveProfile').onclick=submitProfile;$('exportProfile').onclick=exportProfile;
  $('importProfile').onchange=e=>importProfile(e.target.files[0]);
+ window.addEventListener('pagehide',closeProfileCamera);
  $('profilePhotoBadge').onclick=()=>$('avatarUpload').click();
  $('avatarUpload').onchange=async e=>{try{const m=await uploadFile(e.target.files[0]);$('profileStatus').textContent='Uploaded '+m.name;
  if(me){const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...profileFields(),avatar:m.id})});me=data.user;saveLocal({...stored(),...me});identity();}}catch(e){toast(e.message);}};
- $('takeAvatarPhoto').onclick=cameraAvatar;$('recordIntro').onclick=()=>startRecording(true,true);
+ $('takeAvatarPhoto').onclick=cameraAvatar;$('recordIntro').onclick=recordIntroGif;$('profileCameraCancel').onclick=closeProfileCamera;$('profileLogout').onclick=logoutProfile;
  window.solviPublishCaption=async text=>{
    if(!text?.trim())return;
    if(!me)throw Error('Sign in to publish CC captions to the room.');

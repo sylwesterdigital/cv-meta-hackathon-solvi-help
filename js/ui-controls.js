@@ -1,7 +1,7 @@
 // Browser-local responsive controls: icons remain decorative, native button names stay accessible.
 import {applyPreferences,readPreferences,resolvedLabelMode,isCompactDevice} from './preferences.js';
 const iconIds={
- chatButton:'chat',mobileMenuButton:'more',createRoom:'rooms',addObjectButton:'add',avatarsButton:'avatar-3d',objectsButton:'list-objects',devLogButton:'history',xrButton:'avatar-3d',callButton:'video',messagesToggleButton:'chat',settingsButton:'config',profileButton:'profile',
+ chatButton:'chat',minimapButton:'map',minimapClose:'close',minimapMinimize:'minified',minimapReset:'reset',profileLogout:'exit',takeAvatarPhoto:'camera',recordIntro:'video',profileCameraCancel:'close',mobileMenuButton:'more',createRoom:'rooms',addObjectButton:'add',avatarsButton:'avatar-3d',objectsButton:'list-objects',devLogButton:'history',xrButton:'avatar-3d',callButton:'video',messagesToggleButton:'chat',settingsButton:'config',profileButton:'profile',
  cameraFlyButton:'camera',importModelButton:'model',faceButton:'avatar-maker',poseButton:'users',diagnosticsButton:'transcript',worldSettingsButton:'config',quickModelImport:'model',chatModeButton:'window',cameraFollowButton:'change-camera',toolboxMinimize:'minified',
  attachmentButton:'attach',attachMediaOption:'attach',attachAudioOption:'mic',attachVideoOption:'video',attachRobotOption:'eye',webcamButton:'camera',closeWebcam:'close',facePreviewToggle:'avatar-maker',posePreviewToggle:'users',wavesPreviewToggle:'sound-on',sceneDeleteSelected:'delete',sceneDeleteAll:'delete',sceneBulkToggle:'check',composerFloat:'window',composerMinimize:'minified',captionsButton:'captions',voiceWavesButton:'sound-on',recordAudio:'mic',recordVideo:'video',robotVision:'eye',sendChat:'send',composerToolsButton:'more',
  captureBrainsEye:'camera',describeBrainsEye:'brain',analyzeBrainsEye:'eye',showBrainChat:'chat',expandBrainsEye:'fullscreen',closeBrainsEyeLightbox:'close',saveRobotBrains:'check',suggestBrainsScenario:'brain',
@@ -39,8 +39,8 @@ const words=[
  [/settings|config|setup|theme|palette/i,'config'],[/log|history|refresh|reload/i,'history'],
  [/more|options|tools/i,'more'],[/copy|duplicate/i,'copy'],[/share|link/i,'share']
 ];
-const fileIcons=new Set('attach opened minified reset move rotate scale add config chat rooms avatar-3d render download fullscreen captions mic sound-on sound-mute video camera photo eye brain send close x more profile users edit delete stop play pause copy window sidebar-in sidebar-out history preview file stream link check plus share drawing game chat-3d-orbit change-camera transcript background bottom exit media full grab cancel swap speak avatar-maker chat-3d-capture cube sphere cylinder torus plane curve surface text-object points light model list-objects collapse'.split(' '));
-const utilityIconOnly=new Set(['minimizeScenePanel','toolboxMinimize','composerMinimize','composerFloat']);
+const fileIcons=new Set('map attach opened minified reset move rotate scale add config chat rooms avatar-3d render download fullscreen captions mic sound-on sound-mute video camera photo eye brain send close x more profile users edit delete stop play pause copy window sidebar-in sidebar-out history preview file stream link check plus share drawing game chat-3d-orbit change-camera transcript background bottom exit media full grab cancel swap speak avatar-maker chat-3d-capture cube sphere cylinder torus plane curve surface text-object points light model list-objects collapse'.split(' '));
+const utilityIconOnly=new Set(['minimizeScenePanel','toolboxMinimize','composerMinimize','composerFloat','minimapMinimize','minimapClose']);
 // Header close controls have an accessible name but no extra visible x or text.
 export function shouldUseIconOnlyControl(button){return /^(?:close[A-Z]|close$)/.test(button.id||'')||utilityIconOnly.has(button.id||'')||button.classList.contains('scene-item-delete');}
 export function iconForButton(button){

@@ -105,7 +105,7 @@ body.chat-muted .chat-feed{visibility:hidden;pointer-events:none;}
  #chatButton{order:0}
  #roomSelect{order:1;max-width:125px;min-width:98px;font-size:11px;height:29px}
  #messagesToggleButton{order:2}
- .topbar nav>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton){display:none;}
+ .topbar nav>:not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton){display:none;}
  .topbar nav.nav-expanded>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton){display:inline-flex;}
  .topbar nav button{font-size:10px;padding:5px 7px;height:29px;}
  .statusbar{top:77px;left:9px;font-size:9px;gap:6px;}
@@ -184,7 +184,7 @@ button:focus-visible{outline:2px solid var(--solvi-accent)}
 @media(max-width:750px){
  #settingsButton,#profileButton{display:inline-flex!important;order:4!important;flex:0 0 auto}
  #mobileMenuButton{order:5!important}
- .topbar nav>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none}
+ .topbar nav>:not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none}
  .topbar nav.nav-expanded>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:inline-flex}
  .chat-panel:not(.windowed){top:90px!important;bottom:0!important}
  .chat-panel:not(.windowed) .chat-feed{padding:3px 3px 3px!important}
@@ -265,7 +265,7 @@ button:hover:not(:disabled){filter:brightness(1.13)!important;}
 [hidden]{display:none!important}
 #toolNav{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
 #toolNav #mobileMenuButton{display:inline-flex!important}
-#toolNav>:not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:none!important}
+#toolNav>:not(#minimapButton):not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:none!important}
 #toolNav.nav-expanded>:not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:inline-flex!important}
 #toolNav #mobileMenuButton{font-size:12px!important}
 .editor-toolbox{position:fixed;left:18px;top:92px;z-index:19;width:116px;padding:6px;border:1px solid #43586d;border-radius:11px;background:var(--ui-panel);color:var(--ui-fg);box-shadow:0 8px 26px #0005}
@@ -550,7 +550,7 @@ html[data-button-labels='icon'] button[data-ui-icon]::before,html[data-button-la
 @media(max-width:750px){
  #mobileMenuButton{display:inline-flex!important}
  #toolNav{width:100%;display:flex!important;justify-content:flex-end!important;flex-wrap:nowrap!important;max-width:100%;overflow-x:auto!important;scrollbar-width:thin}
- #toolNav>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none!important}
+ #toolNav>:not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none!important}
  #toolNav.nav-expanded{flex-wrap:wrap!important;overflow-y:auto!important;max-height:48svh!important;background:var(--ui-panel);border-radius:9px;padding:6px}
  #toolNav.nav-expanded>:not(#mobileMenuButton){display:inline-flex!important}
  #toolNav #roomSelect{flex:1 1 70px;min-width:65px!important;max-width:160px}
@@ -939,3 +939,48 @@ html[data-button-labels='icon'] #sceneItems .scene-item-delete{
 #chatPanel .chat-composer .composer-window-head button::before{width:15px!important;height:15px!important;flex:0 0 15px!important}
 #chatPanel #attachmentButton::before{width:17px!important;height:17px!important}
 @media(max-width:750px){.properties-panel{width:min(354px,calc(100vw - 12px))!important}#scenePanel.minimized{width:164px!important;min-width:164px!important;max-width:164px!important}#editorToolbox.editor-toolbox.minimized{width:166px!important;min-width:166px!important;max-width:166px!important}}
+
+/* v0.2.33 — profile camera and draggable top-down minimap */
+#quickModelImport{display:none!important}
+#minimapButton{order:91!important;position:relative;flex-shrink:0}
+.topbar #toolNav #minimapButton{min-height:34px!important;max-height:40px!important;white-space:nowrap!important}
+@media(max-width:750px){
+ #toolNav>#minimapButton,#toolNav.nav-expanded>#minimapButton{display:inline-flex!important;order:3!important}
+ #toolNav #mobileMenuButton{order:2!important}
+ #toolNav #settingsButton{order:4!important}
+ #toolNav #profileButton{order:5!important}
+}
+.minimap-panel{position:fixed;z-index:22;top:76px;right:16px;width:252px;max-width:calc(100vw - 24px);background:var(--ui-panel,#102536);color:var(--ui-fg,#e8f4ff);border:1px solid #5b7888;border-radius:12px;box-shadow:0 12px 40px #0009;overflow:hidden;pointer-events:auto}
+.minimap-panel[hidden],.minimap-body[hidden]{display:none!important}
+.minimap-header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:37px;padding:4px 7px 4px 12px;user-select:none;cursor:grab;touch-action:none;border-bottom:1px solid #456078}
+.minimap-header:active{cursor:grabbing}
+.minimap-header strong{font-size:13px;letter-spacing:.01em}
+.minimap-header-actions{display:flex;gap:5px}
+.minimap-header-actions button{display:grid;place-items:center;min-width:32px!important;width:32px!important;height:32px!important;max-height:32px!important;padding:0!important;border:1px solid #567187;border-radius:7px;font:20px system-ui;background:#18364b;color:#f4f7ff}
+.minimap-body{padding:7px}
+#minimapCanvas{width:100%;height:auto;aspect-ratio:1;display:block;border:1px solid #3e637a;border-radius:5px;background:#101e2d;cursor:grab;touch-action:none}
+.minimap-foot{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:5px 1px 0;font-size:10px;color:var(--ui-muted,#aabed2)}
+#minimapReset{min-height:29px!important;padding:3px 8px!important;font-size:11px!important}
+.profile-modal .profile-title{gap:8px}
+.profile-identity-row{display:flex;align-items:center;gap:12px;min-width:0}
+.profile-identity-row strong{display:block;font-size:18px!important;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:250px}
+.profile-identity-row small{font-size:11px;color:var(--ui-muted,#9eb3ca)}
+.profile-identity-row #profilePhotoBadge{width:52px!important;height:52px!important;min-width:52px!important;min-height:52px!important;max-width:52px!important;padding:0!important;border-radius:50%!important;overflow:hidden!important;font-weight:700;display:grid;place-items:center}
+#profilePhotoBadge img{width:100%;height:100%;object-fit:cover;display:block;border-radius:50%}
+.profile-capture-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 8px}
+.profile-capture-actions button{padding:7px 11px!important;font-size:12px!important;min-height:36px!important;white-space:nowrap}
+#profileCameraPreview{display:block;width:100%;max-height:250px;aspect-ratio:4/3;object-fit:cover;background:#0b1423;border-radius:9px;border:1px solid #526c81}
+#profileCameraPreview[hidden]{display:none!important}
+.profile-camera-controls{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;font-size:12px}
+.profile-camera-controls[hidden]{display:none!important}
+.profile-camera-controls button{font-size:11px!important;padding:5px 9px!important;min-height:32px!important}
+#introPreview{display:block;max-height:160px!important;max-width:100%!important;border:1px solid #526b80}
+#introPreview[hidden]{display:none!important}
+#profileLogout{margin-right:auto;color:#ffe2e2;border-color:#8e4b5c}
+.profile-modal .panel-footer{flex-wrap:wrap;row-gap:7px}
+@media(max-width:420px){.minimap-panel{width:min(252px,calc(100vw - 20px))}.profile-identity-row strong{font-size:16px!important;max-width:180px}}
+/* Keep the minimap launcher present in the compact navigation, outside More. */
+html body .topbar #toolNav > button#minimapButton{display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:0 0 auto!important;width:auto!important;max-width:80px!important;}
+@media(max-width:750px){html body .topbar #toolNav > button#minimapButton{width:40px!important;max-width:40px!important;min-width:40px!important;padding:0!important;}}
+#minimapButton::before{content:'';display:inline-block;flex:0 0 18px;width:18px;height:18px;background:url('./assets/ui-icons/map.svg') center/contain no-repeat}
+@media(max-width:750px){html body .topbar #toolNav #minimapButton{font-size:0!important;gap:0!important}}

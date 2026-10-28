@@ -1,4 +1,5 @@
 import {setupResponsiveUI} from './ui-controls.js';
+import {initMinimap} from './minimap.js';
 import {initStudio} from './studio.js';
 import {SolviWorld} from './world.js';
 import {LiveRoom} from './live.js';
@@ -12,7 +13,7 @@ const world=new SolviWorld(document.getElementById('viewport'),(status)=>{
   if(!status.loaded){const toast=document.getElementById('toast');toast.textContent='Model load issue: '+status.error;toast.hidden=false;}
 });
 // An empty realm: no roaming character or starter geometry.
-initStudio(world);setupFaceTracking(world);setupVoiceCaptions(world);setupResponsiveUI();
+initStudio(world);initMinimap(world);setupFaceTracking(world);setupVoiceCaptions(world);setupResponsiveUI();
 const room=new LiveRoom(
   peers=>world.setRemotePeers(peers),
   (id,state)=>world.updateRemoteState(id,state),

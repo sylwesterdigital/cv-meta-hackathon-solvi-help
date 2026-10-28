@@ -343,3 +343,8 @@ assert c.get(asset_url).status_code==200
 assert len(c.get('/api/avatars',headers=headers).get_json()['avatars'])>=1
 
 print('PASS: speech endpoint authentication, STT health and valid GLB avatar upload')
+
+# Logging out revokes the token server-side; the same browser tab cannot use it again.
+assert c.post('/api/logout',headers=headers,json={}).status_code==200
+assert c.get('/api/me',headers=headers).status_code==401
+print('PASS: logout invalidates browser session token')

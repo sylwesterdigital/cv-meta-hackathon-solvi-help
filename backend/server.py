@@ -91,7 +91,7 @@ def db():
 def init_db():
     with db() as con:
         con.executescript('''
-        CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', links TEXT NOT NULL DEFAULT '', avatar TEXT NOT NULL DEFAULT '', recovery_hash TEXT NOT NULL, token_hash TEXT NOT NULL, tab_id TEXT NOT NULL, tab_until REAL NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', links TEXT NOT NULL DEFAULT '', avatar TEXT NOT NULL DEFAULT '', intro TEXT NOT NULL DEFAULT '', recovery_hash TEXT NOT NULL, token_hash TEXT NOT NULL, tab_id TEXT NOT NULL, tab_until REAL NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), role TEXT NOT NULL, model TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', media TEXT NOT NULL DEFAULT '[]', created TEXT NOT NULL, latency_ms INTEGER NOT NULL DEFAULT 0);
         CREATE INDEX IF NOT EXISTS messages_created ON messages(created);
         CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL, mime TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, created TEXT NOT NULL);
@@ -111,6 +111,8 @@ def init_db():
         INSERT OR IGNORE INTO room_scenes VALUES('main',0,'[]');
         INSERT OR IGNORE INTO room_policies(room_id) VALUES('main');
         ''')
+        if 'intro' not in {r[1] for r in con.execute('PRAGMA table_info(users)').fetchall()}:
+            con.execute("ALTER TABLE users ADD COLUMN intro TEXT NOT NULL DEFAULT ''")
         cols={r[1] for r in con.execute('PRAGMA table_info(messages)').fetchall()}
         if 'room_id' not in cols:con.execute("ALTER TABLE messages ADD COLUMN room_id TEXT NOT NULL DEFAULT 'main'")
         if 'physics' not in {r[1] for r in con.execute('PRAGMA table_info(room_policies)').fetchall()}:con.execute('ALTER TABLE room_policies ADD COLUMN physics INTEGER NOT NULL DEFAULT 0')
@@ -130,7 +132,7 @@ def fields(obj):
     return name, str(obj.get('email','')).strip()[:180], str(obj.get('bio','')).strip()[:500], str(obj.get('links','')).strip()[:600]
 
 def public_user(row):
-    return {k:row[k] for k in ('id','name','email','bio','links','avatar','created')}
+    return {k:row[k] for k in ('id','name','email','bio','links','avatar','intro','created')}
 
 def actor():
     token=request.headers.get('Authorization','').removeprefix('Bearer ').strip()
@@ -164,7 +166,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.32',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.33',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -344,6 +346,21 @@ def onboard():
         row=con.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone()
     return jsonify(user=public_user(row),token=auth,recovery=recovery_new)
 
+@app.post('/api/logout')
+def logout():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:
+        con.execute('UPDATE users SET token_hash=?,tab_until=0,updated=? WHERE id=?',
+                    (sha(new_token()),now(),user['id']))
+    # Close the old room socket immediately; the token has already been revoked.
+    with room_lock:
+        peer=room.get(user['id'])
+    if peer:
+        try:peer['ws'].close()
+        except Exception:pass
+    return jsonify(ok=True)
+
 @app.get('/api/me')
 def me():
     user,msg,status=actor()
@@ -484,10 +501,21 @@ def intro():
     except ValueError:return json_error('Unable to read video duration')
     if not (0<duration<=15.5):return json_error('Intro must be no longer than 15 seconds')
     out=STATE/'media'/f'{uuid.uuid4()}.gif'
-    # 12 fps, 1.5s; avoid spawning arbitrary shell commands.
-    subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',src,'-t','1.5','-vf','fps=12,scale=240:-1:flags=lanczos','-an',str(out)],check=True,timeout=30)
+    # Convert the FULL recording (up to 15 seconds), not just its first 1.5 seconds.
+    # A palette gives smoother GIFs with controlled size. Never invoke a shell.
+    palette='fps=6,scale=240:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3'
+    try:
+        subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',src,'-t','15',
+                        '-filter_complex',palette,'-an',str(out)],check=True,timeout=75)
+        if not out.exists() or not (0<out.stat().st_size<=12*1024*1024):
+            raise ValueError('GIF is empty or exceeds 12 MB')
+    except (subprocess.CalledProcessError,subprocess.TimeoutExpired,ValueError) as exc:
+        out.unlink(missing_ok=True)
+        return json_error('GIF conversion failed: '+str(exc),503)
     gif_id=out.stem
-    with db() as con:con.execute('INSERT INTO media VALUES(?,?,?,?,?,?,?)',(gif_id,user['id'],'intro.gif','image/gif',str(out),out.stat().st_size,now()))
+    with db() as con:
+        con.execute('INSERT INTO media VALUES(?,?,?,?,?,?,?)',(gif_id,user['id'],'intro.gif','image/gif',str(out),out.stat().st_size,now()))
+        con.execute('UPDATE users SET intro=?,updated=? WHERE id=?',(gif_id,now(),user['id']))
     return jsonify(media={'id':gif_id,'url':f'/api/media/{gif_id}','mime':'image/gif'})
 
 def meta_request(method,path,body=None,key=None):

@@ -11,11 +11,11 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.32</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.33</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="Show more world tools">More</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
-      <button type="button" id="callButton">Call</button><button type="button" id="messagesToggleButton" aria-pressed="true" title="Show or hide chat messages">Chat</button><button type="button" id="settingsButton" aria-label="Settings" title="Appearance and chat settings">⚙</button><button type="button" id="profileButton" aria-label="Your profile" title="Your profile">?</button>
+      <button type="button" id="callButton">Call</button><button type="button" id="messagesToggleButton" aria-pressed="true" title="Show or hide chat messages">Chat</button><button type="button" id="minimapButton" aria-label="Open minimap" title="Minimap" aria-controls="minimapPanel" aria-expanded="false" data-ui-icon="map"></button><button type="button" id="settingsButton" aria-label="Settings" title="Appearance and chat settings">⚙</button><button type="button" id="profileButton" aria-label="Your profile" title="Your profile">?</button>
     </nav>
   </header>
   <div class="statusbar" aria-live="polite"><span class="signal"></span> <span id="networkStatus">Connecting…</span> <span class="sep">/</span> <span id="visitorCount">1 viewer</span></div>
@@ -29,13 +29,13 @@
   </section>
   <aside id="editorToolbox" class="editor-toolbox" aria-label="World edit tools">
     <div class="toolbox-title drag-handle"><strong>World tools</strong><button type="button" id="toolboxMinimize" title="Minimize tools">−</button></div>
-    <div id="toolboxActions" class="toolbox-actions"><button type="button" id="cameraFlyButton" title="Mouse look; Escape to exit. Camera arrows move with inertia when no robot is selected.">Camera: orbit</button><label class="camera-speed">Camera speed <input id="cameraSpeed" type="range" min="0.5" max="12" step="0.5" value="2.5" /></label>
+    <div id="toolboxActions" class="toolbox-actions"><button type="button" id="cameraFlyButton" title="Drag scene to orbit; right-drag to pan; mouse wheel to zoom. Alt-click for pointer-lock fly.">Orbit scene</button><label class="camera-speed">Camera speed <input id="cameraSpeed" type="range" min="0.5" max="12" step="0.5" value="2.5" /></label>
       <button type="button" id="importModelButton" title="Add 3D Model from this device">+ 3D Model</button><input id="modelImportFile" type="file" accept=".glb,.fbx,model/gltf-binary,application/octet-stream" hidden><button type="button" id="webcamButton" title="Open webcam preview">Webcam</button><button type="button" id="faceButton" title="Track webcam expressions locally" hidden>Face tracking</button>
       <button type="button" id="poseButton" title="Track upper body and hands" hidden>Posture + hands</button>
       <button type="button" id="diagnosticsButton">Backend logs</button><button type="button" id="worldSettingsButton" title="Realm object permissions">World settings</button>
     </div>
   </aside>
-  <button type="button" id="quickModelImport" class="quick-model-import" title="Add a GLB or FBX to the 3D scene">+ 3D Model</button>
+  <button type="button" id="quickModelImport" class="quick-model-import" title="Add a GLB or FBX to the 3D scene" hidden>+ 3D Model</button>
   <button id="chatModeButton" type="button" class="bottom-chat-mode" title="Toggle floating or overlay chat">Float chat</button>
   <button id="cameraFollowButton" type="button" class="bottom-camera-mode" data-mode="free" aria-label="Camera: Free. Click to switch camera mode." title="Cycle camera with V: Free · Chase · Orbit follow">Camera: Free</button>
   <label id="chaseDistanceControl" class="chase-distance-control" hidden title="Chase and Orbit follow distances; scroll or use trackpad over the scene"><span>Distance</span><input type="range" id="chaseDistanceSlider" min="1.8" max="35" step="0.1" value="5" aria-label="Chase camera distance"/><output id="chaseDistanceOutput" for="chaseDistanceSlider">5.0 m</output></label>
@@ -119,18 +119,25 @@
   </section>
   <div id="roomBackdrop" class="backdrop" hidden><section class="overlay" role="dialog" aria-label="Create realm"><div class="panel-title"><strong>New room / realm</strong><button id="closeRoom"></button></div><label class="field-label">Room title<input id="roomTitle" maxlength="80" placeholder="Robot laboratory"></label><label class="field-label">Room slug<input id="roomSlug" maxlength="40" placeholder="robot-lab"></label><div class="panel-footer"><button class="primary" id="saveRoom">Create realm</button></div><small id="roomError"></small></section></div>
   <aside id="webcamPanel" class="webcam-panel" hidden aria-label="Webcam and tracking"><div class="webcam-head"><strong>My camera</strong><button type="button" id="closeWebcam" aria-label="Close webcam">×</button></div><video id="facePreview" autoplay muted playsinline hidden></video><div class="webcam-actions"><button type="button" id="facePreviewToggle" aria-pressed="false">Face off</button><button type="button" id="posePreviewToggle" aria-pressed="false">Hands off</button><button type="button" id="wavesPreviewToggle" aria-pressed="false">Waves off</button></div><small id="webcamStatus" aria-live="polite">Camera off</small></aside>
+  <aside id="minimapPanel" class="minimap-panel" role="region" aria-label="Scene minimap" hidden>
+    <div id="minimapDrag" class="minimap-header" title="Drag minimap to move"><strong>Minimap</strong><span class="minimap-header-actions"><button id="minimapMinimize" type="button" title="Minimize minimap" aria-label="Minimize minimap">−</button><button id="minimapClose" type="button" title="Close minimap" aria-label="Close minimap">×</button></span></div>
+    <div id="minimapBody" class="minimap-body"><canvas id="minimapCanvas" width="300" height="300" aria-label="Top-down view of the room, camera and scene objects" role="img"></canvas><div class="minimap-foot"><span>Top view · drag header to move</span><button type="button" id="minimapReset" title="Recenter minimap" aria-label="Recenter minimap">Center</button></div></div>
+  </aside>
   <div id="profileBackdrop" class="backdrop profile-backdrop" hidden>
     <section class="overlay profile-modal" role="dialog" aria-label="Your SOLVI profile">
-      <div class="panel-title"><div><strong id="profilePanelTitle">Your profile</strong><small id="profilePanelNote">Only your name is required.</small></div><button id="closeProfile"></button></div>
+      <div class="panel-title profile-title"><div class="profile-identity-row"><button type="button" id="profilePhotoBadge" class="profile-photo-badge" title="Upload profile photo" aria-label="Upload profile photo">?</button><div><strong id="profilePanelTitle">Sign in</strong><small id="profilePanelNote">Profile</small></div></div><button id="closeProfile" aria-label="Close profile"></button></div>
+      <div class="profile-capture-actions"><input id="avatarUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden><button type="button" id="takeAvatarPhoto">Camera photo</button><button type="button" id="recordIntro">Record 15s GIF</button></div>
+      <video id="profileCameraPreview" muted playsinline autoplay hidden aria-label="Live webcam preview before capturing photo or GIF"></video>
+      <div class="profile-camera-controls" id="profileCameraControls" hidden><span id="profileCameraHint">Camera ready</span><button type="button" id="profileCameraCancel">Close camera</button></div>
       <label class="field-label">Name * <input id="profileName" maxlength="80" required placeholder="Your name" autocomplete="nickname"></label>
       <label class="field-label">Email (optional) <input id="profileEmail" type="email" maxlength="180" placeholder="you@example.com"></label>
       <label class="field-label">Bio (optional) <textarea id="profileBio" maxlength="500" rows="2" placeholder="About you"></textarea></label>
       <label class="field-label">Links (optional) <input id="profileLinks" maxlength="600" placeholder="https://…"></label>
       <small id="profileIdentity"></small>
-      <div class="profile-media"><button type="button" id="profilePhotoBadge" class="profile-photo-badge" title="Change profile photo" aria-label="Change profile photo">TS</button><input id="avatarUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden><button id="takeAvatarPhoto">Camera photo</button><button id="recordIntro">15s video → GIF</button></div>
+      
       <img id="introPreview" alt="Intro GIF preview" hidden style="max-height:82px;width:auto;border-radius:8px">
       <p class="small-note" id="profileStatus">Your UUID is created when you save. Only your name is required.</p>
-      <div class="panel-footer"><button id="exportProfile">Export profile</button><label class="icon-btn">Import profile<input type="file" id="importProfile" accept="application/json" hidden></label><button class="primary" id="saveProfile">Save / Sign in</button></div>
+      <div class="panel-footer"><button type="button" id="profileLogout" title="Sign out on this device">Log out</button><button id="exportProfile">Export profile</button><label class="icon-btn">Import profile<input type="file" id="importProfile" accept="application/json" hidden></label><button class="primary" id="saveProfile">Save / Sign in</button></div>
     </section>
   </div>
   <div id="settingsDrawer" class="drawer-shell" hidden><aside class="drawer" aria-label="Appearance and chat settings"><div class="drawer-head"><strong>Settings · display &amp; accessibility</strong><button id="closeSettings" aria-label="Close settings"></button></div>

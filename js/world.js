@@ -39,7 +39,7 @@ export class SolviWorld {
     this.followRobotId=null;this.followOrbitOffset=null;this.followOrbitDistance=clampChaseDistance(localStorage.getItem('solvi-orbit-distance'),8);this.followOrbitCustomized=localStorage.getItem('solvi-orbit-distance')!==null;this.followChaseCustomized=localStorage.getItem('solvi-chase-distance')!==null;this.followChaseDistance=clampChaseDistance(localStorage.getItem('solvi-chase-distance'));this.lastFollowLabel='';
     // Left drag = orbit, right drag = pan, wheel = dolly; gizmos temporarily lock orbit.
     this.controls.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN};
-    this.controls.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};
+    this.controls.touches={ONE:THREE.TOUCH.ROTATE,TWO:THREE.TOUCH.DOLLY_PAN};
     this.controls.enablePan=true;
     this.controls.minPolarAngle=.02;this.controls.maxPolarAngle=Math.PI-.02;
     this.controls.minDistance=.35;this.controls.maxDistance=125;
@@ -54,8 +54,11 @@ export class SolviWorld {
     this.setupEnvironment();this.setupEvents();this.setupXR();
     const fly=document.getElementById('cameraFlyButton');
     document.getElementById('cameraSpeed').value=this.cameraMoveSpeed;document.getElementById('cameraSpeed').oninput=e=>{this.cameraMoveSpeed=Number(e.target.value);localStorage.setItem('solvi-camera-speed',String(this.cameraMoveSpeed));};
-    fly.onclick=async()=>{if(this.cameraFollowMode!=='free')this.setCameraFollowMode('free');if(document.pointerLockElement===this.renderer.domElement){document.exitPointerLock();return;}try{await this.renderer.domElement.requestPointerLock();}catch{fly.title='Pointer lock is unavailable in this browser';}};
-    document.addEventListener('pointerlockchange',()=>{const locked=document.pointerLockElement===this.renderer.domElement;fly.textContent=locked?'Camera: fly · Esc':'Camera: orbit';this.controls.enabled=!locked;});
+    // Orbit is an independent scene-navigation action, even with a robot selected.
+    // Do not enter pointer-lock on an Orbit button; pointer-lock blocks orbit gestures.
+    fly.title='Orbit the scene: drag to rotate, right-drag to pan, wheel to zoom';
+    fly.onclick=event=>{if(event.altKey){this.renderer.domElement.requestPointerLock()?.catch(()=>{});return;}if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.setCameraFollowMode('free');this.cameraOrbitGesture=null;this.editorGizmoPointer=false;this.controls.enabled=true;this.controls.update();fly.textContent='Orbit scene';};
+    document.addEventListener('pointerlockchange',()=>{const locked=document.pointerLockElement===this.renderer.domElement;fly.textContent=locked?'Fly · Esc':'Orbit scene';this.controls.enabled=!locked;});
     const followButton=document.getElementById('cameraFollowButton');
     if(followButton)followButton.addEventListener('click',()=>this.setCameraFollowMode(nextCameraMode(this.cameraFollowMode)));
     const chaseSlider=document.getElementById('chaseDistanceSlider');
