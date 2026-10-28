@@ -204,6 +204,45 @@ r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert
 assert r.status_code==200,(r.status_code,r.data)
 read_robot=[x for x in c.get('/api/scene?room=lab',headers=headers).get_json()['objects'] if x['kind']=='robot'][0]
 assert read_robot['turnSpeed']==3.0 and read_robot['brain']==brain
+# v0.2.37: speech must execute Cybert's physical turn/walk commands, not
+# fall through to a plausible but idle Muse Spark conversational answer.
+cybert={'id':'testrobot-cybert037','kind':'robot','name':'Cybert','position':[0,0,0],
+        'rotation':[0,0,0],'scale':[1,1,1],'speed':1.0}
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':cybert}).status_code==200
+for instruction,kind in [
+    ('Cybert, turn and walk for a while','turn_walk'),
+    ('Cybert, turn right 90 degrees and walk 3 metres','turn_walk'),
+    ('Cybert, turn left','turn'),
+    ('CC: Cybert, roll forward for a while','walk_forward'),
+    ('Cybert, jump','jump')]:
+    posted=c.post('/api/message',headers=headers,json={'room':'lab','text':instruction}).get_json()['message']
+    with patch('server.active_model_key',return_value=''):
+        response=c.post('/api/robots/react',headers=headers,json={
+            'room':'lab','text':instruction,'message_id':posted['id']})
+    assert response.status_code==200,(instruction,response.status_code,response.data)
+    payload=response.get_json()
+    assert payload['command']['kind']==kind,(instruction,payload)
+    assert payload['command']['robot_id']==cybert['id']
+    assert payload['answer']['model']=='scene-command'
+    if kind=='turn_walk':
+        assert payload['command']['degrees']==90 and payload['command']['distance']==3
+    completed=c.post('/api/robots/task-result',headers=headers,json={
+        'room':'lab','task_id':payload['command']['id'],'status':'arrived'})
+    assert completed.status_code==200,(instruction,completed.data)
+# Literal imported-object labels such as 'chair1o' remain valid navigation goals.
+chair={'id':'testchair-cybert037','kind':'cube','name':'chair1o','position':[3,0,1],
+       'rotation':[0,0,0],'scale':[1,1,1]}
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':chair}).status_code==200
+instruction='@Cybert roll to chair1o'
+posted=c.post('/api/message',headers=headers,json={'room':'lab','text':instruction}).get_json()['message']
+with patch('server.active_model_key',return_value=''):
+    response=c.post('/api/robots/react',headers=headers,json={
+        'room':'lab','text':instruction,'message_id':posted['id']})
+assert response.status_code==200,(response.status_code,response.data)
+assert response.get_json()['command']['target_id']==chair['id']
+assert response.get_json()['command']['kind']=='go_to'
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':chair['id']}}).status_code==200
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':cybert['id']}}).status_code==200
 assert c.get('/api/robots/memory?room=lab&id=testrobot-0220',headers=headers).status_code==200
 robot['turnSpeed']=5
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==400

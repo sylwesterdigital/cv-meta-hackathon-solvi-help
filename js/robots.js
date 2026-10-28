@@ -70,9 +70,35 @@ export function tickRobots(items,dt,onMove=()=>{}){
   for(const robot of items){
     if(robot.userData.editorKind!=='robot')continue;
     let mode=robot.userData.robotMode||'idle';
+    const turning=robot.userData.robotMission;
+    if(turning?.phase==='turn'&&['turn','turn_walk'].includes(turning.kind)){
+      const delta=Math.atan2(Math.sin(turning.targetYaw-robot.rotation.y),Math.cos(turning.targetYaw-robot.rotation.y));
+      const step=Math.max(.35,Math.min(4,Number(robot.userData.robotTurnSpeed)||1))*2.2*Math.max(0,dt);
+      robot.rotation.y+=Math.sign(delta)*Math.min(Math.abs(delta),step);
+      robot.userData.robotMode='idle';mode='idle';
+      if(Math.abs(delta)<=step+.00001){
+        robot.rotation.y=turning.targetYaw;
+        if(turning.kind==='turn_walk'){
+          turning.phase='walk';
+          setRobotDestination(robot,{x:robot.position.x+Math.sin(robot.rotation.y)*turning.distance,
+            z:robot.position.z+Math.cos(robot.rotation.y)*turning.distance});
+          mode='walk';
+        }else{
+          robot.userData.robotMission=null;
+          robot.userData.robotArrived=true;
+          window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,
+            robotId:robot.userData.editorId,taskId:turning.taskId,target:turning.targetName,status:'arrived'}}));
+        }
+      }
+    }
     if(mode==='jump'&&robot.userData.jumpVel!==undefined&&!robot.userData.physicsCharacterActive){
       robot.position.y+=robot.userData.jumpVel*dt;robot.userData.jumpVel-=12.5*dt;
-      if(robot.position.y<=(robot.userData.groundY??0)){robot.position.y=robot.userData.groundY??0;delete robot.userData.jumpVel;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;}
+      if(robot.position.y<=(robot.userData.groundY??0)){robot.position.y=robot.userData.groundY??0;delete robot.userData.jumpVel;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;
+        const mission=robot.userData.robotMission;
+        if(mission?.kind==='jump'){robot.userData.robotMission=null;
+          window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,
+            taskId:mission.taskId,target:mission.targetName,status:'arrived'}}));}
+      }
     }
     if(mode==='wave'&&performance.now()>(robot.userData.waveEnd||0)){mode='idle';robot.userData.robotMode='idle';}
     if((mode==='walk'||mode==='run')&&robot.userData.robotGoal){
@@ -111,7 +137,7 @@ export function tickRobots(items,dt,onMove=()=>{}){
         });
       }
     }else if(visual?.children[0]?.userData.sitBaseY!==undefined){const model=visual.children[0];model.position.y+=(model.userData.sitBaseY-model.position.y)*Math.min(1,dt*5);}
-    if(robot.userData.robotGoal||robot.userData.robotArrived){onMove(robot,Boolean(robot.userData.robotArrived));robot.userData.robotArrived=false;}
+    if(robot.userData.robotGoal||robot.userData.robotMission||robot.userData.robotArrived){onMove(robot,Boolean(robot.userData.robotArrived));robot.userData.robotArrived=false;}
   }
 }
 export function setRobotDestination(robot,point,run=false){

@@ -573,7 +573,7 @@ export class SceneEditor{
     if(!command||command.room!==(window.solviRoom||'main'))return false;
     const robot=this.items.find(x=>x.userData.editorKind==='robot'&&x.userData.editorId===command.robot_id);
     if(!robot||!this.canEdit(robot)){this.toast('Robot command rejected: robot not editable or missing');return false;}
-    if(!['stop','wander','go_to','go_sit'].includes(command.kind))return false;
+    if(!['stop','wander','go_to','go_sit','walk_forward','turn','turn_walk','jump'].includes(command.kind))return false;
     interruptRobotMission(robot);
     if(command.kind==='stop'){robot.userData.robotMode='idle';this.queueSave(robot);this.toast(robot.name+' stopped');return true;}
     if(command.kind==='wander'){
@@ -581,6 +581,30 @@ export class SceneEditor{
       const point={x:robot.position.x+Math.sin(angle)*2,z:robot.position.z+Math.cos(angle)*2};
       robot.userData.robotMission={kind:'wander',taskId:command.id,targetName:'short walk'};
       setRobotDestination(robot,point);this.toast(robot.name+' exploring a short distance');return true;
+    }
+    if(command.kind==='jump'){
+      robotAction(robot,'jump');
+      robot.userData.robotMission={kind:'jump',taskId:command.id,targetName:'a jump'};
+      this.toast(robot.name+' jumping');return true;
+    }
+    if(command.kind==='walk_forward'){
+      const distance=Number(command.distance);
+      if(!Number.isFinite(distance)||distance<.5||distance>6)return false;
+      robot.userData.robotMission={kind:'walk_forward',taskId:command.id,targetName:command.target_name||'short walk'};
+      setRobotDestination(robot,{x:robot.position.x+Math.sin(robot.rotation.y)*distance,
+        z:robot.position.z+Math.cos(robot.rotation.y)*distance});
+      this.toast(robot.name+' moving '+distance+' m');return true;
+    }
+    if(command.kind==='turn'||command.kind==='turn_walk'){
+      const degrees=Number(command.degrees),distance=Number(command.distance);
+      if(!Number.isFinite(degrees)||degrees<15||degrees>180||!['left','right'].includes(command.direction)
+        ||(command.kind==='turn_walk'&&(!Number.isFinite(distance)||distance<.5||distance>6)))return false;
+      const signed=(command.direction==='right'?1:-1)*degrees*Math.PI/180;
+      robot.userData.robotMission={kind:command.kind,phase:'turn',taskId:command.id,
+        targetName:command.target_name||'turn',targetYaw:robot.rotation.y+signed,
+        distance:command.kind==='turn_walk'?distance:0};
+      robot.userData.robotMode='idle';robot.userData.robotGoal=null;
+      this.toast(robot.name+' turning '+command.direction+' '+degrees+'°');return true;
     }
     const target=this.items.find(x=>x.userData.editorId===command.target_id && !['robot','light'].includes(x.userData.editorKind));
     if(!target){this.toast('Robot target no longer exists in this room');return false;}

@@ -166,7 +166,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.36',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.37',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -806,6 +806,47 @@ def plan_robot_command(text,robot,objects):
         return {'kind':'go_sit' if sit else 'go_to','target_id':target['id'],
                 'target_name':str(target.get('name',''))[:100]},                ('I found '+str(target['name'])[:80]+'. I’ll approach it'+
                 (' and try my sitting animation.' if sit else '.') )
+    # Imperative chat must produce a bounded physical task, NOT an LLM-only reply.
+    # Prefer a uniquely named scene destination (e.g. chair1o) when supplied.
+    locomotion=bool(re.search(r'\b(walk|roll|drive|move|go|approach|head|travel|run)\b',words))
+    if locomotion and re.search(r'\b(?:to|towards?|near|over to)\b',words):
+        destinations=[o for o in objects if o.get('kind') not in ('robot','light')
+                      and isinstance(o.get('position'),list) and len(o['position'])==3
+                      and len(str(o.get('name','')).strip())>=3
+                      and re.search(r'(?<!\w)'+re.escape(str(o['name']).strip().casefold())+r'(?!\w)',words)]
+        if len(destinations)==1:
+            target=destinations[0]
+            name=str(target['name'])[:100]
+            sit=bool(re.search(r'\bsit\b',words))
+            return {'kind':'go_sit' if sit else 'go_to','target_id':target['id'],'target_name':name},(
+                'I’ll move toward '+name+(' and try sitting.' if sit else '.') )
+    # An explicit turn can be performed independently of movement. Degrees and
+    # metres are clamped server-side; 'for a while' means a short 3 m walk.
+    has_turn=bool(re.search(r'\b(turn|rotate|pivot)\b',words))
+    has_walk=bool(re.search(r'\b(walk|roll|drive|move|go forward|run)\b',words))
+    has_jump=bool(re.search(r'\b(jump|hop)\b',words))
+    if has_turn or has_walk or has_jump:
+        # Preserve the older walk-around loop for explicit exploration requests.
+        if has_walk and re.search(r'\b(around|about|wander|roam|explore)\b',words) and not has_turn:
+            return {'kind':'wander','target_name':'a short walk'},'I’ll walk a short loop around my starting position.'
+        # The unspecified direction for 'turn and walk' is a disclosed left turn.
+        direction='right' if re.search(r'\b(right|clockwise)\b',words) else 'left'
+        angle_match=re.search(r'\b(\d{1,3})(?:\s*°|\s*(?:degrees?|deg))\b',words)
+        angle= max(15,min(180,int(angle_match.group(1)))) if angle_match else (180 if 'turn around' in words else 90)
+        distance_match=re.search(r'\b(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b',words)
+        distance=round(max(.5,min(6.0,float(distance_match.group(1)))),1) if distance_match else 3.0
+        metres=f'{distance:g} m'
+        if has_turn and has_walk:
+            return {'kind':'turn_walk','direction':direction,'degrees':angle,'distance':distance,
+                    'target_name':f'{direction} {angle}°, then {metres}'},(
+                f'I’ll turn {direction} {angle}° and then move forward {metres}.')
+        if has_turn:
+            return {'kind':'turn','direction':direction,'degrees':angle,
+                    'target_name':f'{direction} {angle}°'},f'I’ll turn {direction} {angle}°.'
+        if has_walk:
+            return {'kind':'walk_forward','distance':distance,'target_name':f'{metres} forward'},(
+                f'I’ll move forward {metres}.')
+        return {'kind':'jump','target_name':'a jump'},'I’ll jump once.'
     if re.search(r'\b(walk|wander|roam|explore)\b',words) and re.search(r'\b(around|about|explore)\b',words):
         return {'kind':'wander'},'I’ll walk a short loop around my starting position.'
     return None,None
@@ -1037,7 +1078,7 @@ def robot_react():
         if command and not may_edit(user['id'],robot,room_policy(room_id)):
             return json_error('Room policy does not allow you to command this robot',403)
         plan_usage=None
-        if command and active_model_key():
+        if command and active_model_key() and command['kind'] not in ('turn','turn_walk','walk_forward','jump'):
             # Muse drafts a user-facing plan in the robot's voice. It is never executable;
             # the allowlisted command from plan_robot_command is the only motion authority.
             try:
@@ -1060,7 +1101,7 @@ def robot_react():
                 trace.append({'step':'muse-plan-error','result':type(exc).__name__,'source':'fallback command still runs; see diagnostic log'})
                 audit_event('robot-muse-plan-failed',robot_id=robot['id'],exception=type(exc).__name__)
         elif command:
-            trace.append({'step':'muse-plan','result':'skipped; Meta key missing','source':'rule-based command still runs'})
+            trace.append({'step':'muse-plan','result':'skipped; deterministic movement runs without model inference','source':'validated scene command'})
         aid=str(uuid.uuid4());ts=now()
         with db() as con:
             con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
@@ -1147,7 +1188,7 @@ def robot_task_result():
       'not-found':f'I scanned four directions with SAM but could not identify {target}.',
       'no-mesh':f'SAM detected {target}, but I could not map the detected pixels onto a reachable 3D scene object.',
       'vision-unavailable':f'I could not complete visual search for {target}; the vision service or camera failed.',
-      'arrived':f'I reached {target}.',
+      'arrived':f'I completed {target}.',
       'sitting':f'I reached {target} and played my Sit animation.',
       'procedural-sitting':f'I reached {target} and am using an approximate seated pose (no Sit clip available).',
       'stopped':'I stopped.',

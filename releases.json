@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.36",
+  "currentVersion": "0.2.37",
   "releases": [
+    {
+      "version": "0.2.37",
+      "publishedAt": "2026-10-28T19:49:43Z",
+      "changes": [
+        "Convert Cybert and other robots\u2019 natural-language turn/roll/walk/jump instructions into permission-checked scene commands instead of conversational-only replies.",
+        "Implement smooth turn-in-place and turn-then-walk missions with bounded distance, turn-speed setting, scene persistence, and actual movement completion events.",
+        "Route explicit named-object destinations such as chair1o to scene-based navigation, and leave ambiguous \u201cthat way\u201d references for clarification.",
+        "Add backend command routing and actual-frame stepping regressions, keeping existing chat, vision, avatars, and multiplayer features."
+      ]
+    },
     {
       "version": "0.2.36",
       "publishedAt": "2026-10-28T19:38:10Z",
@@ -305,15 +315,6 @@
         "Remote-user heads from FaceCap GLB, name labels, temporary chat balloons, opt-in webcam facial expression tracking.",
         "WebXR controller input, hand models and teleportation remain available.",
         "Fix Flask integration test Origin to match the watcher environment without weakening origin protection."
-      ]
-    },
-    {
-      "version": "0.2.1",
-      "publishedAt": "2026-10-27T12:44:45Z",
-      "changes": [
-        "Fix Flask endpoint collision that prevented backend from starting (public_asset instead of static)",
-        "Add HTTP and Flask endpoint regression tests, keeping previous v0.2.1 frontend and features unchanged",
-        "Automatic full-stack deployment with Flask, SQLite and Nginx API/WebSocket proxy"
       ]
     }
   ]
