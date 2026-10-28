@@ -483,7 +483,7 @@ export class SceneEditor{
     if(command.kind==='wander'){
       const angle=robot.rotation.y+Math.PI/3;
       const point={x:robot.position.x+Math.sin(angle)*2,z:robot.position.z+Math.cos(angle)*2};
-      robot.userData.robotMission={kind:'wander',targetName:'short walk'};
+      robot.userData.robotMission={kind:'wander',taskId:command.id,targetName:'short walk'};
       setRobotDestination(robot,point);this.toast(robot.name+' exploring a short distance');return true;
     }
     const target=this.items.find(x=>x.userData.editorId===command.target_id && !['robot','light'].includes(x.userData.editorKind));
@@ -497,7 +497,7 @@ export class SceneEditor{
     const dist=Math.hypot(dx,dz),radius=Math.max(.65,Math.min(4,Math.max(size.x,size.z)*.5+.60));
     const ux=dist>.1?dx/dist:Math.sin(robot.rotation.y),uz=dist>.1?dz/dist:Math.cos(robot.rotation.y);
     const point={x:center.x+ux*radius,z:center.z+uz*radius};
-    robot.userData.robotMission={kind:command.kind,targetName:target.name,targetId:target.userData.editorId};
+    robot.userData.robotMission={kind:command.kind,taskId:command.id,targetName:target.name,targetId:target.userData.editorId};
     setRobotDestination(robot,point);
     this.toast(robot.name+' → '+target.name+' (scene-based navigation)');
     return true;

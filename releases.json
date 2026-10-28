@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.22",
+  "currentVersion": "0.2.23",
   "releases": [
+    {
+      "version": "0.2.23",
+      "publishedAt": "2026-10-28T05:57:58Z",
+      "changes": [
+        "Replace missing-object hardcoded dead end with four real head-camera SAM searches and raycast matches to scene geometry.",
+        "Log observable robot address, intent, Muse task plan, screenshot request, Meta usage, segmentation results, navigation and completion.",
+        "Add chat verbose robot trace, persisted task-completion replies and Brains trace with exact last JPEG shown.",
+        "Make robot identity collapsible; widen and resize Brains, enlarge images and diagnostics, and explain scenario AI explicitly.",
+        "Use real Sit clips when available and labelled approximate procedural seating fallback; preserve Ubuntu release watcher compatibility."
+      ]
+    },
     {
       "version": "0.2.22",
       "publishedAt": "2026-10-28T05:38:00Z",

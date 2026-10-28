@@ -112,7 +112,7 @@ for i in $(seq 1 24); do
   if curl -fsS --max-time 2 "http://127.0.0.1:${PORT}/api/health" > "$BACKUP/health.json" 2>/dev/null; then
     if "$TARGET/.venv/bin/python" - "$BACKUP/health.json" <<'PY'
 import json,sys
-x=json.load(open(sys.argv[1]));assert x.get('service')=='solvi-help-api' and x.get('version')==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.22')
+x=json.load(open(sys.argv[1]));assert x.get('service')=='solvi-help-api' and x.get('version')==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.23')
 PY
     then break; fi
   fi
@@ -120,14 +120,14 @@ PY
 done
 "$TARGET/.venv/bin/python" - "$BACKUP/health.json" <<'PY'
 import json,sys
-x=json.load(open(sys.argv[1]));assert x['service']=='solvi-help-api' and x['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.22')
+x=json.load(open(sys.argv[1]));assert x['service']=='solvi-help-api' and x['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.23')
 PY
 systemctl reload nginx
 # Public proxy check: no passing release based solely on HTTP 200 for index.html.
 curl -fsS --max-time 15 https://solvi.help/api/health > "$BACKUP/public.json"
 "$TARGET/.venv/bin/python" - "$BACKUP/public.json" <<'PY'
 import json,sys
-x=json.load(open(sys.argv[1]));assert x['service']=='solvi-help-api' and x['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.22')
+x=json.load(open(sys.argv[1]));assert x['service']=='solvi-help-api' and x['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.23')
 PY
 GOOD=1
 printf '[SOLVI] BACKEND LIVE: v%s | SQLite | API /api/health | WebSocket /ws\n' "$EXPECTED_VERSION"

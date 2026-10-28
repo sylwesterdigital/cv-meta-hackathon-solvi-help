@@ -7,7 +7,8 @@ test('CC captions and typed chat use same authenticated robot reaction handler',
  assert.match(studio,/async function reactToRobotMessage\(message\)/);
  assert.match(studio,/await reactToRobotMessage\(response\.message\)/);
  assert.match(studio,/window\.solviPublishCaption=async text/);
- assert.match(studio,/receiveRobotCommand\(response\.command\)/);
+ assert.match(studio,/receiveRobotCommand\(command\)/);
+ assert.match(studio,/runRobotVisualSearch\(/);
 });
 test('navigation is limited to room-scoped, validated robot and object ids',()=>{
  const server=read('backend/server.py'),editor=read('js/editor.js');
@@ -19,9 +20,10 @@ test('navigation is limited to room-scoped, validated robot and object ids',()=>
  assert.match(editor,/command\.target_id/);
  assert.match(editor,/new THREE\.Box3\(\)\.setFromObject\(target\)/);
 });
-test('Sitting requires a real avatar animation; cannot fake physical completion',()=>{
+test('Sitting uses an authentic clip where possible and explicitly labels the procedural fallback',()=>{
  const robots=read('js/robots.js');
  assert.match(robots,/export function sittingClip/);
- assert.match(robots,/missing-sit-clip/);
+ assert.match(robots,/procedural-sitting/);
+ assert.match(robots,/robotSitPose/);
  assert.match(robots,/robotMission/);
 });

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
 import {captureRobotView} from './robots.js';
-import {initRobotBrains} from './robot-brains.js';
+import {initRobotBrains,runRobotVisualSearch,emitBrainTrace} from './robot-brains.js';
 import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
 import {playCue,primeAudio} from './audio-cues.js';
 
@@ -21,7 +21,7 @@ function establishTabChannel(uid){
 }
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
-let cachedMessages=[],chatSignature='',lastBubbleEntry=null;const initialRoomLoads=new Set();
+let cachedMessages=[],chatSignature='',lastBubbleEntry=null;const runningRobotTasks=new Map();const localBrainTrace=[];const initialRoomLoads=new Set();
 let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};let sessionPrompt=false;
 const toast=text=>{const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5200);};
 const show=(id,yes=true)=>{$(id).hidden=!yes;};
@@ -103,7 +103,7 @@ async function bubble(entry){
  const mine=role==='user'&&(entry.user_id===me?.id||(!entry.user_id&&entry.speaker===me?.name));
  const previous=lastBubbleEntry;
  let wrap=feed.lastElementChild, panel=wrap?.querySelector('.chat-bubble');
- const group=wrap&&shouldGroupMessages(previous,entry,readPreferences().group)&&wrap.classList.contains(mine?'mine':'theirs');
+ const group=!entry.isBrainTrace&&!previous?.isBrainTrace&&wrap&&shouldGroupMessages(previous,entry,readPreferences().group)&&wrap.classList.contains(mine?'mine':'theirs');
  if(!group){
   wrap=document.createElement('article');wrap.className='chat-row '+(mine?'mine':'theirs');
   wrap.dataset.messageId=entry.id||'';
@@ -113,6 +113,7 @@ async function bubble(entry){
   const name=document.createElement('strong');name.textContent=role==='assistant'?(entry.speaker||entry.model||'Meta Model API'):(entry.speaker||me?.name||'Guest');
   const date=document.createElement('time');date.textContent=safeTime(entry.created);meta.append(name,date);panel.append(meta);
   if(entry.avatar&&online&&auth){api.mediaBlob(entry.avatar).then(url=>{pic.textContent='';const img=document.createElement('img');img.src=url;img.alt='';img.className='chat-profile-image';pic.append(img);}).catch(()=>{});}
+  if(entry.isBrainTrace)wrap.classList.add('brain-trace');
   wrap.append(pic,panel);feed.append(wrap);
  }else{panel.querySelector('time').textContent=safeTime(entry.created);}
  const content=document.createElement('div');content.className='chat-body chat-message-item';content.dataset.messageId=entry.id||'';content.textContent=entry.text||'';panel.append(content);
@@ -125,13 +126,48 @@ async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask 
  const body=new FormData();body.append('file',file,file.name);const response=await api.req('/api/media',{method:'POST',body});return response.media;}
 function updatePending(){const p=$('pendingMedia');p.replaceChildren();for(const m of pending){const badge=document.createElement('button');badge.textContent=`${m.name} ×`;badge.title='Remove attachment';badge.onclick=()=>{pending=pending.filter(x=>x!==m);updatePending();};p.append(badge);}}
 async function attach(file){if(!file)return;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');}catch(e){toast(e.message);}}
+async function reportRobotTask(command,status){
+ if(!command?.id||status==='cancelled')return;
+ try{const result=await api.req('/api/robots/task-result',{method:'POST',body:JSON.stringify({room:command.room,task_id:command.id,status})});
+  if(result.answer)await bubble(result.answer);
+ }catch(e){emitBrainTrace(command.robot_id,'Robot','TASK REPORT FAILED',e.message);$('chatStatus').textContent='Task report error: '+e.message;}
+}
 async function reactToRobotMessage(message){
  if(!message?.id||!message.text||!online||!auth)return;
  const response=await api.req('/api/robots/react',{method:'POST',body:JSON.stringify({room:activeRoom,text:message.text,message_id:message.id})});
  if(response.answer)await bubble(response.answer);
  if(response.command){
-   const accepted=window.solviEditor?.receiveRobotCommand(response.command);
-   $('chatStatus').textContent=accepted?`${response.answer?.speaker||'Robot'} executing ${response.command.kind}`:'Robot action could not start. Check scene sync and permissions.';
+   const command=response.command,editor=window.solviEditor;
+   const robot=editor?.items?.find(o=>o.userData.editorId===command.robot_id&&o.userData.editorKind==='robot');
+   for(const item of response.trace||[])emitBrainTrace(command.robot_id,robot?.name||response.answer?.speaker||'Robot',item.step.toUpperCase(),`${item.result} [${item.source}]`);
+   const previous=runningRobotTasks.get(command.robot_id);if(previous)previous.cancelled=true;
+   const run={cancelled:false,command};runningRobotTasks.set(command.robot_id,run);
+   if(command.kind==='vision_search'){
+     if(!robot||!editor.canEdit(robot)){emitBrainTrace(command.robot_id,robot?.name||'Robot','FAILED','Robot is missing or read-only');await reportRobotTask(command,'failed');return;}
+     $('chatStatus').textContent=`${robot.name}: searching through head-camera frames…`;
+     // Start the model calls after the chat response; do not freeze the composer.
+     (async()=>{
+       try{
+         const result=await runRobotVisualSearch(editor.world,editor,robot,command,api,()=>run.cancelled||window.solviRoom!==command.room);
+         if(result.status==='cancelled')return;
+         if(result.status==='found'){
+           const action={...command,kind:command.sit?'go_sit':'go_to',target_id:result.targetId,target_name:result.target.name};
+           const accepted=editor.receiveRobotCommand(action);
+           emitBrainTrace(command.robot_id,robot.name,'ACTION',accepted?`Found ${result.target.name}; navigation started (estimated vision cost US$${(result.spend||0).toFixed(6)})`:'3D target discovered but navigation was rejected');
+           if(!accepted)await reportRobotTask(command,'failed');
+         }else{
+           emitBrainTrace(command.robot_id,robot.name,'SEARCH FINISHED',`${result.status}; no verified 3D destination; estimated US$${(result.spend||0).toFixed(6)}`);
+           await reportRobotTask(command,result.status);
+         }
+       }catch(error){emitBrainTrace(command.robot_id,robot.name,'SEARCH ERROR',error.message);await reportRobotTask(command,'vision-unavailable');}
+     })();
+   }else{
+     const accepted=editor?.receiveRobotCommand(command);
+     emitBrainTrace(command.robot_id,robot?.name||'Robot','ACTION',accepted?`Scene command ${command.kind} accepted; movement now running`:'Failed to start movement; robot, target or permission mismatch');
+     $('chatStatus').textContent=accepted?`${robot.name} executing ${command.kind}`:'Robot action could not start. Check scene sync and permissions.';
+     if(!accepted)await reportRobotTask(command,'failed');
+     if(accepted&&command.kind==='stop')await reportRobotTask(command,'stopped');
+   }
  }else if(response.triggered){
    $('chatStatus').textContent=response.answer?`${response.answer.speaker} replied · ~US$${Number(response.usage?.estimated_usd||0).toFixed(5)}`:(response.note||'Robot observed the message');
  }
@@ -205,6 +241,7 @@ async function loadMessages(){
    cachedMessages=messages;chatSignature=nextSignature;
    const feed=$('chatFeed');feed.replaceChildren();lastBubbleEntry=null;
    for(const entry of messages)await bubble(entry);
+   if($('verboseRobotDebug')?.checked)for(const entry of localBrainTrace.filter(x=>x.room===room).slice(-100))await bubble(entry);
    feed.scrollTop=feed.scrollHeight;
    initialRoomLoads.add(room);
    if(newcomers.length)playCue('incoming');
@@ -412,7 +449,19 @@ function bindUI(world){
  const editor=new SceneEditor(world,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
- window.addEventListener('solvi:robot-task-update',e=>{const d=e.detail||{};$('chatStatus').textContent=d.status==='missing-sit-clip'?d.robot+' reached '+d.target+' but has no Sit animation clip.':d.robot+' task: '+d.status;});
+ window.addEventListener('solvi:robot-task-update',e=>{
+   const d=e.detail||{};
+   $('chatStatus').textContent=`${d.robot} · ${d.status} · ${d.target}`;
+   emitBrainTrace(d.robotId,d.robot,'MOVEMENT COMPLETE',`${d.status} at ${d.target}`);
+   if(d.taskId){const run=runningRobotTasks.get(d.robotId);if(run&&!run.cancelled&&run.command.id===d.taskId){runningRobotTasks.delete(d.robotId);reportRobotTask(run.command,d.status);}}
+ });
+ window.addEventListener('solvi:brain-trace',e=>{
+   if(!$('verboseRobotDebug')?.checked)return;
+   const d=e.detail||{};
+   const entry={id:random(),room:activeRoom,role:'assistant',speaker:(d.robotName||'Robot')+' · brain trace',model:'local-debug',
+     text:`[${d.at}] ${d.step}\n${d.detail}`,created:new Date().toISOString(),isBrainTrace:true};
+   localBrainTrace.push(entry);if(localBrainTrace.length>100)localBrainTrace.shift();bubble(entry);
+ });
  window.addEventListener('solvi:chat-updated',loadMessages);
  $('chatButton').onclick=()=>{show('chatPanel',$('chatPanel').hidden);document.body.classList.remove('chat-muted');$('messagesToggleButton').setAttribute('aria-pressed','true');};$('closeChat').onclick=()=>show('chatPanel',false);
  $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?'Your profile':'Sign in';show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
@@ -440,6 +489,7 @@ function bindUI(world){
  window.addEventListener('solvi:auth-required',event=>needSignIn(event.detail?.reason||'Session expired.'));
  window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id)playCue(event.detail.action==='left'?'leave':'join');});
  document.addEventListener('pointerdown',primeAudio,{once:true});
+ $('verboseRobotDebug').checked=sessionStorage.getItem('solvi-brain-debug')==='1';$('verboseRobotDebug').onchange=()=>{sessionStorage.setItem('solvi-brain-debug',$('verboseRobotDebug').checked?'1':'0');chatSignature='';loadMessages();};
  setupChatPresentation();setupSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();initRobotBrains(world,api,()=>activeRoom,toast);begin();
  setInterval(async()=>{if(online&&auth){try{await api.req('/api/me');}catch{ /* expiry handler opens sign-in */ }}},45000);
 }

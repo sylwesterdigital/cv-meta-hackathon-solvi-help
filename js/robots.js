@@ -23,6 +23,7 @@ export async function hydrateRobot(group){
     // Mixamo/legacy SOLVI glTF's visible facing is -Z, whereas the editor's
     // movement heading uses +Z. Correct *the visual*, not the heading/group.
     // Other GLBs are left unchanged until their catalog has a facing entry.
+    model.userData.sitBaseY=model.position.y;
     const avatarVisual=new THREE.Group();avatarVisual.userData.robotVisual=true;
     if((group.userData.avatarUrl||DEFAULT_ROBOT_AVATAR)===DEFAULT_ROBOT_AVATAR)avatarVisual.rotation.y=Math.PI;
     avatarVisual.add(model);group.add(avatarVisual);
@@ -41,7 +42,8 @@ export function makeRobot(){
   group.userData.robotMode='idle';group.userData.robotGoal=null;group.userData.avatarUrl=DEFAULT_ROBOT_AVATAR;
   return group;
 }
-// A real 'Sit' GLB animation is required for seating; never pretend idle is sitting.
+// Use an authored Sit animation when present, otherwise a visible approximate
+// procedural knee/hip bend (labelled as such in the execution trace).
 export function sittingClip(names=[]){
   const name=names.find(n=>/^(?:sit|sitting|sitting idle|sit idle|sit down)(?:__\d+)?$/i.test(String(n).trim()));
   return name?'clip:'+name:null;
@@ -51,6 +53,7 @@ export function interruptRobotMission(robot){
   robot.userData.robotMission=null;
   robot.userData.robotGoal=null;
   robot.userData.robotSeated=false;
+  robot.userData.robotSitPose=null;
 }
 export function robotAction(robot,mode){
   if(!robot||robot.userData.editorKind!=='robot')return;
@@ -80,10 +83,14 @@ export function tickRobots(items,dt,onMove=()=>{}){
         const mission=robot.userData.robotMission;
         if(mission){
           const clip=mission.kind==='go_sit'?sittingClip(robot.userData.robotAvailableActions):null;
-          if(clip){robot.userData.robotSeated=true;robot.userData.robotMode=clip;mode=clip;}
+          if(mission.kind==='go_sit'){
+            robot.userData.robotSeated=true;
+            robot.userData.robotSitPose=clip?'clip':'procedural';
+            if(clip){robot.userData.robotMode=clip;mode=clip;}
+          }
           robot.userData.robotMission=null;
-          window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,target:mission.targetName||'',
-            status:mission.kind==='go_sit'?(clip?'sitting':'missing-sit-clip'):'arrived'}}));
+          window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName||'',
+            status:mission.kind==='go_sit'?(clip?'sitting':'procedural-sitting'):'arrived'}}));
         }
       }
       else{
@@ -95,6 +102,15 @@ export function tickRobots(items,dt,onMove=()=>{}){
     const visual=robot.children.find(c=>c.userData.robotVisual);if(visual){const lean=(robot.userData.robotLateral||0)*-.075;visual.rotation.z+=(lean-visual.rotation.z)*Math.min(1,dt*5);}
     if(robot.userData.robotPlaying!==mode){robot.userData.robotAnimator?.play(mode);robot.userData.robotPlaying=mode;}
     robot.userData.robotAnimator?.update(dt);
+    if(robot.userData.robotSeated&&robot.userData.robotSitPose==='procedural'){
+      const visualModel=visual?.children[0];
+      if(visualModel){visualModel.position.y+=(Math.max(-.40,(visualModel.userData.sitBaseY??visualModel.position.y)-.32)-visualModel.position.y)*Math.min(1,dt*4);
+        visualModel.traverse(bone=>{if(!bone.isBone)return;const name=bone.name.toLowerCase();
+          if(/(?:left|right|l_|r_).*(?:upleg|thigh|upperleg)|(?:upleg|thigh|upperleg).*(?:left|right)/.test(name))bone.rotation.x+=((bone.userData.sitBaseX??(bone.userData.sitBaseX=bone.rotation.x))+1.0-bone.rotation.x)*Math.min(1,dt*5);
+          if(/(?:left|right|l_|r_).*(?:leg|calf|shin)|(?:calf|shin|lowerleg).*(?:left|right)/.test(name)&&!/upper|thigh|upleg/.test(name))bone.rotation.x+=((bone.userData.sitBaseX??(bone.userData.sitBaseX=bone.rotation.x))-.9-bone.rotation.x)*Math.min(1,dt*5);
+        });
+      }
+    }else if(visual?.children[0]?.userData.sitBaseY!==undefined){const model=visual.children[0];model.position.y+=(model.userData.sitBaseY-model.position.y)*Math.min(1,dt*5);}
     if(robot.userData.robotGoal||robot.userData.robotArrived){onMove(robot,Boolean(robot.userData.robotArrived));robot.userData.robotArrived=false;}
   }
 }
@@ -103,15 +119,16 @@ export function setRobotDestination(robot,point,run=false){
   robot.userData.robotGoal=new THREE.Vector3(point.x,robot.position.y,point.z);
   robot.userData.robotMode=run?'run':'walk';
 }
-export async function captureRobotView(world,robot){
+export async function captureRobotView(world,robot,options={}){
   if(!robot||robot.userData.editorKind!=='robot')throw Error('Select a robot in Objects first.');
   const camera=new THREE.PerspectiveCamera(72,1,.04,110);robot.add(camera);
-  camera.position.set(0,1.62,0);camera.rotation.y=Math.PI; // forward-facing head view
+  camera.position.set(0,1.62,0);camera.rotation.y=Math.PI+(Number(options.yawOffset)||0); // forward head view plus scan direction
   const rt=new THREE.WebGLRenderTarget(512,512),renderer=world.renderer,old=renderer.getRenderTarget();
   const previousXR=renderer.xr.enabled,oldVisible=robot.visible;
   const pixels=new Uint8Array(512*512*4);
   try{
     robot.visible=false;camera.updateMatrixWorld(true);world.scene.updateMatrixWorld(true);
+    if(typeof options.onPose==='function')options.onPose({position:camera.getWorldPosition(new THREE.Vector3()).clone(),quaternion:camera.getWorldQuaternion(new THREE.Quaternion()).clone(),fov:camera.fov,width:512,height:512});
     renderer.xr.enabled=false;renderer.setRenderTarget(rt);renderer.render(world.scene,camera);
     renderer.readRenderTargetPixels(rt,0,0,512,512,pixels);
   }finally{renderer.setRenderTarget(old);renderer.xr.enabled=previousXR;robot.visible=oldVisible;robot.remove(camera);rt.dispose();}

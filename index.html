@@ -104,6 +104,7 @@
         <button class="media-tool" id="robotVision" title="Attach view from the robot camera">Robot view</button>
         <button id="sendChat" class="primary">Send ↗</button>
       </div>
+      <label class="robot-debug-toggle" title="Show real robot task and API trace steps in your chat. Traces are local to this browser, not published as room messages."><input type="checkbox" id="verboseRobotDebug"> Verbose robot brain trace (local)</label>
       <small id="chatStatus">World chat available without an AI key. AI responses require MODEL_API_KEY.</small><small id="captionStatus" aria-live="polite">CC off</small>
       <div id="captionPreview" role="status" aria-live="polite" hidden><span id="captionDot" aria-hidden="true">●</span> <strong id="captionPhase">Listening</strong><span id="captionDraft" aria-label="Recognised text"></span></div>
     </div>
@@ -169,20 +170,29 @@
     <div class="panel-title drag-handle"><strong id="brainsHeading">Robot Brains</strong><button id="closeRobotBrains" type="button" aria-label="Close Brains">×</button></div>
     <div class="brains-scroll">
       <p class="small-note">Fictional identity, scene experiences and head-camera perception. Fields are saved with the room scene.</p>
+      <details id="brainsIdentityDetails" class="brains-section"><summary>Identity / personality · expand to edit</summary><div class="brains-section-body">
       <label class="field-label">Character / personality<textarea id="brainsPersonality" rows="3" maxlength="1000" placeholder="Curious, playful, methodical…"></textarea></label>
       <label class="field-label">Fictional life history<textarea id="brainsHistory" rows="3" maxlength="2000" placeholder="Where this character came from and important memories…"></textarea></label>
       <label class="field-label">Beliefs and motivations<textarea id="brainsBeliefs" rows="2" maxlength="1000"></textarea></label>
       <label class="field-label">React to words or phrases (comma separated)<input id="brainsTriggers" maxlength="300" placeholder="lost, discovery, hello"></label>
+      </div></details>
+      <section class="brains-section" aria-label="Scenario generator"><div class="drawer-label">Learning scenario · AI proposal, not an action</div>
+      <p class="small-note">Suggest sends Jessica's saved identity, experiences and the room object names to Muse Spark. It returns editable text only: no movement or camera capture. Save the proposal to keep it.</p>
       <label class="field-label">Scenario / next learning goal<textarea id="brainsScenario" rows="2" maxlength="500"></textarea></label>
       <div class="brain-actions"><button id="saveRobotBrains" type="button" class="primary">Save identity</button><button id="suggestBrainsScenario" type="button">Suggest scenario with AI</button></div>
-      <div class="drawer-label">Robot eye view</div>
+      <pre id="brainsScenarioResult" class="brain-results" aria-live="polite">No AI scenario request made.</pre></section>
+      <div class="drawer-label">Robot eye view · exact frame sent to Meta</div>
+      <p class="small-note" id="brainsEyeMeta">No eye frame captured. A search command captures four directions automatically; manual Capture records the current view.</p>
       <div id="brainsEyeStage" class="brains-eye-stage" hidden><img id="brainsEyeImage" alt="Latest render from the selected robot's head camera" hidden><canvas id="brainsEyeOverlay" aria-label="SAM matching object boxes"></canvas></div>
+      <div id="brainsEyeGallery" class="brains-frame-gallery" aria-label="Captured and transmitted head-camera frames"></div>
       <div class="brain-actions"><button type="button" id="captureBrainsEye">Capture eyes</button><button type="button" id="describeBrainsEye" class="primary">Describe scene · Muse Spark</button></div>
       <label class="field-label">Question for Muse Spark (scene understanding)<textarea id="brainsVisionQuestion" rows="2" maxlength="1000">What objects can you see, where are they located, and what would be a useful next action for this robot?</textarea></label>
       <div class="brain-actions"><button type="button" id="analyzeBrainsEye">Find object · SAM 3.1</button></div>
       <label class="field-label">Object to find (one noun phrase, e.g. robot, red cube)<input id="brainsPrompt" value="robot" maxlength="120"></label>
       <p class="small-note">Each action sends the captured JPEG frame and its displayed prompt to Meta through the backend. Separate requests incur separate usage charges. SAM boxes are outlined on the captured image; mask overlays are not yet supported.</p>
-      <pre id="brainsVisionResult" class="brain-results">Capture an eye view, then describe the scene or find a specific object.</pre>
+      <pre id="brainsVisionResult" class="brain-results brain-vision-output">Capture an eye view, then describe the scene or find a specific object.</pre>
+      <div class="drawer-label">Task execution trace · observable operations, not hidden model reasoning</div>
+      <pre id="brainsTaskTrace" class="brain-results brain-task-trace">No task run in this browser yet.</pre>
       <div class="drawer-label">Experience / memory</div><pre id="brainsMemory" class="brain-results">Experiences appear after conversation.</pre>
     </div>
   </aside>

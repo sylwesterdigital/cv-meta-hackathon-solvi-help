@@ -10,7 +10,7 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.22')
+health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.23')
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.
@@ -206,7 +206,8 @@ robot['turnSpeed']=3;robot['brain']['personality']='x'*1001
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==400
 robot['brain']['personality']='Curious observer'
 message=c.post('/api/message',headers=headers,json={'room':'lab','text':'A normal conversation without mention'}).get_json()['message']
-result=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':message['text'],'message_id':message['id']})
+with patch('server.active_model_key',return_value=''):
+    result=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':message['text'],'message_id':message['id']})
 assert result.status_code==200 and result.get_json()['triggered'] is False,(result.status_code,result.data)
 # Addressing must work through text, CC captions, and one unambiguous spelling slip.
 # Grounding is the actual scene catalogue: do not pretend SAM found objects.
@@ -215,7 +216,8 @@ sofa={'id':'testsofa-0222','kind':'cube','name':'Red Sofa','position':[4,1,0],
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':sofa}).status_code==200
 speech='CC: Jessia please walk around, find the red sofa and sit on it'
 spoken=c.post('/api/message',headers=headers,json={'room':'lab','text':speech}).get_json()['message']
-result=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':speech,'message_id':spoken['id']})
+with patch('server.active_model_key',return_value=''):
+    result=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':speech,'message_id':spoken['id']})
 assert result.status_code==200,(result.status_code,result.data)
 reply=result.get_json()
 assert reply['triggered'] and reply['command']['robot_id']=='testrobot-0220'
@@ -227,10 +229,41 @@ assert any(m['speaker']=='Jessica' for m in c.get('/api/messages?room=lab',heade
 assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'open','robots':'owned','physics':0}).status_code==200
 other_speech='CC: Jessica, stop'
 other_message=c.post('/api/message',headers=other_headers,json={'room':'lab','text':other_speech}).get_json()['message']
-other_reply=c.post('/api/robots/react',headers=other_headers,json={'room':'lab','text':other_speech,'message_id':other_message['id']})
+with patch('server.active_model_key',return_value=''):
+    other_reply=c.post('/api/robots/react',headers=other_headers,json={'room':'lab','text':other_speech,'message_id':other_message['id']})
 assert other_reply.status_code==403,(other_reply.status_code,other_reply.data)
 assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'owned','robots':'open','physics':0}).status_code==200
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testsofa-0222'}}).status_code==200
+# v0.2.23: a real task result writes persistent chat/memory and rejects replay.
+assert c.post('/api/robots/task-result',headers=other_headers,json={'room':'lab','task_id':reply['command']['id'],'status':'sitting'}).status_code==403
+completed=c.post('/api/robots/task-result',headers=headers,json={'room':'lab','task_id':reply['command']['id'],'status':'sitting'})
+assert completed.status_code==200,(completed.status_code,completed.data)
+assert 'played my Sit animation' in completed.get_json()['answer']['text']
+assert c.post('/api/robots/task-result',headers=headers,json={'room':'lab','task_id':reply['command']['id'],'status':'sitting'}).status_code==403
+# With the sofa removed, the server must START a real camera scan, never tell the human to rename objects.
+missing='CC: @Jessica please find the red sofa and sit on it'
+new_message=c.post('/api/message',headers=headers,json={'room':'lab','text':missing}).get_json()['message']
+with patch('server.active_model_key',return_value=''):
+    vision_task=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':missing,'message_id':new_message['id']})
+assert vision_task.status_code==200,(vision_task.status_code,vision_task.data)
+visual=vision_task.get_json()
+assert visual['command']['kind']=='vision_search' and visual['command']['target_phrase']=='red sofa' and visual['command']['sit'] is True
+assert visual['trace'][1]['result']=='vision_search'
+assert visual['command']['id']
+failed=c.post('/api/robots/task-result',headers=headers,json={'room':'lab','task_id':visual['command']['id'],'status':'not-found'})
+assert failed.status_code==200 and 'scanned four directions' in failed.get_json()['answer']['text']
+assert c.get('/api/robots/memory?room=lab&id=testrobot-0220',headers=headers).status_code==200
+# Muse supplies character-language plans only, with the deterministic motion command unchanged.
+spoken_ai=c.post('/api/message',headers=headers,json={'room':'lab','text':'@Jessica stop'}).get_json()['message']
+with patch('server.active_model_key',return_value='fake-key-test-only'), patch('server.meta_request',return_value={
+    'id':'resp-intent-plan','output_text':'I will stop and watch the room.',
+    'usage':{'input_tokens':44,'output_tokens':9}}) as fake_model:
+    planned=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':spoken_ai['text'],'message_id':spoken_ai['id']})
+assert planned.status_code==200,(planned.status_code,planned.data)
+assert planned.get_json()['command']['kind']=='stop' and 'My plan:' in planned.get_json()['answer']['text']
+assert any(x['step']=='muse-plan' for x in planned.get_json()['trace'])
+assert planned.get_json()['usage']['input_tokens']==44
+assert fake_model.call_args.args[2]['model']=='muse-spark-1.3'
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-0220'}}).status_code==200
 print('PASS: robot Brains persisted, validated and permissioned; usage and diagnostics secured')
 

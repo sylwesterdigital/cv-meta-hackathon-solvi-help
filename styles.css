@@ -430,3 +430,35 @@ body .xr-stage-button{font-size:18px!important}
 .diagnostics-window .panel-title{margin:0 -12px 8px}
 .diagnostics-window .brain-results{max-height:52vh;min-height:180px}
 @media(max-width:650px){.solvi-floating-window{top:70px;left:8px;right:8px;width:auto;max-height:75vh}.diagnostics-window{left:8px;right:8px}}
+
+/* v0.2.23 Brains: legible, collapsible and inspectable. */
+#robotBrainsPanel{width:min(900px,calc(100vw - 28px));left:max(10px,calc(50vw - 450px));max-height:88vh;top:5vh;resize:both;min-width:min(380px,95vw);min-height:340px}
+#robotBrainsPanel .brains-scroll{display:flex;flex-direction:column;align-items:stretch;gap:13px;padding:18px 22px}
+.brains-section{border:1px solid #4b627c;border-radius:9px;padding:10px 13px;background:rgba(3,14,27,.28)}
+.brains-section summary{cursor:pointer;padding:8px 4px;font-weight:750;font-size:15px}
+.brains-section-body{display:grid;gap:12px;padding:12px 2px 3px}
+#robotBrainsPanel textarea{font-family:system-ui,sans-serif;font-size:14px;line-height:1.45;min-height:72px;padding:9px 11px}
+#robotBrainsPanel input{font-family:system-ui,sans-serif;font-size:14px;padding:9px}
+#robotBrainsPanel .brain-results{font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-x:auto;word-break:break-word;max-height:340px;min-height:85px;padding:14px}
+#robotBrainsPanel .brain-vision-output{min-height:145px;max-height:55vh}
+#robotBrainsPanel .brain-task-trace{min-height:140px;max-height:38vh}
+#robotBrainsPanel .brains-eye-stage{width:100%;max-width:750px;min-height:230px;display:flex;justify-content:center;align-items:center}
+#robotBrainsPanel .brains-eye-stage[hidden]{display:none}
+#robotBrainsPanel #brainsEyeImage{max-height:min(55vh,600px);width:100%;max-width:650px;object-fit:contain}
+#robotBrainsPanel #brainsEyeOverlay{object-fit:contain}
+#brainsEyeMeta{overflow-wrap:anywhere}
+.robot-debug-toggle{display:flex;align-items:center;gap:7px;font-size:12px;color:#a9d9f7;margin:4px 0;cursor:pointer}
+.robot-debug-toggle input{accent-color:#81d6b6}
+.chat-row.brain-trace .chat-bubble{border:1px dashed #74bbad;background:#132b33}
+.chat-row.brain-trace .chat-body{white-space:pre-wrap;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
+@media(max-width:650px){#robotBrainsPanel{top:2vh;left:7px;right:7px;width:calc(100vw - 14px);max-height:95vh;min-width:0;resize:none}#robotBrainsPanel .brains-scroll{padding:12px}#robotBrainsPanel .brain-results{font-size:12px}}
+
+#robotBrainsPanel .brains-eye-stage{width:min(100%,min(650px,55vh));aspect-ratio:1;min-height:0;max-height:650px;display:block;margin:0 auto}
+#robotBrainsPanel #brainsEyeImage{display:block;width:100%;height:100%;max-height:none;object-fit:fill}
+#robotBrainsPanel #brainsEyeOverlay{width:100%;height:100%;inset:0}
+
+#robotBrainsPanel .brains-frame-gallery{display:flex;flex-wrap:nowrap;gap:9px;overflow-x:auto;padding:9px 1px;max-width:100%}
+#robotBrainsPanel .brains-frame-card{flex:0 0 145px;text-align:left;display:flex;flex-direction:column;gap:5px;padding:7px;cursor:pointer;background:#0b182b;color:#d3eeed;border:1px solid #405d74;border-radius:8px;font:11px/1.4 system-ui}
+#robotBrainsPanel .brains-frame-card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:5px}
+#robotBrainsPanel .brains-frame-card span{overflow-wrap:anywhere}
+#robotBrainsPanel .brains-frame-card:hover,#robotBrainsPanel .brains-frame-card:focus-visible{outline:2px solid #86d5c1}

@@ -67,6 +67,8 @@ room_lock = threading.RLock()
 model_cache = (0, [])
 admin_attempts = {}
 chat_attempts = {}
+ROBOT_TASKS = {}  # short-lived, authenticated task receipts; never stores API secrets
+robot_task_lock = threading.RLock()
 
 
 @contextmanager
@@ -161,7 +163,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.22',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.23',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -692,7 +694,7 @@ def robot_scenario():
         response=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,'input':[{'role':'user','content':[{'type':'input_text','text':prompt}]}]})
         usage=record_usage(user['id'],'muse-spark-1.3','robot-scenario',response)
         answer=str(response.get('output_text') or '\n'.join(c.get('text','') for item in response.get('output',[]) for c in item.get('content',[]) if c.get('type')=='output_text')).strip()[:500]
-        return jsonify(scenario=answer,usage=usage,saved=False)
+        return jsonify(scenario=answer,usage=usage,saved=False,request={'model':'muse-spark-1.3','kind':'text-only scenario suggestion','sends':'saved robot identity, last 5 memories, scene object names','does_not':'move robot, capture image or execute actions'},response_id=response.get('id'))
     except Exception as exc:return json_error(str(exc),502)
 
 # Commands are intentionally deterministic and room-scoped: untrusted model text
@@ -749,8 +751,8 @@ def plan_robot_command(text,robot,objects):
                     and isinstance(o.get('position'),list) and len(o['position'])==3]
         if not candidates:
             detail=('red ' if wants_red else '')+requested
-            return None,('I can’t locate a '+detail+' in the scene objects yet. '
-                         'Please name the object (for example, Red Sofa) so I can navigate to it.')
+            return {'kind':'vision_search','target_phrase':detail,'sit':bool(re.search(r'\bsit\b',words))},(
+                'I will search for the '+detail+' with my head camera. I have not located it yet.')
         pos=robot.get('position') if isinstance(robot.get('position'),list) else [0,0,0]
         candidates.sort(key=lambda x:(float(x['position'][0])-float(pos[0]))**2+
                         (float(x['position'][2])-float(pos[2]))**2)
@@ -791,8 +793,37 @@ def robot_react():
     robot,brain,tagged=matching[0]
     command,ack=plan_robot_command(text,robot,objects) if tagged else (None,None)
     if ack is not None:
+        source='SAM camera scan + scene raycast' if command and command['kind']=='vision_search' else 'scene object index' if command else 'command parser'
+        trace=[{'step':'address','result':robot['name'],'source':'@mention, CC name or trigger'},
+               {'step':'parse','result':command['kind'] if command else 'target-not-found','source':'explicit rule parser; not LLM'},
+               {'step':'target','result':command.get('target_name',command.get('target_phrase','')) if command else 'none','source':source}]
         if command and not may_edit(user['id'],robot,room_policy(room_id)):
             return json_error('Room policy does not allow you to command this robot',403)
+        plan_usage=None
+        if command and active_model_key():
+            # Muse drafts a user-facing plan in the robot's voice. It is never executable;
+            # the allowlisted command from plan_robot_command is the only motion authority.
+            try:
+                notes={k:str(brain.get(k,''))[:limit] for k,limit in [('personality',700),('history',1200),('beliefs',700)]}
+                instruction=('Speak as the fictional 3D-world character named '+robot['name'][:70]+'. '
+                    'Write ONE concise, concrete, first-person plan (under 230 characters) grounded ONLY in the following confirmed operation. '
+                    'Do not claim the robot already sees, found or reached anything. No invented locations. '
+                    'The command is executed separately from your text. Character notes: '+json.dumps(notes,ensure_ascii=False)[:2700])
+                plan_prompt='Human message: '+text[:500]+'\nConfirmed operation: '+json.dumps(command,ensure_ascii=False)[:450]+'\nScene evidence: '+source
+                plan_response=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,'input':[
+                    {'role':'developer','content':[{'type':'input_text','text':instruction}]},
+                    {'role':'user','content':[{'type':'input_text','text':plan_prompt}]}]})
+                plan_usage=record_usage(user['id'],'muse-spark-1.3','robot-task-plan',plan_response)
+                spoken_plan=meta_output_text(plan_response).strip().replace('\n',' ')[:230]
+                if spoken_plan:
+                    ack+='\n\nMy plan: '+spoken_plan
+                    trace.append({'step':'muse-plan','result':spoken_plan,'source':'muse-spark-1.3; user-visible plan only, not executable; '+str(plan_response.get('id',''))})
+                else:trace.append({'step':'muse-plan','result':'Model returned no text','source':'muse-spark-1.3'})
+            except Exception as exc:
+                trace.append({'step':'muse-plan-error','result':type(exc).__name__,'source':'fallback command still runs; see diagnostic log'})
+                audit_event('robot-muse-plan-failed',robot_id=robot['id'],exception=type(exc).__name__)
+        elif command:
+            trace.append({'step':'muse-plan','result':'skipped; Meta key missing','source':'rule-based command still runs'})
         aid=str(uuid.uuid4());ts=now()
         with db() as con:
             con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
@@ -802,11 +833,18 @@ def robot_react():
         publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
         if command:
             command={**command,'id':str(uuid.uuid4()),'room':room_id,'robot_id':robot['id']}
+            with robot_task_lock:
+                ROBOT_TASKS[command['id']]={'user_id':user['id'],'robot_id':robot['id'],'robot_name':robot['name'][:100],
+                    'room':room_id,'kind':command['kind'],'target':command.get('target_name',command.get('target_phrase',''))[:100],
+                    'created':time.time(),'done':False}
+                for tid,info in list(ROBOT_TASKS.items()):
+                    if time.time()-info['created']>900:ROBOT_TASKS.pop(tid,None)
             audit_event('robot-command',room=room_id,robot_id=robot['id'],kind=command['kind'])
         return jsonify(triggered=True,responded=True,command=command,
                        answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'scene-command',
                                'text':ack,'media':'[]','created':ts,'avatar':''},
-                       note='Spatial tasks use the saved scene catalogue, not live SAM detection or autonomous pathfinding.')
+                       trace=trace,usage=plan_usage,task_id=command['id'] if command else None,
+                       note='Scene index is attempted first. Unnamed target invokes real SAM head-camera scan and raycast. Debug shows executed steps, not hidden AI reasoning.')
     if not active_model_key():return jsonify(triggered=True,responded=False,note='Robot heard the message. Set a Meta key to enable speech.')
     attempts=[v for v in chat_attempts.get(user['id'],[]) if time.time()-v<60]
     if len(attempts)>=5:return json_error('AI rate limit: five requests per minute',429)
@@ -836,6 +874,42 @@ def robot_react():
     audit_event('robot-reacted',room=room_id,robot_id=robot['id'],model='muse-spark-1.3')
     publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
     return jsonify(triggered=True,responded=True,answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'muse-spark-1.3','text':answer,'media':'[]','created':ts,'avatar':''},usage=usage)
+
+@app.post('/api/robots/task-result')
+def robot_task_result():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    task_id=str(data.get('task_id',''))
+    state=str(data.get('status',''))
+    allowed={'not-found','no-mesh','vision-unavailable','arrived','sitting','procedural-sitting','stopped','failed'}
+    if state not in allowed:return json_error('Unknown task result',400)
+    with robot_task_lock:
+        task=ROBOT_TASKS.get(task_id)
+        if not task or task['user_id']!=user['id'] or task['room']!=selected_room(data.get('room','main')) or task['done'] or time.time()-task['created']>900:
+            return json_error('Task expired, completed or does not belong to this user',403)
+        task['done']=True
+    name=task['robot_name'];target=task['target'] or 'the destination'
+    replies={
+      'not-found':f'I scanned four directions with SAM but could not identify {target}.',
+      'no-mesh':f'SAM detected {target}, but I could not map the detected pixels onto a reachable 3D scene object.',
+      'vision-unavailable':f'I could not complete visual search for {target}; the vision service or camera failed.',
+      'arrived':f'I reached {target}.',
+      'sitting':f'I reached {target} and played my Sit animation.',
+      'procedural-sitting':f'I reached {target} and am using an approximate seated pose (no Sit clip available).',
+      'stopped':'I stopped.',
+      'failed':f'I could not finish the task involving {target}.'}
+    answer=replies[state]
+    aid=str(uuid.uuid4());ts=now()
+    with db() as con:
+        con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
+                   (aid,user['id'],'assistant','robot-task',answer,'[]',ts,task['room'],name))
+        con.execute('INSERT INTO robot_memories VALUES (?,?,?,?,?)',
+                   (str(uuid.uuid4()),task['room'],task['robot_id'],f'Task {task["kind"]}: {state} — {target}'[:290],ts))
+    publish({'type':'chat-created','id':aid,'room':task['room']},room_id=task['room'])
+    audit_event('robot-task-result',room=task['room'],robot_id=task['robot_id'],status=state)
+    return jsonify(ok=True,status=state,answer={'id':aid,'role':'assistant','speaker':name,'model':'robot-task',
+             'text':answer,'media':'[]','created':ts,'avatar':''})
 
 @app.get('/api/models')
 def models():
