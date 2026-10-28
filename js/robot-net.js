@@ -1,5 +1,5 @@
 // Predictable robot controls: compact key-change packets, local acceleration,
-// velocity-dependent bicycle steering, reverse walking (without snap-turns).
+// signed forward/reverse velocity, left/right facing directions consistent in both gears.
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 const approach=(value,target,step)=>value<target?Math.min(value+step,target):Math.max(value-step,target);
 export function intent(keys){
@@ -19,12 +19,17 @@ export function stepRobotMotion(state,input,dt){
  const braking=oldVelocity*target<0||Math.abs(target)<.001;
  const velocity=approach(oldVelocity,target,(braking?6.8:4.2)*speedFactor*time);
  // No turning while stationary; more speed gives stronger, smoothly limited steering.
- const steer=clamp(Number(input?.t)||0,-1,1);
+ const steerTarget=clamp(Number(input?.t)||0,-1,1);
+ // Steering wheel inertia: no instant angular jumps on key press/release.
+ const steer=approach(Number(state.steer)||0,Math.abs(velocity)>.025?steerTarget:0,time*(steerTarget?6:8));
  const steerStrength=clamp(Math.abs(velocity)/(.9*speedFactor),0,1);
  const angularRate=(.55+.95*steerStrength)*steerStrength;
- const yaw=Number(state.yaw||0)+steer*angularRate*Math.sign(velocity)*time;
+ // ArrowLeft always rotates the *facing* direction left (negative yaw),
+ // ArrowRight always rotates it right. Reversing only flips translation;
+ // it must NOT flip the heading or turn the avatar around by 180 degrees.
+ const yaw=Number(state.yaw||0)+steer*angularRate*time;
  return {x:(Number(state.x)||0)+Math.sin(yaw)*velocity*time,
-  z:(Number(state.z)||0)+Math.cos(yaw)*velocity*time,yaw,velocity};
+  z:(Number(state.z)||0)+Math.cos(yaw)*velocity*time,yaw,velocity,steer};
 }
 // Convenience wrapper for older client consumers; stateful simulation uses stepRobotMotion.
 export function stepIntent(x,z,yaw,input,dt){return stepRobotMotion({x,z,yaw,velocity:Number(input?.v)||0},input,dt);}

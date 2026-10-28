@@ -29,22 +29,26 @@ export class MotionController{
     this.play('idle',0);
   }
   play(kind,fade=.25){
-    const action=this.actions.get(kind)||(kind.startsWith('strafe')||kind==='walkBackward'?this.actions.get('walk'):null)||this.actions.get('idle');
+    // Reverse walking means running the *same forward walk clip* backwards,
+    // so leg/foot positions rewind instead of playing a separate forward-timed
+    // action. Only use a dedicated backward clip when no walk clip exists.
+    const reverseWalk=kind==='walkBackward'&&this.actions.has('walk');
+    const action=(reverseWalk?this.actions.get('walk'):this.actions.get(kind))||
+      (kind.startsWith('strafe')?this.actions.get('walk'):null)||this.actions.get('idle');
     if(!action)return;
-    const fallbackReverse=kind==='walkBackward'&&!this.actions.has('walkBackward')&&this.actions.has('walk');
     if(action===this.current){
       if(this.currentKind!==kind){
-        action.setEffectiveTimeScale(fallbackReverse?-1:1);
-        action.time=fallbackReverse?Math.max(0,action.getClip().duration-.001):0;
+        action.setEffectiveTimeScale(reverseWalk?-1:1);
+        action.time=reverseWalk?Math.max(0,action.getClip().duration-.001):0;
         this.currentKind=kind;
       }
       return;
     }
-    action.reset().setEffectiveWeight(1).setEffectiveTimeScale(fallbackReverse?-1:1).play();
-    if(fallbackReverse)action.time=Math.max(0,action.getClip().duration-.001);
+    action.reset().setEffectiveWeight(1).setEffectiveTimeScale(reverseWalk?-1:1).play();
+    if(reverseWalk)action.time=Math.max(0,action.getClip().duration-.001);
     action.setLoop(['wave','jump'].includes(kind)?this.THREE.LoopOnce:this.THREE.LoopRepeat,['wave','jump'].includes(kind)?1:Infinity);
     action.clampWhenFinished=['wave','jump'].includes(kind);
-    if(this.current&&fade)action.crossFadeFrom(this.current,fade,true);
+    if(this.current&&fade)action.crossFadeFrom(this.current,fade,false);
     else if(this.current)this.current.stop();
     this.current=action;this.currentKind=kind;
   }

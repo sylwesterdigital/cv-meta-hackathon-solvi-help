@@ -179,7 +179,7 @@ export class SceneEditor{
    else if(this.selected&&e.shiftKey&&e.code==='KeyD'){e.preventDefault();this.duplicate();}
    else if(this.selected&&e.code==='KeyX'){e.preventDefault();this.remove();}
    else if(this.selected?.userData.editorKind==='robot'&&['ShiftLeft','ShiftRight'].includes(e.code)){this.robotKeys.add(e.code);}
-   else if(this.selected?.userData.editorKind==='robot'&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)){e.preventDefault();this.robotKeys.add(e.code);this.world.keys.delete(e.code);if(e.code==='Space'&&!e.repeat){robotAction(this.selected,'jump');/* Jump is synchronised through the compact robot-input event. */}}
+   else if(this.selected?.userData.editorKind==='robot'&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)){e.preventDefault();this.robotKeys.add(e.code);this.world.keys.delete(e.code);if(e.code==='Space'&&!e.repeat){robotAction(this.selected,'jump');/* Jump is synchronised through the compact robot-input event. */}else if(e.code!=='Space'){this.selected.userData.robotGoal=null;}}
    else if(this.selected&&['KeyG','KeyR','KeyS'].includes(e.code))this.transform.setMode({KeyG:'translate',KeyR:'rotate',KeyS:'scale'}[e.code]);
    else if(this.selected&&['Delete','Backspace'].includes(e.key)){e.preventDefault();this.remove();}
   });
@@ -350,11 +350,11 @@ export class SceneEditor{
     const input=canControl?{...intent(this.robotKeys),s:robot.userData.robotSpeed||1,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1,j:0};
     const now=performance.now();
     if(canControl){
-      const motion=stepRobotMotion({x:robot.position.x,z:robot.position.z,yaw:robot.rotation.y,velocity:robot.userData.robotVelocity||0},input,dt);
+      const motion=stepRobotMotion({x:robot.position.x,z:robot.position.z,yaw:robot.rotation.y,velocity:robot.userData.robotVelocity||0,steer:robot.userData.robotSteer||0},input,dt);
       robot.position.x=motion.x;robot.position.z=motion.z;robot.rotation.y=motion.yaw;
-      robot.userData.robotVelocity=motion.velocity;
+      robot.userData.robotVelocity=motion.velocity;robot.userData.robotSteer=motion.steer;
       const walking=Math.abs(motion.velocity)>.04;
-      if(walking)robot.userData.robotGoal=null;
+      if(input.f||input.t)robot.userData.robotGoal=null;
       if(robot.userData.jumpVel===undefined){
        robot.userData.robotMode=!walking?'idle':motion.velocity<0?'walkBackward':(input.r&&motion.velocity>1.4?'run':'walk');
       }
@@ -374,9 +374,9 @@ export class SceneEditor{
     // Remote robots integrate the same acceleration and turn-rate equations.
     for(const [id,remote] of this.remoteInput){
       const other=this.items.find(o=>o.userData.editorId===id);
-      if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotMode='idle';other.userData.robotVelocity=0;}continue;}
-      const next=stepRobotMotion({x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0},remote,dt);
-      other.position.x=next.x;other.position.z=next.z;other.rotation.y=next.yaw;other.userData.robotVelocity=next.velocity;
+      if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotMode='idle';other.userData.robotVelocity=0;other.userData.robotSteer=0;}continue;}
+      const next=stepRobotMotion({x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0,steer:other.userData.robotSteer||0},remote,dt);
+      other.position.x=next.x;other.position.z=next.z;other.rotation.y=next.yaw;other.userData.robotVelocity=next.velocity;other.userData.robotSteer=next.steer;
       if(other.userData.jumpVel===undefined){other.userData.robotMode=Math.abs(next.velocity)<.04?'idle':next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
     }
     tickRobots(this.items,dt,(o,arrived)=>{
@@ -389,8 +389,9 @@ export class SceneEditor{
     const diff=Math.hypot((robot.position.x-(Number(packet.x)||0)),robot.position.z-(Number(packet.z)||0));
     if(diff>.18){const factor=diff>1?1:.35;robot.position.x+=(Number(packet.x)-robot.position.x)*factor;robot.position.z+=(Number(packet.z)-robot.position.z)*factor;}
     robot.rotation.y+=signedAngle(Number(packet.yaw)||0,robot.rotation.y)*.95;
+    if(packet.m&&(packet.f||packet.t))robot.userData.robotGoal=null;
     if(packet.j&&!robot.userData.jumpVel)robotAction(robot,'jump');
-    if(!packet.m){this.remoteInput.delete(packet.id);robot.userData.robotVelocity=0;if(robot.userData.jumpVel===undefined)robot.userData.robotMode='idle';robot.position.x=Number(packet.x)||0;robot.position.z=Number(packet.z)||0;if(robot.userData.jumpVel===undefined)robot.position.y=Number(packet.y)||0;robot.rotation.y=Number(packet.yaw)||0;}
+    if(!packet.m){this.remoteInput.delete(packet.id);robot.userData.robotVelocity=0;robot.userData.robotSteer=0;if(robot.userData.jumpVel===undefined)robot.userData.robotMode='idle';robot.position.x=Number(packet.x)||0;robot.position.z=Number(packet.z)||0;if(robot.userData.jumpVel===undefined)robot.position.y=Number(packet.y)||0;robot.rotation.y=Number(packet.yaw)||0;}
     else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,received:performance.now()});
   }
   applyRobotMotion(state){this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});}

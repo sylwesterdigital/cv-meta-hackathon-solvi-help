@@ -12,7 +12,7 @@ test('Left and right do not move or spin a robot at rest',()=>{
  const origin={x:0,z:0,yaw:0,velocity:0};
  for(const key of ['ArrowLeft','ArrowRight']){
   const result=stepFrames(origin,{...intent(new Set([key])),s:1});
-  assert.deepEqual(result,origin);
+  assert.deepEqual({x:result.x,z:result.z,yaw:result.yaw,velocity:result.velocity},origin);
  }
 });
 test('Up drives heading-forward; steering curves while moving, without strafing',()=>{

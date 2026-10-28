@@ -334,3 +334,35 @@ body:has(#xrButton:not([hidden])) .xr-stage-button{display:block}
 .avatar-gallery .avatar-card:focus-visible{outline:3px solid #79ddff;outline-offset:3px}
 #scenePanel>.panel-title.drag-handle{cursor:grab;touch-action:none;user-select:none}
 #scenePanel>.panel-title.drag-handle:active{cursor:grabbing}
+
+/* v0.2.11 — unified interaction controls, shared design tokens. */
+:root{--solvi-control-h:30px;--solvi-control-r:8px;--solvi-control-font:12px;--solvi-control-stroke:color-mix(in srgb,var(--ui-fg) 30%,transparent)}
+:where(button,.icon-btn,select,input[type=button],input[type=submit]){
+  font-family:inherit!important;font-weight:600!important;font-size:var(--solvi-control-font)!important;
+  line-height:1.25!important;letter-spacing:0!important;border-radius:var(--solvi-control-r)!important;
+  min-height:var(--solvi-control-h)!important;
+}
+:where(button,.icon-btn){border:1px solid var(--solvi-control-stroke)!important;transition:background-color .12s ease,border-color .12s ease,filter .12s ease}
+:where(button,.icon-btn):focus-visible{outline:2px solid var(--solvi-accent)!important;outline-offset:2px}
+/* Identical square controls across logs, editor panels, chat, dialogs and drawers. */
+:is(#closeLog,#closeCall,#closeScenePanel,#minimizeScenePanel,#closeProperties,#closeChat,#closeRoom,#closeProfile,#closeSettings,#closeAvatarGallery,#closeAdmin,#toolboxMinimize){
+  box-sizing:border-box!important;width:30px!important;height:30px!important;min-width:30px!important;
+  min-height:30px!important;max-width:30px!important;max-height:30px!important;
+  display:inline-grid!important;place-items:center!important;flex:none!important;
+  margin:0!important;padding:0!important;border-radius:var(--solvi-control-r)!important;
+  font:600 16px/1 system-ui,sans-serif!important;color:var(--ui-fg)!important;
+  background:var(--ui-button)!important;border:1px solid var(--solvi-control-stroke)!important;
+  cursor:pointer;
+}
+:is(#closeLog,#closeCall,#closeScenePanel,#minimizeScenePanel,#closeProperties,#closeChat,#closeRoom,#closeProfile,#closeSettings,#closeAvatarGallery,#closeAdmin,#toolboxMinimize):hover{filter:brightness(1.15)!important}
+/* Preserve all hidden states; display:inline-grid must never expose hidden controls. */
+:is(#closeLog,#closeCall,#closeScenePanel,#minimizeScenePanel,#closeProperties,#closeChat,#closeRoom,#closeProfile,#closeSettings,#closeAvatarGallery,#closeAdmin,#toolboxMinimize)[hidden]{display:none!important}
+@media(prefers-reduced-motion:reduce){:where(button,.icon-btn){transition:none!important}}
+
+/* Override legacy per-panel button typography (except media cards, round profile image and immersive VR CTA). */
+body button:not(.profile-photo-badge):not(.xr-stage-button):not(.avatar-card):not(.theme-swatch),body .icon-btn{
+  font-family:inherit!important;font-size:12px!important;font-weight:600!important;
+  line-height:1.25!important;letter-spacing:0!important;border-radius:8px!important;min-height:30px!important;
+}
+body .profile-photo-badge{font-size:16px!important}
+body .xr-stage-button{font-size:18px!important}

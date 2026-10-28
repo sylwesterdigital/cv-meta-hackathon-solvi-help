@@ -20,7 +20,12 @@ export async function hydrateRobot(group){
     if(size.y>.001){const s=1.75/size.y;model.scale.setScalar(s);model.position.set(-center.x*s,-box.min.y*s,-center.z*s);}
     model.traverse(child=>{if(child.isMesh){child.castShadow=true;child.receiveShadow=true;}});
     group.children.find(c=>c.userData.robotPlaceholder)?.removeFromParent();
-    group.add(model);
+    // Mixamo/legacy SOLVI glTF's visible facing is -Z, whereas the editor's
+    // movement heading uses +Z. Correct *the visual*, not the heading/group.
+    // Other GLBs are left unchanged until their catalog has a facing entry.
+    const avatarVisual=new THREE.Group();avatarVisual.userData.robotVisual=true;
+    if((group.userData.avatarUrl||DEFAULT_ROBOT_AVATAR)===DEFAULT_ROBOT_AVATAR)avatarVisual.rotation.y=Math.PI;
+    avatarVisual.add(model);group.add(avatarVisual);
     group.userData.robotAnimator=new MotionController(THREE,model,gltf.animations);
     group.userData.robotAnimator.play('idle');
     group.userData.robotReady=true;group.userData.robotMode='idle';

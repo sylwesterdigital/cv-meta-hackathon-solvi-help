@@ -33,6 +33,7 @@ export class SolviWorld {
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);
     this.controls.enableDamping=false;this.controls.target.set(0,1,0);
     this.cameraOrbitGesture=null;this.editorGizmoPointer=false;
+    this.cameraVelocity=new THREE.Vector3();
     // Left drag = orbit, right drag = pan, wheel = dolly; gizmos temporarily lock orbit.
     this.controls.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN};
     this.controls.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};
@@ -487,9 +488,11 @@ export class SolviWorld {
     if(bounds&&!bounds.isEmpty())bounds.getCenter(center);
     else if(selected)center.copy(selected.position);
     else center.copy(this.controls.target);
-    const radius=bounds&&!bounds.isEmpty()?bounds.getSize(new THREE.Vector3()).length()*.5:1.25;
-    const distance=Math.max(2.8,Math.min(35,radius*3.5));
-    const current=this.camera.position.clone().sub(this.controls.target).normalize();
+    // Numeric views only rotate the view direction. Never auto-fit/zoom based
+    // on object size: preserve the viewer's existing distance to the pivot.
+    const cameraOffset=this.camera.position.clone().sub(center);
+    const distance=Math.max(this.controls.minDistance,cameraOffset.length());
+    const current=cameraOffset.lengthSq()>.000001?cameraOffset.normalize():new THREE.Vector3(.5,.3,1).normalize();
     let offset=null;
     if(key===1)offset=new THREE.Vector3(0,0,reverse?-1:1);
     if(key===3)offset=new THREE.Vector3(reverse?-1:1,0,0);
@@ -514,18 +517,27 @@ export class SolviWorld {
     this.camera.lookAt(center);this.controls.update();
   }
   navigateCamera(dt){
-    if(this.renderer.xr.isPresenting||this.editorDragging||this.editorGizmoPointer)return;
-    const isRobot=!!this.robotEditor?.robot()&&this.robotEditor.canEdit(this.robotEditor.robot());
-    if(isRobot)return;
+    // Inertia applies only to free camera translations, never gizmo drags.
+    if(this.renderer.xr.isPresenting||this.editorDragging||this.editorGizmoPointer){this.cameraVelocity.set(0,0,0);return;}
+    const robot=this.robotEditor?.robot();
+    if(robot&&this.robotEditor.canEdit(robot)){this.cameraVelocity.set(0,0,0);return;}
     const f=Number(this.keys.has('ArrowUp'))-Number(this.keys.has('ArrowDown'));
     const side=Number(this.keys.has('ArrowRight'))-Number(this.keys.has('ArrowLeft'));
     const vertical=Number(this.keys.has('PageUp'))-Number(this.keys.has('PageDown'));
-    if(!f&&!side&&!vertical)return;
-    const look=this.camera.getWorldDirection(new THREE.Vector3());look.y=0;look.normalize();
-    const right=new THREE.Vector3().crossVectors(look,new THREE.Vector3(0,1,0)).normalize();
-    const delta=look.multiplyScalar(f).addScaledVector(right,side);delta.y+=vertical;
-    const boost=this.keys.has('ShiftLeft')||this.keys.has('ShiftRight')?2.4:1;
-    if(delta.lengthSq()>0){delta.normalize().multiplyScalar(dt*this.cameraMoveSpeed*boost);this.camera.position.add(delta);this.controls.target.add(delta);}
+    const desired=new THREE.Vector3();
+    if(f||side||vertical){
+      const look=this.camera.getWorldDirection(new THREE.Vector3());look.y=0;
+      if(look.lengthSq()<.001)look.set(0,0,-1);look.normalize();
+      const right=new THREE.Vector3().crossVectors(look,new THREE.Vector3(0,1,0)).normalize();
+      desired.copy(look).multiplyScalar(f).addScaledVector(right,side);desired.y+=vertical;
+      const boost=this.keys.has('ShiftLeft')||this.keys.has('ShiftRight')?2.4:1;
+      desired.normalize().multiplyScalar(this.cameraMoveSpeed*boost);
+    }
+    const response=desired.lengthSq()>.001?8:10; // 0.1–0.2s acceleration/deceleration
+    this.cameraVelocity.lerp(desired,1-Math.exp(-response*dt));
+    if(this.cameraVelocity.lengthSq()<.00004&&!desired.lengthSq())this.cameraVelocity.set(0,0,0);
+    const delta=this.cameraVelocity.clone().multiplyScalar(dt);
+    this.camera.position.add(delta);this.controls.target.add(delta);
   }
   frame(){
     const dt=Math.min(.05,this.clock.getDelta());
