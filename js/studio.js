@@ -125,6 +125,17 @@ async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask 
  const body=new FormData();body.append('file',file,file.name);const response=await api.req('/api/media',{method:'POST',body});return response.media;}
 function updatePending(){const p=$('pendingMedia');p.replaceChildren();for(const m of pending){const badge=document.createElement('button');badge.textContent=`${m.name} ×`;badge.title='Remove attachment';badge.onclick=()=>{pending=pending.filter(x=>x!==m);updatePending();};p.append(badge);}}
 async function attach(file){if(!file)return;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');}catch(e){toast(e.message);}}
+async function reactToRobotMessage(message){
+ if(!message?.id||!message.text||!online||!auth)return;
+ const response=await api.req('/api/robots/react',{method:'POST',body:JSON.stringify({room:activeRoom,text:message.text,message_id:message.id})});
+ if(response.answer)await bubble(response.answer);
+ if(response.command){
+   const accepted=window.solviEditor?.receiveRobotCommand(response.command);
+   $('chatStatus').textContent=accepted?`${response.answer?.speaker||'Robot'} executing ${response.command.kind}`:'Robot action could not start. Check scene sync and permissions.';
+ }else if(response.triggered){
+   $('chatStatus').textContent=response.answer?`${response.answer.speaker} replied · ~US$${Number(response.usage?.estimated_usd||0).toFixed(5)}`:(response.note||'Robot observed the message');
+ }
+}
 async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.length)return;if(!me){show('profileBackdrop',true);return;}
  if(online&&!auth){needSignIn('Sign in before sending messages.');return;}
  const ids=pending.map(x=>x.id);
@@ -136,10 +147,8 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
   $('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
   if(response.usage?.totals)$('metaUsageStatus').textContent=`Recorded ${response.usage.totals.requests} requests · ~US$${Number(response.usage.totals.usd).toFixed(4)} estimated`;
   if(response.message?.id && text){
-    try{const robot=await api.req('/api/robots/react',{method:'POST',body:JSON.stringify({room:activeRoom,text,message_id:response.message.id})});
-      if(robot.answer)await bubble(robot.answer);
-      if(robot.triggered)$('chatStatus').textContent=robot.answer?`${robot.answer.speaker} replied · ~US$${Number(robot.usage?.estimated_usd||0).toFixed(5)}`:(robot.note||'Robot observed the message');
-    }catch(error){$('chatStatus').textContent='Message delivered; robot reaction failed: '+error.message;}
+    try{await reactToRobotMessage(response.message);}
+    catch(error){$('chatStatus').textContent='Message delivered; robot reaction failed: '+error.message;}
   }
  }catch(e){playCue('error');$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
  finally{$('sendChat').disabled=false;}
@@ -403,6 +412,7 @@ function bindUI(world){
  const editor=new SceneEditor(world,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
+ window.addEventListener('solvi:robot-task-update',e=>{const d=e.detail||{};$('chatStatus').textContent=d.status==='missing-sit-clip'?d.robot+' reached '+d.target+' but has no Sit animation clip.':d.robot+' task: '+d.status;});
  window.addEventListener('solvi:chat-updated',loadMessages);
  $('chatButton').onclick=()=>{show('chatPanel',$('chatPanel').hidden);document.body.classList.remove('chat-muted');$('messagesToggleButton').setAttribute('aria-pressed','true');};$('closeChat').onclick=()=>show('chatPanel',false);
  $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?'Your profile':'Sign in';show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
@@ -417,7 +427,7 @@ function bindUI(world){
    if(!me||!text?.trim())return;
    const caption='CC: '+text.trim().slice(0,500);
    if(!online||!auth){if(online&&!auth){needSignIn('Sign in to send captions.');return;}await bubble({role:'user',text:caption,speaker:me.name,user_id:me.id,created:new Date().toISOString()});return;}
-   try{const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:caption,media:[]})});await bubble(response.message);}
+   try{const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:caption,media:[]})});await bubble(response.message);try{await reactToRobotMessage(response.message);}catch(error){$('chatStatus').textContent='Caption published; robot reaction failed: '+error.message;}}
    catch(error){toast('Captions not sent: '+error.message);throw error;}
  };
  $('sendChat').onclick=send;$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});

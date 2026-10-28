@@ -41,9 +41,20 @@ export function makeRobot(){
   group.userData.robotMode='idle';group.userData.robotGoal=null;group.userData.avatarUrl=DEFAULT_ROBOT_AVATAR;
   return group;
 }
+// A real 'Sit' GLB animation is required for seating; never pretend idle is sitting.
+export function sittingClip(names=[]){
+  const name=names.find(n=>/^(?:sit|sitting|sitting idle|sit idle|sit down)(?:__\d+)?$/i.test(String(n).trim()));
+  return name?'clip:'+name:null;
+}
+export function interruptRobotMission(robot){
+  if(!robot)return;
+  robot.userData.robotMission=null;
+  robot.userData.robotGoal=null;
+  robot.userData.robotSeated=false;
+}
 export function robotAction(robot,mode){
   if(!robot||robot.userData.editorKind!=='robot')return;
-  robot.userData.robotMode=mode;robot.userData.robotGoal=null;
+  robot.userData.robotMode=mode;interruptRobotMission(robot);
   if(mode==='walk'||mode==='run'){
     const forward=new THREE.Vector3(0,0,mode==='run'?4:2.3).applyQuaternion(robot.quaternion);
     robot.userData.robotGoal=robot.position.clone().add(forward);
@@ -64,7 +75,17 @@ export function tickRobots(items,dt,onMove=()=>{}){
     if((mode==='walk'||mode==='run')&&robot.userData.robotGoal){
       const delta=robot.userData.robotGoal.clone().sub(robot.position);delta.y=0;
       const distance=delta.length();
-      if(distance<.07){robot.userData.robotGoal=null;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;}
+      if(distance<.07){
+        robot.userData.robotGoal=null;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;
+        const mission=robot.userData.robotMission;
+        if(mission){
+          const clip=mission.kind==='go_sit'?sittingClip(robot.userData.robotAvailableActions):null;
+          if(clip){robot.userData.robotSeated=true;robot.userData.robotMode=clip;mode=clip;}
+          robot.userData.robotMission=null;
+          window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,target:mission.targetName||'',
+            status:mission.kind==='go_sit'?(clip?'sitting':'missing-sit-clip'):'arrived'}}));
+        }
+      }
       else{
         delta.normalize();const speed=mode==='run'?2.7:1.2;
         robot.position.addScaledVector(delta,Math.min(distance,speed*dt));

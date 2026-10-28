@@ -161,7 +161,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.21',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.22',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -583,24 +583,81 @@ def ai_analyze_logs():
         text=response.get('output_text') or '\n'.join(part.get('text','') for item in response.get('output',[]) for part in item.get('content',[]) if part.get('type')=='output_text')
         return jsonify(analysis=text[:9000],usage=usage)
     except Exception as exc:return json_error(str(exc),502)
+def meta_output_text(response):
+    """Responses may put text in output[].content[], not top-level output_text."""
+    text=response.get('output_text')
+    if isinstance(text,str) and text:return text
+    chunks=[]
+    for item in response.get('output',[]):
+        if not isinstance(item,dict):continue
+        for part in item.get('content',[]):
+            if isinstance(part,dict) and part.get('type') in ('output_text','text') and isinstance(part.get('text'),str):
+                chunks.append(part['text'])
+    return ''.join(chunks)
+
+def sam_object_boxes(output):
+    """Read SAM 3.1 documented box records; opaque masks are not decoded here."""
+    matches=[]
+    for found in re.finditer(r'(\d+)<\|box;([^|]{1,280})\|>',output):
+        fields={}
+        for k,v in re.findall(r'(x1|y1|x2|y2|w|h|c)=(-?(?:\d+\.?\d*|\.\d+))',found.group(2)):
+            fields[k]=float(v)
+        if all(k in fields for k in ('x1','y1','x2','y2','w','h')) and fields['w']>0 and fields['h']>0:
+            box={'id':int(found.group(1)),'x1':fields['x1'],'y1':fields['y1'],
+                 'x2':fields['x2'],'y2':fields['y2'],'width':fields['w'],'height':fields['h']}
+            if 'c' in fields:box['confidence']=fields['c']
+            matches.append(box)
+        if len(matches)>=50:break
+    return matches
+
+def validated_eye_image(data):
+    image=data.get('image','')
+    if not isinstance(image,str) or not image.startswith('data:image/jpeg;base64,') or len(image)>2_500_000:
+        raise ValueError('JPEG robot-eye frame required (max 1.8 MB)')
+    try:content=base64.b64decode(image.partition(',')[2],validate=True)
+    except (ValueError,base64.binascii.Error):raise ValueError('Invalid base64 JPEG image')
+    if not content.startswith(b'\xff\xd8'):raise ValueError('Invalid JPEG image')
+    return image,len(content)
+
 @app.post('/api/ai/vision')
 def ai_vision():
     user,msg,status=actor()
     if not user:return json_error(msg,status)
     if not active_model_key():return json_error('Configure Meta API key first',503)
     data=request.get_json(silent=True) or {}
-    phrase=str(data.get('prompt','')).strip()[:120]
-    image=str(data.get('image',''))
-    if not phrase or not re.fullmatch(r'[\w\s-]{2,120}',phrase):return json_error('Use one short noun phrase, e.g. red chair')
-    if not image.startswith('data:image/jpeg;base64,') or len(image)>2_500_000:return json_error('JPEG robot-eye frame required (max 1.8 MB)',413)
+    mode=data.get('mode','segment')
+    if mode not in ('segment','describe'):return json_error('Vision mode must be segment or describe')
+    prompt=str(data.get('prompt','')).strip()
+    if mode=='segment':
+        if not re.fullmatch(r'[\w\s-]{2,120}',prompt):return json_error('SAM needs one short object noun phrase, e.g. robot or red cube')
+        model='sam-3.1'
+    else:
+        if not prompt:prompt='What is visible in this image? Describe the objects, their positions and spatial relationships. Suggest one safe next action for the robot. Distinguish visible facts from guesses.'
+        if len(prompt)>1000:return json_error('Vision question is too long (max 1000 characters)')
+        model='muse-spark-1.3'
+    try:image,byte_count=validated_eye_image(data)
+    except ValueError as exc:return json_error(str(exc),400)
+    payload={'model':model,'store':False,'input':[{'role':'user','content':[
+        {'type':'input_text','text':prompt},
+        {'type':'input_image','image_url':image}]}]}
     try:
-        if not base64.b64decode(image.partition(',')[2],validate=True).startswith(b'\xff\xd8'):
-            return json_error('Invalid JPEG image',400)
-        response=meta_request('POST','/responses',{'model':'sam-3.1','store':False,'input':[{'role':'user','content':[{'type':'input_text','text':phrase},{'type':'input_image','image_url':image}]}]})
-        usage=record_usage(user['id'],'sam-3.1','robot-eyes',response,images=1)
-        # Avoid shipping huge binary masks to the browser without the official SAM parser.
-        summary={'id':response.get('id'),'status':response.get('status'),'output_text':str(response.get('output_text') or '')[:1000],'output_types':[item.get('type') for item in response.get('output',[]) if isinstance(item,dict)]}
-        return jsonify(result=summary,usage=usage,note='Raw SAM mask overlays require @meta-sam/parser; this prototype shows response metadata and billed usage.')
+        response=meta_request('POST','/responses',payload)
+        usage=record_usage(user['id'],model,'robot-eyes-segment' if mode=='segment' else 'robot-eyes-describe',response,images=1)
+        output=meta_output_text(response)
+        request_info={'model':model,'prompt':prompt,'image':{'source':'robot-head-camera','mime':'image/jpeg','bytes':byte_count},
+                      'store':False,'endpoint':'POST /v1/responses'}
+        if mode=='describe':
+            return jsonify(mode=mode,request=request_info,description=output[:12000],
+                           result={'id':response.get('id'),'status':response.get('status')},
+                           usage=usage,note='Muse Spark provides language-based image analysis, not pixel masks.')
+        boxes=sam_object_boxes(output)
+        return jsonify(mode=mode,request=request_info,
+                       result={'id':response.get('id'),'status':response.get('status'),
+                               'match_count':len(boxes),'boxes':boxes,
+                               'no_matches':not bool(output.strip()),
+                               'parse_warning':bool(output.strip()) and not bool(boxes),
+                               'output_types':[item.get('type') for item in response.get('output',[]) if isinstance(item,dict)]},
+                       usage=usage,note='SAM returns matching object geometry, not a scene description. Bounding boxes are shown; pixel masks are not yet rendered.')
     except Exception as exc:return json_error(str(exc),502)
 @app.get('/api/robots/memory')
 def robot_memory():
@@ -638,6 +695,73 @@ def robot_scenario():
         return jsonify(scenario=answer,usage=usage,saved=False)
     except Exception as exc:return json_error(str(exc),502)
 
+# Commands are intentionally deterministic and room-scoped: untrusted model text
+# never becomes an executable scene command. Object labels/colours supply POC grounding.
+def _edit_distance_one(a,b):
+    if abs(len(a)-len(b))>1:return False
+    if a==b:return True
+    if len(a)>len(b):a,b=b,a
+    i=j=misses=0
+    while i<len(a) and j<len(b):
+        if a[i]==b[j]:i+=1;j+=1
+        else:
+            misses+=1
+            if misses>1:return False
+            if len(a)==len(b):i+=1
+            j+=1
+    return misses+len(b)-j<=1
+
+def _robot_address(text,robots):
+    """Explicit @name or spoken name at start, allow one unambiguous typo."""
+    spoken=re.sub(r'^\s*CC\s*:\s*','',text,flags=re.I)
+    mentioned=re.search(r'(?<!\w)@([\w-]{2,80})\b',spoken,re.I)
+    greeting=re.search(r'^\s*(?:(?:hey|hi|hello)\s+)?([\w-]{2,80})\b',spoken,re.I)
+    candidate=(mentioned or greeting)
+    if not candidate:return None
+    word=candidate.group(1).casefold()
+    exact=[o for o in robots if o.get('name','').split()[0].casefold()==word]
+    if len(exact)==1:return exact[0]
+    if exact:return None
+    fuzzy=[o for o in robots if len(word)>=5 and len(o.get('name','').split()[0])>=5
+           and _edit_distance_one(word,o['name'].split()[0].casefold())]
+    return fuzzy[0] if len(fuzzy)==1 else None
+
+def _red_scene_object(obj):
+    name=str(obj.get('name','')).casefold()
+    if 'red' in name.split():return True
+    color=str(obj.get('color') or '')
+    if not re.fullmatch('#[0-9a-fA-F]{6}',color):return False
+    r,g,b=bytes.fromhex(color[1:]);return r>=110 and r>g*1.4 and r>b*1.4
+
+def plan_robot_command(text,robot,objects):
+    """Return a *suggested* action, never model-provided executable instructions."""
+    words=re.sub(r'^\s*CC\s*:\s*','',text,flags=re.I).casefold()
+    if re.search(r'\b(stop|halt|freeze)\b',words):
+        return {'kind':'stop'},'Stopping.'
+    noun=re.search(r'\b(sofa|couch|chair)\b',words)
+    travel=bool(re.search(r'\b(find|look for|locate|go to|walk to|approach|sit on|sit in|sit down)\b',words))
+    if noun and travel:
+        requested=noun.group(1);family={'sofa','couch'} if requested in ('sofa','couch') else {'chair'}
+        wants_red=bool(re.search(r'\bred\b',words))
+        candidates=[o for o in objects if o.get('kind') not in ('robot','light')
+                    and any(re.search(r'\b'+n+r'\b',str(o.get('name','')).casefold()) for n in family)
+                    and (not wants_red or _red_scene_object(o))
+                    and isinstance(o.get('position'),list) and len(o['position'])==3]
+        if not candidates:
+            detail=('red ' if wants_red else '')+requested
+            return None,('I can’t locate a '+detail+' in the scene objects yet. '
+                         'Please name the object (for example, Red Sofa) so I can navigate to it.')
+        pos=robot.get('position') if isinstance(robot.get('position'),list) else [0,0,0]
+        candidates.sort(key=lambda x:(float(x['position'][0])-float(pos[0]))**2+
+                        (float(x['position'][2])-float(pos[2]))**2)
+        target=candidates[0];sit=bool(re.search(r'\bsit\b',words))
+        return {'kind':'go_sit' if sit else 'go_to','target_id':target['id'],
+                'target_name':str(target.get('name',''))[:100]},                ('I found '+str(target['name'])[:80]+'. I’ll approach it'+
+                (' and try my sitting animation.' if sit else '.') )
+    if re.search(r'\b(walk|wander|roam|explore)\b',words) and re.search(r'\b(around|about|explore)\b',words):
+        return {'kind':'wander'},'I’ll walk a short loop around my starting position.'
+    return None,None
+
 @app.post('/api/robots/react')
 def robot_react():
     user,msg,status=actor()
@@ -651,22 +775,43 @@ def robot_react():
         m=con.execute('SELECT * FROM messages WHERE id=? AND user_id=? AND room_id=? AND role=?',(message_id,user['id'],room_id,'user')).fetchone()
         if not m or m['text']!=text:return json_error('Message not found or mismatched',403)
         objects=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['payload'])
+    robots=[o for o in objects if o.get('kind')=='robot' and str(o.get('name','')).strip()]
+    addressed=_robot_address(text,robots)
     matching=[]
-    for o in objects:
-        if o.get('kind')!='robot':continue
+    for o in robots:
+        if addressed and o is not addressed:continue  # a direct address outranks other robots' broad triggers
         name=str(o.get('name','')).strip()
         alias=name.split()[0] if name else ''
         brain=o.get('brain') if isinstance(o.get('brain'),dict) else {}
         triggers=[t.strip().casefold() for t in str(brain.get('triggers','')).split(',') if len(t.strip())>=3]
-        tagged=bool(alias and re.search(r'(?<!\w)@'+re.escape(alias)+r'(?!\w)',text,re.I))
+        tagged=o is addressed or bool(alias and re.search(r'(?<!\w)@'+re.escape(alias)+r'(?!\w)',text,re.I))
         triggered=any(word in text.casefold() for word in triggers)
         if tagged or triggered:matching.append((o,brain,tagged))
     if not matching:return jsonify(triggered=False,note='No named robot or subscribed phrase matched')
+    robot,brain,tagged=matching[0]
+    command,ack=plan_robot_command(text,robot,objects) if tagged else (None,None)
+    if ack is not None:
+        if command and not may_edit(user['id'],robot,room_policy(room_id)):
+            return json_error('Room policy does not allow you to command this robot',403)
+        aid=str(uuid.uuid4());ts=now()
+        with db() as con:
+            con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
+                       (aid,user['id'],'assistant','scene-command',ack,'[]',ts,room_id,str(robot['name'])[:100]))
+            con.execute('INSERT INTO robot_memories VALUES (?,?,?,?,?)',
+                       (str(uuid.uuid4()),room_id,robot['id'],'Received task: '+text[:260],ts))
+        publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
+        if command:
+            command={**command,'id':str(uuid.uuid4()),'room':room_id,'robot_id':robot['id']}
+            audit_event('robot-command',room=room_id,robot_id=robot['id'],kind=command['kind'])
+        return jsonify(triggered=True,responded=True,command=command,
+                       answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'scene-command',
+                               'text':ack,'media':'[]','created':ts,'avatar':''},
+                       note='Spatial tasks use the saved scene catalogue, not live SAM detection or autonomous pathfinding.')
     if not active_model_key():return jsonify(triggered=True,responded=False,note='Robot heard the message. Set a Meta key to enable speech.')
     attempts=[v for v in chat_attempts.get(user['id'],[]) if time.time()-v<60]
     if len(attempts)>=5:return json_error('AI rate limit: five requests per minute',429)
     attempts.append(time.time());chat_attempts[user['id']]=attempts
-    robot,brain,tagged=matching[0]  # cap at one robot reply per message
+    # A maximum of one matched robot responds to each message.
     with db() as con:
         recent=con.execute('SELECT event FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 8',(room_id,robot['id'])).fetchall()
         history=con.execute('SELECT text FROM messages WHERE room_id=? ORDER BY created DESC LIMIT 6',(room_id,)).fetchall()

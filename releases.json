@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.21",
+  "currentVersion": "0.2.22",
   "releases": [
+    {
+      "version": "0.2.22",
+      "publishedAt": "2026-10-28T05:38:00Z",
+      "changes": [
+        "Add Muse Spark scene-description action for robot head-camera images and SAM 3.1 object bounding-box overlays with prompt and estimated-cost details.",
+        "Route typed chat and opt-in published CC captions to named robots, including unambiguous one-character name corrections.",
+        "Execute permission-checked, deterministic scene commands to approach named objects, walk short distances, stop and attempt real Sit animation clips.",
+        "Use saved scene labels and coordinates for robot navigation; missing targets/clips report limitations without claiming autonomous perception.",
+        "Preserve the existing macOS watcher, Ubuntu backend, avatar assets and previously released controls."
+      ]
+    },
     {
       "version": "0.2.21",
       "publishedAt": "2026-10-28T05:15:57Z",

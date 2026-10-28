@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {setupAvatarGallery} from './avatar-gallery.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
 import {EditHistory,duplicateElevation,nextDuplicateName} from './edit-history.js';
-import {makeRobot,hydrateRobot,robotAction,tickRobots,setRobotDestination,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
+import {makeRobot,hydrateRobot,robotAction,tickRobots,setRobotDestination,interruptRobotMission,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
 import {intent,active,packetFor,stepRobotMotion,signedAngle,makeRemoteCorrection,applyRemoteCorrection} from './robot-net.js';
 import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneModelRenderer} from './scene-models.js';
 import {ScenePhysics} from './scene-physics.js';
@@ -411,9 +411,9 @@ export class SceneEditor{
       robot.position.x=motion.x;robot.position.z=motion.z;robot.rotation.y=motion.yaw;
       robot.userData.robotVelocity=motion.velocity;robot.userData.robotSteer=motion.steer;robot.userData.robotLateral=motion.lateral;
       const walking=Math.abs(motion.velocity)>.04;const strafing=Math.abs(motion.lateral)>.04;
-      if(input.f||input.t)robot.userData.robotGoal=null;
+      if(input.f||input.t||input.j)interruptRobotMission(robot);
       if(robot.userData.jumpVel===undefined&&!robot.userData.physicsAirborne){
-       robot.userData.robotMode=!walking?(strafing?(motion.lateral>0?'strafeLeft':'strafeRight'):'idle'):motion.velocity<0?'walkBackward':(input.r&&motion.velocity>1.4?'run':'walk');
+       if(!robot.userData.robotMission&&!robot.userData.robotSeated)robot.userData.robotMode=!walking?(strafing?(motion.lateral>0?'strafeLeft':'strafeRight'):'idle'):motion.velocity<0?'walkBackward':(input.r&&motion.velocity>1.4?'run':'walk');
       }
     }
     const previous=this.localRobotInput;
@@ -445,7 +445,11 @@ export class SceneEditor{
       if(next.done)this.remoteCorrections.delete(id);else this.remoteCorrections.set(id,next.residual);
     }
     tickRobots(this.items,dt,(o,arrived)=>{
-      if(arrived&&this.canEdit(o))this.queueSave(o);
+      if(!this.canEdit(o))return;
+      // Share autonomous movement while walking, not only its final position.
+      if(arrived||o.userData.robotMission&&now-(o.userData.lastMissionSave||0)>900){
+        o.userData.lastMissionSave=now;this.queueSave(o);
+      }
     });
     this.physics.tick(dt);
   }
@@ -467,5 +471,36 @@ export class SceneEditor{
     }else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,q:packet.q||1.8,u:packet.u||1,received:performance.now()});
   }
   applyRobotMotion(state){this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});}
+  // Commands are issued by the authenticated chat endpoint and resolved against
+  // the same room scene. The client still checks editable state and targets.
+  receiveRobotCommand(command){
+    if(!command||command.room!==(window.solviRoom||'main'))return false;
+    const robot=this.items.find(x=>x.userData.editorKind==='robot'&&x.userData.editorId===command.robot_id);
+    if(!robot||!this.canEdit(robot)){this.toast('Robot command rejected: robot not editable or missing');return false;}
+    if(!['stop','wander','go_to','go_sit'].includes(command.kind))return false;
+    interruptRobotMission(robot);
+    if(command.kind==='stop'){robot.userData.robotMode='idle';this.queueSave(robot);this.toast(robot.name+' stopped');return true;}
+    if(command.kind==='wander'){
+      const angle=robot.rotation.y+Math.PI/3;
+      const point={x:robot.position.x+Math.sin(angle)*2,z:robot.position.z+Math.cos(angle)*2};
+      robot.userData.robotMission={kind:'wander',targetName:'short walk'};
+      setRobotDestination(robot,point);this.toast(robot.name+' exploring a short distance');return true;
+    }
+    const target=this.items.find(x=>x.userData.editorId===command.target_id && !['robot','light'].includes(x.userData.editorKind));
+    if(!target){this.toast('Robot target no longer exists in this room');return false;}
+    this.world.scene.updateMatrixWorld(true);
+    const bounds=new THREE.Box3().setFromObject(target);
+    const center=bounds.isEmpty()?target.position.clone():bounds.getCenter(new THREE.Vector3());
+    const size=bounds.isEmpty()?new THREE.Vector3(1,1,1):bounds.getSize(new THREE.Vector3());
+    // Approach the footprint edge. No claim of obstacle avoidance or 3D seat geometry.
+    const dx=robot.position.x-center.x,dz=robot.position.z-center.z;
+    const dist=Math.hypot(dx,dz),radius=Math.max(.65,Math.min(4,Math.max(size.x,size.z)*.5+.60));
+    const ux=dist>.1?dx/dist:Math.sin(robot.rotation.y),uz=dist>.1?dz/dist:Math.cos(robot.rotation.y);
+    const point={x:center.x+ux*radius,z:center.z+uz*radius};
+    robot.userData.robotMission={kind:command.kind,targetName:target.name,targetId:target.userData.editorId};
+    setRobotDestination(robot,point);
+    this.toast(robot.name+' → '+target.name+' (scene-based navigation)');
+    return true;
+  }
   robot(){return this.selected?.userData.editorKind==='robot'?this.selected:null;}
 }

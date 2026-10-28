@@ -176,10 +176,13 @@
       <label class="field-label">Scenario / next learning goal<textarea id="brainsScenario" rows="2" maxlength="500"></textarea></label>
       <div class="brain-actions"><button id="saveRobotBrains" type="button" class="primary">Save identity</button><button id="suggestBrainsScenario" type="button">Suggest scenario with AI</button></div>
       <div class="drawer-label">Robot eye view</div>
-      <img id="brainsEyeImage" alt="Latest render from the selected robot's head camera" hidden>
-      <div class="brain-actions"><button type="button" id="captureBrainsEye">Capture eyes</button><button type="button" id="analyzeBrainsEye">Ask SAM 3.1</button></div>
-      <label class="field-label">Segment object (one noun phrase)<input id="brainsPrompt" value="robot" maxlength="120"></label>
-      <pre id="brainsVisionResult" class="brain-results">Capture an eye view to inspect the surroundings.</pre>
+      <div id="brainsEyeStage" class="brains-eye-stage" hidden><img id="brainsEyeImage" alt="Latest render from the selected robot's head camera" hidden><canvas id="brainsEyeOverlay" aria-label="SAM matching object boxes"></canvas></div>
+      <div class="brain-actions"><button type="button" id="captureBrainsEye">Capture eyes</button><button type="button" id="describeBrainsEye" class="primary">Describe scene · Muse Spark</button></div>
+      <label class="field-label">Question for Muse Spark (scene understanding)<textarea id="brainsVisionQuestion" rows="2" maxlength="1000">What objects can you see, where are they located, and what would be a useful next action for this robot?</textarea></label>
+      <div class="brain-actions"><button type="button" id="analyzeBrainsEye">Find object · SAM 3.1</button></div>
+      <label class="field-label">Object to find (one noun phrase, e.g. robot, red cube)<input id="brainsPrompt" value="robot" maxlength="120"></label>
+      <p class="small-note">Each action sends the captured JPEG frame and its displayed prompt to Meta through the backend. Separate requests incur separate usage charges. SAM boxes are outlined on the captured image; mask overlays are not yet supported.</p>
+      <pre id="brainsVisionResult" class="brain-results">Capture an eye view, then describe the scene or find a specific object.</pre>
       <div class="drawer-label">Experience / memory</div><pre id="brainsMemory" class="brain-results">Experiences appear after conversation.</pre>
     </div>
   </aside>

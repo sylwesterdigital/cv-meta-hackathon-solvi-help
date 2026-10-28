@@ -418,7 +418,11 @@ body .xr-stage-button{font-size:18px!important}
 .solvi-floating-window .brains-scroll{overflow:auto;padding:12px;display:grid;gap:10px}
 .solvi-floating-window .field-label{display:flex;flex-direction:column;gap:5px}
 .solvi-floating-window textarea,.solvi-floating-window input{max-width:100%;width:100%;box-sizing:border-box}
-.solvi-floating-window #brainsEyeImage{width:100%;max-height:300px;object-fit:contain;border:1px solid #6d8294;border-radius:8px;background:#090f1a}
+.solvi-floating-window .brains-eye-stage{position:relative;width:fit-content;max-width:100%;margin:0 auto;background:#090f1a;border:1px solid #6d8294;border-radius:8px;overflow:hidden}
+.solvi-floating-window .brains-eye-stage[hidden]{display:none}
+.solvi-floating-window #brainsEyeImage{display:block;width:auto;max-width:100%;max-height:300px;height:auto}
+.solvi-floating-window #brainsEyeImage[hidden]{display:none}
+.solvi-floating-window #brainsEyeOverlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .solvi-floating-window .brain-results{max-height:190px;min-height:45px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;padding:10px;background:#0a1322;color:#d5eaf6;border-radius:8px}
 .solvi-floating-window .brain-actions{display:flex;gap:10px;flex-wrap:wrap}
 .solvi-floating-window .drawer-label{font-weight:700;margin-top:8px}

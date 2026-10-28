@@ -10,7 +10,7 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.21')
+health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.22')
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.
@@ -149,7 +149,44 @@ print('PASS: typed light settings and robot speed persist per object')
 print('PASS: atomic object create/update/delete with room isolation')
 print('PASS: rooms and isolation')
 print('PASS: Flask health, SQLite profile, auth, human chat, messages, scene and admin protection')
-# v0.2.21 robot identity, permission checks and AI accounting without paid API calls.
+# v0.2.22 Robot eye vision: test both models offline with mocked Meta responses.
+# Meta Responses may supply results only in output[0].content[0].text, not top-level output_text.
+from unittest.mock import patch
+import base64 as _b64
+sample_eye='data:image/jpeg;base64,'+_b64.b64encode(b'\xff\xd8\xff\xd9').decode('ascii')
+sam_result={'id':'resp-test-sam','status':'completed','output':[{'type':'message','content':[{
+    'type':'output_text','text':'<0f>0<|box;x1=10;y1=20;x2=100;y2=120;w=512;h=512|><|mask;x=0;y=0;data=5,5,!!!!!|>'}]}],
+    'usage':{'input_tokens':0,'output_tokens':0,'images_processed':1}}
+muse_result={'id':'resp-test-muse','status':'completed','output':[{'type':'message','content':[{
+    'type':'output_text','text':'A blue cube stands to the left of a robot.'}]}],
+    'usage':{'input_tokens':100,'output_tokens':15}}
+with patch('server.active_model_key',return_value='test-secret-not-persisted'), patch('server.meta_request') as meta_mock:
+    meta_mock.return_value=sam_result
+    r=c.post('/api/ai/vision',headers=headers,json={'mode':'segment','image':sample_eye,'prompt':'blue cube'})
+    assert r.status_code==200,(r.status_code,r.data)
+    answer=r.get_json()
+    assert answer['result']['match_count']==1 and answer['result']['boxes'][0]['x1']==10
+    assert answer['request']['model']=='sam-3.1' and answer['request']['prompt']=='blue cube'
+    assert answer['request']['image']['mime']=='image/jpeg' and answer['usage']['estimated_usd']==.0025
+    assert 'image_url' not in str(answer)
+    sent=meta_mock.call_args.args[2]
+    assert sent['input'][0]['content'][0]['text']=='blue cube'
+    assert sent['input'][0]['content'][1]['image_url']==sample_eye and sent['store'] is False
+    meta_mock.return_value={'id':'resp-no-matches','status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':''}]}]}
+    r=c.post('/api/ai/vision',headers=headers,json={'mode':'segment','image':sample_eye,'prompt':'elephant'})
+    assert r.status_code==200 and r.get_json()['result']['no_matches'] is True
+    meta_mock.return_value=muse_result
+    r=c.post('/api/ai/vision',headers=headers,json={'mode':'describe','image':sample_eye,'prompt':'What is visible?'})
+    assert r.status_code==200,(r.status_code,r.data)
+    answer=r.get_json()
+    assert 'blue cube' in answer['description'] and answer['request']['model']=='muse-spark-1.3'
+    assert answer['usage']['input_tokens']==100 and answer['usage']['images']==1
+    assert c.post('/api/ai/vision',headers=headers,json={'mode':'not-supported','image':sample_eye,'prompt':'robot'}).status_code==400
+    assert c.post('/api/ai/vision',headers=headers,json={'mode':'segment','image':sample_eye,'prompt':'What is in the image?'}).status_code==400
+    assert c.post('/api/ai/vision',headers=headers,json={'mode':'describe','image':'data:image/jpeg;base64,AAAA','prompt':'what?'}).status_code==400
+print('PASS: SAM nested mask grammar, geometry, no-match result; Muse image description, prompt echo and usage without calling Meta')
+
+# v0.2.22 robot identity, permission checks and AI accounting without paid API calls.
 assert c.get('/api/ai/usage',headers=headers).status_code==200
 assert c.get('/api/ai/logs',headers=headers).status_code==403
 assert c.post('/api/ai/config',headers=headers,json={'key':'untrusted-client-key-value'}).status_code==403
@@ -171,6 +208,29 @@ robot['brain']['personality']='Curious observer'
 message=c.post('/api/message',headers=headers,json={'room':'lab','text':'A normal conversation without mention'}).get_json()['message']
 result=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':message['text'],'message_id':message['id']})
 assert result.status_code==200 and result.get_json()['triggered'] is False,(result.status_code,result.data)
+# Addressing must work through text, CC captions, and one unambiguous spelling slip.
+# Grounding is the actual scene catalogue: do not pretend SAM found objects.
+sofa={'id':'testsofa-0222','kind':'cube','name':'Red Sofa','position':[4,1,0],
+      'rotation':[0,0,0],'scale':[2,1,1],'color':'#d52231'}
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':sofa}).status_code==200
+speech='CC: Jessia please walk around, find the red sofa and sit on it'
+spoken=c.post('/api/message',headers=headers,json={'room':'lab','text':speech}).get_json()['message']
+result=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':speech,'message_id':spoken['id']})
+assert result.status_code==200,(result.status_code,result.data)
+reply=result.get_json()
+assert reply['triggered'] and reply['command']['robot_id']=='testrobot-0220'
+assert reply['command']['kind']=='go_sit' and reply['command']['target_id']=='testsofa-0222'
+assert reply['answer']['speaker']=='Jessica' and reply['answer']['model']=='scene-command'
+assert reply.get('usage') is None  # scene actions must not consume LLM tokens
+assert any(m['speaker']=='Jessica' for m in c.get('/api/messages?room=lab',headers=headers).get_json()['messages'])
+# Prevent moving owner-only robots from someone else's conversation.
+assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'open','robots':'owned','physics':0}).status_code==200
+other_speech='CC: Jessica, stop'
+other_message=c.post('/api/message',headers=other_headers,json={'room':'lab','text':other_speech}).get_json()['message']
+other_reply=c.post('/api/robots/react',headers=other_headers,json={'room':'lab','text':other_speech,'message_id':other_message['id']})
+assert other_reply.status_code==403,(other_reply.status_code,other_reply.data)
+assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'owned','robots':'open','physics':0}).status_code==200
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testsofa-0222'}}).status_code==200
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-0220'}}).status_code==200
 print('PASS: robot Brains persisted, validated and permissioned; usage and diagnostics secured')
 
