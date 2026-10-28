@@ -19,9 +19,21 @@ export function cameraFromLocalOffset(anchor,localOffset,yaw){
   const rotated=rotateByYaw(localOffset,yaw);
   return {x:anchor.x+rotated.x,y:anchor.y+rotated.y,z:anchor.z+rotated.z};
 }
+// Follow distance is a local visual preference: never sent through the room socket.
+export const CHASE_MIN_DISTANCE=1.8;
+export const CHASE_MAX_DISTANCE=35;
+export function clampChaseDistance(distance, fallback=5){
+  const d=Number(distance);
+  return Math.min(CHASE_MAX_DISTANCE,Math.max(CHASE_MIN_DISTANCE,Number.isFinite(d)&&d>0?d:fallback));
+}
+export function zoomChaseDistance(distance,wheelDelta){
+  // Exponential dolly works predictably for trackpad pixels and mouse-wheel notches.
+  const delta=Math.max(-240,Math.min(240,Number(wheelDelta)||0));
+  return clampChaseDistance(clampChaseDistance(distance)*Math.exp(delta*.0015));
+}
 export function chaseOffset(distance){
-  const d=Math.max(2.8,Math.min(18,Number(distance)||5));
-  return {x:0,y:Math.max(1.25,Math.min(4,d*.24)),z:-d};
+  const d=clampChaseDistance(distance);
+  return {x:0,y:Math.max(1.1,Math.min(6,d*.24)),z:-d};
 }
 export function smoothFactor(dt,response){
   return 1-Math.exp(-Math.max(0,dt)*Math.max(0,response));

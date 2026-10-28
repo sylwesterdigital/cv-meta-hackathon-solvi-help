@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
 import {captureRobotView} from './robots.js';
+import {initRobotBrains} from './robot-brains.js';
 import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
 import {playCue,primeAudio} from './audio-cues.js';
 
@@ -48,6 +49,9 @@ const api={
   const headers={...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...(options.headers||{})};
   if(auth?.token)headers.Authorization='Bearer '+auth.token;
   headers['X-Solvi-Tab']=tab;
+  if(['/api/models','/api/chat','/api/robots/react','/api/robots/scenario','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
+    const key=sessionStorage.getItem('solvi-meta-session-key');if(key)headers['X-Solvi-Model-Key']=key;
+  }
   const res=await fetch(url,{...options,headers,cache:'no-store'});
   const data=await res.json().catch(()=>({error:'Invalid server response'}));
   if(!res.ok){if([401,409].includes(res.status)&&auth)needSignIn(data.error||'Session expired or active in another window.');
@@ -77,7 +81,7 @@ async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);sh
  try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();
   select.add(new Option('World chat · people',''));
   for(const id of modelIds)select.add(new Option('AI · '+id,id));
-  select.value=modelIds.includes('muse-spark-1.3')?'muse-spark-1.3':'';select.disabled=false;
+  select.value='' // Default to human world chat so @robot mentions can trigger character replies;select.disabled=false;
   if(!modelIds.length)$('chatStatus').textContent=data.note||'Human chat available. AI key not configured.';}catch(e){$('modelSelect').replaceChildren(new Option('Model catalog unavailable',''));toast(e.message);}
  await configureRooms();await loadWorldSettings();await loadMessages();
  window.dispatchEvent(new CustomEvent('solvi:scene-ready'));
@@ -106,7 +110,7 @@ async function bubble(entry){
   wrap.addEventListener('wheel',event=>{event.preventDefault();feed.scrollTop+=event.deltaY;},{passive:false});
   const pic=document.createElement('span');pic.className='chat-avatar';pic.textContent=role==='assistant'?'AI':(entry.speaker||me?.name||'?').slice(0,2).toUpperCase();
   panel=document.createElement('div');panel.className='chat-bubble';const meta=document.createElement('div');meta.className='chat-meta';
-  const name=document.createElement('strong');name.textContent=role==='assistant'?(entry.model||'Meta Model API'):(entry.speaker||me?.name||'Guest');
+  const name=document.createElement('strong');name.textContent=role==='assistant'?(entry.speaker||entry.model||'Meta Model API'):(entry.speaker||me?.name||'Guest');
   const date=document.createElement('time');date.textContent=safeTime(entry.created);meta.append(name,date);panel.append(meta);
   if(entry.avatar&&online&&auth){api.mediaBlob(entry.avatar).then(url=>{pic.textContent='';const img=document.createElement('img');img.src=url;img.alt='';img.className='chat-profile-image';pic.append(img);}).catch(()=>{});}
   wrap.append(pic,panel);feed.append(wrap);
@@ -128,7 +132,15 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
  const useAI=!!$('modelSelect').value;
  $('sendChat').disabled=true;$('chatStatus').textContent='Model processing…';
  try{const response=await api.req(useAI?'/api/chat':'/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text,model:$('modelSelect').value,media:ids})});
-  $('chatInput').value='';pending=[];updatePending();playCue('sent');await bubble(response.message);if(response.answer)await bubble(response.answer);$('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
+  $('chatInput').value='';pending=[];updatePending();playCue('sent');await bubble(response.message);if(response.answer)await bubble(response.answer);
+  $('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
+  if(response.usage?.totals)$('metaUsageStatus').textContent=`Recorded ${response.usage.totals.requests} requests · ~US$${Number(response.usage.totals.usd).toFixed(4)} estimated`;
+  if(response.message?.id && text){
+    try{const robot=await api.req('/api/robots/react',{method:'POST',body:JSON.stringify({room:activeRoom,text,message_id:response.message.id})});
+      if(robot.answer)await bubble(robot.answer);
+      if(robot.triggered)$('chatStatus').textContent=robot.answer?`${robot.answer.speaker} replied · ~US$${Number(robot.usage?.estimated_usd||0).toFixed(5)}`:(robot.note||'Robot observed the message');
+    }catch(error){$('chatStatus').textContent='Message delivered; robot reaction failed: '+error.message;}
+  }
  }catch(e){playCue('error');$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
  finally{$('sendChat').disabled=false;}
 }
@@ -239,7 +251,7 @@ function setupWorldSettings(){
 }
 
 function configureDragging(){
- const panelIds=['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox'];
+ const panelIds=['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel'];
  const save=(id,panel)=>{
    const rect=panel.getBoundingClientRect();
    const data={left:rect.left,top:rect.top,minimized:panel.classList.contains('minimized'),windowed:panel.classList.contains('windowed')};
@@ -307,6 +319,42 @@ function setupSettings(){
  const colors=['#79cde5','#e7b073','#a5db91','#d9a0d7','#a0b5f5','#f3a1a1'];
  function swatches(){const grid=$('themeSwatches');grid.replaceChildren();for(const color of colors){const b=document.createElement('button');b.className='theme-swatch';b.title='Apply '+color;b.style.background=color;b.onclick=()=>apply({accent:color});grid.append(b);}}
  swatches();$('generateTheme').onclick=()=>{const color=themePalette(Math.floor(Math.random()*10000));colors[colors.length-1]=color;swatches();apply({accent:color});};
+ $('metaBudget').value=localStorage.getItem('solvi-ai-budget-usd')||'5';
+ $('metaBudget').onchange=event=>{const budget=Math.max(0,Number(event.target.value)||0);localStorage.setItem('solvi-ai-budget-usd',String(budget));$('refreshMetaUsage').click();};
+ $('metaKeyStorage').value='session';
+ $('metaApiKey').placeholder=sessionStorage.getItem('solvi-meta-session-key')?'Session key configured (hidden)':'Optional session Meta API key';
+ $('saveMetaKey').onclick=async()=>{
+   const key=$('metaApiKey').value.trim();if(!key){$('metaKeyStatus').textContent='Enter a key to apply it.';return;}
+   if($('metaKeyStorage').value==='session'){
+     sessionStorage.setItem('solvi-meta-session-key',key);$('metaApiKey').value='';$('metaKeyStatus').textContent='Key held in sessionStorage for this tab only. Vulnerable to malicious scripts; do not use a privileged key.';
+   }else{
+     try{const response=await api.req('/api/ai/config',{method:'POST',headers:{'X-Solvi-Admin':adminToken||''},body:JSON.stringify({key})});
+       $('metaApiKey').value='';$('metaKeyStatus').textContent=response.notice;
+     }catch(e){$('metaKeyStatus').textContent=e.message;return;}
+   }
+   if(online&&auth){const result=await api.req('/api/models');modelIds=result.models||[];const select=$('modelSelect');select.replaceChildren(new Option('World chat · people',''),...modelIds.map(id=>new Option('AI · '+id,id)));}
+ };
+ $('clearMetaKey').onclick=()=>{sessionStorage.removeItem('solvi-meta-session-key');$('metaApiKey').value='';$('metaKeyStatus').textContent='Browser session key cleared. Server-side key, if present, is unchanged.';};
+ $('refreshMetaUsage').onclick=async()=>{
+   if(!online||!auth){$('metaUsageStatus').textContent='Sign in to view server-recorded AI usage';return;}
+   try{const u=(await api.req('/api/ai/usage')).usage.totals;const budget=Math.max(0,Number($('metaBudget').value)||0);
+     $('metaUsageStatus').textContent=`${u.requests} requests · ${u.input_tokens} input / ${u.output_tokens} output tokens · ${u.images} SAM images · estimated US$${Number(u.usd).toFixed(5)}. Budget left ~US$${Math.max(0,budget-Number(u.usd)).toFixed(4)} (not Meta account balance).`;
+   }catch(error){$('metaUsageStatus').textContent=error.message;}
+ };
+ $('diagnosticsButton').onclick=()=>{$('diagnosticsPanel').hidden=false;$('refreshDiagnostics').click();};
+ $('closeDiagnostics').onclick=()=>{$('diagnosticsPanel').hidden=true;};
+ $('refreshDiagnostics').onclick=async()=>{try{
+   const data=await api.req('/api/ai/logs',{headers:{'X-Solvi-Admin':adminToken||''}});
+   $('diagnosticsOutput').textContent=data.scope+'\n'+JSON.stringify(data.logs,null,2);
+ }catch(e){$('diagnosticsOutput').textContent=e.message+'\nUnlock the Admin dashboard in Settings, then retry.';}};
+ $('analyzeDiagnostics').onclick=async()=>{
+   if(!adminToken){$('diagnosticsOutput').textContent='Unlock Admin dashboard first.';return;}
+   if(!window.confirm('Send the sanitized backend event metadata to the Meta Model API for analysis? This incurs API charges.'))return;
+   $('diagnosticsOutput').textContent='Requesting Meta diagnostic analysis…';
+   try{const response=await api.req('/api/ai/analyze-logs',{method:'POST',headers:{'X-Solvi-Admin':adminToken},body:JSON.stringify({confirm:true})});
+     $('diagnosticsOutput').textContent=(response.analysis||'No analysis text returned')+'\n\nEstimated cost: US$'+Number(response.usage?.estimated_usd||0).toFixed(6);
+   }catch(e){$('diagnosticsOutput').textContent=e.message;}
+ };
  $('exportChatButton').onclick=()=>exportMessages('json');$('exportChatSettings').onclick=()=>exportMessages('md');$('exportChatSettingsJson').onclick=()=>exportMessages('json');$('openAdminSettings').onclick=()=>{settings.hidden=true;show('adminBackdrop',true);};
 }
 function setupChatPresentation(){
@@ -382,7 +430,7 @@ function bindUI(world){
  window.addEventListener('solvi:auth-required',event=>needSignIn(event.detail?.reason||'Session expired.'));
  window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id)playCue(event.detail.action==='left'?'leave':'join');});
  document.addEventListener('pointerdown',primeAudio,{once:true});
- setupChatPresentation();setupSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();begin();
+ setupChatPresentation();setupSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();initRobotBrains(world,api,()=>activeRoom,toast);begin();
  setInterval(async()=>{if(online&&auth){try{await api.req('/api/me');}catch{ /* expiry handler opens sign-in */ }}},45000);
 }
 export function initStudio(world){bindUI(world);}

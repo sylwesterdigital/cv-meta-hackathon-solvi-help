@@ -11,7 +11,7 @@ test('Robot keyboard signals are compact and movement-limited',()=>{
 });
 test('Robot packet contains only compact fields, no GLB or geometry',()=>{
  const p=packetFor('myrobot-001',{f:1,t:-1,r:0},{position:{x:1.1234567,y:0,z:2.19},rotation:{y:1.23456}});
- assert.deepEqual(Object.keys(p),['type','id','f','t','r','b','m','x','z','y','yaw','s','q','j']);
+ assert.deepEqual(Object.keys(p),['type','id','f','t','r','b','m','x','z','y','yaw','s','q','u','j']);
  assert.ok(JSON.stringify(p).length<150);assert.equal(p.x,1.12);assert.equal(p.yaw,1.235);
 });
 test('Angle reconciliation uses shortest turn',()=>{

@@ -403,3 +403,26 @@ body .xr-stage-button{font-size:18px!important}
 #cameraFollowButton[data-mode="chase"],#cameraFollowButton[data-mode="orbit"]{border-color:var(--solvi-accent,#8bdfff)!important}
 #cameraFollowButton:focus-visible{outline:2px solid var(--solvi-accent,#8bdfff);outline-offset:2px}
 @media(max-width:750px){#cameraFollowButton.bottom-camera-mode{left:118px;bottom:calc(65px + env(safe-area-inset-bottom));max-width:calc(100vw - 126px);font-size:11px!important;padding:4px 7px!important}}
+
+/* v0.2.19 — Chase distance is adjustable without replacing camera mode. */
+#chaseDistanceControl.chase-distance-control{position:fixed;z-index:19;left:355px;bottom:calc(12px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:6px;width:205px;min-height:30px;padding:4px 7px;border:1px solid var(--ui-border,#647b90);border-radius:8px;background:var(--ui-panel,#152338);color:var(--ui-fg,#fff);font:600 11px/1.1 system-ui,sans-serif;box-shadow:0 3px 12px #0003}
+#chaseDistanceControl[hidden]{display:none!important}
+#chaseDistanceControl input{min-width:0;flex:1;width:75px;height:17px;accent-color:var(--solvi-accent,#8bdfff);cursor:ew-resize}
+#chaseDistanceControl output{min-width:36px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:10px}
+@media(max-width:750px){#chaseDistanceControl.chase-distance-control{left:118px;bottom:calc(102px + env(safe-area-inset-bottom));width:min(205px,calc(100vw - 126px));padding:4px 7px}}
+
+/* 0.2.20: independently controlled robot brains and diagnostics windows. */
+.solvi-floating-window{position:fixed;z-index:120;top:100px;left:max(12px,calc(50vw - 250px));width:min(490px,calc(100vw - 24px));max-height:min(78vh,790px);overflow:hidden;background:var(--panel-bg, #182438);color:var(--text, #e8eff8);border:1px solid var(--border, #50647d);border-radius:12px;box-shadow:0 14px 46px #0008;display:flex;flex-direction:column}
+.solvi-floating-window[hidden]{display:none!important}
+.solvi-floating-window .panel-title{cursor:grab;flex-shrink:0}
+.solvi-floating-window .brains-scroll{overflow:auto;padding:12px;display:grid;gap:10px}
+.solvi-floating-window .field-label{display:flex;flex-direction:column;gap:5px}
+.solvi-floating-window textarea,.solvi-floating-window input{max-width:100%;width:100%;box-sizing:border-box}
+.solvi-floating-window #brainsEyeImage{width:100%;max-height:300px;object-fit:contain;border:1px solid #6d8294;border-radius:8px;background:#090f1a}
+.solvi-floating-window .brain-results{max-height:190px;min-height:45px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;padding:10px;background:#0a1322;color:#d5eaf6;border-radius:8px}
+.solvi-floating-window .brain-actions{display:flex;gap:10px;flex-wrap:wrap}
+.solvi-floating-window .drawer-label{font-weight:700;margin-top:8px}
+.diagnostics-window{left:auto;right:20px;max-height:75vh;padding:0 12px 12px}
+.diagnostics-window .panel-title{margin:0 -12px 8px}
+.diagnostics-window .brain-results{max-height:52vh;min-height:180px}
+@media(max-width:650px){.solvi-floating-window{top:70px;left:8px;right:8px;width:auto;max-height:75vh}.diagnostics-window{left:8px;right:8px}}

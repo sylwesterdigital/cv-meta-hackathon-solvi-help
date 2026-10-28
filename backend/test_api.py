@@ -10,7 +10,7 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.18')
+health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.21')
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.
@@ -39,6 +39,18 @@ assert c.post('/api/message',headers=headers,json={'room':'lab','text':'Only lab
 main=c.get('/api/messages?room=main',headers=headers).get_json()['messages']
 lab=c.get('/api/messages?room=lab',headers=headers).get_json()['messages']
 assert len(main)==1 and len(lab)==1 and main[0]['text']!=lab[0]['text']
+assert main[0]['speaker']==name and lab[0]['speaker']==name
+# Regression: the SQL NULLIF empty-string literal must remain correctly quoted.
+# Exercise both ordinary human names and an AI robot's speaker override.
+from server import db
+with db() as con:
+    con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
+                ('test-robot-speaking',data['user']['id'],'assistant','test-model',
+                 'Hello from Jessica','[]','2026-10-28T05:00:00Z','lab','Jessica'))
+lab_with_robot=c.get('/api/messages?room=lab',headers=headers)
+assert lab_with_robot.status_code==200,(lab_with_robot.status_code,lab_with_robot.data)
+robot_reply=next(m for m in lab_with_robot.get_json()['messages'] if m['id']=='test-robot-speaking')
+assert robot_reply['speaker']=='Jessica' and robot_reply['role']=='assistant'
 assert c.put('/api/scene',headers=headers,json={'room':'lab','revision':0,'objects':[]}).status_code==200
 assert c.get('/api/scene?room=lab',headers=headers).get_json()['revision']==1
 assert c.get('/api/scene?room=main',headers=headers).get_json()['revision']==0
@@ -137,6 +149,30 @@ print('PASS: typed light settings and robot speed persist per object')
 print('PASS: atomic object create/update/delete with room isolation')
 print('PASS: rooms and isolation')
 print('PASS: Flask health, SQLite profile, auth, human chat, messages, scene and admin protection')
+# v0.2.21 robot identity, permission checks and AI accounting without paid API calls.
+assert c.get('/api/ai/usage',headers=headers).status_code==200
+assert c.get('/api/ai/logs',headers=headers).status_code==403
+assert c.post('/api/ai/config',headers=headers,json={'key':'untrusted-client-key-value'}).status_code==403
+assert c.post('/api/robots/scenario',headers=headers,json={'room':'lab','id':'not-a-robot'}).status_code==404
+brain={'personality':'Curious observer','history':'Raised in a virtual workshop',
+       'beliefs':'Help others learn','triggers':'hello, discovery','scenario':'Examine a cube'}
+robot={'id':'testrobot-0220','kind':'robot','name':'Jessica','position':[0,0,0],
+       'rotation':[0,0,0],'scale':[1,1,1],'speed':1.2,'strafeSpeed':1.8,'turnSpeed':3.0,'brain':brain}
+r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot})
+assert r.status_code==200,(r.status_code,r.data)
+read_robot=[x for x in c.get('/api/scene?room=lab',headers=headers).get_json()['objects'] if x['kind']=='robot'][0]
+assert read_robot['turnSpeed']==3.0 and read_robot['brain']==brain
+assert c.get('/api/robots/memory?room=lab&id=testrobot-0220',headers=headers).status_code==200
+robot['turnSpeed']=5
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==400
+robot['turnSpeed']=3;robot['brain']['personality']='x'*1001
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==400
+robot['brain']['personality']='Curious observer'
+message=c.post('/api/message',headers=headers,json={'room':'lab','text':'A normal conversation without mention'}).get_json()['message']
+result=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':message['text'],'message_id':message['id']})
+assert result.status_code==200 and result.get_json()['triggered'] is False,(result.status_code,result.data)
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-0220'}}).status_code==200
+print('PASS: robot Brains persisted, validated and permissioned; usage and diagnostics secured')
 
 # Expired/rotated token and conflicting tabs must return explicit auth failures.
 r=c.post('/api/onboard',json={'name':name,'id':data['user']['id'],'recovery':data['recovery'],'tab':'second-tab-test-002'},headers={'Origin':origin})

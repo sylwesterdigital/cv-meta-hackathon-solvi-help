@@ -11,7 +11,7 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.18</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.19</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" title="Open in a WebXR headset browser">Enter VR</button>
@@ -32,12 +32,13 @@
     <div id="toolboxActions" class="toolbox-actions"><button type="button" id="cameraFlyButton" title="Mouse look; Escape to exit. Camera arrows move with inertia when no robot is selected.">Camera: orbit</button><label class="camera-speed">Camera speed <input id="cameraSpeed" type="range" min="0.5" max="12" step="0.5" value="2.5" /></label>
       <button type="button" id="importModelButton" title="Add 3D Model from this device">+ 3D Model</button><input id="modelImportFile" type="file" accept=".glb,.fbx,model/gltf-binary,application/octet-stream" hidden><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button>
       <button type="button" id="poseButton" title="Track upper body and hands">Posture + hands</button>
-      <button type="button" id="worldSettingsButton" title="Realm object permissions">World settings</button>
+      <button type="button" id="diagnosticsButton">Backend logs</button><button type="button" id="worldSettingsButton" title="Realm object permissions">World settings</button>
     </div>
   </aside>
   <button type="button" id="quickModelImport" class="quick-model-import" title="Add a GLB or FBX to the 3D scene">+ 3D Model</button>
   <button id="chatModeButton" type="button" class="bottom-chat-mode" title="Toggle floating or overlay chat">Float chat</button>
-  <button id="cameraFollowButton" type="button" class="bottom-camera-mode" data-mode="free" aria-label="Camera: Free. Click to switch camera mode." title="Cycle camera: Free · Chase behind avatar · Orbit follow">Camera: Free</button>
+  <button id="cameraFollowButton" type="button" class="bottom-camera-mode" data-mode="free" aria-label="Camera: Free. Click to switch camera mode." title="Cycle camera with V: Free · Chase · Orbit follow">Camera: Free</button>
+  <label id="chaseDistanceControl" class="chase-distance-control" hidden title="Chase and Orbit follow distances; scroll or use trackpad over the scene"><span>Distance</span><input type="range" id="chaseDistanceSlider" min="1.8" max="35" step="0.1" value="5" aria-label="Chase camera distance"/><output id="chaseDistanceOutput" for="chaseDistanceSlider">5.0 m</output></label>
   <button id="exportChatButton" type="button" hidden>Export chat</button>
   <button id="adminButton" type="button" hidden>Admin</button>
   <button type="button" id="xrStageButton" class="xr-stage-button" hidden>Enter VR</button>
@@ -84,7 +85,7 @@
         <label>Colour<input id="lightColor" type="color" value="#d0efff"></label>
         <label id="lightGroundRow">Ground<input id="lightGround" type="color" value="#46566d"></label>
       </section>
-      <div id="robotControls" hidden><strong>Robot action</strong><label class="robot-speed">Movement speed <input type="range" id="robotSpeed" min="0.35" max="3" step="0.05" value="1"><output id="robotSpeedLabel">1.00×</output></label><label class="robot-speed">Strafe speed <input type="range" id="robotStrafeSpeed" min="0.5" max="4" step="0.1" value="1.8"><output id="robotStrafeLabel">1.8×</output></label><label class="field-label">Avatar model<select id="robotAvatar" aria-label="Robot avatar"></select><button type="button" id="openAvatarGallery">Gallery</button></label><label class="field-label">Animation action<select id="robotActionSelect" aria-label="Avatar action"><option value="idle">Idle</option><option value="walk">Walk</option><option value="run">Run</option><option value="strafeLeft">Strafe left</option><option value="strafeRight">Strafe right</option><option value="walkBackward">Walk backwards</option><option value="wave">Wave</option><option value="jump">Jump</option></select></label><small>↑ forward · ↓ reverse (face forward) · ← / → steer · Shift run · Space jump</small></div>
+      <div id="robotControls" hidden><strong>Robot action</strong><label class="robot-speed">Movement speed <input type="range" id="robotSpeed" min="0.35" max="3" step="0.05" value="1"><output id="robotSpeedLabel">1.00×</output></label><label class="robot-speed">Strafe speed <input type="range" id="robotStrafeSpeed" min="0.5" max="4" step="0.1" value="1.8"><output id="robotStrafeLabel">1.8×</output></label><label class="robot-speed">Turning speed <input type="range" id="robotTurnSpeed" min="0.25" max="4" step="0.05" value="1"><output id="robotTurnLabel">1.00×</output></label><button id="openRobotBrains" type="button" class="primary">Brains · personality &amp; eyes</button><label class="field-label">Avatar model<select id="robotAvatar" aria-label="Robot avatar"></select><button type="button" id="openAvatarGallery">Gallery</button></label><label class="field-label">Animation action<select id="robotActionSelect" aria-label="Avatar action"><option value="idle">Idle</option><option value="walk">Walk</option><option value="run">Run</option><option value="strafeLeft">Strafe left</option><option value="strafeRight">Strafe right</option><option value="walkBackward">Walk backwards</option><option value="wave">Wave</option><option value="jump">Jump</option></select></label><small>↑ forward · ↓ reverse (face forward) · ← / → steer · Shift run · Space jump</small></div>
       
     </div>
 </aside>
@@ -136,6 +137,11 @@
       <label class="toggle-line"><input id="groupMessages" type="checkbox" checked> Group nearby messages</label>
       <label class="toggle-line"><input id="soundEffects" type="checkbox" checked> Sound cues</label>
       <label class="toggle-line"><input id="flipHead" type="checkbox" checked> Correct avatar facing</label>
+      <div class="drawer-label">Meta Model API · developer settings</div>
+      <label class="field-label">API key (optional)<input id="metaApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Use backend key or enter session key"></label>
+      <label class="field-label">Key handling <select id="metaKeyStorage"><option value="session">Browser session only (not XSS-proof)</option><option value="server">Store on Ubuntu (admin only)</option></select></label>
+      <button type="button" id="saveMetaKey">Apply API key</button><button type="button" id="clearMetaKey">Clear session key</button><small id="metaKeyStatus" class="small-note">Server keys are only saved by an administrator. Browser keys leave the browser over HTTPS for each inference request.</small>
+      <label class="field-label">Estimated spend budget (USD) <input type="number" id="metaBudget" min="0" max="10000" step="0.10" value="5"></label><button type="button" id="refreshMetaUsage">Refresh usage</button><small id="metaUsageStatus" class="small-note">Usage is a local estimate, not a Meta account balance.</small>
       <div class="drawer-label">Live captions / speech recognition</div>
       <label class="field-label">Recognition engine<select id="ccEngine"><option value="browser">Browser / device</option><option value="server">Ubuntu Whisper (requires backend)</option></select></label>
       <label class="field-label">Speech language<select id="ccLanguage"><option value="auto">Auto / device language</option><option value="pl-PL">Polski · pl-PL</option><option value="en-GB">English · en-GB</option><option value="en-US">English · en-US</option></select></label>
@@ -159,6 +165,30 @@
    <div id="avatarGalleryGrid" class="avatar-gallery-grid" role="list"></div>
    <div class="avatar-gallery-upload"><label class="icon-btn">+ Upload your own GLB<input id="uploadRobotAvatar" type="file" accept=".glb,model/gltf-binary" hidden></label><small id="avatarGalleryStatus" aria-live="polite">Upload size limit: 20 MB · public to the realm.</small></div>
   </section></div>
+  <aside id="robotBrainsPanel" class="solvi-floating-window" hidden aria-label="Robot Brains panel">
+    <div class="panel-title drag-handle"><strong id="brainsHeading">Robot Brains</strong><button id="closeRobotBrains" type="button" aria-label="Close Brains">×</button></div>
+    <div class="brains-scroll">
+      <p class="small-note">Fictional identity, scene experiences and head-camera perception. Fields are saved with the room scene.</p>
+      <label class="field-label">Character / personality<textarea id="brainsPersonality" rows="3" maxlength="1000" placeholder="Curious, playful, methodical…"></textarea></label>
+      <label class="field-label">Fictional life history<textarea id="brainsHistory" rows="3" maxlength="2000" placeholder="Where this character came from and important memories…"></textarea></label>
+      <label class="field-label">Beliefs and motivations<textarea id="brainsBeliefs" rows="2" maxlength="1000"></textarea></label>
+      <label class="field-label">React to words or phrases (comma separated)<input id="brainsTriggers" maxlength="300" placeholder="lost, discovery, hello"></label>
+      <label class="field-label">Scenario / next learning goal<textarea id="brainsScenario" rows="2" maxlength="500"></textarea></label>
+      <div class="brain-actions"><button id="saveRobotBrains" type="button" class="primary">Save identity</button><button id="suggestBrainsScenario" type="button">Suggest scenario with AI</button></div>
+      <div class="drawer-label">Robot eye view</div>
+      <img id="brainsEyeImage" alt="Latest render from the selected robot's head camera" hidden>
+      <div class="brain-actions"><button type="button" id="captureBrainsEye">Capture eyes</button><button type="button" id="analyzeBrainsEye">Ask SAM 3.1</button></div>
+      <label class="field-label">Segment object (one noun phrase)<input id="brainsPrompt" value="robot" maxlength="120"></label>
+      <pre id="brainsVisionResult" class="brain-results">Capture an eye view to inspect the surroundings.</pre>
+      <div class="drawer-label">Experience / memory</div><pre id="brainsMemory" class="brain-results">Experiences appear after conversation.</pre>
+    </div>
+  </aside>
+  <aside id="diagnosticsPanel" class="solvi-floating-window diagnostics-window" hidden aria-label="Backend diagnostics">
+    <div class="panel-title drag-handle"><strong>Backend diagnostics</strong><button id="closeDiagnostics" type="button">×</button></div>
+    <p class="small-note">Admin session required. Refresh retrieves the application's bounded, redacted event log; server journal output is not exposed.</p>
+    <div class="brain-actions"><button id="refreshDiagnostics" type="button">Refresh logs</button><button id="analyzeDiagnostics" type="button">Ask Meta to analyze logs</button></div>
+    <pre id="diagnosticsOutput" class="brain-results">Unlock Admin dashboard in Settings before viewing backend logs.</pre>
+  </aside>
   <div id="adminBackdrop" class="backdrop" hidden>
     <section class="overlay admin-modal" role="dialog" aria-label="Admin dashboard">
       <div class="panel-title"><strong>Server administration</strong><button id="closeAdmin">×</button></div>

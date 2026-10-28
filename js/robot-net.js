@@ -35,7 +35,8 @@ export function stepRobotMotion(state,input,dt){
  const lateralTarget=isStrafing?steerTarget*.85*speedFactor*strafeFactor:0;
  const lateral=approach(Number(state.lateral)||0,lateralTarget,(lateralTarget?4.4:6.2)*speedFactor*time);
  const steerStrength=clamp(Math.abs(velocity)/(.9*speedFactor),0,1);
- const angularRate=(.55+.95*steerStrength)*steerStrength;
+ const turnFactor=clamp(Number(input?.u)||1,.25,4);
+ const angularRate=(.55+.95*steerStrength)*steerStrength*turnFactor;
  // The input sign is calibrated to match the on-screen avatar steering:
  // left raises yaw, right lowers it. Reversing only flips translation;
  // it must NOT flip the heading or turn the avatar around by 180 degrees.
@@ -46,7 +47,7 @@ export function stepRobotMotion(state,input,dt){
 // Convenience wrapper for older client consumers; stateful simulation uses stepRobotMotion.
 export function stepIntent(x,z,yaw,input,dt){return stepRobotMotion({x,z,yaw,velocity:Number(input?.v)||0},input,dt);}
 export function packetFor(id,i,object,final=false){return {type:'robot-input',id,f:i.f,t:i.t,r:i.r,b:i.b||0,m:final?0:1,
-  x:+object.position.x.toFixed(2),z:+object.position.z.toFixed(2),y:+object.position.y.toFixed(2),yaw:+object.rotation.y.toFixed(3),s:+(i.s||1).toFixed(2),q:+(i.q||1.8).toFixed(2),j:i.j?1:0};}
+  x:+object.position.x.toFixed(2),z:+object.position.z.toFixed(2),y:+object.position.y.toFixed(2),yaw:+object.rotation.y.toFixed(3),s:+(i.s||1).toFixed(2),q:+(i.q||1.8).toFixed(2),u:+(i.u||1).toFixed(2),j:i.j?1:0};}
 
 // Integrate the same input on every client and blend *one-off residual errors*.
 // Unlike chasing a fixed packet position every frame, this never drags a moving

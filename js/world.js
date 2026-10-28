@@ -9,7 +9,7 @@ import {teleportOffset,validTeleport} from './xr-navigation.js';
 import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
 import {XRHandModelFactory} from 'three/addons/webxr/XRHandModelFactory.js';
 import {readPreferences} from './preferences.js';
-import {nextCameraMode,followAnchor,localOrbitOffset,cameraFromLocalOffset,chaseOffset,smoothFactor} from './camera-follow.js';
+import {nextCameraMode,followAnchor,localOrbitOffset,cameraFromLocalOffset,chaseOffset,clampChaseDistance,zoomChaseDistance,smoothFactor} from './camera-follow.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const random=(a,b)=>a+Math.random()*(b-a);
@@ -36,7 +36,7 @@ export class SolviWorld {
     this.cameraOrbitGesture=null;this.editorGizmoPointer=false;
     this.cameraVelocity=new THREE.Vector3();
     this.cameraFollowMode=['free','chase','orbit'].includes(localStorage.getItem('solvi-camera-follow'))?localStorage.getItem('solvi-camera-follow'):'free';
-    this.followRobotId=null;this.followOrbitOffset=null;this.followChaseDistance=5;this.lastFollowLabel='';
+    this.followRobotId=null;this.followOrbitOffset=null;this.followOrbitDistance=clampChaseDistance(localStorage.getItem('solvi-orbit-distance'),8);this.followOrbitCustomized=localStorage.getItem('solvi-orbit-distance')!==null;this.followChaseCustomized=localStorage.getItem('solvi-chase-distance')!==null;this.followChaseDistance=clampChaseDistance(localStorage.getItem('solvi-chase-distance'));this.lastFollowLabel='';
     // Left drag = orbit, right drag = pan, wheel = dolly; gizmos temporarily lock orbit.
     this.controls.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN};
     this.controls.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};
@@ -58,6 +58,17 @@ export class SolviWorld {
     document.addEventListener('pointerlockchange',()=>{const locked=document.pointerLockElement===this.renderer.domElement;fly.textContent=locked?'Camera: fly · Esc':'Camera: orbit';this.controls.enabled=!locked;});
     const followButton=document.getElementById('cameraFollowButton');
     if(followButton)followButton.addEventListener('click',()=>this.setCameraFollowMode(nextCameraMode(this.cameraFollowMode)));
+    const chaseSlider=document.getElementById('chaseDistanceSlider');
+    if(chaseSlider)chaseSlider.addEventListener('input',event=>this.cameraFollowMode==='orbit'?this.setOrbitDistance(event.target.value):this.setChaseDistance(event.target.value));
+    // Capture before OrbitControls' wheel handler to avoid fighting its own dolly.
+    // Apple trackpads dispatch wheel events, sometimes with ctrlKey for pinch.
+    this.renderer.domElement.addEventListener('wheel',event=>{
+      if(!['chase','orbit'].includes(this.cameraFollowMode)||!this.robotEditor?.robot()||this.renderer.xr.isPresenting)return;
+      event.preventDefault();event.stopImmediatePropagation();
+      const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?500:1);
+      if(this.cameraFollowMode==='chase')this.setChaseDistance(zoomChaseDistance(this.followChaseDistance,delta));
+      else this.setOrbitDistance(zoomChaseDistance(this.followOrbitDistance,delta));
+    },{capture:true,passive:false});
     this.refreshFollowButton();
     document.addEventListener('mousemove',event=>{if(document.pointerLockElement!==this.renderer.domElement)return;
        const euler=new THREE.Euler().setFromQuaternion(this.camera.quaternion,'YXZ');euler.y-=event.movementX*.002;euler.x=Math.max(-1.53,Math.min(1.53,euler.x-event.movementY*.002));this.camera.quaternion.setFromEuler(euler);
@@ -119,6 +130,7 @@ export class SolviWorld {
     // Camera locomotion is arrow-only while no owned robot is selected.
     // W/A/S/D/G/R are reserved for editor shortcuts (Blender-like).
     window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||e.ctrlKey||e.metaKey||e.altKey)return;
+      if(e.code==='KeyV'&&!e.repeat){e.preventDefault();this.setCameraFollowMode(nextCameraMode(this.cameraFollowMode));return;}
       if(/^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|ShiftLeft|ShiftRight)$/.test(e.code)){
        const robot=this.robotEditor?.robot();
        if(robot&&this.robotEditor.canEdit(robot)&&e.code.startsWith('Arrow')){this.keys.delete(e.code);return;}
@@ -466,7 +478,29 @@ export class SolviWorld {
     if(label!==this.lastFollowLabel){button.textContent=label;this.lastFollowLabel=label;}
     button.dataset.mode=this.cameraFollowMode;
     button.setAttribute('aria-label',label+'. Click to switch camera mode.');
-    button.title='Cycle: Free camera → Smooth chase behind the selected avatar → Follow from your orbit angle. Drag to change the orbit angle.';
+    button.title='Cycle: Free → Chase → Orbit follow (V). Adjust follow distance via slider or wheel/trackpad.';
+    const control=document.getElementById('chaseDistanceControl');
+    if(control)control.hidden=!['chase','orbit'].includes(this.cameraFollowMode);
+    this.updateChaseDistanceUI();
+  }
+  updateChaseDistanceUI(){
+    const slider=document.getElementById('chaseDistanceSlider');
+    const output=document.getElementById('chaseDistanceOutput');
+    const distance=this.cameraFollowMode==='orbit'?this.followOrbitDistance:this.followChaseDistance;
+    if(slider)slider.value=String(distance);
+    if(output)output.textContent=`${distance.toFixed(1)} m`;
+  }
+  setChaseDistance(distance){
+    this.followChaseDistance=clampChaseDistance(distance);
+    this.followChaseCustomized=true;
+    localStorage.setItem('solvi-chase-distance',String(this.followChaseDistance));
+    this.updateChaseDistanceUI();
+  }
+  setOrbitDistance(distance){
+    const next=clampChaseDistance(distance);this.followOrbitDistance=next;this.followOrbitCustomized=true;
+    localStorage.setItem('solvi-orbit-distance',String(next));
+    if(this.followOrbitOffset){const vector=new THREE.Vector3(this.followOrbitOffset.x,this.followOrbitOffset.y,this.followOrbitOffset.z);if(vector.lengthSq()<.001)vector.set(0,2,-1);vector.setLength(next);this.followOrbitOffset={x:vector.x,y:vector.y,z:vector.z};}
+    this.updateChaseDistanceUI();
   }
   setCameraFollowMode(mode){
     if(!['free','chase','orbit'].includes(mode))return;
@@ -482,6 +516,7 @@ export class SolviWorld {
     if(this.cameraFollowMode==='chase')this.setCameraFollowMode('orbit');
     const anchor=followAnchor(robot);
     this.followOrbitOffset=localOrbitOffset(this.camera.position,anchor,robot.rotation.y);
+    if(this.cameraFollowMode==='orbit'&&this.followOrbitCustomized)this.setOrbitDistance(this.followOrbitDistance);
     this.followRobotId=robot.userData.editorId;
     this.refreshFollowButton();
   }
@@ -494,8 +529,12 @@ export class SolviWorld {
     if(id!==this.followRobotId){
       this.followRobotId=id;
       const currentDistance=Math.hypot(this.camera.position.x-anchor.x,this.camera.position.z-anchor.z);
-      this.followChaseDistance=Math.max(3,Math.min(14,currentDistance));
+      // Keep the user-set chase distance across mode switches and robot selection.
+      if(!this.followChaseCustomized)this.followChaseDistance=clampChaseDistance(currentDistance);
+      this.updateChaseDistanceUI();
       this.followOrbitOffset=localOrbitOffset(this.camera.position,anchor,yaw);
+      if(!this.followOrbitCustomized)this.followOrbitDistance=clampChaseDistance(Math.hypot(this.followOrbitOffset.x,this.followOrbitOffset.y,this.followOrbitOffset.z));
+      else this.setOrbitDistance(this.followOrbitDistance);
       this.refreshFollowButton();
     }
     const target=this.controls.target;
@@ -505,7 +544,9 @@ export class SolviWorld {
       const previous=target.clone();target.lerp(new THREE.Vector3(anchor.x,anchor.y,anchor.z),smoothFactor(dt,12));
       this.camera.position.add(target.clone().sub(previous));
       this.followOrbitOffset=localOrbitOffset(this.camera.position,target,yaw);
-      this.controls.update();return;
+      this.followOrbitDistance=clampChaseDistance(Math.hypot(this.followOrbitOffset.x,this.followOrbitOffset.y,this.followOrbitOffset.z));
+      if(this.followOrbitCustomized)localStorage.setItem('solvi-orbit-distance',String(this.followOrbitDistance));
+      this.updateChaseDistanceUI();this.controls.update();return;
     }
     const local=this.cameraFollowMode==='chase'?chaseOffset(this.followChaseDistance):this.followOrbitOffset;
     if(!local)return;
@@ -541,7 +582,7 @@ export class SolviWorld {
     this.controls.target.copy(center);
     this.camera.lookAt(center);
     this.controls.update();
-    if(this.cameraFollowMode==='chase')this.followChaseDistance=Math.max(2.8,Math.min(18,nextDistance));
+    if(this.cameraFollowMode==='chase')this.setChaseDistance(nextDistance);
     else this.syncFollowAfterManualView();
     return true;
   }
