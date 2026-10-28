@@ -2,11 +2,22 @@
 // with a browser-installed-voice fallback; cloud TTS is ElevenLabs on the server.
 // Meta Muse Voice Transcribe is speech-to-text only, not a TTS provider.
 
+// Match the spoken text, not the browser interface language. Explicit
+// Polish clues override an English default to avoid English voices reading Polish.
+export function spokenLanguage(text,preferred='auto'){
+ const t=String(text||'').toLocaleLowerCase();
+ if(/[ąćęłńóśźż]/.test(t)||/\b(cześć|jestem|proszę|krzesło|krzesła|chodź|zobacz|dziękuję|czy|masz|dzisiaj|tutaj|dobrze|dlaczego|mogę|już|będzie|gdzie|siedzę|głos|mój|twoim)\b/.test(t))return 'pl';
+ if(preferred!=='auto')return preferred;
+ if(/\b(bonjour|merci|avec|je suis)\b/.test(t))return 'fr';
+ if(/\b(hola|gracias|estoy|quiero)\b/.test(t))return 'es';
+ if(/\b(hallo|danke|ich bin|bitte)\b/.test(t))return 'de';
+ return 'en';
+}
 export const robotVoiceConfig=brain=>({
  provider:['local','elevenlabs','mute'].includes(brain?.voiceProvider)?brain.voiceProvider:'local',
  voiceId:/^[A-Za-z0-9_-]{0,80}$/.test(brain?.voiceId||'')?brain?.voiceId||'':'',
  voiceName:String(brain?.voiceName||'').slice(0,100),
- lang:['en','pl','de','es','fr'].includes(brain?.voiceLang)?brain.voiceLang:'en',
+ lang:['auto','en','pl','de','es','fr'].includes(brain?.voiceLang)?brain.voiceLang:'auto',
  rate:Math.max(.6,Math.min(1.6,Number(brain?.voiceRate)||1)),
  pitch:Math.max(.5,Math.min(1.7,Number(brain?.voicePitch)||1))
 });
@@ -31,6 +42,7 @@ export class RobotSpeech{
   const settings=robotVoiceConfig(robot.userData.robotBrain);
   this.seen.add(entry.id);if(this.seen.size>400)this.seen.delete(this.seen.values().next().value);
   if(settings.provider==='mute')return;
+  settings.lang=spokenLanguage(entry.text,settings.lang);
   this.jobs.push({entry,robotId:robot.userData.editorId,room:this.room(),settings});
   if(this.jobs.length>5)this.jobs.shift();
   if(!this.playing)this.consume();
@@ -42,6 +54,7 @@ export class RobotSpeech{
   if(settings.provider==='mute'){this.report({robotId,settings},'error','Robot voice is muted.');return;}
   if(!this.enabled()){this.report({robotId,settings},'error','Enable Robots speak in 3D in Settings.');return;}
   if(settings.provider==='elevenlabs'&&!settings.voiceId){this.report({robotId,settings},'error','Select a valid ElevenLabs voice ID first.');return;}
+  settings.lang=settings.lang==='auto'?'en':settings.lang;
   this.jobs.push({robotId:robot.userData.editorId,room:this.room(),settings,test:true,
     entry:{text:`Hello, I'm ${robot.name}. This is my voice.`,speaker:robot.name}});
   if(!this.playing)this.consume();
@@ -70,6 +83,10 @@ export class RobotSpeech{
  }
  async play(job,robot){
   const settings=job.settings;
+  // An explicitly chosen device voice must be honoured; Ubuntu cannot use macOS voices.
+  if(settings.provider==='local'&&settings.voiceName&&window.speechSynthesis?.getVoices?.().some(v=>v.name===settings.voiceName&&v.lang.toLowerCase().startsWith(settings.lang))){
+    await this.playBrowser(job.entry.text,robot,settings);return 'device';
+  }
   const headers={'Content-Type':'application/json','X-Solvi-Tab':this.api.auth?.()?.tab||sessionStorage.getItem('solvi-tab')||''};
   const auth=this.api.auth?.();if(auth?.token)headers.Authorization='Bearer '+auth.token;
   const voiceKey=sessionStorage.getItem('solvi-elevenlabs-key');if(voiceKey&&settings.provider==='elevenlabs')headers['X-Solvi-Voice-Key']=voiceKey;
@@ -118,8 +135,11 @@ export class RobotSpeech{
   if(!window.speechSynthesis||!window.SpeechSynthesisUtterance)throw Error('No device voice is available');
   const speech=new SpeechSynthesisUtterance(String(text).slice(0,600));
   speech.lang=settings.lang;speech.rate=settings.rate;speech.pitch=settings.pitch;
-  const selected=window.speechSynthesis.getVoices().find(v=>v.name===settings.voiceName);
-  if(selected)speech.voice=selected;
+  const all=window.speechSynthesis.getVoices();
+  const candidates=all.filter(v=>v.lang.toLowerCase().startsWith(settings.lang));
+  const selected=candidates.find(v=>v.name===settings.voiceName)||candidates[0];
+  if(!selected)throw Error('No '+settings.lang+' device voice installed; choose a matching voice, Ubuntu local synthesis or ElevenLabs.');
+  speech.voice=selected;
   const distance=robot.getWorldPosition(robot.position.clone()).distanceTo(this.world.camera.getWorldPosition(this.world.camera.position.clone()));
   speech.volume=distanceVolume(distance,this.volume());
   await new Promise((resolve,reject)=>{speech.onend=resolve;speech.onerror=e=>e.error==='interrupted'?resolve():reject(Error('Device TTS '+e.error));window.speechSynthesis.speak(speech);});

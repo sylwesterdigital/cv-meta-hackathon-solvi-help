@@ -148,7 +148,8 @@ export function setRobotDestination(robot,point,run=false){
 export async function captureRobotView(world,robot,options={}){
   if(!robot||robot.userData.editorKind!=='robot')throw Error('Select a robot in Objects first.');
   const camera=new THREE.PerspectiveCamera(72,1,.04,110);robot.add(camera);
-  camera.position.set(0,1.62,0);camera.rotation.y=Math.PI+(Number(options.yawOffset)||0); // forward head view plus scan direction
+  camera.position.set(0,1.62,0);camera.rotation.order='YXZ';camera.rotation.y=Math.PI+(Number(options.yawOffset)||0); // forward head view plus scan direction
+  camera.rotation.x=THREE.MathUtils.degToRad(Math.max(-70,Math.min(70,Number(options.pitchDegrees)||0))); // negative tilt points downward
   const rt=new THREE.WebGLRenderTarget(512,512),renderer=world.renderer,old=renderer.getRenderTarget();
   const previousXR=renderer.xr.enabled,oldVisible=robot.visible;
   const pixels=new Uint8Array(512*512*4);

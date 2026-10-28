@@ -275,7 +275,7 @@ class FakeVoiceList:
 with speech_patch('server.urlopen',return_value=FakeVoiceList()):
     voices=c.get('/api/robots/voices',headers={**headers,'X-Solvi-Voice-Key':'a'*24})
     assert voices.status_code==200,(voices.status_code,voices.data)
-    assert voices.get_json()['voices']==[{'id':'21m00Tcm4TlvDq8ikWAM','name':'Example Voice'}]
+    assert voices.get_json()['voices']==[{'id':'21m00Tcm4TlvDq8ikWAM','name':'Example Voice','languages':[],'accent':''}]
     assert c.get('/api/robots/voices').status_code==401
 print('PASS: ElevenLabs generation, sanitized errors, and voice selection')
 
@@ -443,9 +443,54 @@ assert 'chair directly ahead' in seen.get_json()['answer']['text']
 assert photo_id in seen.get_json()['answer']['media']
 assert vision_mock.call_count==1
 parts=vision_mock.call_args.args[2]['input'][0]['content']
-assert [part['type'] for part in parts]==['input_text','input_image']
-assert parts[1]['image_url'].startswith('data:image/jpeg;base64,')
+assert [part['type'] for part in parts]==['input_text','input_text','input_image']
+assert parts[2]['image_url'].startswith('data:image/jpeg;base64,')
 assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':question['id'],'robot_id':'testrobot-0220','media_id':photo_id}).status_code==409
+# v0.2.42: Eight-frame scan (2 frames in this fixture) is supplied in a
+# SINGLE labelled Muse request. Only owned JPEGs, never image URLs from the client.
+assert is_robot_visual_question('Paris please tilt down and take a look')
+assert is_robot_visual_question('Paris, look around and find a chair')
+assert not is_robot_visual_question('Paris, good morning')
+scan_question=c.post('/api/message',headers=headers,json={'room':'lab','text':'Jessica look around and find a chair'}).get_json()['message']
+photo2=c.post('/api/media',headers=headers,data={'file':(_BytesIO(jpeg),'scan2.jpg','image/jpeg')})
+assert photo2.status_code==200,(photo2.status_code,photo2.data)
+photo2_id=photo2.get_json()['media']['id']
+with patch('server.active_model_key',return_value='test-key'), patch('server.meta_request',return_value={
+    'id':'resp-360','output':[{'type':'message','content':[{'type':'output_text','text':'Ahead: grid; at 90 degrees: a chair.'}]}],
+    'usage':{'input_tokens':180,'output_tokens':16,'images_processed':2}}) as panorama_mock:
+    chat_attempts[data['user']['id']]=[]
+    scan=c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':scan_question['id'],
+        'robot_id':'testrobot-0220','media_ids':[photo_id,photo2_id],'views':['heading 0°','heading 90°']})
+assert scan.status_code==200,(scan.status_code,scan.data)
+assert scan.get_json()['request']['images']==2
+assert all(m in scan.get_json()['answer']['media'] for m in (photo_id,photo2_id))
+content=panorama_mock.call_args.args[2]['input'][0]['content']
+assert [part['type'] for part in content]==['input_text','input_text','input_image','input_text','input_image']
+assert '90°' in content[3]['text'] and len(content[4]['image_url'])>100
+assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':scan_question['id'],
+        'robot_id':'testrobot-0220','media_ids':[photo_id,photo2_id],'views':['heading 0°','heading 90°']}).status_code==409
+# Opt-in proactive visual inspection reserves one short-lived, owner-bound nonce.
+from server import ROBOT_INITIATIVE_LAST
+robot['brain']['initiativeVision']=True
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==200
+ROBOT_INITIATIVE_LAST.clear()
+with patch('server.active_model_key',return_value='test-key'):
+    initiative_scan=c.post('/api/robots/initiative',headers=headers,json={'room':'lab','robot_id':'testrobot-0220'})
+assert initiative_scan.status_code==200 and initiative_scan.get_json()['needs_vision'],initiative_scan.data
+capture_token=initiative_scan.get_json()['vision_token']
+with patch('server.active_model_key',return_value='test-key'),patch('server.meta_request',return_value={
+    'id':'resp-autonomy','output_text':'I spotted a seat to my right. Should I approach it?',
+    'usage':{'input_tokens':120,'output_tokens':16,'images_processed':2}}):
+    chat_attempts[data['user']['id']]=[]
+    spontaneous=c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
+        'robot_id':'testrobot-0220','proactive':True,'vision_token':capture_token,
+        'media_ids':[photo_id,photo2_id],'views':['heading 0°','heading 90°']})
+assert spontaneous.status_code==200,(spontaneous.status_code,spontaneous.data)
+assert 'seat' in spontaneous.get_json()['answer']['text']
+assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
+    'robot_id':'testrobot-0220','proactive':True,'vision_token':capture_token,
+    'media_ids':[photo_id],'views':['forward']}).status_code==403
+print('PASS: 360 head-camera batching, real JPEGs, one Muse call, and nonce-protected proactive observation')
 # The saved portrait is represented as a room-scoped media ID rather than a user avatar.
 robot['brain']['portrait']=photo_id
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==200
@@ -498,3 +543,10 @@ print('PASS: speech endpoint authentication, STT health and valid GLB avatar upl
 assert c.post('/api/logout',headers=headers,json={}).status_code==200
 assert c.get('/api/me',headers=headers).status_code==401
 print('PASS: logout invalidates browser session token')
+
+# v0.2.42 language fallback must recognize Polish text even when an older
+# robot profile was saved with an English default.
+from server import _spoken_language
+assert _spoken_language('Paris, masz bardzo dziwny głos','en')=='pl'
+assert _spoken_language('I can see a chair','auto')=='en'
+print('PASS: Polish speech text takes precedence over stale English voice settings')

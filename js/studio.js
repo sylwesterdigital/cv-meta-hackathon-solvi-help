@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
 import {captureRobotView,captureRobotPortrait} from './robots.js';
-import {initRobotBrains,runRobotVisualSearch,emitBrainTrace} from './robot-brains.js';
+import {initRobotBrains,runRobotVisualSearch,emitBrainTrace,rememberRobotObservationFrame} from './robot-brains.js';
+import {observationPlan,scanSummary} from './robot-observation.js';
 import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,uiScalePercent,safeFontName,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
 import {playCue,primeAudio} from './audio-cues.js';
 import {RobotSpeech} from './robot-speech.js';
@@ -128,7 +129,9 @@ async function bubble(entry){
  }else{panel.querySelector('time').textContent=safeTime(entry.created);}
  const content=document.createElement('div');content.className='chat-body chat-message-item';content.dataset.messageId=entry.id||'';content.textContent=entry.text||'';panel.append(content);
  let mids=[];try{mids=typeof entry.media==='string'?JSON.parse(entry.media):entry.media||[];}catch{}
- for(const id of mids){const slot=document.createElement('div');slot.className='chat-attachment';slot.textContent='Attachment';panel.append(slot);
+ const mediaContainer=mids.length>1?document.createElement('div'):panel;
+ if(mids.length>1){mediaContainer.className='chat-media-grid';mediaContainer.setAttribute('aria-label',mids.length+' robot-eye photographs');panel.append(mediaContainer);}
+ for(const id of mids){const slot=document.createElement('div');slot.className='chat-attachment';slot.textContent='Attachment';mediaContainer.append(slot);
   if(online&&auth){api.mediaBlobInfo(id).then(({url,mime})=>{const el=document.createElement(mime.startsWith('video/')?'video':mime.startsWith('audio/')?'audio':'img');el.src=url;if(el.tagName==='IMG'){el.alt='Image attachment';el.loading='lazy';}else{el.controls=true;el.preload='metadata';}el.onerror=()=>{slot.textContent='Media attachment';URL.revokeObjectURL(url);};slot.replaceChildren(el);if(el.tagName==='IMG')el.addEventListener('load',scrollChatToLatest,{once:true});scrollChatToLatest();}).catch(()=>{});}}
  lastBubbleEntry=entry;scrollChatToLatest();if(!suppressRobotSpeech&&role==='assistant'&&!entry.isBrainTrace)robotSpeech?.speak(entry);
 }
@@ -143,6 +146,22 @@ async function reportRobotTask(command,status){
   if(result.answer)await bubble(result.answer);
  }catch(e){emitBrainTrace(command.robot_id,'Robot','TASK REPORT FAILED',e.message);$('chatStatus').textContent='Task report error: '+e.message;}
 }
+// Captures and uploads each actual camera direction. Images are attached to the
+// robot reply, so everyone in the room can inspect the evidence used by Muse.
+async function captureRobotObservation(robot,question,{proactive=false}={}){
+ const plan=observationPlan(question,proactive),ids=[];
+ emitBrainTrace(robot.userData.editorId,robot.name,'SCAN PLAN',scanSummary(plan));
+ for(const view of plan){
+  if(window.solviRoom!==activeRoom)throw Error('Room changed during camera scan');
+  const photo=await captureRobotView(window.solviEditor.world,robot,{yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch});
+  if(!photo?.size)throw Error('Head-camera JPEG capture failed at '+view.label);
+  rememberRobotObservationFrame(robot.userData.editorId,photo,'Scan '+view.label+' · real JPEG');
+  const upload=await uploadFile(new File([photo],`robot-eye-${view.yaw}-${view.pitch}-${Date.now()}.jpg`,{type:'image/jpeg'}));
+  ids.push(upload.id);
+  emitBrainTrace(robot.userData.editorId,robot.name,'FRAME UPLOADED',`${view.label}: ${photo.size} JPEG bytes`);
+ }
+ return {media_ids:ids,views:plan.map(v=>v.label),plan};
+}
 async function reactToRobotMessage(message){
  if(!message?.id||!message.text||!online||!auth)return;
  // Do not flood chat with a router diagnostic for messages no robot addresses.
@@ -154,13 +173,10 @@ async function reactToRobotMessage(message){
    const editor=window.solviEditor,robot=editor?.items?.find(o=>o.userData.editorId===response.robot_id&&o.userData.editorKind==='robot');
    if(!robot){const error=response.robot_name+' cannot capture a view because the robot is not loaded in this browser.';$('chatStatus').textContent=error;await bubble({role:'assistant',speaker:response.robot_name||'Robot',model:'camera-error',text:error,created:new Date().toISOString()});return;}
    try{
-     emitBrainTrace(response.robot_id,robot.name,'EYES REQUEST','Capturing a fresh 512×512 camera frame to answer the specific chat question.');
-     const photo=await captureRobotView(editor.world,robot);
-     if(!photo?.size)throw Error('Robot eye camera returned no image');
-     window.dispatchEvent(new CustomEvent('solvi:brain-frame',{detail:{robotId:response.robot_id,blob:photo,label:'Conversation eye view · '+message.text.slice(0,100)}}));
-     const media=await uploadFile(new File([photo],`conversation-robot-eye-${Date.now()}.jpg`,{type:'image/jpeg'}));
-     emitBrainTrace(response.robot_id,robot.name,'MUSE VISION','Sending captured JPEG and the actual saved user question to the server; image will be attached to reply.');
-     const answer=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:response.robot_id,message_id:message.id,media_id:media.id})});
+     emitBrainTrace(response.robot_id,robot.name,'EYES REQUEST','Capturing a real head-camera observation for the chat question.');
+     const scan=await captureRobotObservation(robot,message.text);
+     emitBrainTrace(response.robot_id,robot.name,'MUSE VISION',`Sending ${scan.media_ids.length} JPEG(s), labelled camera directions, saved identity, question and goals. No fabricated visual evidence.`);
+     const answer=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:response.robot_id,message_id:message.id,media_ids:scan.media_ids,views:scan.views})});
      if(answer.answer)await bubble(answer.answer);
      emitBrainTrace(response.robot_id,robot.name,'VISION RESULT',`${answer.model||answer.answer?.model} · ${answer.answer?.text||'No text'} · estimated US$${Number(answer.usage?.estimated_usd||0).toFixed(6)}`);
      $('chatStatus').textContent=robot.name+' · camera observation shared'+(answer.usage?' · ~US$'+Number(answer.usage.estimated_usd||0).toFixed(5):'');
@@ -704,15 +720,21 @@ function bindUI(world){
  setupChatPresentation();setupSettings();setupRobotVoiceSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();initRobotBrains(world,api,()=>activeRoom,toast);begin();
  // Opt-in robot social initiatives: the server enforces a six-minute per-robot
  // cooldown even with multiple connected clients. They are never executable moves.
- let initiativeBusy=false;
+ let initiativeBusy=false,initiativeCursor=0;
  const tryInitiative=async()=>{
    if(initiativeBusy||document.visibilityState!=='visible'||!online||!auth||!me)return;
    const editor=window.solviEditor;
-   const robot=editor?.items?.find(o=>o.userData.editorKind==='robot'&&o.userData.robotBrain?.initiative&&editor.canEdit(o));
+   const robots=editor?.items?.filter(o=>o.userData.editorKind==='robot'&&o.userData.robotBrain?.initiative&&editor.canEdit(o))||[];
+   const robot=robots.length?robots[initiativeCursor++%robots.length]:null;
    if(!robot)return;
    initiativeBusy=true;
    try{const outcome=await api.req('/api/robots/initiative',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:robot.userData.editorId})});
-     if(outcome.answer){await bubble(outcome.answer);emitBrainTrace(robot.userData.editorId,robot.name,'INITIATIVE',`Muse Spark proactive question · estimated US$${Number(outcome.usage?.estimated_usd||0).toFixed(6)} · no movement executed`);}
+     if(outcome.needs_vision){
+       const scan=await captureRobotObservation(robot,'look around', {proactive:true});
+       const report=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:robot.userData.editorId,proactive:true,vision_token:outcome.vision_token,media_ids:scan.media_ids,views:scan.views})});
+       if(report.answer)await bubble(report.answer);
+       emitBrainTrace(robot.userData.editorId,robot.name,'AUTONOMOUS OBSERVATION',`${scan.media_ids.length} camera views · ${report.answer?.text||'No observation'} · ~US$${Number(report.usage?.estimated_usd||0).toFixed(6)}`);
+     }else if(outcome.answer){await bubble(outcome.answer);emitBrainTrace(robot.userData.editorId,robot.name,'INITIATIVE',`Muse Spark question · ~US$${Number(outcome.usage?.estimated_usd||0).toFixed(6)} · no movement executed`);}
    }catch(e){console.info('Robot initiative unavailable:',e.message);}
    finally{initiativeBusy=false;}
  };

@@ -9,7 +9,7 @@ test('robot voice mode, language, rate and pitch are bounded and per-robot',()=>
  assert.equal(robotVoiceConfig({voiceProvider:'mute'}).provider,'mute');
  assert.deepEqual([robotVoiceConfig({voiceRate:'55',voicePitch:'-9'}).rate,robotVoiceConfig({voiceRate:'55',voicePitch:'-9'}).pitch],[1.6,.5]);
  assert.equal(robotVoiceConfig({voiceProvider:'bad'}).provider,'local');
- assert.equal(robotVoiceConfig({voiceLang:'invalid'}).lang,'en');
+ assert.equal(robotVoiceConfig({voiceLang:'invalid'}).lang,'auto');
 });
 test('local voice distance attenuation decreases with distance',()=>{
  assert.ok(distanceVolume(1) > distanceVolume(9));

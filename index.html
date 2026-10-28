@@ -11,7 +11,7 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.41</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.42</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="Show more world tools">More</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
@@ -199,11 +199,11 @@
     <div class="brains-scroll">
       <section id="brainsObservation" aria-label="Robot eye camera and AI vision" class="brain-observation">
       <div class="brain-eye-header"><div><h2 id="brainsEyeTitle">Robot eyes · live observation</h2><p class="small-note">Actual rendered JPEG, not an AI-generated illustration. Camera captures are local until sent.</p></div><button type="button" id="expandBrainsEye">View full-size</button></div>
-      <p class="small-note" id="brainsEyeMeta">No eye frame captured. A search command captures four directions automatically; manual Capture records the current view.</p>
+      <p class="small-note" id="brainsEyeMeta">No eye frame captured. A search command captures eight head-camera directions automatically; manual Capture records the current view.</p>
       <div id="brainsEyeStage" class="brains-eye-stage" hidden><img id="brainsEyeImage" width="512" height="512" alt="Actual head-camera JPEG from the selected robot" hidden><canvas id="brainsEyeOverlay" width="512" height="512" aria-label="SAM bounding boxes over the captured image"></canvas></div>
       <div id="brainsEyePlaceholder" class="brains-eye-placeholder">No screenshot yet. Press <strong>Capture eyes</strong> to see exactly what Jessica sees.</div>
       <div id="brainsEyeGallery" class="brains-frame-gallery" aria-label="Captured and transmitted head-camera frames"></div>
-      <div class="brain-actions brain-primary-actions"><button type="button" id="captureBrainsEye" class="primary">Capture eyes</button><button type="button" id="saveRobotChatPortrait" title="Capture this robot’s 3D face for its chat avatar">Save chat portrait</button><button type="button" id="describeBrainsEye">Describe frame · Muse Spark</button><button type="button" id="showBrainChat" title="Open the chat with local Brain debug events">Show debug in chat</button></div>
+      <div class="brain-actions brain-primary-actions"><button type="button" id="captureBrainsPanorama">Scan 360°</button><button type="button" id="captureBrainsEye" class="primary">Capture eyes</button><button type="button" id="saveRobotChatPortrait" title="Capture this robot’s 3D face for its chat avatar">Save chat portrait</button><button type="button" id="describeBrainsEye">Describe frame · Muse Spark</button><button type="button" id="showBrainChat" title="Open the chat with local Brain debug events">Show debug in chat</button></div>
       <label class="field-label">Question for Muse Spark (scene understanding)<textarea id="brainsVisionQuestion" rows="2" maxlength="1000">What objects can you see, where are they located, and what would be a useful next action for this robot?</textarea></label>
       <div class="brain-actions"><button type="button" id="analyzeBrainsEye">Find object · SAM 3.1</button></div>
       <label class="field-label">Object to find (one noun phrase, e.g. robot, red cube)<input id="brainsPrompt" value="robot" maxlength="120"></label>
@@ -214,13 +214,14 @@
       <label class="field-label">Character / personality<textarea id="brainsPersonality" rows="3" maxlength="1000" placeholder="Curious, playful, methodical…"></textarea></label>
       <label class="field-label">Fictional life history<textarea id="brainsHistory" rows="3" maxlength="2000" placeholder="Where this character came from and important memories…"></textarea></label>
       <label class="field-label">Beliefs and motivations<textarea id="brainsBeliefs" rows="2" maxlength="1000"></textarea></label>
-      <label class="field-label">React to words or phrases (comma separated)<input id="brainsTriggers" maxlength="300" placeholder="lost, discovery, hello"></label><label class="brains-initiative-toggle"><input id="brainsInitiative" type="checkbox"> Allow Jessica to occasionally ask a question (AI; token usage)</label>
+      <label class="field-label">React to words or phrases (comma separated)<input id="brainsTriggers" maxlength="300" placeholder="lost, discovery, hello"></label><label class="brains-initiative-toggle"><input id="brainsInitiative" type="checkbox"> Proactive conversation</label>
+      <label class="brains-initiative-toggle"><input id="brainsInitiativeVision" type="checkbox"> Observe surroundings periodically (5 images per scan; billable Meta requests)</label>
       <div class="brain-voice-config" role="group" aria-label="Robot spoken voice">
       <label class="field-label">Spoken voice<select id="brainsVoiceProvider"><option value="local">Local synthetic (spatial on Ubuntu)</option><option value="elevenlabs">ElevenLabs (spatial cloud audio)</option><option value="mute">Silent</option></select></label>
-      <label class="field-label">Language<select id="brainsVoiceLang"><option value="en">English</option><option value="pl">Polski</option><option value="de">Deutsch</option><option value="es">Español</option><option value="fr">Français</option></select></label>
-      <label class="field-label">Device voice (browser fallback)<select id="brainsVoiceName"><option value="">Default installed voice</option></select></label>
+      <label class="field-label">Language<select id="brainsVoiceLang"><option value="auto">Auto (match spoken text)</option><option value="en">English</option><option value="pl">Polski</option><option value="de">Deutsch</option><option value="es">Español</option><option value="fr">Français</option></select></label>
+      <label class="field-label">Installed device voices (choose for local speech)<select id="brainsVoiceName"><option value="">Default installed voice</option></select></label>
       <label class="field-label">ElevenLabs voice<select id="brainsElevenVoiceList" aria-label="Choose ElevenLabs voice"><option value="">Load voices from your account</option></select></label>
-      <button id="loadElevenVoices" type="button">Load voices</button>
+      <button id="loadElevenVoices" type="button">Browse account voices</button>
       <label class="field-label">Voice ID (manual)<input id="brainsVoiceId" type="text" maxlength="80" placeholder="Voice ID" autocomplete="off" spellcheck="false"></label>
       <div class="brain-voice-values"><label>Rate <input id="brainsVoiceRate" type="number" min="0.6" max="1.6" step="0.1" value="1"></label><label>Pitch <input id="brainsVoicePitch" type="number" min="0.5" max="1.7" step="0.1" value="1"></label></div>
       <button id="testRobotVoice" type="button">Test voice</button><small id="robotVoiceStatus" role="status" aria-live="polite"></small></div>

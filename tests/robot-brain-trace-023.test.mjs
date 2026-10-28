@@ -10,11 +10,11 @@ test('Brains has collapsible editable identity, readable task trace and real ima
  assert.match(js,/renderFrameGallery/);assert.match(js,/rememberFrame/);
  assert.match(js,/showFrame\(rec.blob,rec.label,rec.boxes\)/);
 });
-test('Unlabelled furniture triggers real four-view SAM vision and 3D-raycast navigation',()=>{
+test('Unlabelled furniture triggers real eight-view SAM vision and 3D-raycast navigation',()=>{
  const server=file('backend/server.py'),brains=file('js/robot-brains.js'),studio=file('js/studio.js'),robots=file('js/robots.js');
  assert.match(server,/'kind':'vision_search'/);
  assert.match(server,/def robot_task_result/);
- assert.match(brains,/directions=\[0,Math.PI\/2,Math.PI,3\*Math.PI\/2\]/);
+ assert.match(brains,/directions=observationPlan\('look around'\)/);
  assert.match(brains,/captureRobotView\(world,robot,\{yawOffset/);
  assert.match(brains,/mode:'segment'/);
  assert.match(brains,/raycastSAMBox\(pose,box,editor,robot\)/);

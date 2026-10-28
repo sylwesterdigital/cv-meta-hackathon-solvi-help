@@ -167,7 +167,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.41',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.42',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -873,6 +873,10 @@ def robot_initiative():
         last=ROBOT_INITIATIVE_LAST.get(key,0)
         if time.time()-last<360:return jsonify(triggered=False,note='Cooldown: one initiative per six minutes')
         ROBOT_INITIATIVE_LAST[key]=time.time()  # reserve before model inference (multi-device safe)
+        if brain.get('initiativeVision') is True:
+            token=uuid.uuid4().hex
+            ROBOT_INITIATIVE_CAPTURE[(room_id,ident,user['id'])]=(token,time.time())
+            return jsonify(triggered=True,needs_vision=True,vision_token=token,plan='Four headings and downward view; model analyses actual JPEGs; no autonomous movement')
     with db() as con:
         memories=con.execute('SELECT event FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 6',(room_id,ident)).fetchall()
         recent=con.execute('SELECT text FROM messages WHERE room_id=? ORDER BY created DESC LIMIT 5',(room_id,)).fetchall()
@@ -955,11 +959,12 @@ def robot_eyes_chat():
 
 
 ROBOT_VISION_MESSAGES={}
+ROBOT_INITIATIVE_CAPTURE={}
 
 def is_robot_visual_question(text):
     """Explicit camera-perception questions, not generic conversation or navigation tasks."""
     t=re.sub(r'^\s*CC\s*:\s*','',text,flags=re.I).lower()
-    return bool(re.search(r'\b(what (?:do |can )?you see|can you see|do you see|what(?:\x27s| is) (?:in front|visible)|look (?:at|around)|describe (?:what you see|your view|the scene|your surroundings)|what are you looking at|show me (?:what you see|your view))\b',t))
+    return bool(re.search(r"\b(what (?:do |can )?you see|can you see|do you see|what(?:\x27s| is) (?:in front|visible)|look (?:at|around|down|up)|tilt (?:your )?(?:camera |head )?(?:down|up)|take a look|scan (?:the |your )?(?:room|area|surroundings)|360|panorama|describe (?:what you see|your view|the scene|your surroundings)|what are you looking at|show me (?:what you see|your view)|rozejrzyj|sp[oó]jrz w d[oó]ł)\b",t))
 
 
 @app.post('/api/robots/vision-reply')
@@ -969,75 +974,101 @@ def robot_vision_reply():
     if not user:return json_error(msg,status)
     data=request.get_json(silent=True) or {};room_id=selected_room(data.get('room','main'))
     if not room_id:return json_error('Unknown room',404)
-    mid=str(data.get('media_id',''));message_id=str(data.get('message_id',''));ident=str(data.get('robot_id',''))
+    message_id=str(data.get('message_id',''));ident=str(data.get('robot_id',''))
+    proactive=data.get('proactive') is True
+    raw_ids=data.get('media_ids')
+    if raw_ids is None:raw_ids=[data.get('media_id','')]
+    if not isinstance(raw_ids,list) or not 1<=len(raw_ids)<=8 or any(not isinstance(x,str) or not re.fullmatch(r'[a-fA-F0-9-]{8,80}',x) for x in raw_ids) or len(set(raw_ids))!=len(raw_ids):return json_error('Supply one to eight distinct uploaded JPEGs',400)
+    views=data.get('views',['forward'] if data.get('media_ids') is None else [])
+    if not isinstance(views,list) or len(views)!=len(raw_ids) or any(not isinstance(v,str) or len(v)>70 for v in views):return json_error('Every image requires a camera-direction label',400)
     with db() as con:
         original=con.execute('SELECT * FROM messages WHERE id=? AND room_id=? AND user_id=? AND role=?',
-                    (message_id,room_id,user['id'],'user')).fetchone()
+                    (message_id,room_id,user['id'],'user')).fetchone() if not proactive else None
         scene=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
-        media=con.execute('SELECT * FROM media WHERE id=? AND user_id=?',(mid,user['id'])).fetchone()
+        media_rows=[con.execute('SELECT * FROM media WHERE id=? AND user_id=?',(mid,user['id'])).fetchone() for mid in raw_ids]
         history=con.execute('SELECT text FROM messages WHERE room_id=? ORDER BY created DESC LIMIT 6',(room_id,)).fetchall()
         memories=con.execute('SELECT event FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 5',(room_id,ident)).fetchall()
-    if not original or not is_robot_visual_question(original['text']):return json_error('Saved visual question required',403)
-    if not media or media['mime']!='image/jpeg':return json_error('An uploaded JPEG owned by this user is required',400)
-    path=Path(media['path'])
-    if not path.is_file() or not (256<=path.stat().st_size<=1800000):return json_error('Robot-eye frame is unavailable or invalid',400)
-    if not path.read_bytes()[:2]==b'\xff\xd8':return json_error('JPEG signature invalid',400)
+    if not proactive and (not original or not is_robot_visual_question(original['text'])):return json_error('Saved visual question required',403)
+    paths=[]
+    for media in media_rows:
+        if not media or media['mime']!='image/jpeg':return json_error('Uploaded owned JPEGs required',400)
+        path=Path(media['path'])
+        if not path.is_file() or not (256<=path.stat().st_size<=1800000) or path.read_bytes()[:2]!=b'\xff\xd8':return json_error('Invalid robot-eye JPEG',400)
+        paths.append(path)
     objects=json.loads(scene['payload']) if scene else []
     robots=[o for o in objects if o.get('kind')=='robot']
     robot=next((o for o in robots if o.get('id')==ident),None)
-    if not robot or _robot_address(original['text'],robots) is not robot:return json_error('Robot not addressed in this room',403)
+    if not robot:return json_error('Robot not in this room',403)
+    if not proactive and _robot_address(original['text'],robots) is not robot:return json_error('Robot not addressed in this room',403)
     if not may_edit(user['id'],robot,room_policy(room_id)):return json_error('Robot camera permission required',403)
+    # The initiative nonce is reserved by the room owner on the initial request,
+    # consumed once and expires quickly; it cannot be replayed by other tabs.
+    with robot_task_lock:
+        if proactive:
+            key=(room_id,ident,user['id'])
+            reserved=ROBOT_INITIATIVE_CAPTURE.pop(key,None)
+            if not reserved or reserved[0]!=data.get('vision_token') or time.time()-reserved[1]>150:return json_error('Visual initiative authorization expired',403)
+        else:
+            key=(room_id,message_id,ident)
+            if key in ROBOT_VISION_MESSAGES:return json_error('Visual reply already requested',409)
+            ROBOT_VISION_MESSAGES[key]=time.time()
+            for k,v in list(ROBOT_VISION_MESSAGES.items()):
+                if time.time()-v>3600:ROBOT_VISION_MESSAGES.pop(k,None)
     brain=robot.get('brain') if isinstance(robot.get('brain'),dict) else {}
     portrait=str(brain.get('portrait',''))
-    # Limit retries and prevent duplicate billable model calls for the same chat question.
-    with robot_task_lock:
-        key=(room_id,message_id,ident)
-        if key in ROBOT_VISION_MESSAGES:return json_error('Visual reply already requested for this message',409)
-        ROBOT_VISION_MESSAGES[key]=time.time()
-        for k,v in list(ROBOT_VISION_MESSAGES.items()):
-            if time.time()-v>3600:ROBOT_VISION_MESSAGES.pop(k,None)
     model='robot-eye-camera';usage=None
     if not active_model_key():
-        answer='I captured my view and attached the image, but image analysis needs a configured Meta API key.'
+        answer='I captured '+str(len(paths))+' camera views, but image analysis needs a configured Meta API key.'
     else:
         tries=[v for v in chat_attempts.get(user['id'],[]) if time.time()-v<60]
         if len(tries)>=5:
-            answer='I captured my view, but the AI request limit has been reached. Please try again shortly.'
+            answer='I captured the scan, but the AI request limit has been reached. Try again shortly.'
         else:
             tries.append(time.time());chat_attempts[user['id']]=tries
             context={'robot':robot.get('name'),'room':room_id,'utc_time':now(),
-               'pose':robot.get('position'),'identity':{k:str(brain.get(k,''))[:1200] for k in ('personality','history','beliefs')},
+               'pose':robot.get('position'),'identity':{k:str(brain.get(k,''))[:1200] for k in ('personality','history','beliefs','scenario')},
                'scene_index_not_visual_evidence':[{'name':str(o.get('name',''))[:60],'kind':o.get('kind'),'position':o.get('position')} for o in objects if o.get('id')!=ident][:18],
                'recent_experience':[m['event'][:250] for m in memories],
+               'active_task':next(({'kind':task['kind'],'target':task.get('target')} for task in ROBOT_TASKS.values() if task['robot_id']==ident and task['room']==room_id and not task['done']),None),
                'recent_chat':[h['text'][:250] for h in reversed(history)]}
-            prompt=('Roleplay '+str(robot.get('name','Robot'))[:70]+' in a multiuser 3D world. Answer the saved chat question '+
-                'using THIS image as your current direct visual evidence. Character/world context is reference only, NOT visual proof. '+
-                'If a chair is visible, say where it appears relative to your head-camera view; if it is not visible, say so. '+
-                'Do not say you have no camera feed; this JPEG is your current feed. Do not invent objects. '+
-                'Keep your character voice but be concise and useful. Context: '+json.dumps(context,ensure_ascii=False)[:4300]+
-                '\nChat question: '+original['text'][:1200])
-            photo='data:image/jpeg;base64,'+base64.b64encode(path.read_bytes()).decode('ascii')
+            question=original['text'][:1200] if original else 'Explore the area, assess surroundings and suggest one useful next step for your current goals.'
+            prompt=('Roleplay '+str(robot.get('name','Robot'))[:70]+' in a multiuser 3D world. '
+                'These are real head-camera images captured at the explicitly labelled directions and elevations below. '
+                'Examine ALL images before answering; distinguish what appears in each direction. '
+                'A 360 scan consists of multiple viewpoints, not one panorama stitched in pixel space. '
+                'If asked to look down, prioritize the downward frame. If looking for a chair, evaluate every available frame. '
+                'Never claim objects you cannot see. Never claim the robot moved or sat based only on pictures. '
+                'Use saved identity, relevant memories, standing/rest goals and scene-index names for context, not as visual proof. '
+                'If this is a proactive scan, mention one noteworthy observation relevant to a plan, and suggest a practical action '
+                'or question; do not repeat generic chair requests or issue movement commands. '
+                'Reply in the same language as the latest human question when practical. '
+                'Character context: '+json.dumps(context,ensure_ascii=False)[:4300]+
+                '\nQuestion: '+question)
+            content=[{'type':'input_text','text':prompt}]
+            for index,(path,label) in enumerate(zip(paths,views)):
+                content.extend([{'type':'input_text','text':f'VIEW {index+1} / {len(paths)} — camera {label}'},
+                    {'type':'input_image','image_url':'data:image/jpeg;base64,'+base64.b64encode(path.read_bytes()).decode('ascii')}])
             try:
                 response=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,'input':[
-                    {'role':'user','content':[{'type':'input_text','text':prompt},{'type':'input_image','image_url':photo}]}]})
-                usage=record_usage(user['id'],'muse-spark-1.3','robot-visual-chat',response,images=1)
+                    {'role':'user','content':content}]})
+                usage=record_usage(user['id'],'muse-spark-1.3','robot-visual-initiative' if proactive else 'robot-visual-chat',response,images=len(paths))
                 answer=meta_output_text(response).strip()[:1400]
                 model='muse-spark-1.3'
-                if not answer:answer='I captured this view but Muse Spark returned no description.'
+                if not answer:answer='I captured the scan, but Muse Spark returned no description.'
             except Exception as exc:
                 audit_event('robot-visual-chat-error',robot_id=ident,error=type(exc).__name__)
-                answer='I captured my view, but image analysis failed. The screenshot is attached for inspection.'
+                answer='I captured the scan, but image analysis failed. The camera frames are attached for inspection.'
     aid=str(uuid.uuid4());ts=now()
     with db() as con:
         con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
-                (aid,user['id'],'assistant',model,answer,json.dumps([mid]),ts,room_id,str(robot['name'])[:100]))
+                (aid,user['id'],'assistant',model,answer,json.dumps(raw_ids),ts,room_id,str(robot['name'])[:100]))
         con.execute('INSERT INTO robot_memories VALUES(?,?,?,?,?)',
-                (str(uuid.uuid4()),room_id,ident,'Looked at head-camera scene in response to: '+original['text'][:200],ts))
+                (str(uuid.uuid4()),room_id,ident,'Scanned '+str(len(paths))+' camera directions in response to: '+(original['text'][:200] if original else 'proactive surroundings and goals'),ts))
     publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
     return jsonify(answer={'id':aid,'role':'assistant','speaker':str(robot['name'])[:100],
-      'model':model,'text':answer,'media':json.dumps([mid]),'created':ts,'avatar':portrait},
-      observed=True,usage=usage,request={'model':model,'image_bytes':path.stat().st_size,'prompt':original['text'][:400],
-      'sends':'robot head JPEG + question + saved fictional identity and room context','store':False})
+      'model':model,'text':answer,'media':json.dumps(raw_ids),'created':ts,'avatar':portrait},
+      observed=True,usage=usage,request={'model':model,'image_bytes':sum(p.stat().st_size for p in paths),'images':len(paths),'views':views,'prompt':(original['text'][:400] if original else 'proactive scene scan'),
+      'sends':'real robot head JPEGs with direction labels + question + identity and room context','store':False})
 
 @app.post('/api/robots/react')
 def robot_react():
@@ -1067,7 +1098,7 @@ def robot_react():
     if not matching:return jsonify(triggered=False,note='No named robot or subscribed phrase matched')
     robot,brain,tagged=matching[0]
     command,ack=plan_robot_command(text,robot,objects) if tagged else (None,None)
-    if tagged and command is None and is_robot_visual_question(text):
+    if tagged and is_robot_visual_question(text) and (command is None or re.search(r'\b(look around|tilt down|tild down|look down|scan (?:the |your )?(?:room|area|surroundings)|360|panorama|rozejrzyj)\b',text,re.I)):
         return jsonify(triggered=True,needs_vision=True,robot_id=robot['id'],robot_name=robot['name'],
            note='Robot eye camera capture required for a grounded answer; no language model has been called yet.',
            trace=[{'step':'intent','result':'Visual question: capture live head-camera JPEG before asking Muse Spark','source':'grounded visual-question router'}])
@@ -1219,6 +1250,7 @@ def models():
 SPEECH_CACHE = {}
 SPEECH_LOCK = threading.RLock()
 SPEECH_TIMES = {}
+ELEVEN_VERIFIED_LANGUAGES = {}  # (key digest, voice id) -> (language list, observed monotonic time)
 
 # Return actionable provider errors without echoing remote bodies, prompts or API keys.
 def _elevenlabs_failure(exc):
@@ -1251,22 +1283,46 @@ def elevenlabs_voices():
     key=str(request.headers.get('X-Solvi-Voice-Key','')).strip() or os.environ.get('ELEVENLABS_API_KEY','')
     if not key:return json_error('Set an ElevenLabs key in Settings → Chat & sound, or on the Ubuntu server.',503)
     if not (16<=len(key)<=256 and all(33<=ord(c)<=126 for c in key)):return json_error('Invalid ElevenLabs API key',400)
-    url='https://api.elevenlabs.io/v2/voices?page_size=50'
-    req=Request(url,headers={'xi-api-key':key,'Accept':'application/json'},method='GET')
-    try:
-        with urlopen(req,timeout=12) as response:content=json.load(response)
-    except (HTTPError,URLError,TimeoutError) as exc:
-        error,code=_elevenlabs_failure(exc)
-        audit_event('elevenlabs-voice-list-failed',status=getattr(exc,'code',0))
-        return json_error(error,code)
-    if not isinstance(content,dict) or not isinstance(content.get('voices'),list):return json_error('Unexpected ElevenLabs voice list',502)
-    voices=[]
-    for item in content['voices']:
-        if not isinstance(item,dict):continue
-        voice_id=str(item.get('voice_id',''))
-        if re.fullmatch(r'[A-Za-z0-9_-]{8,80}',voice_id):
-            voices.append({'id':voice_id,'name':str(item.get('name') or 'Unnamed voice')[:100]})
-    return jsonify(voices=voices,more=bool(content.get('has_more')),provider='elevenlabs')
+    # Paginate the ACCOUNT voice list, not just the first 50 entries. Cap
+    # requests so a mistaken client cannot burn server resources indefinitely.
+    import urllib.parse
+    voices=[];cursor=None;has_more=False
+    for page in range(4):
+        url='https://api.elevenlabs.io/v2/voices?page_size=50'
+        if cursor:url+='&next_page_token='+urllib.parse.quote(cursor,safe='')
+        req=Request(url,headers={'xi-api-key':key,'Accept':'application/json'},method='GET')
+        try:
+            with urlopen(req,timeout=12) as response:content=json.load(response)
+        except (HTTPError,URLError,TimeoutError) as exc:
+            error,code=_elevenlabs_failure(exc)
+            audit_event('elevenlabs-voice-list-failed',status=getattr(exc,'code',0))
+            return json_error(error,code)
+        if not isinstance(content,dict) or not isinstance(content.get('voices'),list):return json_error('Unexpected ElevenLabs voice list',502)
+        for item in content['voices']:
+            if not isinstance(item,dict):continue
+            voice_id=str(item.get('voice_id',''))
+            if re.fullmatch(r'[A-Za-z0-9_-]{8,80}',voice_id):
+                voices.append({'id':voice_id,'name':str(item.get('name') or 'Unnamed voice')[:100],
+                    'languages':sorted(set(str(v.get('language','')).lower()[:8] for v in (item.get('verified_languages') or []) if isinstance(v,dict) and v.get('language'))),
+                    'accent':str((item.get('labels') or {}).get('accent') or '')[:50]})
+        cursor=content.get('next_page_token')
+        has_more=bool(content.get('has_more') and cursor)
+        if not has_more:break
+    digest=hashlib.sha256(key.encode()).hexdigest()
+    with SPEECH_LOCK:
+        for item in voices:ELEVEN_VERIFIED_LANGUAGES[(digest,item['id'])]=(item['languages'],time.monotonic())
+        if len(ELEVEN_VERIFIED_LANGUAGES)>500:
+            for cache_key in list(ELEVEN_VERIFIED_LANGUAGES)[:200]:ELEVEN_VERIFIED_LANGUAGES.pop(cache_key,None)
+    return jsonify(voices=voices,more=has_more,provider='elevenlabs')
+
+def _spoken_language(text, preferred):
+    low=text.lower()
+    if re.search(r'[ąćęłńóśźż]|\b(cześć|jestem|proszę|krzesło|krzesła|chodź|zobacz|dziękuję|czy|masz|dzisiaj|dobrze|dlaczego|mogę|już|gdzie|głos)\b',low):return 'pl'
+    if preferred in ('en','pl','de','es','fr'):return preferred
+    if re.search(r'\b(bonjour|merci|je suis)\b',low):return 'fr'
+    if re.search(r'\b(hola|gracias|estoy)\b',low):return 'es'
+    if re.search(r'\b(hallo|danke|ich bin)\b',low):return 'de'
+    return 'en'
 
 def _robot_speech_audio(provider, text, voice, lang, rate, pitch, key):
     if provider == 'elevenlabs':
@@ -1314,7 +1370,7 @@ def robot_speech():
         sample=data.get('test') is True
         if sample:
             # Fixed test phrase; ordinary users cannot send arbitrary billable TTS prompts.
-            text='Hello, I am '+str(robot.get('name','Robot'))[:65]+'. This is my voice.'
+            text={'pl':'Cześć, jestem ','de':'Hallo, ich bin ','es':'Hola, soy ','fr':'Bonjour, je suis '}.get(str(data.get('lang') or (robot.get('brain') or {}).get('voiceLang','en')), 'Hello, I am ')+str(robot.get('name','Robot'))[:65]+'.'
             msg_id='preview-'+user['id']
         else:
             msg_id=str(data.get('message_id',''))
@@ -1338,7 +1394,7 @@ def robot_speech():
         return brain.get(saved_key) or fallback
     voice=str(preview_or_saved('voice_id','voiceId',''))
     language=str(preview_or_saved('lang','voiceLang','en'))
-    if language not in ('en','pl','de','es','fr'):language='en'
+    language=_spoken_language(text,language)
     try:
         rate=float(preview_or_saved('rate','voiceRate',1))
         pitch=float(preview_or_saved('pitch','voicePitch',1))
@@ -1347,6 +1403,10 @@ def robot_speech():
     rate=max(.6,min(1.6,rate));pitch=max(.5,min(1.7,pitch))
     key=str(request.headers.get('X-Solvi-Voice-Key','')).strip() or os.environ.get('ELEVENLABS_API_KEY','')
     if key and not (16<=len(key)<=256 and all(33<=ord(c)<=126 for c in key)):return json_error('Invalid voice API key')
+    if provider=='elevenlabs' and key:
+        with SPEECH_LOCK:known=ELEVEN_VERIFIED_LANGUAGES.get((hashlib.sha256(key.encode()).hexdigest(),voice))
+        if known and known[0] and language not in {v.split('-')[0] for v in known[0]}:
+            return json_error('Selected ElevenLabs voice is not verified for '+language+'. Choose a voice matching the language in Robot Brains.',422)
     cache_key=hashlib.sha256(json.dumps([room_id,robot_id,msg_id,provider,voice,language,rate,pitch,text,hashlib.sha256(key.encode()).hexdigest() if provider=='elevenlabs' else ''],sort_keys=True).encode()).hexdigest()
     with SPEECH_LOCK:
         cached=SPEECH_CACHE.get(cache_key)
@@ -1472,7 +1532,7 @@ def set_scene():
         if o['kind']=='robot':
             if 'turnSpeed' in o and (not isinstance(o['turnSpeed'],(float,int)) or isinstance(o['turnSpeed'],bool) or not math.isfinite(o['turnSpeed']) or not .25<=o['turnSpeed']<=4):return json_error('Invalid robot turn speed')
             brain=o.get('brain',{})
-            if not isinstance(brain,dict) or any((k=='initiative' and not isinstance(v,bool)) or (k!='initiative' and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
+            if not isinstance(brain,dict) or any((k in ('initiative','initiativeVision') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision') and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
             if brain.get('portrait') and not re.fullmatch(r'[0-9a-f-]{36}',brain['portrait']):return json_error('Invalid portrait reference')
             if brain.get('portrait'):
                 with db() as con:portrait=con.execute('SELECT mime FROM media WHERE id=?',(brain['portrait'],)).fetchone()
@@ -1525,7 +1585,7 @@ def patch_scene_object():
         if 'brain' in obj:
             if obj['kind']!='robot' or not isinstance(obj['brain'],dict):return json_error('Invalid robot brain')
             limits={'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8}
-            if any((k=='initiative' and not isinstance(v,bool)) or (k!='initiative' and (k not in limits or not isinstance(v,str) or len(v)>limits[k])) for k,v in obj['brain'].items()):return json_error('Invalid robot brain fields')
+            if any((k in ('initiative','initiativeVision') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision') and (k not in limits or not isinstance(v,str) or len(v)>limits[k])) for k,v in obj['brain'].items()):return json_error('Invalid robot brain fields')
             if obj['brain'].get('portrait') and not re.fullmatch(r'[0-9a-f-]{36}',obj['brain']['portrait']):return json_error('Invalid portrait reference')
             if obj['brain'].get('portrait'):
                 with db() as con:portrait=con.execute('SELECT mime FROM media WHERE id=?',(obj['brain']['portrait'],)).fetchone()

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {captureRobotView,captureRobotPortrait} from './robots.js';
+import {observationPlan,scanSummary} from './robot-observation.js';
 const $=id=>document.getElementById(id);
 const fields={personality:'brainsPersonality',history:'brainsHistory',beliefs:'brainsBeliefs',triggers:'brainsTriggers',scenario:'brainsScenario'};
 let activeRobot=null,frame=null,frameURL=null;
@@ -8,6 +9,11 @@ function rememberFrame(id,blob,label){
  const rec={blob,label,boxes:[],usage:null};latestFrames.set(id,rec);
  const history=frameHistory.get(id)||[];history.push(rec);if(history.length>10)history.shift();frameHistory.set(id,history);
  return rec;
+}
+export function rememberRobotObservationFrame(robotId,blob,label){
+ rememberFrame(robotId,blob,label);
+ window.dispatchEvent(new CustomEvent('solvi:brain-frame',{detail:{robotId,blob,label}}));
+ window.dispatchEvent(new CustomEvent('solvi:brain-gallery',{detail:{robotId}}));
 }
 export function emitBrainTrace(robotId,robotName,step,detail=''){
  const entry={at:new Date().toLocaleTimeString(),robotId,robotName,step,detail:String(detail).slice(0,1800)};
@@ -39,16 +45,16 @@ const asDataURL=blob=>new Promise((resolve,reject)=>{const reader=new FileReader
 export async function runRobotVisualSearch(world,editor,robot,command,api,isCancelled=()=>false){
  const name=robot.name,id=robot.userData.editorId,phrase=command.target_phrase;
  let lastFrame=null,foundUnmapped=false,spend=0;
- const directions=[0,Math.PI/2,Math.PI,3*Math.PI/2];
+ const directions=observationPlan('look around').map(view=>({yaw:view.yaw*Math.PI/180,pitch:view.pitch}));
  for(let index=0;index<directions.length;index++){
    if(isCancelled())return {status:'cancelled'};
-   const facing=Math.round(directions[index]*180/Math.PI);
+   const facing=Math.round(directions[index].yaw*180/Math.PI);
    let pose=null;
-   emitBrainTrace(id,name,'CAPTURE',`View ${index+1}/4 · head yaw offset ${facing}° · 512 × 512 JPEG`);
-   const image=await captureRobotView(world,robot,{yawOffset:directions[index],onPose:p=>{pose=p;}});
+   emitBrainTrace(id,name,'CAPTURE',`View ${index+1}/${directions.length} · head yaw ${facing}°, pitch ${directions[index].pitch}° · 512 × 512 JPEG`);
+   const image=await captureRobotView(world,robot,{yawOffset:directions[index].yaw,pitchDegrees:directions[index].pitch,onPose:p=>{pose=p;}});
    if(!image)throw Error('Head-camera screenshot returned no JPEG');
-   const captured=rememberFrame(id,image,`SAM · search ${index+1}/4 · ${facing}° · prompt "${phrase}"`);lastFrame=image;
-   window.dispatchEvent(new CustomEvent('solvi:brain-frame',{detail:{robotId:id,blob:image,label:`View ${index+1}/4; head yaw ${facing}° · ${image.size} bytes · SAM request`}}));
+   const captured=rememberFrame(id,image,`SAM · search ${index+1}/${directions.length} · ${facing}° · prompt "${phrase}"`);lastFrame=image;
+   window.dispatchEvent(new CustomEvent('solvi:brain-frame',{detail:{robotId:id,blob:image,label:`View ${index+1}/${directions.length}; head yaw ${facing}° · ${image.size} bytes · SAM request`}}));
    emitBrainTrace(id,name,'META REQUEST',`POST /v1/responses · model sam-3.1 · prompt "${phrase}" · image/jpeg ${image.size} bytes · store=false`);
    const started=performance.now();
    const response=await api.req('/api/ai/vision',{method:'POST',body:JSON.stringify({mode:'segment',prompt:phrase,image:await asDataURL(image)})});
@@ -147,16 +153,15 @@ export function initRobotBrains(world,api,getRoom,toast){
    const brain=cleanBrain(robot.userData.robotBrain);
    for(const [key,id] of Object.entries(fields)){$(id).value=brain[key];$(id).disabled=!window.solviEditor.canEdit(robot);}
    $('brainsInitiative').checked=Boolean(robot.userData.robotBrain?.initiative);
-   for(const [field,id,fallback] of [['voiceProvider','brainsVoiceProvider','local'],['voiceId','brainsVoiceId',''],['voiceLang','brainsVoiceLang','en'],['voiceRate','brainsVoiceRate','1'],['voicePitch','brainsVoicePitch','1']])$(id).value=String(robot.userData.robotBrain?.[field]||fallback);
-   const voiceName=$('brainsVoiceName'),available=window.speechSynthesis?.getVoices?.()||[];voiceName.replaceChildren(new Option('Default device voice',''));
-   for(const item of available)voiceName.add(new Option(item.name+' · '+item.lang,item.name));
-   const savedVoice=String(robot.userData.robotBrain?.voiceName||'');if(savedVoice&&!available.some(item=>item.name===savedVoice))voiceName.add(new Option(savedVoice,savedVoice));voiceName.value=savedVoice;
+   $('brainsInitiativeVision').checked=Boolean(robot.userData.robotBrain?.initiativeVision);
+   for(const [field,id,fallback] of [['voiceProvider','brainsVoiceProvider','local'],['voiceId','brainsVoiceId',''],['voiceLang','brainsVoiceLang','auto'],['voiceRate','brainsVoiceRate','1'],['voicePitch','brainsVoicePitch','1']])$(id).value=String(robot.userData.robotBrain?.[field]||fallback);
+   populateDeviceVoices(robot.userData.robotBrain?.voiceName||'');
    for(const id of ['brainsVoiceProvider','brainsVoiceId','brainsElevenVoiceList','loadElevenVoices','brainsVoiceLang','brainsVoiceName','brainsVoiceRate','brainsVoicePitch'])$(id).disabled=!window.solviEditor.canEdit(robot);
    $('robotVoiceStatus').textContent='Select ElevenLabs and load voices or enter an ID, then Test voice.';
    const list=$('brainsElevenVoiceList');list.replaceChildren(new Option('Load voices from your account',''));
    if($('brainsVoiceId').value)list.add(new Option('Saved voice · '+$('brainsVoiceId').value,$('brainsVoiceId').value));
    list.value=$('brainsVoiceId').value||'';
-   $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);
+   $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);$('brainsInitiativeVision').disabled=!window.solviEditor.canEdit(robot);
    $('saveRobotBrains').disabled=!window.solviEditor.canEdit(robot);$('saveRobotChatPortrait').disabled=!window.solviEditor.canEdit(robot);
    $('brainsVisionResult').textContent='Capture eyes, then Describe scene with Muse Spark or Find object with SAM 3.1.';
    const previous=latestFrames.get(robot.userData.editorId);
@@ -180,7 +185,7 @@ export function initRobotBrains(world,api,getRoom,toast){
  $('saveRobotBrains').onclick=()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot)){toast('Robot is read-only');return;}
    const before=window.solviEditor.snapshot(activeRobot);
-   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),initiative:$('brainsInitiative').checked,
+   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),initiative:$('brainsInitiative').checked,initiativeVision:$('brainsInitiativeVision').checked,
      voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value.trim(),voiceName:$('brainsVoiceName').value,
      voiceLang:$('brainsVoiceLang').value,voiceRate:String(Math.max(.6,Math.min(1.6,Number($('brainsVoiceRate').value)||1))),
      voicePitch:String(Math.max(.5,Math.min(1.7,Number($('brainsVoicePitch').value)||1)))};
@@ -188,6 +193,33 @@ export function initRobotBrains(world,api,getRoom,toast){
    window.solviEditor.queueSave(activeRobot);
    toast(activeRobot.name+' identity saved');
  };
+ function populateDeviceVoices(selected=''){
+   const list=$('brainsVoiceName'),language=$('brainsVoiceLang').value;
+   const all=window.speechSynthesis?.getVoices?.()||[];
+   const matches=all.filter(v=>language==='auto'||v.lang.toLowerCase().startsWith(language));
+   list.replaceChildren(new Option(`Automatic voice · ${language==='auto'?'match spoken language':language.toUpperCase()}`,''));
+   for(const voice of matches)list.add(new Option(`${voice.name} · ${voice.lang}${voice.localService?' · installed':' · service'}`,voice.name));
+   if(selected && !matches.some(v=>v.name===selected))list.add(new Option('Saved voice (not available in this language) · '+selected,selected));
+   list.value=selected||'';
+   if(!matches.length && language!=='auto')$('robotVoiceStatus').textContent=`No ${language} device voice installed. Ubuntu voice or ElevenLabs may still be available.`;
+ }
+ $('brainsVoiceLang').addEventListener('change',()=>{
+   populateDeviceVoices();filterElevenVoices();
+ });
+ window.speechSynthesis?.addEventListener?.('voiceschanged',()=>{if(activeRobot&&!panel.hidden)populateDeviceVoices($('brainsVoiceName').value);});
+ let elevenVoiceCache=[];
+ function filterElevenVoices(){
+   const language=$('brainsVoiceLang').value,list=$('brainsElevenVoiceList'),saved=$('brainsVoiceId').value.trim();
+   list.replaceChildren(new Option('Select voice from account',''));
+   for(const voice of elevenVoiceCache){
+     const supported=voice.languages||[];
+     if(language!=='auto' && supported.length && !supported.some(l=>l===language||l.startsWith(language+'-')))continue;
+     const hint=supported.join(', ')||'language not verified';
+     list.add(new Option(`${voice.name} · ${hint}${voice.accent?' · '+voice.accent:''}`,voice.id));
+   }
+   if(saved&&!Array.from(list.options).some(o=>o.value===saved))list.add(new Option('Saved voice (language unverified) · '+saved,saved));
+   list.value=saved||'';
+ }
  $('brainsElevenVoiceList').onchange=()=>{
   if($('brainsElevenVoiceList').value)$('brainsVoiceId').value=$('brainsElevenVoiceList').value;
  };
@@ -202,12 +234,8 @@ export function initRobotBrains(world,api,getRoom,toast){
      const key=sessionStorage.getItem('solvi-elevenlabs-key');if(key)headers['X-Solvi-Voice-Key']=key;
      const response=await fetch('/api/robots/voices',{headers,cache:'no-store'});
      const data=await response.json();if(!response.ok)throw Error(data.error||`ElevenLabs HTTP ${response.status}`);
-     const list=$('brainsElevenVoiceList'),saved=$('brainsVoiceId').value.trim();
-     list.replaceChildren(new Option('Choose a voice',''));
-     for(const voice of data.voices||[])list.add(new Option(voice.name,voice.id));
-     if(saved&&!Array.from(list.options).some(o=>o.value===saved))list.add(new Option('Saved voice · '+saved,saved));
-     if(saved)list.value=saved;
-     status.textContent=`${(data.voices||[]).length} ElevenLabs voices available${data.more?' (first page)':''}. Choose a voice, then Test voice.`;
+     elevenVoiceCache=data.voices||[];filterElevenVoices();
+     status.textContent=`${elevenVoiceCache.length} account voices listed. Only voices verified for the selected language are shown when metadata is available.`;
    }catch(error){status.textContent='Voice list failed: '+error.message;}
    finally{button.disabled=!window.solviEditor.canEdit(activeRobot);}
  };
@@ -245,6 +273,23 @@ export function initRobotBrains(world,api,getRoom,toast){
      $('brainsScenarioResult').textContent=`Meta response ${data.response_id||'unknown'}\n${data.scenario||'(empty response)'}\n\n${dollars(data.usage)} · ${data.usage?.input_tokens||0} input / ${data.usage?.output_tokens||0} output tokens.\nEditable only — press Save identity. No movement was executed.`;
      emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,'SCENARIO RESPONSE',`${data.scenario||'(empty)'} · ${dollars(data.usage)} · not executed`);
    }catch(e){$('brainsScenarioResult').textContent='Scenario error: '+e.message;emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,'SCENARIO ERROR',e.message);}
+ };
+ $('captureBrainsPanorama').onclick=async()=>{
+   if(!activeRobot)return;
+   const button=$('captureBrainsPanorama');button.disabled=true;
+   const directions=observationPlan('look around');
+   emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,'360 SCAN',scanSummary(directions));
+   try{
+     for(const view of directions){
+       const image=await captureRobotView(world,activeRobot,{yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch});
+       if(!image?.size)throw Error('Camera failed at '+view.label);
+       rememberFrame(activeRobot.userData.editorId,image,'360° · '+view.label);
+     }
+     renderFrameGallery();const last=latestFrames.get(activeRobot.userData.editorId);
+     showFrame(last.blob,last.label);
+     $('brainsVisionResult').textContent='Eight directional frames captured in the gallery. In chat, ask “'+activeRobot.name+', look around” to send all eight labelled JPEGs together to Muse Spark and receive an image-grounded answer.';
+   }catch(error){$('brainsVisionResult').textContent='360° scan failed: '+error.message;}
+   finally{button.disabled=false;}
  };
  $('captureBrainsEye').onclick=async()=>{
    if(!activeRobot){toast('No robot selected');return;}
