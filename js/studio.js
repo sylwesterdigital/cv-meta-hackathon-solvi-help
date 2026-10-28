@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
-import {captureRobotView,captureRobotPortrait} from './robots.js';
+import {captureRobotView,captureRobotPortrait,robotHeadCameraPose} from './robots.js';
 import {initRobotBrains,runRobotVisualSearch,emitBrainTrace,rememberRobotObservationFrame} from './robot-brains.js';
 import {observationPlan,scanSummary} from './robot-observation.js';
+import {observationTarget,matchesObservationTarget,pickTargetViews} from './target-view-filter.js';
 import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,uiScalePercent,safeFontName,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
 import {playCue,primeAudio} from './audio-cues.js';
 import {RobotSpeech} from './robot-speech.js';
@@ -148,19 +149,48 @@ async function reportRobotTask(command,status){
 }
 // Captures and uploads each actual camera direction. Images are attached to the
 // robot reply, so everyone in the room can inspect the evidence used by Muse.
+// Target searches do not describe every direction. First shortlist viewpoints
+// from camera/frustum geometry; when no indexed target is visible, use SAM to
+// filter the actual JPEGs. Empty scans never masquerade as observed objects.
 async function captureRobotObservation(robot,question,{proactive=false}={}){
- const plan=observationPlan(question,proactive),ids=[];
+ const plan=observationPlan(question,proactive),ids=[],views=[];
+ const target=observationTarget(question);
+ const editor=window.solviEditor;
  emitBrainTrace(robot.userData.editorId,robot.name,'SCAN PLAN',scanSummary(plan));
- for(const view of plan){
-  if(window.solviRoom!==activeRoom)throw Error('Room changed during camera scan');
-  const photo=await captureRobotView(window.solviEditor.world,robot,{yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch});
-  if(!photo?.size)throw Error('Head-camera JPEG capture failed at '+view.label);
-  rememberRobotObservationFrame(robot.userData.editorId,photo,'Scan '+view.label+' · real JPEG');
-  const upload=await uploadFile(new File([photo],`robot-eye-${view.yaw}-${view.pitch}-${Date.now()}.jpg`,{type:'image/jpeg'}));
-  ids.push(upload.id);
-  emitBrainTrace(robot.userData.editorId,robot.name,'FRAME UPLOADED',`${view.label}: ${photo.size} JPEG bytes`);
+ let selected=plan.map((view,index)=>({view,index}));
+ let scenePrefilter=false;
+ if(target&&!proactive){
+  const candidates=editor.items.filter(o=>o!==robot&&o.visible&&o.userData.editorKind!=='robot'&&o.userData.editorKind!=='light'&&matchesObservationTarget(o.name,target))
+   .map(o=>{const bounds=new THREE.Box3().setFromObject(o);const sphere=bounds.getBoundingSphere(new THREE.Sphere());return {position:sphere.center,radius:sphere.radius};});
+  if(candidates.length){
+   const poses=plan.map(view=>robotHeadCameraPose(robot,{yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch}));
+   selected=pickTargetViews(plan,poses,candidates,3);
+   scenePrefilter=selected.length>0;
+   emitBrainTrace(robot.userData.editorId,robot.name,'TARGET PREFILTER',`${target.phrase}: ${selected.length} promising directions from scene geometry (${plan.length-selected.length} skipped). This is a candidate, not a visual detection.`);
+  }
  }
- return {media_ids:ids,views:plan.map(v=>v.label),plan};
+ for(const {view} of (scenePrefilter?selected:plan.map((view,index)=>({view,index})))){
+  if(window.solviRoom!==activeRoom)throw Error('Room changed during camera scan');
+  const photo=await captureRobotView(editor.world,robot,{yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch});
+  if(!photo?.size)throw Error('Head-camera JPEG capture failed at '+view.label);
+  // In an unindexed target search, SAM checks whether the target appears.
+  // No-match frames are discarded rather than sent to Muse or attached in chat.
+  if(target&&!proactive&&!scenePrefilter){
+   const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(photo);});
+   const detection=await api.req('/api/ai/vision',{method:'POST',body:JSON.stringify({mode:'segment',prompt:target.phrase,image:data})});
+   if(!(detection.result?.boxes||[]).length){
+    emitBrainTrace(robot.userData.editorId,robot.name,'NO TARGET',`${view.label}: SAM did not detect ${target.phrase}; JPEG discarded.`);
+    continue;
+   }
+  }
+  rememberRobotObservationFrame(robot.userData.editorId,photo,'Target '+(target?.phrase||'room')+' · '+view.label);
+  const upload=await uploadFile(new File([photo],`robot-eye-${view.yaw}-${view.pitch}-${Date.now()}.jpg`,{type:'image/jpeg'}));
+  ids.push(upload.id);views.push(view.label);
+  emitBrainTrace(robot.userData.editorId,robot.name,'FRAME SELECTED',`${view.label}: ${photo.size} JPEG bytes`);
+  if(target&&ids.length>=3)break;
+ }
+ if(target)emitBrainTrace(robot.userData.editorId,robot.name,'SCAN FILTER',`${ids.length} of ${plan.length} directions retained for ${target.phrase}.`);
+ return {media_ids:ids,views,plan,target_phrase:target?.phrase||'',scanned_count:plan.length};
 }
 async function reactToRobotMessage(message){
  if(!message?.id||!message.text||!online||!auth)return;
@@ -176,7 +206,7 @@ async function reactToRobotMessage(message){
      emitBrainTrace(response.robot_id,robot.name,'EYES REQUEST','Capturing a real head-camera observation for the chat question.');
      const scan=await captureRobotObservation(robot,message.text);
      emitBrainTrace(response.robot_id,robot.name,'MUSE VISION',`Sending ${scan.media_ids.length} JPEG(s), labelled camera directions, saved identity, question and goals. No fabricated visual evidence.`);
-     const answer=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:response.robot_id,message_id:message.id,media_ids:scan.media_ids,views:scan.views})});
+     const answer=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:response.robot_id,message_id:message.id,media_ids:scan.media_ids,views:scan.views,target_phrase:scan.target_phrase,scanned_count:scan.scanned_count})});
      if(answer.answer)await bubble(answer.answer);
      emitBrainTrace(response.robot_id,robot.name,'VISION RESULT',`${answer.model||answer.answer?.model} · ${answer.answer?.text||'No text'} · estimated US$${Number(answer.usage?.estimated_usd||0).toFixed(6)}`);
      $('chatStatus').textContent=robot.name+' · camera observation shared'+(answer.usage?' · ~US$'+Number(answer.usage.estimated_usd||0).toFixed(5):'');

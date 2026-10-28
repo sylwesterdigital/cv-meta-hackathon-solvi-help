@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import {captureRobotView,captureRobotPortrait} from './robots.js';
+import {captureRobotView,captureRobotPortrait,robotHeadCameraPose} from './robots.js';
 import {observationPlan,scanSummary} from './robot-observation.js';
+import {observationTarget,matchesObservationTarget,pickTargetViews} from './target-view-filter.js';
 const $=id=>document.getElementById(id);
 const fields={personality:'brainsPersonality',history:'brainsHistory',beliefs:'brainsBeliefs',triggers:'brainsTriggers',scenario:'brainsScenario'};
 let activeRobot=null,frame=null,frameURL=null;
@@ -44,7 +45,7 @@ function raycastSAMBox(pose,box,editor,robot){
 const asDataURL=blob=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});
 export async function runRobotVisualSearch(world,editor,robot,command,api,isCancelled=()=>false){
  const name=robot.name,id=robot.userData.editorId,phrase=command.target_phrase;
- let lastFrame=null,foundUnmapped=false,spend=0;
+ let foundUnmapped=false,spend=0;
  const directions=observationPlan('look around').map(view=>({yaw:view.yaw*Math.PI/180,pitch:view.pitch}));
  for(let index=0;index<directions.length;index++){
    if(isCancelled())return {status:'cancelled'};
@@ -53,16 +54,19 @@ export async function runRobotVisualSearch(world,editor,robot,command,api,isCanc
    emitBrainTrace(id,name,'CAPTURE',`View ${index+1}/${directions.length} · head yaw ${facing}°, pitch ${directions[index].pitch}° · 512 × 512 JPEG`);
    const image=await captureRobotView(world,robot,{yawOffset:directions[index].yaw,pitchDegrees:directions[index].pitch,onPose:p=>{pose=p;}});
    if(!image)throw Error('Head-camera screenshot returned no JPEG');
-   const captured=rememberFrame(id,image,`SAM · search ${index+1}/${directions.length} · ${facing}° · prompt "${phrase}"`);lastFrame=image;
-   window.dispatchEvent(new CustomEvent('solvi:brain-frame',{detail:{robotId:id,blob:image,label:`View ${index+1}/${directions.length}; head yaw ${facing}° · ${image.size} bytes · SAM request`}}));
+   // Keep negative images out of the gallery; only a SAM candidate is evidence worth reviewing.
    emitBrainTrace(id,name,'META REQUEST',`POST /v1/responses · model sam-3.1 · prompt "${phrase}" · image/jpeg ${image.size} bytes · store=false`);
    const started=performance.now();
    const response=await api.req('/api/ai/vision',{method:'POST',body:JSON.stringify({mode:'segment',prompt:phrase,image:await asDataURL(image)})});
    if(isCancelled())return {status:'cancelled'};
    spend+=Number(response.usage?.estimated_usd||0);
    const boxes=response.result?.boxes||[];
-   captured.boxes=boxes;captured.usage=response.usage;
-   window.dispatchEvent(new CustomEvent('solvi:brain-gallery',{detail:{robotId:id}}));
+   if(boxes.length){
+     const captured=rememberFrame(id,image,`SAM · candidate ${index+1}/${directions.length} · ${facing}° · prompt "${phrase}"`);
+     captured.boxes=boxes;captured.usage=response.usage;
+     window.dispatchEvent(new CustomEvent('solvi:brain-frame',{detail:{robotId:id,blob:image,label:`SAM candidate at head yaw ${facing}°`}}));
+     window.dispatchEvent(new CustomEvent('solvi:brain-gallery',{detail:{robotId:id}}));
+   }
    emitBrainTrace(id,name,'SAM RESPONSE',`${Math.round(performance.now()-started)} ms · ${boxes.length} parsed detection(s) · response ${response.result?.id||'unknown'} · estimated US$${Number(response.usage?.estimated_usd||0).toFixed(6)} · total US$${spend.toFixed(6)}`);
    for(const box of boxes){
      const hit=pose&&raycastSAMBox(pose,box,editor,robot);
@@ -75,16 +79,9 @@ export async function runRobotVisualSearch(world,editor,robot,command,api,isCanc
    }
    if(boxes.length)emitBrainTrace(id,name,'SPATIAL MATCH',`${boxes.length} SAM box(es), but no editor mesh intersected the box rays; refusing an ungrounded 3D target.`);
  }
- // A final language-based observation is diagnostic, never used to invent 3D geometry.
- if(lastFrame&&!isCancelled()){
-   try{
-     const question=`Describe visible objects and furniture in this view. Is a ${phrase} visibly present? Distinguish observed objects from guesses. Be concise.`;
-     emitBrainTrace(id,name,'MUSE REQUEST',`POST /v1/responses · muse-spark-1.3 · final captured JPEG · "${question}"`);
-     const result=await api.req('/api/ai/vision',{method:'POST',body:JSON.stringify({mode:'describe',prompt:question,image:await asDataURL(lastFrame)})});
-     spend+=Number(result.usage?.estimated_usd||0);
-     emitBrainTrace(id,name,'MUSE OBSERVATION',`${result.description||'No description returned.'} · estimated total US$${spend.toFixed(6)}. This description did not produce a verified 3D target.`);
-   }catch(e){emitBrainTrace(id,name,'MUSE ERROR',e.message);}
- }
+ // Negative viewpoints were filtered with SAM. Do not pay Muse to describe
+ // the final empty frame, and do not create a false visual finding.
+ emitBrainTrace(id,name,'TARGET FILTER',`No verified scene match for ${phrase}; negative JPEGs discarded, not sent to Muse.`);
  return {status:foundUnmapped?'no-mesh':'not-found',spend};
 }
 
@@ -301,19 +298,33 @@ export function initRobotBrains(world,api,getRoom,toast){
    if(!activeRobot)return;
    const button=$(degrees===180?'captureBrainsHemisphere':'captureBrainsPanorama');button.disabled=true;
    const directions=degrees===180?[-90,-60,-30,0,30,60,90].map(yaw=>({yaw,pitch:0,label:`${yaw}°`})) : observationPlan('look around');
+   const question=$('brainsVisionQuestion').value.trim();
+   const target=observationTarget(question);
    emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,`${degrees} SCAN`,scanSummary(directions));
    try{
      const frames=[];
-     for(const view of directions){
+     const candidates=target?(window.solviEditor?.items||[]).filter(o=>o!==activeRobot&&o.visible&&o.userData.editorKind!=='robot'&&o.userData.editorKind!=='light'&&matchesObservationTarget(o.name,target))
+       .map(o=>{const sphere=new THREE.Box3().setFromObject(o).getBoundingSphere(new THREE.Sphere());return {position:sphere.center,radius:sphere.radius};}):[];
+     const poses=candidates.length?directions.map(view=>robotHeadCameraPose(activeRobot,{yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch})):[];
+     const shortlist=candidates.length?pickTargetViews(directions,poses,candidates,3):[];
+     const indexed=shortlist.length>0;
+     const planned=indexed?shortlist.map(item=>item.view):directions;
+     for(const view of planned){
        const image=await captureRobotView(world,activeRobot,{yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch});
        if(!image?.size)throw Error('Camera failed at '+view.label);
+       if(target&&!indexed&&api.online&&api.auth()){
+         const detected=await api.req('/api/ai/vision',{method:'POST',body:JSON.stringify({mode:'segment',prompt:target.phrase,image:await asDataURL(image)})});
+         if(!(detected.result?.boxes||[]).length)continue;
+       }
        rememberFrame(activeRobot.userData.editorId,image,`${degrees}° · `+view.label);
        frames.push({blob:image,label:view.label});
+       if(target&&frames.length>=3)break;
      }
      renderFrameGallery();const last=latestFrames.get(activeRobot.userData.editorId);
-     showFrame(last.blob,last.label);
+     if(frames.length)showFrame(last.blob,last.label);
+     if(target&&!frames.length){$('brainsVisionResult').textContent=`No camera view verified ${target.phrase}; ${directions.length} headings checked. No Muse description requested.`;return;}
      if(!api.online||!api.auth()){
-       $('brainsVisionResult').textContent=`${directions.length} camera frames saved locally. Log in for Muse assessment.`;return;
+       $('brainsVisionResult').textContent=`${frames.length} camera frames saved locally. Log in for Muse assessment.`;return;
      }
      const robotId=activeRobot.userData.editorId;
      const mediaIds=[];
@@ -324,7 +335,7 @@ export function initRobotBrains(world,api,getRoom,toast){
        mediaIds.push(uploaded.media.id);
      }
      emitBrainTrace(robotId,activeRobot.name,'MUSE SCAN',`${degrees}° · ${mediaIds.length} actual JPEGs uploaded · one model request`);
-     const result=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:window.solviRoom||'main',robot_id:robotId,media_ids:mediaIds,views:frames.map(v=>v.label),manual:true,question:$('brainsVisionQuestion').value.trim()||'Describe the objects and furniture you can actually see.'})});
+     const result=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:window.solviRoom||'main',robot_id:robotId,media_ids:mediaIds,views:frames.map(v=>v.label),manual:true,question:question||'Describe the objects and furniture you can actually see.',target_phrase:target?.phrase||''})});
      $('brainsVisionResult').textContent=result.answer?.text||'No visual description was returned.';
      emitBrainTrace(robotId,activeRobot.name,'MUSE SCAN RESULT',`${result.answer?.text||'(empty)'} · ${result.usage?.estimated_usd||0} estimated USD`);
    }catch(error){$('brainsVisionResult').textContent=`${degrees}° scan failed: `+error.message;}

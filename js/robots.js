@@ -160,6 +160,16 @@ export function setRobotDestination(robot,point,run=false){
   robot.userData.robotGoal=new THREE.Vector3(point.x,robot.position.y,point.z);
   robot.userData.robotMode=run?'run':'walk';
 }
+export function robotHeadCameraPose(robot,options={}){
+ if(!robot||robot.userData.editorKind!=='robot')throw Error('Robot head camera requires a robot.');
+ const camera=new THREE.PerspectiveCamera(72,1,.04,110);
+ robot.add(camera);camera.position.set(0,1.62,0);camera.rotation.order='YXZ';
+ camera.rotation.y=Math.PI+(Number(options.yawOffset)||0);
+ camera.rotation.x=THREE.MathUtils.degToRad(Math.max(-70,Math.min(70,Number(options.pitchDegrees)||0)));
+ camera.updateMatrixWorld(true);
+ const pose={position:camera.getWorldPosition(new THREE.Vector3()).clone(),quaternion:camera.getWorldQuaternion(new THREE.Quaternion()).clone(),fov:72,width:512,height:512};
+ robot.remove(camera);return pose;
+}
 export async function captureRobotView(world,robot,options={}){
   if(!robot||robot.userData.editorKind!=='robot')throw Error('Select a robot in Objects first.');
   const camera=new THREE.PerspectiveCamera(72,1,.04,110);robot.add(camera);

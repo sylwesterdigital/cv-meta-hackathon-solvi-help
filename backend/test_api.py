@@ -511,6 +511,23 @@ assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
     'robot_id':'testrobot-0220','manual':True,'proactive':True,
     'media_ids':[photo_id],'views':['forward']}).status_code==400
 print('PASS: explicit Brains 180/360 vision scan uses one guarded Muse request')
+# v0.2.46: target-directed sweep may discard all unmatched frames without
+# sending irrelevant JPEGs to Muse or inventing a detected chair.
+none_msg=c.post('/api/message',headers=headers,json={'room':'lab','text':'Jessica look around and find a chair'}).get_json()['message']
+with patch('server.active_model_key',return_value='test-key'), patch('server.meta_request',side_effect=AssertionError('No Muse call for zero matched frames')) as unused_muse:
+    no_evidence=c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':none_msg['id'],
+      'robot_id':'testrobot-0220','media_ids':[],'views':[],'target_phrase':'chair','scanned_count':8})
+assert no_evidence.status_code==200,(no_evidence.status_code,no_evidence.data)
+assert no_evidence.get_json()['answer']['media']=='[]'
+assert 'could not verify chair' in no_evidence.get_json()['answer']['text']
+assert no_evidence.get_json()['request']['images']==0 and no_evidence.get_json()['usage'] is None
+assert unused_muse.call_count==0
+assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':none_msg['id'],
+      'robot_id':'testrobot-0220','media_ids':[],'views':[],'target_phrase':'chair','scanned_count':8}).status_code==409
+no_evidence_other=c.post('/api/message',headers=headers,json={'room':'lab','text':'Jessica what do you see'}).get_json()['message']
+assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':no_evidence_other['id'],
+      'robot_id':'testrobot-0220','media_ids':[],'views':[],'target_phrase':'chair','scanned_count':8}).status_code==400
+print('PASS: target scan drops irrelevant images, returns qualified no-match and spends zero Muse tokens')
 print('PASS: 360 head-camera batching, real JPEGs, one Muse call, and nonce-protected proactive observation')
 # The saved portrait is represented as a room-scoped media ID rather than a user avatar.
 robot['brain']['portrait']=photo_id

@@ -28,7 +28,8 @@ test('local TTS selects Polish for Polish text, respecting available language se
 });
 test('server validates eight JPEG media references, direction labels and one-time initiative',()=>{
  const server=load('backend/server.py'),studio=load('js/studio.js');
- assert.match(server,/1<=len\(raw_ids\)<=8/);
+ assert.match(server,/0<=len\(raw_ids\)<=8/);
+ assert.match(server,/Target scan with no retained JPEGs/);
  assert.match(server,/ROBOT_INITIATIVE_CAPTURE.pop\(key,None\)/);
  assert.match(server,/images=len\(paths\)/);
  assert.match(server,/content\.extend\(\[\{'type':'input_text'/);

@@ -167,7 +167,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.45',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.46',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -980,7 +980,7 @@ def robot_vision_reply():
     if manual and (proactive or message_id):return json_error('Manual scan must not impersonate a chat request',400)
     raw_ids=data.get('media_ids')
     if raw_ids is None:raw_ids=[data.get('media_id','')]
-    if not isinstance(raw_ids,list) or not 1<=len(raw_ids)<=8 or any(not isinstance(x,str) or not re.fullmatch(r'[a-fA-F0-9-]{8,80}',x) for x in raw_ids) or len(set(raw_ids))!=len(raw_ids):return json_error('Supply one to eight distinct uploaded JPEGs',400)
+    if not isinstance(raw_ids,list) or not 0<=len(raw_ids)<=8 or any(not isinstance(x,str) or not re.fullmatch(r'[a-fA-F0-9-]{8,80}',x) for x in raw_ids) or len(set(raw_ids))!=len(raw_ids):return json_error('Supply one to eight distinct uploaded JPEGs',400)
     views=data.get('views',['forward'] if data.get('media_ids') is None else [])
     if not isinstance(views,list) or len(views)!=len(raw_ids) or any(not isinstance(v,str) or len(v)>70 for v in views):return json_error('Every image requires a camera-direction label',400)
     with db() as con:
@@ -992,6 +992,17 @@ def robot_vision_reply():
         memories=con.execute('SELECT event FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 5',(room_id,ident)).fetchall()
     if not (proactive or manual) and (not original or not is_robot_visual_question(original['text'])):return json_error('Saved visual question required',403)
     question=(str(data.get('question') or 'Describe visible furniture and objects in these directions; relate them to my current goals.')[:1000] if manual else original['text'][:1200] if original else 'Explore the area, assess surroundings and suggest one useful next step for your current goals.')
+    target_search=re.search(r'\b(chairs?(?:[0-9a-z_-]+)?|sofas?|couches?|beds?|tables?|desks?|lamps?|cabinets?|cupboards?|loveseats?|armchairs?|stools?|televisions?|monitors?)\b',question,re.I)
+    target_phrase=str(data.get('target_phrase') or '').strip()[:80] if target_search else ''
+    # Zero JPEGs is valid only for a specific target scan, not generic vision,
+    # and only as a clearly qualified no-verification result (no model claim).
+    scan_count=data.get('scanned_count')
+    if not raw_ids and (not target_phrase or not isinstance(scan_count,int) or not 1<=scan_count<=8 or proactive or manual):return json_error('Target scan with no retained JPEGs requires a saved visual search',400)
+    if target_phrase:
+        noun=target_search.group(0).lower()
+        aliases={noun,noun.rstrip('s')}
+        if noun.endswith('es'):aliases.add(noun[:-2])
+        if not any(alias and alias in target_phrase.lower() for alias in aliases):return json_error('Visual target does not match the question',400)
     paths=[]
     for media in media_rows:
         if not media or media['mime']!='image/jpeg':return json_error('Uploaded owned JPEGs required',400)
@@ -1020,7 +1031,10 @@ def robot_vision_reply():
     brain=robot.get('brain') if isinstance(robot.get('brain'),dict) else {}
     portrait=str(brain.get('portrait',''))
     model='robot-eye-camera';usage=None
-    if not active_model_key():
+    if not paths:
+        answer=f'I checked the {scan_count} camera directions, but could not verify {target_phrase} in the images. I will not guess a location.'
+        model='robot-eye-target-not-verified'
+    elif not active_model_key():
         answer='I captured '+str(len(paths))+' camera views, but image analysis needs a configured Meta API key.'
     else:
         tries=[v for v in chat_attempts.get(user['id'],[]) if time.time()-v<60]
@@ -1034,15 +1048,23 @@ def robot_vision_reply():
                'recent_experience':[m['event'][:250] for m in memories],
                'active_task':next(({'kind':task['kind'],'target':task.get('target')} for task in ROBOT_TASKS.values() if task['robot_id']==ident and task['room']==room_id and not task['done']),None),
                'recent_chat':[h['text'][:250] for h in reversed(history)]}
+            focus=(
+                'TARGET SEARCH: Respond ONLY about '+target_phrase+'. The uploaded images are shortlisted candidate directions. '
+                'Identify which labelled view actually shows the target, approximate direction and any useful scene context. '
+                'If none is visually confirmed, say so. Ignore unrelated objects; do NOT list all directions or narrate empty frames. '
+                'Reply in at most two concise sentences; do not claim you walked, arrived or sat. '
+                if target_phrase else
+                'ROOM OVERVIEW: Summarize the main useful visual facts in at most three short sentences. '
+                'Do not narrate each frame individually or repeatedly list empty directions. '
+                'A 180/360 sweep consists of labelled separate photographs, not a stitched panorama. '
+            )
             prompt=('Roleplay '+str(robot.get('name','Robot'))[:70]+' in a multiuser 3D world. '
-                'These are real head-camera images captured at the explicitly labelled directions and elevations below. '
-                'Examine ALL images before answering; distinguish what appears in each direction. '
-                'A 180 or 360 scan is made of labelled viewpoints, not a stitched continuous panorama. '
-                'If asked to look down, prioritize the downward frame. If looking for a chair, evaluate every available frame. '
-                'Never claim objects you cannot see. Never claim the robot moved or sat based only on pictures. '
-                'Use saved identity, relevant memories, standing/rest goals and scene-index names for context, not as visual proof. '
-                'If this is a manual or proactive scan, mention one noteworthy observation relevant to a plan and suggest a practical action '
-                'or question; do not repeat generic chair requests or issue movement commands. '
+                'These are genuine robot head-camera JPEGs with their labelled directions. '
+                +focus+
+                'Never claim objects you cannot see. Scene-index names are context, not image evidence. '
+                'If asked to look down, prioritize the downward frame. '
+                'Respect saved identity, goals and recent memories without repetitive filler. '
+                'If proactive, suggest one practical next step without issuing movement commands. '
                 'Reply in the same language as the latest human question when practical. '
                 'Character context: '+json.dumps(context,ensure_ascii=False)[:4300]+
                 '\nQuestion: '+question)
@@ -1054,7 +1076,7 @@ def robot_vision_reply():
                 response=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,'input':[
                     {'role':'user','content':content}]})
                 usage=record_usage(user['id'],'muse-spark-1.3','robot-visual-initiative' if proactive else 'robot-visual-manual' if manual else 'robot-visual-chat',response,images=len(paths))
-                answer=meta_output_text(response).strip()[:1400]
+                answer=meta_output_text(response).strip()[:550 if target_phrase else 760]
                 model='muse-spark-1.3'
                 if not answer:answer='I captured the scan, but Muse Spark returned no description.'
             except Exception as exc:
@@ -1070,7 +1092,7 @@ def robot_vision_reply():
     return jsonify(answer={'id':aid,'role':'assistant','speaker':str(robot['name'])[:100],
       'model':model,'text':answer,'media':json.dumps(raw_ids),'created':ts,'avatar':portrait},
       observed=True,usage=usage,request={'model':model,'image_bytes':sum(p.stat().st_size for p in paths),'images':len(paths),'views':views,'prompt':(original['text'][:400] if original else question[:400] if manual else 'proactive scene scan'),
-      'sends':'real robot head JPEGs with direction labels + question + identity and room context','store':False})
+      'sends':'target-filtered robot head JPEGs with direction labels + question + identity and room context','store':False})
 
 @app.post('/api/robots/react')
 def robot_react():
@@ -1222,7 +1244,7 @@ def robot_task_result():
       'not-found':f'I scanned eight directions with SAM but could not identify {target}.',
       'no-mesh':f'SAM detected {target}, but I could not map the detected pixels onto a reachable 3D scene object.',
       'vision-unavailable':f'I could not complete visual search for {target}; the vision service or camera failed.',
-      'arrived':f'I completed {target}.',
+      'arrived':f'I arrived at the destination for {target}.',
       'sitting':f'I reached {target} and played my Sit animation.',
       'procedural-sitting':f'I reached {target} and am using an approximate seated pose (no Sit clip available).',
       'stopped':'I stopped.',
