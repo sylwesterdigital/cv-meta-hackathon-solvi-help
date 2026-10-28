@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.31",
+  "currentVersion": "0.2.32",
   "releases": [
+    {
+      "version": "0.2.32",
+      "publishedAt": "2026-10-28T17:54:13Z",
+      "changes": [
+        "Keep Objects and World Tools minimized titles on one line; place minimize beside close and remove duplicate window-control glyphs.",
+        "Hide bulk checkboxes and delete commands behind Bulk; keep search and type filter compact and preserve ownership checks.",
+        "Use single-row X/Y/Z number inputs with one reset per transform; keep one contextual slider, and share one slider across robot movement, strafe and turning.",
+        "Make chat composer undock and drag by its header, with remembered position; add video and robot-view attachment icons.",
+        "Post robot-eye screenshots in shared chat as robot-authored images, with optional Muse visual description and usage.",
+        "Use room geometry, robot pose, time, objectives and memories to ground Jessica conversations; recognize unique short nicknames and offer opt-in rate-limited proactive questions."
+      ]
+    },
     {
       "version": "0.2.31",
       "publishedAt": "2026-10-28T17:26:39Z",

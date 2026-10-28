@@ -135,10 +135,10 @@ async function reportRobotTask(command,status){
 }
 async function reactToRobotMessage(message){
  if(!message?.id||!message.text||!online||!auth)return;
- if($('verboseRobotDebug')?.checked)emitBrainTrace('chat','Brain router','CHAT RECEIVED',`Room ${activeRoom}; ${message.text.startsWith('CC:')?'speech caption':'typed message'}: ${message.text.slice(0,400)}. Checking addressed robot and allowed actions.`);
+ // Do not flood chat with a router diagnostic for messages no robot addresses.
  const response=await api.req('/api/robots/react',{method:'POST',body:JSON.stringify({room:activeRoom,text:message.text,message_id:message.id})});
  const traceRobot=response.command?.robot_id||response.robot_id||'chat';
- for(const item of response.trace||[])emitBrainTrace(traceRobot,response.answer?.speaker||response.robot_name||'Jessica',item.step.toUpperCase(),`${item.result} [${item.source}]`);
+ if(response.triggered)for(const item of response.trace||[])emitBrainTrace(traceRobot,response.answer?.speaker||response.robot_name||'Robot',item.step.toUpperCase(),`${item.result} [${item.source}]`);
  if(response.answer)await bubble(response.answer);
  if(response.command){
    const command=response.command,editor=window.solviEditor;
@@ -470,11 +470,24 @@ function setupChatPresentation(){
    float.setAttribute('aria-label',undocked?'Dock composer':'Undock composer');
    if(undocked){composer.style.left=Math.max(6,Math.round((innerWidth-composer.offsetWidth)/2))+'px';composer.style.top=Math.max(65,innerHeight-composer.offsetHeight-20)+'px';}
    else{composer.style.removeProperty('left');composer.style.removeProperty('top');}scrollChatToLatest();};
-  minimize.onclick=()=>{const collapsed=composer.classList.toggle('composer-minimized');minimize.setAttribute('aria-label',collapsed?'Restore composer':'Minimize composer');minimize.textContent=collapsed?'+':'−';scrollChatToLatest();};
-  move.addEventListener('pointerdown',e=>{if(!composer.classList.contains('composer-floating'))return;
-   moving={x:e.clientX,y:e.clientY,left:composer.offsetLeft,top:composer.offsetTop};move.setPointerCapture(e.pointerId);e.preventDefault();});
-  move.addEventListener('pointermove',e=>{if(!moving)return;composer.style.left=Math.max(4,Math.min(innerWidth-composer.offsetWidth-4,moving.left+e.clientX-moving.x))+'px';composer.style.top=Math.max(52,Math.min(innerHeight-composer.offsetHeight-4,moving.top+e.clientY-moving.y))+'px';});
-  for(const event of ['pointerup','pointercancel'])move.addEventListener(event,()=>moving=null);
+  minimize.onclick=()=>{const collapsed=composer.classList.toggle('composer-minimized');minimize.setAttribute('aria-label',collapsed?'Restore composer':'Minimize composer');minimize.dataset.uiIcon=collapsed?'opened':'minified';minimize.style.setProperty('--ui-button-icon',`url("./assets/ui-icons/${collapsed?'opened':'minified'}.svg")`);scrollChatToLatest();};
+  move.addEventListener('pointerdown',e=>{
+   if(e.button!==0)return;
+   const rect=composer.getBoundingClientRect();
+   if(!composer.classList.contains('composer-floating')){
+     composer.classList.add('composer-floating');composer.style.left=rect.left+'px';composer.style.top=rect.top+'px';
+     float.setAttribute('aria-label','Dock composer');
+   }
+   moving={x:e.clientX,y:e.clientY,left:parseFloat(composer.style.left)||rect.left,top:parseFloat(composer.style.top)||rect.top};
+   move.setPointerCapture(e.pointerId);e.preventDefault();
+  });
+  move.addEventListener('pointermove',e=>{
+   if(!moving)return;
+   composer.style.left=Math.max(4,Math.min(innerWidth-composer.offsetWidth-4,moving.left+e.clientX-moving.x))+'px';
+   composer.style.top=Math.max(52,Math.min(innerHeight-composer.offsetHeight-4,moving.top+e.clientY-moving.y))+'px';
+  });
+  for(const event of ['pointerup','pointercancel'])move.addEventListener(event,()=>{if(moving){localStorage.setItem('solvi-composer-pos',JSON.stringify({left:composer.style.left,top:composer.style.top}));}moving=null;});
+  try{const loc=JSON.parse(localStorage.getItem('solvi-composer-pos')||'null');if(loc&&loc.left&&loc.top){composer.classList.add('composer-floating');composer.style.left=Math.max(4,Math.min(innerWidth-100,parseFloat(loc.left)))+'px';composer.style.top=Math.max(52,Math.min(innerHeight-70,parseFloat(loc.top)))+'px';float.setAttribute('aria-label','Dock composer');}}catch{}
   const attachments=$('attachmentMenu'),toggle=$('attachmentButton');
   const closeAttach=()=>{attachments.hidden=true;toggle.setAttribute('aria-expanded','false');};
   toggle.onclick=()=>{attachments.hidden=!attachments.hidden;toggle.setAttribute('aria-expanded',String(!attachments.hidden));};
@@ -539,7 +552,14 @@ function bindUI(world){
  $('sendChat').onclick=send;$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
  $('chatFile').onchange=e=>attach(e.target.files[0]);$('recordAudio').onclick=()=>startRecording(false);
  $('recordVideo').onclick=()=>startRecording(true);
- $('robotVision').onclick=async()=>{try{const img=await robotView(world);const ok=await attach(new File([img],`robot-vision-${Date.now()}.jpg`,{type:'image/jpeg'}));if(!ok)return;show('chatPanel',true);$('chatInput').value='Robot eye view · '+(window.solviEditor?.selected?.name||'selected robot');await send();scrollChatToLatest();}catch(e){toast(e.message);}};
+ $('robotVision').onclick=async()=>{try{
+   const robot=window.solviEditor?.selected;if(robot?.userData.editorKind!=='robot')throw Error('Select a robot before capturing its eyes.');
+   const img=await robotView(world);const media=await uploadFile(new File([img],`robot-eye-${Date.now()}.jpg`,{type:'image/jpeg'}));
+   const reply=await api.req('/api/robots/eyes',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:robot.userData.editorId,media_id:media.id})});
+   show('chatPanel',true);await bubble(reply.answer);$('chatStatus').textContent=robot.name+' · eye image shared'+(reply.usage?' · ~US$'+Number(reply.usage.estimated_usd||0).toFixed(5):'');
+   emitBrainTrace(robot.userData.editorId,robot.name,'EYE FRAME SHARED',`512×512 JPEG attached as ${robot.name}'s own reply; ${reply.model||'local'}; usage ${reply.usage?.estimated_usd||0}`);
+   scrollChatToLatest();
+  }catch(e){toast(e.message);}};
  $('adminButton').onclick=()=>show('adminBackdrop',true);$('closeAdmin').onclick=()=>show('adminBackdrop',false);
  $('adminLogin').onclick=adminLogin;$('adminRefresh').onclick=stats;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){show('addMenu',false);show('adminBackdrop',false);if(me)show('profileBackdrop',false);}});
@@ -548,6 +568,21 @@ function bindUI(world){
  document.addEventListener('pointerdown',primeAudio,{once:true});
  $('verboseRobotDebug').checked=sessionStorage.getItem('solvi-brain-debug')!=='0';$('verboseRobotDebug').onchange=()=>{sessionStorage.setItem('solvi-brain-debug',$('verboseRobotDebug').checked?'1':'0');chatSignature='';loadMessages();};
  setupChatPresentation();setupSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();initRobotBrains(world,api,()=>activeRoom,toast);begin();
+ // Opt-in robot social initiatives: the server enforces a six-minute per-robot
+ // cooldown even with multiple connected clients. They are never executable moves.
+ let initiativeBusy=false;
+ const tryInitiative=async()=>{
+   if(initiativeBusy||document.visibilityState!=='visible'||!online||!auth||!me)return;
+   const editor=window.solviEditor;
+   const robot=editor?.items?.find(o=>o.userData.editorKind==='robot'&&o.userData.robotBrain?.initiative&&editor.canEdit(o));
+   if(!robot)return;
+   initiativeBusy=true;
+   try{const outcome=await api.req('/api/robots/initiative',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:robot.userData.editorId})});
+     if(outcome.answer){await bubble(outcome.answer);emitBrainTrace(robot.userData.editorId,robot.name,'INITIATIVE',`Muse Spark proactive question · estimated US$${Number(outcome.usage?.estimated_usd||0).toFixed(6)} · no movement executed`);}
+   }catch(e){console.info('Robot initiative unavailable:',e.message);}
+   finally{initiativeBusy=false;}
+ };
+ setTimeout(tryInitiative,45000);setInterval(tryInitiative,180000);
  setInterval(async()=>{if(online&&auth){try{await api.req('/api/me');}catch{ /* expiry handler opens sign-in */ }}},45000);
 }
 export function initStudio(world){bindUI(world);}

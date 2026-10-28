@@ -114,6 +114,7 @@ export class SceneEditor{
   });
   window.addEventListener('dragend',()=>overlay.hidden=true);
 
+  byId('toolboxMinimize').textContent='';
   byId('toolboxMinimize').onclick=()=>{const collapsed=byId('editorToolbox').classList.toggle('minimized');byId('toolboxMinimize').dataset.uiIcon=collapsed?'opened':'minified';byId('toolboxMinimize').style.setProperty('--ui-button-icon',`url("./assets/ui-icons/${collapsed?'opened':'minified'}.svg")`);};
   const openMenu=(x,y)=>{menu.hidden=false;menu.style.right='auto';menu.style.left=Math.max(8,Math.min(innerWidth-275,x))+'px';menu.style.top=Math.max(54,Math.min(innerHeight-370,y))+'px';search.value='';for(const b of menu.querySelectorAll('.add-group button'))b.hidden=false;};
   this.showAddMenu=openMenu;
@@ -124,6 +125,7 @@ export class SceneEditor{
   byId('sceneObjectSearch').addEventListener('input',bulkFilter);
   byId('sceneObjectFilter').addEventListener('change',bulkFilter);
   byId('sceneSelectAll').addEventListener('change',e=>{for(const o of this.visibleSceneItems()){if(this.canEdit(o)){if(e.target.checked)this.bulkChecked.add(o.userData.editorId);else this.bulkChecked.delete(o.userData.editorId);}}this.refreshList();});
+  byId('sceneBulkToggle').onclick=()=>{const panel=byId('scenePanel'),active=panel.classList.toggle('bulk-mode');byId('sceneBulkToggle').setAttribute('aria-expanded',String(active));byId('sceneBulkRow').hidden=!active;if(!active)this.bulkChecked.clear();this.refreshList();};
   byId('sceneDeleteSelected').onclick=()=>this.removeBulk(false);
   byId('sceneDeleteAll').onclick=()=>this.removeBulk(true);
   byId('objectsButton').onclick=()=>{const panel=byId('scenePanel');if(panel.hidden){panel.hidden=false;panel.classList.remove('minimized');}else panel.classList.toggle('minimized');this.refreshList();};
@@ -131,6 +133,15 @@ export class SceneEditor{
   byId('closeScenePanel').onclick=()=>byId('scenePanel').hidden=true;
   byId('closeProperties').onclick=()=>{byId('propertiesPanel').hidden=true;this.clearLightHelper();};
   for(const id of ['objectPhysicsMode','objectCollider','objectRestitution','objectFriction'])byId(id).addEventListener('change',()=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||['robot','light'].includes(obj.userData.editorKind))return;obj.userData.physics=physicsOptions({mode:byId('objectPhysicsMode').value,collider:byId('objectCollider').value,friction:byId('objectFriction').value,restitution:byId('objectRestitution').value});this.physics.sync(obj);this.queueSave(obj);this.updateColliderOption();});
+  const selector=byId('robotSpeedKind'),activeSpeed=byId('robotSpeedActive'),activeValue=byId('robotSpeedActiveValue');
+  const syncRobotSpeed=()=>{const input=byId(selector.value);if(!input)return;
+   activeSpeed.min=input.min;activeSpeed.max=input.max;activeSpeed.step=input.step;activeSpeed.value=input.value;
+   activeSpeed.setAttribute('aria-label',selector.selectedOptions[0].text+' speed');
+   activeValue.textContent=Number(input.value).toFixed(2)+'×';};
+  selector.onchange=syncRobotSpeed;
+  activeSpeed.oninput=()=>{const input=byId(selector.value);if(!input)return;input.value=activeSpeed.value;
+   input.dispatchEvent(new Event('input',{bubbles:true}));syncRobotSpeed();};
+  this.syncRobotSpeed=syncRobotSpeed;
   const strafe=byId('robotStrafeSpeed');strafe.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotStrafeSpeed=Number(strafe.value);byId('robotStrafeLabel').textContent=Number(strafe.value).toFixed(1)+'×';this.queueSave(this.selected);};
   const turn=byId('robotTurnSpeed');turn.addEventListener('input',()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotTurnSpeed=Number(turn.value);byId('robotTurnLabel').textContent=Number(turn.value).toFixed(2)+'×';this.queueSave(this.selected);});
   byId('openRobotBrains').onclick=()=>window.dispatchEvent(new Event('solvi:open-brains'));
@@ -180,7 +191,7 @@ export class SceneEditor{
    range.setAttribute('aria-label',text+' slider');
    range.value=String(Math.min(limits[1],Math.max(limits[0],Number(number.value)||0)));
    byId('inspectorSliderValue').textContent=number.value;
-   group.insertAdjacentElement('afterend',context);context.hidden=false;
+   const anchor=number.closest('.transform-group') || group;anchor.insertAdjacentElement('afterend',context);context.hidden=false;
   };
   this.activateInspectorValue=activateValue;
   byId('objectInspector').addEventListener('focusin',event=>activateValue(event.target));
@@ -197,10 +208,17 @@ export class SceneEditor{
    activeNumeric.dispatchEvent(new Event('change',{bubbles:true}));
   });
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
-   const id=`${field}-${axis}`,number=byId(id),reset=byId(id+'-reset');
+   const id=`${field}-${axis}`,number=byId(id);
    number.addEventListener('input',()=>{if(activeNumeric===number){range.value=number.value;byId('inspectorSliderValue').textContent=number.value;}});
-   reset.onclick=()=>{number.value=field==='scale'?'1':'0';number.dispatchEvent(new Event('change',{bubbles:true}));this.updateInspector();};
+
   }
+  for(const field of ['position','rotation','scale'])byId(field+'-reset').onclick=()=>{
+   const obj=this.selected;if(!obj||!this.canEdit(obj))return;
+   const before=this.snapshot(obj);const neutral=field==='scale'?1:0;
+   obj[field].set(neutral,neutral,neutral);this.physics.sync(obj);
+   this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.updateInspector();
+   byId('inspectorValueSlider').hidden=true;
+  };
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
    const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canEdit(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v))return;const before=this.snapshot(this.selected);
     const vec=this.selected[field];const name=['x','y','z'][axis];vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
@@ -290,7 +308,7 @@ export class SceneEditor{
   byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
-  byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);byId('sceneModelControls').hidden=obj.userData.editorKind!=='model';if(obj.userData.editorKind==='model')byId('sceneModelPath').textContent=obj.userData.modelUrl||'No model';if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed||1.8;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed||1.8).toFixed(1)+'×';const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed||1;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';}
+  byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);byId('sceneModelControls').hidden=obj.userData.editorKind!=='model';if(obj.userData.editorKind==='model')byId('sceneModelPath').textContent=obj.userData.modelUrl||'No model';if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed||1.8;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed||1.8).toFixed(1)+'×';const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed||1;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';this.syncRobotSpeed?.();}
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
     const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);if(this.activateInspectorValue && !byId('inspectorValueSlider').hidden && byId('inspectorActiveRange') && document.activeElement?.id===`${name}-${i}`)this.activateInspectorValue(document.activeElement);
   });
@@ -306,7 +324,7 @@ export class SceneEditor{
  refreshList(){const list=byId('sceneItems');if(!list)return;list.replaceChildren();const visible=this.visibleSceneItems();const ids=new Set(this.items.map(o=>o.userData.editorId));for(const id of this.bulkChecked)if(!ids.has(id))this.bulkChecked.delete(id);
   for(const obj of visible){const row=document.createElement('div');row.className='scene-item-row';const check=document.createElement('input');check.type='checkbox';check.className='scene-row-check';check.title='Select '+obj.name;check.setAttribute('aria-label','Select '+obj.name);check.checked=this.bulkChecked.has(obj.userData.editorId);check.disabled=!this.canEdit(obj);check.onchange=()=>{if(check.checked)this.bulkChecked.add(obj.userData.editorId);else this.bulkChecked.delete(obj.userData.editorId);this.updateBulkControls();};
    const b=document.createElement('button');b.className=obj===this.selected?'selected':'';b.textContent=`${obj.userData.editorKind} · ${obj.name}`;b.dataset.objectKind=obj.userData.editorKind;b.onclick=()=>this.select(obj);
-   const remove=document.createElement('button');remove.className='scene-item-delete';remove.textContent='';remove.dataset.uiIcon='delete';remove.title='Delete '+obj.name;remove.setAttribute('aria-label','Delete '+obj.name);remove.disabled=!this.canEdit(obj);remove.onclick=()=>{this.select(obj);this.remove();};row.append(check,b,remove);list.append(row);}
+   const remove=document.createElement('button');remove.className='scene-item-delete';remove.textContent='';remove.dataset.uiIcon='delete';remove.title='Delete '+obj.name;remove.setAttribute('aria-label','Delete '+obj.name);remove.disabled=!this.canEdit(obj);remove.onclick=()=>{this.select(obj);this.remove();};if(byId('scenePanel').classList.contains('bulk-mode'))row.append(check);row.append(b,remove);list.append(row);}
   this.updateBulkControls();}
  updateBulkControls(){const visible=this.visibleSceneItems().filter(o=>this.canEdit(o));const n=this.items.filter(o=>this.bulkChecked.has(o.userData.editorId)&&this.canEdit(o)).length;byId('sceneDeleteSelected').disabled=n===0;byId('sceneDeleteSelected').textContent=`Delete ${n||'selected'}`;byId('sceneDeleteAll').disabled=!this.items.some(o=>this.canEdit(o));byId('sceneSelectAll').checked=visible.length>0&&visible.every(o=>this.bulkChecked.has(o.userData.editorId));byId('sceneSelectAll').indeterminate=visible.some(o=>this.bulkChecked.has(o.userData.editorId))&&!byId('sceneSelectAll').checked;}
  removeBulk(all){const targets=this.items.filter(o=>this.canEdit(o)&&(all||this.bulkChecked.has(o.userData.editorId)));if(!targets.length)return;

@@ -269,6 +269,38 @@ assert planned.get_json()['command']['kind']=='stop' and 'My plan:' in planned.g
 assert any(x['step']=='muse-plan' for x in planned.get_json()['trace'])
 assert planned.get_json()['usage']['input_tokens']==44
 assert fake_model.call_args.args[2]['model']=='muse-spark-1.3'
+# v0.2.32: robot eye image is a robot-authored media message, not a human statement.
+from io import BytesIO as _BytesIO
+up=c.post('/api/media',headers=headers,data={'file':(_BytesIO(b'\xff\xd8\xff\xdbtest-camera-frame\xff\xd9'),'head-eye.jpg','image/jpeg')})
+assert up.status_code==200,(up.status_code,up.data)
+mid=up.get_json()['media']['id']
+with patch('server.active_model_key',return_value=''):
+    eyes=c.post('/api/robots/eyes',headers=headers,json={'room':'lab','robot_id':'testrobot-0220','media_id':mid})
+assert eyes.status_code==200,(eyes.status_code,eyes.data)
+assert eyes.get_json()['answer']['speaker']=='Jessica' and mid in eyes.get_json()['answer']['media']
+assert eyes.get_json()['answer']['text'].startswith('I see this:')
+with patch('server.active_model_key',return_value='test-key'), patch('server.meta_request',return_value={
+    'id':'resp-eye','output':[{'type':'message','content':[{'type':'output_text','text':'I see a table and a lamp.'}]}],
+    'usage':{'input_tokens':100,'output_tokens':15,'images_processed':1}}) as fake_eye:
+    eyes=c.post('/api/robots/eyes',headers=headers,json={'room':'lab','robot_id':'testrobot-0220','media_id':mid})
+assert eyes.status_code==200,(eyes.status_code,eyes.data)
+assert 'I see a table' in eyes.get_json()['answer']['text']
+assert fake_eye.call_args.args[2]['input'][0]['content'][1]['type']=='input_image'
+assert c.post('/api/robots/initiative',headers=headers,json={'room':'lab','robot_id':'testrobot-0220'}).status_code==403
+robot['brain']['initiative']=True
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==200
+with patch('server.active_model_key',return_value='test-key'), patch('server.meta_request',return_value={
+    'id':'resp-proactive','output_text':'Could we inspect the sphere together?',
+    'usage':{'input_tokens':80,'output_tokens':11}}) as proactive_mock:
+    initiative=c.post('/api/robots/initiative',headers=headers,json={'room':'lab','robot_id':'testrobot-0220'})
+    again=c.post('/api/robots/initiative',headers=headers,json={'room':'lab','robot_id':'testrobot-0220'})
+assert initiative.status_code==200,(initiative.status_code,initiative.data)
+assert initiative.get_json()['answer']['speaker']=='Jessica'
+assert again.status_code==200 and again.get_json()['triggered'] is False
+assert proactive_mock.call_count==1
+# A short unambiguous vocative is routed to the full robot name.
+from server import _robot_address
+assert _robot_address('hi Jess how are you?', [robot]) is robot
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-0220'}}).status_code==200
 print('PASS: robot Brains persisted, validated and permissioned; usage and diagnostics secured')
 

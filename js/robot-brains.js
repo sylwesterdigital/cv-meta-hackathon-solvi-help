@@ -146,6 +146,8 @@ export function initRobotBrains(world,api,getRoom,toast){
    $('brainsHeading').textContent=robot.name+' · Brains';$('brainsEyeTitle').textContent=robot.name+' · eye-camera observation';$('brainsLightboxTitle').textContent=robot.name+' · 512 × 512 eye capture';
    const brain=cleanBrain(robot.userData.robotBrain);
    for(const [key,id] of Object.entries(fields)){$(id).value=brain[key];$(id).disabled=!window.solviEditor.canEdit(robot);}
+   $('brainsInitiative').checked=Boolean(robot.userData.robotBrain?.initiative);
+   $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);
    $('saveRobotBrains').disabled=!window.solviEditor.canEdit(robot);
    $('brainsVisionResult').textContent='Capture eyes, then Describe scene with Muse Spark or Find object with SAM 3.1.';
    const previous=latestFrames.get(robot.userData.editorId);
@@ -169,7 +171,7 @@ export function initRobotBrains(world,api,getRoom,toast){
  $('saveRobotBrains').onclick=()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot)){toast('Robot is read-only');return;}
    const before=window.solviEditor.snapshot(activeRobot);
-   activeRobot.userData.robotBrain=Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()]));
+   activeRobot.userData.robotBrain={...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),initiative:$('brainsInitiative').checked};
    window.solviEditor.recordEdit(before,window.solviEditor.snapshot(activeRobot));
    window.solviEditor.queueSave(activeRobot);
    toast(activeRobot.name+' identity saved');

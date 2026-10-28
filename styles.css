@@ -887,3 +887,55 @@ html[data-button-labels='icon'] #sceneItems .scene-item-delete{
 #editorToolbox .toolbox-actions>button{min-width:0!important;width:100%!important;min-height:34px!important;max-height:40px!important;padding:5px 7px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;overflow-wrap:normal!important;justify-content:flex-start!important}
 #editorToolbox .toolbox-actions>button .ui-button-label{min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;display:block!important}
 @media(max-width:750px){#editorToolbox.editor-toolbox:not(.minimized){width:176px!important;max-width:min(176px,calc(100vw - 16px))!important}#editorToolbox.editor-toolbox.minimized{width:102px!important;max-width:102px!important}}
+
+/* v0.2.32: compact functional chrome, not scaled cards. */
+#scenePanel>.panel-title,#editorToolbox>.toolbox-title{display:flex!important;align-items:center!important;gap:5px!important;padding:5px 8px!important;min-height:42px!important}
+#scenePanel>.panel-title>strong,#editorToolbox>.toolbox-title>strong{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;word-break:keep-all!important;overflow-wrap:normal!important;min-width:0!important;flex:1 1 auto;font-size:14px!important;line-height:1.2!important}
+#scenePanel #minimizeScenePanel{margin-left:auto!important}
+#scenePanel #minimizeScenePanel,#scenePanel #closeScenePanel{flex:0 0 30px!important;width:30px!important;min-width:30px!important;max-width:30px!important;height:30px!important;min-height:30px!important;max-height:30px!important;padding:6px!important}
+#scenePanel.minimized{width:174px!important;min-width:174px!important;max-width:174px!important}
+#editorToolbox.editor-toolbox.minimized{width:178px!important;min-width:178px!important;max-width:178px!important}
+#editorToolbox.editor-toolbox.minimized .toolbox-title{min-width:0!important}
+#editorToolbox .toolbox-title #toolboxMinimize{margin-left:auto!important;flex:0 0 30px!important;width:30px!important;height:30px!important;min-width:30px!important;min-height:30px!important;max-width:30px!important;max-height:30px!important;padding:6px!important}
+#scenePanel .scene-filter-row{display:flex!important;align-items:center!important;gap:5px!important;flex-wrap:nowrap!important}
+#scenePanel #sceneBulkToggle{flex:0 0 44px!important;min-width:44px!important;max-width:44px!important;min-height:30px!important;height:30px!important;padding:3px!important;font-size:11px!important}
+#scenePanel.bulk-mode #sceneBulkToggle{background:var(--solvi-accent)!important;color:#101e2b!important}
+#scenePanel #sceneObjectSearch{flex:1 1 auto!important;width:0!important;min-width:0!important}
+#scenePanel #sceneObjectFilter{flex:0 0 70px!important;width:70px!important;min-width:70px!important;max-width:70px!important}
+#scenePanel #sceneBulkRow[hidden]{display:none!important}
+#scenePanel #sceneBulkRow{display:flex!important;flex-wrap:nowrap!important;align-items:center!important;gap:4px!important;min-width:0!important;padding:0!important}
+#scenePanel #sceneBulkRow label{flex:1 1 auto!important;min-width:0!important;margin:0!important;white-space:nowrap!important;font-size:10px!important}
+#scenePanel #sceneBulkRow button{flex:0 0 auto!important;font-size:10px!important;min-height:29px!important;padding:3px 5px!important;white-space:nowrap!important}
+#sceneItems .scene-item-row{gap:4px!important}
+#sceneItems .scene-row-check{margin:0 3px 0 0!important}
+/* Inspector XYZ: one shared reset per vector, one contextual range. */
+.properties-panel{width:min(372px,calc(100vw - 12px))!important;max-height:78svh!important}
+.properties-panel #propertyGrid.property-grid{gap:5px!important}
+.properties-panel .transform-group{margin:2px 0!important;padding:5px 7px 7px!important;min-width:0!important}
+.properties-panel .transform-axis-row{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr)) 29px!important;gap:5px!important;align-items:end!important;min-width:0!important}
+.properties-panel .axis-value{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:2px!important;min-width:0!important;margin:0!important;font-size:11px!important;line-height:1.1!important}
+.properties-panel .axis-value input[type=number]{box-sizing:border-box!important;width:100%!important;min-width:0!important;height:31px!important;min-height:31px!important;max-height:31px!important;font-size:12px!important;text-align:center!important;padding:3px!important;font-variant-numeric:tabular-nums}
+.properties-panel .transform-axis-row .transform-reset{width:29px!important;min-width:29px!important;max-width:29px!important;height:31px!important;min-height:31px!important;max-height:31px!important;padding:6px!important;align-self:end!important}
+.properties-panel .transform-axis-row .transform-reset::before{width:15px!important;height:15px!important;flex-basis:15px!important}
+.properties-panel #objectInspector .transform-modes{gap:4px!important}
+.properties-panel #objectInspector .transform-modes button{min-height:32px!important;max-height:34px!important;padding:5px!important}
+.properties-panel #objectInspector .object-actions{margin:2px 0!important}
+.properties-panel #objectInspector .object-rename input{min-height:32px!important;height:32px!important}
+#robotControls .robot-speed-legacy[hidden]{display:none!important}
+#robotControls .robot-speed-single{display:flex!important;align-items:center!important;gap:5px!important;flex-wrap:nowrap!important;max-width:100%!important;margin:5px 0!important}
+#robotControls #robotSpeedKind{width:74px!important;min-width:74px!important;max-width:74px!important;flex:0 0 74px!important;height:31px!important;min-height:31px!important;font-size:11px!important;padding:3px!important}
+#robotControls #robotSpeedActive{flex:1 1 auto!important;min-width:40px!important;width:0!important}
+#robotControls #robotSpeedActiveValue{min-width:43px!important;flex:0 0 43px!important;font-size:11px!important;text-align:right!important}
+/* Shared visually-consistent sliders, native range remains fully interactive. */
+:is(#robotSpeedActive,#inspectorActiveRange,#cameraSpeed,#chaseDistanceSlider,#uiSizeRange,input[type=range]){accent-color:var(--solvi-accent);height:24px!important;min-height:24px!important;cursor:pointer}
+:is(#robotSpeedActive,#inspectorActiveRange,#cameraSpeed,#chaseDistanceSlider,#uiSizeRange,input[type=range])::-webkit-slider-runnable-track{height:5px;border-radius:2px;background:color-mix(in srgb,var(--ui-fg) 28%,var(--ui-bg))}
+:is(#robotSpeedActive,#inspectorActiveRange,#cameraSpeed,#chaseDistanceSlider,#uiSizeRange,input[type=range])::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;margin-top:-6px;border:2px solid var(--ui-panel);border-radius:3px;width:16px;height:17px;background:var(--solvi-accent)}
+:is(#robotSpeedActive,#inspectorActiveRange,#cameraSpeed,#chaseDistanceSlider,#uiSizeRange,input[type=range])::-moz-range-track{height:5px;border-radius:2px;background:color-mix(in srgb,var(--ui-fg) 28%,var(--ui-bg))}
+:is(#robotSpeedActive,#inspectorActiveRange,#cameraSpeed,#chaseDistanceSlider,#uiSizeRange,input[type=range])::-moz-range-thumb{border:2px solid var(--ui-panel);border-radius:3px;width:16px;height:17px;background:var(--solvi-accent)}
+#chatPanel #composerMove{flex:1 1 auto!important;min-width:0!important;text-align:left!important;cursor:grab!important;touch-action:none!important;user-select:none!important}
+#chatPanel #composerMove:active{cursor:grabbing!important}
+#chatPanel #composerMinimize,#chatPanel #composerFloat{flex:0 0 28px!important;width:28px!important;min-width:28px!important;max-width:28px!important;height:26px!important;min-height:26px!important;max-height:26px!important;padding:5px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important}
+#chatPanel .chat-composer.composer-floating{z-index:550!important;will-change:left,top}
+#chatPanel .chat-composer .composer-window-head button::before{width:15px!important;height:15px!important;flex:0 0 15px!important}
+#chatPanel #attachmentButton::before{width:17px!important;height:17px!important}
+@media(max-width:750px){.properties-panel{width:min(354px,calc(100vw - 12px))!important}#scenePanel.minimized{width:164px!important;min-width:164px!important;max-width:164px!important}#editorToolbox.editor-toolbox.minimized{width:166px!important;min-width:166px!important;max-width:166px!important}}

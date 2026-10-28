@@ -6,13 +6,13 @@ const src=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 test('chat has a draggable/minimizable composer, last-message scroll and attach menu',()=>{
  const html=src('index.html'),js=src('js/studio.js'),css=src('styles.css');
  for(const id of ['chatComposer','composerMove','composerMinimize','composerFloat','attachmentButton','attachmentMenu','attachRobotOption'])assert.match(html,new RegExp(`id="${id}"`));
- for(const f of ['scrollChatToLatest','composer-floating','pointerdown','attachRobotOption','await send()'])assert.ok(js.includes(f),f);
+ for(const f of ['scrollChatToLatest','composer-floating','pointerdown','attachRobotOption','/api/robots/eyes'])assert.ok(js.includes(f),f);
  assert.ok(css.includes('#chatPanel .chat-feed{min-height:0!important'));assert.ok(css.includes('scroll-padding-bottom'));
 });
 test('object list has filtered search, select all and guarded persistent bulk delete',()=>{
  const html=src('index.html'),js=src('js/editor.js');
- for(const id of ['sceneObjectSearch','sceneObjectFilter','sceneSelectAll','sceneDeleteSelected','sceneDeleteAll'])assert.ok(html.includes(`id="${id}"`),id);
- for(const f of ['visibleSceneItems(){','removeBulk(all){','this.canEdit(o)','window.confirm(','this.remove();'])assert.ok(js.includes(f),f);
+ for(const id of ['sceneBulkToggle','sceneBulkRow','sceneObjectSearch','sceneObjectFilter','sceneSelectAll','sceneDeleteSelected','sceneDeleteAll'])assert.ok(html.includes(`id="${id}"`),id);
+ for(const f of ['visibleSceneItems(){','removeBulk(all){','this.canEdit(o)','window.confirm(','this.remove();','bulk-mode'])assert.ok(js.includes(f),f);
 });
 test('CC has bounded browser recognition recovery and fallback to Ubuntu Whisper',()=>{
  const code=src('js/voice-captions.js');
