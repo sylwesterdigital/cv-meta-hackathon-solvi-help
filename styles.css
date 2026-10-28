@@ -705,3 +705,111 @@ html[data-button-labels=icon] #settingsDrawer :is(#applyUiScale,#resetUiPreferen
 .properties-panel .property-companion-range{width:100%;min-height:34px;accent-color:var(--solvi-accent);margin:4px 0}
 .properties-panel .physics-object-controls label{display:block;margin:4px 0 7px}
 @media(max-width:750px){.properties-panel .transform-value{grid-template-columns:14px minmax(56px,68px) minmax(42px,1fr) 40px;gap:5px}.properties-panel .transform-reset[data-ui-icon]{min-width:40px!important;width:40px!important;min-height:40px!important;height:40px!important}}
+
+/* v0.2.29: restrained window controls and readable two-line labels.
+   Previous global scale rules inflated every button at 200%; typography may scale,
+   but window chrome and navigation retain usable bounds on narrow screens. */
+#xrButton[hidden],#xrStageButton[hidden]{display:none!important;visibility:hidden!important;pointer-events:none!important}
+.topbar #toolNav{gap:5px!important;align-items:center!important}
+.topbar #toolNav>button:not(#settingsButton):not(#profileButton){
+  flex:0 1 auto!important;min-width:0!important;min-height:34px!important;
+  max-height:46px!important;padding:5px 9px!important;
+  font-size:clamp(11px,calc(12px * var(--ui-scale)),15px)!important;
+  line-height:1.2!important;border-radius:8px!important;
+}
+button[data-ui-icon]>.ui-button-label{
+  min-width:0;min-height:0;max-width:100%;line-height:1.25;
+  overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+  line-clamp:2;overflow-wrap:normal;word-break:normal;hyphens:none;
+  text-overflow:ellipsis;text-align:center;
+}
+button[data-ui-icon]::before{flex-shrink:0!important}
+html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:none!important}
+html[data-button-labels='text'] button[data-ui-icon]>.ui-button-label{display:-webkit-box!important}
+.topbar #toolNav>button[data-ui-icon]:not(#settingsButton):not(#profileButton){gap:7px!important;white-space:normal!important;}
+/* Settings is one cog; profile is its own initials/photo, never a second profile pictogram. */
+.topbar #settingsButton,.topbar #profileButton{
+  position:relative;display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  flex:0 0 34px!important;width:34px!important;height:34px!important;
+  min-width:34px!important;min-height:34px!important;max-width:34px!important;max-height:34px!important;
+  font-size:12px!important;padding:0!important;gap:0!important;overflow:hidden!important;
+  border-radius:50%!important;
+}
+.topbar #settingsButton::before{width:17px!important;height:17px!important;flex:0 0 17px!important}
+.topbar #profileButton::before{display:none!important}
+/* Restrained 34px desktop header controls; minimum 40px on a touchscreen. */
+:is(#closeLog,#closeCall,#closeScenePanel,#minimizeScenePanel,#closeProperties,#closeChat,#closeRoom,#closeProfile,#closeSettings,#closeAvatarGallery,#closeAdmin,#toolboxMinimize).ui-icon-utility[data-ui-icon]{
+  width:34px!important;min-width:34px!important;max-width:34px!important;
+  height:34px!important;min-height:34px!important;max-height:34px!important;
+  flex:0 0 34px!important;padding:7px!important;gap:0!important;border-radius:8px!important;
+}
+:is(#closeLog,#closeCall,#closeScenePanel,#minimizeScenePanel,#closeProperties,#closeChat,#closeRoom,#closeProfile,#closeSettings,#closeAvatarGallery,#closeAdmin,#toolboxMinimize).ui-icon-utility[data-ui-icon]::before{
+  width:17px!important;height:17px!important;flex:0 0 17px!important;
+}
+#scenePanel{width:min(282px,calc(100vw - 12px))!important;max-height:min(60svh,540px)!important}
+#scenePanel.minimized{width:145px!important}
+#scenePanel .panel-title{min-height:42px!important;padding:4px 9px!important;gap:6px!important}
+#scenePanel .panel-title strong{font-size:clamp(13px,calc(13px * var(--ui-scale)),17px)!important}
+#scenePanel .scene-items{padding:6px 7px!important;overflow-y:auto;min-height:0;max-height:calc(min(60svh,540px) - 96px)}
+#sceneItems .scene-item-row{gap:5px!important;min-height:0!important;margin:3px 0!important;align-items:center!important}
+#sceneItems .scene-item-row>button:first-child,
+html[data-button-labels='icon'] #sceneItems .scene-item-row>button:first-child[data-ui-icon]{
+  padding:6px 8px!important;min-height:36px!important;max-height:54px!important;
+  font-size:clamp(11px,calc(12px * var(--ui-scale)),15px)!important;
+  line-height:1.23!important;gap:7px!important;overflow:hidden!important;
+}
+#sceneItems .scene-item-row>button:first-child>.ui-button-label{
+  display:-webkit-box!important;-webkit-line-clamp:2!important;line-clamp:2!important;
+  text-align:left!important;overflow-wrap:anywhere!important;min-width:0!important;
+}
+#sceneItems .scene-item-row>button:first-child::before{
+  width:17px!important;height:17px!important;flex:0 0 17px!important;
+}
+#sceneItems .scene-item-delete,
+html[data-button-labels='icon'] #sceneItems .scene-item-delete{
+  flex:0 0 36px!important;width:36px!important;min-width:36px!important;
+  height:36px!important;min-height:36px!important;max-height:36px!important;
+  padding:8px!important;border-radius:8px!important;
+}
+#sceneItems .scene-item-delete::before{width:18px!important;height:18px!important;flex:0 0 18px!important}
+#scenePanel .panel-footer{gap:6px!important;padding:7px!important}
+#scenePanel .panel-footer button{flex:1 1 0!important;width:50%!important;min-width:0!important;
+ min-height:34px!important;max-height:45px!important;padding:5px 8px!important;
+ font-size:clamp(11px,calc(12px * var(--ui-scale)),15px)!important;gap:6px!important}
+#scenePanel .panel-footer button::before{width:16px!important;height:16px!important;flex-basis:16px!important}
+/* Inspector: three short numeric rows per group; ONE range appears below active row. */
+.properties-panel{width:min(274px,calc(100vw - 12px))!important;max-height:72svh!important}
+.properties-panel #propertyGrid.property-grid{gap:5px!important}
+.properties-panel .transform-group{padding:3px 7px 5px!important}
+.properties-panel .transform-value{display:grid!important;grid-template-columns:14px minmax(65px,1fr) 32px!important;gap:6px!important;margin:2px 0!important}
+.properties-panel .property-grid .transform-value input[type=number]{height:30px!important;min-height:30px!important;padding:3px 6px!important}
+.properties-panel .transform-reset[data-ui-icon]{width:32px!important;min-width:32px!important;height:32px!important;min-height:32px!important;max-height:32px!important;padding:6px!important}
+.properties-panel .transform-reset::before{width:16px!important;height:16px!important;flex:0 0 16px!important}
+.properties-panel #inspectorValueSlider.inspector-value-slider{margin:5px 0!important;padding:7px 9px!important;border:1px solid color-mix(in srgb,var(--ui-fg) 25%,transparent);border-radius:7px;background:color-mix(in srgb,var(--ui-bg) 75%,transparent)}
+.properties-panel #inspectorValueSlider[hidden]{display:none!important}
+.properties-panel .inspector-slider-head{display:flex;align-items:center;justify-content:space-between;gap:9px;font-size:12px!important;margin:0 0 4px}
+.properties-panel #inspectorSliderValue{font-variant-numeric:tabular-nums}
+.properties-panel #inspectorActiveRange{display:block;box-sizing:border-box;width:100%!important;min-height:25px!important;height:25px!important;margin:0!important;accent-color:var(--solvi-accent)}
+@media(max-width:750px){
+ .topbar #toolNav>button:not(#settingsButton):not(#profileButton){min-height:40px!important;max-height:44px!important;padding:5px 7px!important}
+ .topbar #settingsButton,.topbar #profileButton{flex-basis:40px!important;width:40px!important;height:40px!important;min-width:40px!important;min-height:40px!important;max-width:40px!important;max-height:40px!important}
+ :is(#closeLog,#closeCall,#closeScenePanel,#minimizeScenePanel,#closeProperties,#closeChat,#closeRoom,#closeProfile,#closeSettings,#closeAvatarGallery,#closeAdmin,#toolboxMinimize).ui-icon-utility[data-ui-icon]{width:40px!important;min-width:40px!important;max-width:40px!important;height:40px!important;min-height:40px!important;max-height:40px!important;flex-basis:40px!important}
+ #sceneItems .scene-item-delete,html[data-button-labels='icon'] #sceneItems .scene-item-delete{width:40px!important;min-width:40px!important;height:40px!important;min-height:40px!important;flex-basis:40px!important}
+ #scenePanel{max-height:52svh!important}
+ .properties-panel{left:7px!important;top:114px!important;max-width:calc(100vw - 14px)!important}
+}
+/* Inspector is an editor, not a presentation: UI scaling must not inflate each
+   field into oversized cards or split short action labels mid-word. */
+.properties-panel #objectInspector :is(button:not(.transform-reset),select,input:not([type=range]),textarea){
+  font-size:clamp(11px,calc(12px * var(--ui-scale)),14px)!important;
+  line-height:1.25!important;max-width:100%;
+}
+.properties-panel #objectNameInput{font-size:clamp(12px,calc(12px * var(--ui-scale)),15px)!important;height:32px!important;min-height:32px!important;padding:4px 8px!important}
+.properties-panel #objectInspector .object-actions button{font-size:12px!important;min-height:32px!important;padding:5px 8px!important}
+.properties-panel #objectInspector .transform-modes button{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  font-size:12px!important;min-height:34px!important;height:34px!important;
+  padding:4px 5px!important;gap:5px!important;overflow:hidden!important;
+}
+.properties-panel #objectInspector .transform-modes button::before{width:16px!important;height:16px!important;flex:0 0 16px!important}
+.properties-panel #objectInspector .transform-modes button>.ui-button-label{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}

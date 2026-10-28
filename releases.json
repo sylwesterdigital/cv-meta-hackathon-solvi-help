@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.28",
+  "currentVersion": "0.2.29",
   "releases": [
+    {
+      "version": "0.2.29",
+      "publishedAt": "2026-10-28T14:59:44Z",
+      "changes": [
+        "Restore WebXR feature detection: VR controls start hidden and only appear after an immersive-vr support check, including on expanded mobile navigation.",
+        "Remove duplicate Settings cog; keep profile initials or photo as the only profile graphic; use smaller, consistent panel close and minimize buttons.",
+        "Limit icon-and-text button labels to two lines with restrained navigation and object-panel dimensions, including at 200% UI size.",
+        "Replace nine permanent transform sliders and extra physics/light sliders with one context-sensitive range beneath the focused numeric input, retaining precise editing and individual reset buttons.",
+        "Shorten navigation, transform and save labels; preserve keyboard shortcuts through tooltips, and keep all previous Brains, chat, CC, physics and avatar functionality."
+      ]
+    },
     {
       "version": "0.2.28",
       "publishedAt": "2026-10-28T14:22:44Z",

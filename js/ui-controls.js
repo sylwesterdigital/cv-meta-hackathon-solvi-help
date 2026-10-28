@@ -44,6 +44,7 @@ const utilityIconOnly=new Set(['minimizeScenePanel','toolboxMinimize']);
 // Header close controls have an accessible name but no extra visible x or text.
 export function shouldUseIconOnlyControl(button){return /^(?:close[A-Z]|close$)/.test(button.id||'')||utilityIconOnly.has(button.id||'')||button.classList.contains('scene-item-delete');}
 export function iconForButton(button){
+ if(button.id==='profileButton')return null; // Initials/avatar are the profile symbol.
  if(/^close[A-Z]/.test(button.id||''))return 'close';
  if(button.classList.contains('theme-swatch')||button.classList.contains('theme-preset'))return null;
  if(button.dataset?.uiIcon&&fileIcons.has(button.dataset.uiIcon))return button.dataset.uiIcon;
@@ -62,6 +63,8 @@ export function decorateButtons(root=document){
   const name=(b.id==='minimizeScenePanel'?(document.getElementById('scenePanel')?.classList.contains('minimized')?'opened':'minified'):b.id==='toolboxMinimize'?(document.getElementById('editorToolbox')?.classList.contains('minimized')?'opened':'minified'):iconForButton(b));if(!name)continue;
   const label=(b.getAttribute('aria-label')||b.title||b.textContent||'').trim();
   if(!b.title&&label)b.title=label.slice(0,140);
+  if(b.id==='settingsButton' && /^⚙\uFE0F?$/u.test(b.textContent.trim())){b.textContent='';b.classList.add('ui-icon-utility');}
+  if(b.id==='composerToolsButton'){b.setAttribute('aria-label','More chat tools');b.textContent='';b.classList.add('ui-icon-utility');}
   if(shouldUseIconOnlyControl(b)){
    // Remove the original raw X / panel glyph; never show two close icons.
    if(!b.getAttribute('aria-label'))b.setAttribute('aria-label',label||'Close');
@@ -69,6 +72,13 @@ export function decorateButtons(root=document){
   }else if(/^[×✕✖✗▣]$/.test((b.textContent||'').trim())){
    if(!b.getAttribute('aria-label'))b.setAttribute('aria-label',label||'Close');
    b.textContent='';b.classList.add('ui-icon-utility');
+  }
+  // Limit visible labels to two readable lines without altering button actions.
+  if(!b.classList.contains('ui-icon-utility') && b.id!=='profileButton' &&
+     !b.querySelector('.ui-button-label') && [...b.childNodes].every(n=>n.nodeType===3)){
+   const raw=b.textContent.trim();
+   if(raw){const labelSpan=document.createElement('span');labelSpan.className='ui-button-label';
+    labelSpan.textContent=raw.replace(/^[+＋]\s*/u,'').replace(/\s*↗$/u,'');b.replaceChildren(labelSpan);}
   }
   b.dataset.uiIcon=name;
   b.style.setProperty('--ui-button-icon',`url("./assets/ui-icons/${name}.svg")`);

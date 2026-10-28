@@ -154,21 +154,46 @@ export class SceneEditor{
   };
   byId('objectNameInput').onchange=e=>{if(!this.selected||!this.canEdit(this.selected))return;const name=e.target.value.trim().slice(0,100);if(!name)return;const before=this.snapshot(this.selected);this.selected.name=name;byId('objectName').textContent=name;this.recordEdit(before,this.snapshot(this.selected));this.refreshList();this.queueSave(this.selected);};
   byId('deleteObject').onclick=()=>this.remove();
-  // Match each editable number with a range and zero/reset control; changes still go through the existing editor history.
+  // One contextual range, bound to the numeric control the user is adjusting.
+  // It moves beneath the active row, not alongside nine permanently visible sliders.
+  const context=byId('inspectorValueSlider'),range=byId('inspectorActiveRange');
+  let activeNumeric=null;
+  const activateValue=(number)=>{
+   if(!number || !number.matches('input[type="number"]') || !byId('objectInspector').contains(number))return;
+   if(number.disabled)return;
+   const group=number.closest('.transform-value') || number.closest('label') || number.parentElement;
+   if(!group)return;
+   activeNumeric=number;
+   const text=number.getAttribute('aria-label')||number.closest('label')?.textContent?.trim()||number.id;
+   byId('inspectorSliderLabel').textContent=text;
+   const field=number.id.match(/^(position|rotation|scale)-[012]$/)?.[1];
+   const limits=field==='rotation'?[-180,180,'0.5']:field==='scale'?[0.05,10,'0.05']:field==='position'?[-25,25,'0.05']:
+      [Number(number.min||0),Number(number.max||100),number.step||'any'];
+   if(!limits.every((n,i)=>i===2||Number.isFinite(n))||limits[0]>=limits[1])return;
+   range.min=String(limits[0]);range.max=String(limits[1]);range.step=limits[2];
+   range.setAttribute('aria-label',text+' slider');
+   range.value=String(Math.min(limits[1],Math.max(limits[0],Number(number.value)||0)));
+   byId('inspectorSliderValue').textContent=number.value;
+   group.insertAdjacentElement('afterend',context);context.hidden=false;
+  };
+  this.activateInspectorValue=activateValue;
+  byId('objectInspector').addEventListener('focusin',event=>activateValue(event.target));
+  byId('objectInspector').addEventListener('click',event=>{
+    if(event.target.matches?.('input[type="number"]'))activateValue(event.target);
+  });
+  byId('objectInspector').addEventListener('input',event=>{
+    if(activeNumeric===event.target)byId('inspectorSliderValue').textContent=activeNumeric.value;
+  });
+  range.addEventListener('input',()=>{
+   if(!activeNumeric||activeNumeric.disabled)return;
+   activeNumeric.value=range.value;
+   byId('inspectorSliderValue').textContent=range.value;
+   activeNumeric.dispatchEvent(new Event('change',{bubbles:true}));
+  });
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
-   const id=`${field}-${axis}`,number=byId(id),slider=byId(id+'-range'),reset=byId(id+'-reset');
-   slider.addEventListener('input',()=>{number.value=slider.value;number.dispatchEvent(new Event('change',{bubbles:true}));});
-   number.addEventListener('input',()=>{const n=Number(number.value);if(Number.isFinite(n))slider.value=String(Math.min(Number(slider.max),Math.max(Number(slider.min),n)));});
+   const id=`${field}-${axis}`,number=byId(id),reset=byId(id+'-reset');
+   number.addEventListener('input',()=>{if(activeNumeric===number){range.value=number.value;byId('inspectorSliderValue').textContent=number.value;}});
    reset.onclick=()=>{number.value=field==='scale'?'1':'0';number.dispatchEvent(new Event('change',{bubbles:true}));this.updateInspector();};
-  }
-  // All other inspector numerical controls also offer touch-friendly range sliders.
-  for(const number of byId('objectInspector').querySelectorAll('input[type="number"]')){
-   if(!number.id||number.closest('#propertyGrid')||number.id.startsWith('robot'))continue;
-   const min=Number(number.min),max=Number(number.max);if(!number.min||!number.max||!Number.isFinite(min)||!Number.isFinite(max)||min===max)continue;
-   const slider=document.createElement('input');slider.type='range';slider.className='property-companion-range';slider.min=number.min;slider.max=number.max;slider.step=number.step||'any';slider.value=number.value;slider.setAttribute('aria-label',(number.closest('label')?.textContent||number.id).trim()+' slider');
-   number.insertAdjacentElement('afterend',slider);
-   slider.oninput=()=>{number.value=slider.value;number.dispatchEvent(new Event('change',{bubbles:true}));};
-   number.addEventListener('input',()=>{slider.value=number.value;});
   }
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
    const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canEdit(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v))return;const before=this.snapshot(this.selected);
@@ -255,13 +280,13 @@ export class SceneEditor{
   this.updateInspector();this.refreshList();
   if(obj)this.world.focusCameraOn(obj);
   if(obj)this.broadcastEdit(true);}
- updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
+ updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;byId('inspectorValueSlider').hidden=true;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
   byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
   byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);byId('sceneModelControls').hidden=obj.userData.editorKind!=='model';if(obj.userData.editorKind==='model')byId('sceneModelPath').textContent=obj.userData.modelUrl||'No model';if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed||1.8;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed||1.8).toFixed(1)+'×';const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed||1;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';}
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
-    const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);const slider=byId(`${name}-${i}-range`);if(slider && document.activeElement!==slider)slider.value=byId(`${name}-${i}`).value;
+    const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);if(this.activateInspectorValue && !byId('inspectorValueSlider').hidden && byId('inspectorActiveRange') && document.activeElement?.id===`${name}-${i}`)this.activateInspectorValue(document.activeElement);
   });
   const color=obj.material?.color||obj.children.find(c=>c.material?.color)?.material?.color;
   byId('objectColor').value=color?'#'+color.getHexString():'#88bbdd';byId('texturePreset').value=obj.userData.textureName||'none';

@@ -26,13 +26,16 @@ test('Add menu is hidden by CSS despite grid display-important and explicit user
  assert.match(editor,/menu\.hidden=true; \/\/ Never auto-open/);
  assert.match(editor,/addObjectButton'\)\.onclick/);assert.match(editor,/e\.shiftKey&&e\.code==='KeyA'/);
 });
-test('all transform numbers have a slider and an icon reset, scale defaults to one',()=>{
+test('one contextual slider follows selected numeric field; each axis retains reset',()=>{
  const html=source('index.html'),editor=source('js/editor.js');
  for(const field of ['position','rotation','scale'])for(let i=0;i<3;i++){
-  assert.match(html,new RegExp(`id="${field}-${i}-range"`));
+  assert.doesNotMatch(html,new RegExp(`id="${field}-${i}-range"`));
   assert.match(html,new RegExp(`id="${field}-${i}-reset"`));
  }
- assert.match(editor,/number\.dispatchEvent\(new Event\('change'/);
+ assert.match(html,/id="inspectorActiveRange"/);
+ assert.equal((html.match(/id="inspectorActiveRange"/g)||[]).length,1);
+ assert.match(editor,/activeNumeric\.dispatchEvent\(new Event\('change'/);
+ assert.match(editor,/group\.insertAdjacentElement\('afterend',context\)/);
  assert.match(editor,/field==='scale'\?'1':'0'/);
  assert.ok(existsSync(new URL('../assets/ui-icons/reset.svg',import.meta.url)));
 });

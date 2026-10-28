@@ -334,8 +334,8 @@ export class SolviWorld {
     const btn=document.getElementById('xrButton');
     const toast=(message)=>{const el=document.getElementById('toast');el.textContent=message;el.hidden=false;};
     const stage=document.getElementById('xrStageButton');btn.hidden=true;stage.hidden=true;
-    if(navigator.xr?.isSessionSupported){navigator.xr.isSessionSupported('immersive-vr').then(supported=>{btn.hidden=!supported;stage.hidden=!supported;}).catch(()=>{btn.hidden=true;stage.hidden=true;});}
-    stage.onclick=()=>btn.click();btn.disabled=false;btn.textContent='Enter VR';btn.title='WebXR: Meta Quest / compatible headset browser';
+    if(navigator.xr?.isSessionSupported && navigator.xr?.requestSession){navigator.xr.isSessionSupported('immersive-vr').then(supported=>{btn.hidden=!supported;stage.hidden=!supported;}).catch(()=>{btn.hidden=true;stage.hidden=true;});}
+    stage.onclick=()=>btn.click();btn.disabled=false;btn.textContent='VR';btn.title='WebXR: Meta Quest / compatible headset browser';
     btn.addEventListener('click',async()=>{
       if(this.renderer.xr.isPresenting){await this.renderer.xr.getSession()?.end();return;}
       if(!navigator.xr){toast('VR requires a WebXR-enabled browser on a supported headset (e.g. Meta Quest Browser).');return;}
@@ -357,7 +357,7 @@ export class SolviWorld {
         btn.textContent='Exit VR';stage.hidden=true;this.xrMenuPlaced=false;this.teleportAim=null;
         this.renderer.xr.setFoveation?.(.8);
         session.addEventListener('end',()=>{
-          btn.textContent='Enter VR';stage.hidden=false;this.xrMenu.visible=false;
+          btn.textContent='VR';stage.hidden=false;this.xrMenu.visible=false;
           this.teleportIndicator.visible=false;this.teleportAim=null;
           this.renderer.xr.setReferenceSpaceType('local-floor');
         },{once:true});
