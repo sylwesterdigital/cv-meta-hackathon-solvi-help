@@ -105,8 +105,8 @@ body.chat-muted .chat-feed{visibility:hidden;pointer-events:none;}
  #chatButton{order:0}
  #roomSelect{order:1;max-width:125px;min-width:98px;font-size:11px;height:29px}
  #messagesToggleButton{order:2}
- .topbar nav>:not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton){display:none;}
- .topbar nav.nav-expanded>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton){display:inline-flex;}
+ .topbar nav>:not(#webcamButton):not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton){display:none;}
+ .topbar nav.nav-expanded>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#webcamButton):not(#mobileMenuButton){display:inline-flex;}
  .topbar nav button{font-size:10px;padding:5px 7px;height:29px;}
  .statusbar{top:77px;left:9px;font-size:9px;gap:6px;}
  .chat-panel{top:98px!important;}
@@ -184,8 +184,8 @@ button:focus-visible{outline:2px solid var(--solvi-accent)}
 @media(max-width:750px){
  #settingsButton,#profileButton{display:inline-flex!important;order:4!important;flex:0 0 auto}
  #mobileMenuButton{order:5!important}
- .topbar nav>:not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none}
- .topbar nav.nav-expanded>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:inline-flex}
+ .topbar nav>:not(#webcamButton):not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none}
+ .topbar nav.nav-expanded>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#webcamButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:inline-flex}
  .chat-panel:not(.windowed){top:90px!important;bottom:0!important}
  .chat-panel:not(.windowed) .chat-feed{padding:3px 3px 3px!important}
  .chat-row{max-width:min(90vw,460px)!important}
@@ -265,8 +265,8 @@ button:hover:not(:disabled){filter:brightness(1.13)!important;}
 [hidden]{display:none!important}
 #toolNav{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
 #toolNav #mobileMenuButton{display:inline-flex!important}
-#toolNav>:not(#toolsToggleButton):not(#minimapButton):not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:none!important}
-#toolNav.nav-expanded>:not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:inline-flex!important}
+#toolNav>:not(#toolsToggleButton):not(#webcamButton):not(#minimapButton):not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:none!important}
+#toolNav.nav-expanded>:not(#webcamButton):not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:inline-flex!important}
 #toolNav #mobileMenuButton{font-size:12px!important}
 .editor-toolbox{position:fixed;left:18px;top:92px;z-index:19;width:116px;padding:6px;border:1px solid #43586d;border-radius:11px;background:var(--ui-panel);color:var(--ui-fg);box-shadow:0 8px 26px #0005}
 .toolbox-title{display:flex;align-items:center;justify-content:space-between;gap:4px;cursor:grab;padding:2px 2px 6px;font-size:11px;user-select:none}
@@ -550,9 +550,9 @@ html[data-button-labels='icon'] button[data-ui-icon]::before,html[data-button-la
 @media(max-width:750px){
  #mobileMenuButton{display:inline-flex!important}
  #toolNav{width:100%;display:flex!important;justify-content:flex-end!important;flex-wrap:nowrap!important;max-width:100%;overflow-x:auto!important;scrollbar-width:thin}
- #toolNav>:not(#toolsToggleButton):not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none!important}
+ #toolNav>:not(#toolsToggleButton):not(#webcamButton):not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none!important}
  #toolNav.nav-expanded{flex-wrap:wrap!important;overflow-y:auto!important;max-height:48svh!important;background:var(--ui-panel);border-radius:9px;padding:6px}
- #toolNav.nav-expanded>:not(#mobileMenuButton){display:inline-flex!important}
+ #toolNav.nav-expanded>:not(#webcamButton):not(#mobileMenuButton){display:inline-flex!important}
  #toolNav #roomSelect{flex:1 1 70px;min-width:65px!important;max-width:160px}
  .topbar{flex-direction:column!important;gap:3px!important;padding:5px 7px!important}
  .topbar .wordmark{align-self:flex-start;font-size:calc(14px * var(--ui-scale))!important;line-height:1.1!important}
@@ -1001,3 +1001,19 @@ html body .topbar #toolNav > button#minimapButton{display:inline-flex!important;
 }
 /* Beat the legacy #toolNav>:not(...) responsive visibility lists. */
 html body .topbar #toolNav > button#toolsToggleButton{display:inline-flex!important;align-items:center!important;justify-content:center!important}
+
+/* 0.2.35: Webcam is a first-class navigation control, including on phones. */
+@media(max-width:750px){
+ #toolNav>#webcamButton{display:inline-flex!important;order:3!important;min-width:40px!important;min-height:40px!important;max-height:44px!important;flex:none!important;}
+ #toolNav>#webcamButton .ui-button-label{white-space:nowrap!important;}
+ #toolNav>#mobileMenuButton{order:4!important}
+ #toolNav>#settingsButton{order:5!important}
+ #toolNav>#profileButton{order:6!important}
+}
+#webcamButton[aria-pressed="true"]{box-shadow:inset 0 0 0 2px var(--solvi-accent)!important}
+#saveRobotChatPortrait,#captureAvatarHeadshot{white-space:nowrap;max-width:100%;}
+
+/* Discoverable camera entry on all screen widths; earlier nav exclusion rules are overridden. */
+#toolNav>#webcamButton{display:inline-flex!important;align-items:center!important;gap:6px!important;white-space:nowrap!important;}
+.chat-avatar[role="button"]{cursor:pointer;}
+.chat-avatar[role="button"]:focus-visible{outline:3px solid var(--solvi-accent);outline-offset:3px;}

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {captureRobotView} from './robots.js';
+import {captureRobotView,captureRobotPortrait} from './robots.js';
 const $=id=>document.getElementById(id);
 const fields={personality:'brainsPersonality',history:'brainsHistory',beliefs:'brainsBeliefs',triggers:'brainsTriggers',scenario:'brainsScenario'};
 let activeRobot=null,frame=null,frameURL=null;
@@ -148,7 +148,7 @@ export function initRobotBrains(world,api,getRoom,toast){
    for(const [key,id] of Object.entries(fields)){$(id).value=brain[key];$(id).disabled=!window.solviEditor.canEdit(robot);}
    $('brainsInitiative').checked=Boolean(robot.userData.robotBrain?.initiative);
    $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);
-   $('saveRobotBrains').disabled=!window.solviEditor.canEdit(robot);
+   $('saveRobotBrains').disabled=!window.solviEditor.canEdit(robot);$('saveRobotChatPortrait').disabled=!window.solviEditor.canEdit(robot);
    $('brainsVisionResult').textContent='Capture eyes, then Describe scene with Muse Spark or Find object with SAM 3.1.';
    const previous=latestFrames.get(robot.userData.editorId);
    if(previous)showFrame(previous.blob,previous.label,previous.boxes);
@@ -171,10 +171,26 @@ export function initRobotBrains(world,api,getRoom,toast){
  $('saveRobotBrains').onclick=()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot)){toast('Robot is read-only');return;}
    const before=window.solviEditor.snapshot(activeRobot);
-   activeRobot.userData.robotBrain={...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),initiative:$('brainsInitiative').checked};
+   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),initiative:$('brainsInitiative').checked};
    window.solviEditor.recordEdit(before,window.solviEditor.snapshot(activeRobot));
    window.solviEditor.queueSave(activeRobot);
    toast(activeRobot.name+' identity saved');
+ };
+ $('saveRobotChatPortrait').onclick=async()=>{
+   if(!activeRobot||!window.solviEditor.canEdit(activeRobot))return toast('Select a robot you can edit.');
+   const btn=$('saveRobotChatPortrait');btn.disabled=true;
+   try{
+     const blob=await captureRobotPortrait(world,activeRobot);
+     const form=new FormData();form.append('file',new File([blob],`robot-portrait-${Date.now()}.jpg`,{type:'image/jpeg'}));
+     const uploaded=await api.req('/api/media',{method:'POST',body:form});
+     const before=window.solviEditor.snapshot(activeRobot);
+     activeRobot.userData.robotBrain={...(activeRobot.userData.robotBrain||{}),portrait:uploaded.media.id};
+     window.solviEditor.recordEdit(before,window.solviEditor.snapshot(activeRobot));
+     window.solviEditor.queueSave(activeRobot);
+     toast(activeRobot.name+' chat portrait saved.');
+     emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,'PORTRAIT','Front-facing 3D headshot saved to shared room scene.');
+   }catch(error){toast('Chat portrait failed: '+error.message);}
+   finally{btn.disabled=false;}
  };
  $('suggestBrainsScenario').onclick=async()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot)){toast('Robot is read-only');return;}

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
-import {captureRobotView} from './robots.js';
+import {captureRobotView,captureRobotPortrait} from './robots.js';
 import {initRobotBrains,runRobotVisualSearch,emitBrainTrace} from './robot-brains.js';
 import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,uiScalePercent,safeFontName,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
 import {playCue,primeAudio} from './audio-cues.js';
@@ -49,7 +49,7 @@ const api={
   const headers={...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...(options.headers||{})};
   if(auth?.token)headers.Authorization='Bearer '+auth.token;
   headers['X-Solvi-Tab']=tab;
-  if(['/api/models','/api/chat','/api/robots/react','/api/robots/scenario','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
+  if(['/api/models','/api/chat','/api/robots/react','/api/robots/scenario','/api/robots/vision-reply','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
     const key=sessionStorage.getItem('solvi-meta-session-key');if(key)headers['X-Solvi-Model-Key']=key;
   }
   const res=await fetch(url,{...options,headers,cache:'no-store'});
@@ -110,11 +110,17 @@ async function bubble(entry){
   wrap=document.createElement('article');wrap.className='chat-row '+(mine?'mine':'theirs');
   wrap.dataset.messageId=entry.id||'';
   wrap.addEventListener('wheel',event=>{event.preventDefault();feed.scrollTop+=event.deltaY;},{passive:false});
-  const pic=document.createElement('span');pic.className='chat-avatar';pic.textContent=role==='assistant'?'AI':(entry.speaker||me?.name||'?').slice(0,2).toUpperCase();
+  const pic=document.createElement('span');pic.className='chat-avatar';pic.textContent=(entry.speaker||(role==='assistant'?'AI':me?.name)||'?').slice(0,2).toUpperCase();
+  if(role==='assistant'){pic.title='Open robot Brains and capture portrait';pic.tabIndex=0;pic.setAttribute('role','button');
+    const open=()=>{const robot=window.solviEditor?.items?.find(o=>o.userData.editorKind==='robot'&&o.name===entry.speaker);if(robot){window.solviEditor.select(robot);window.dispatchEvent(new CustomEvent('solvi:open-brains'));}};
+    pic.addEventListener('click',open);pic.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
+  }else if(mine){pic.title='Open profile to take a 3D avatar headshot';pic.tabIndex=0;pic.setAttribute('role','button');
+    pic.addEventListener('click',()=>$('profileButton').click());pic.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('profileButton').click();}});}
   panel=document.createElement('div');panel.className='chat-bubble';const meta=document.createElement('div');meta.className='chat-meta';
   const name=document.createElement('strong');name.textContent=role==='assistant'?(entry.speaker||entry.model||'Meta Model API'):(entry.speaker||me?.name||'Guest');
   const date=document.createElement('time');date.textContent=safeTime(entry.created);meta.append(name,date);panel.append(meta);
-  if(entry.avatar&&online&&auth){api.mediaBlob(entry.avatar).then(url=>{pic.textContent='';const img=document.createElement('img');img.src=url;img.alt='';img.className='chat-profile-image';pic.append(img);}).catch(()=>{});}
+  const robotPortrait=role==='assistant'?window.solviEditor?.items?.find(o=>o.userData.editorKind==='robot'&&o.name===entry.speaker)?.userData.robotBrain?.portrait:null;
+  if((robotPortrait||entry.avatar)&&online&&auth){api.mediaBlob(robotPortrait||entry.avatar).then(url=>{pic.textContent='';const img=document.createElement('img');img.src=url;img.alt='';img.className='chat-profile-image';pic.append(img);}).catch(()=>{});}
   if(entry.isBrainTrace)wrap.classList.add('brain-trace');
   wrap.append(pic,panel);feed.append(wrap);
  }else{panel.querySelector('time').textContent=safeTime(entry.created);}
@@ -142,6 +148,23 @@ async function reactToRobotMessage(message){
  const traceRobot=response.command?.robot_id||response.robot_id||'chat';
  if(response.triggered)for(const item of response.trace||[])emitBrainTrace(traceRobot,response.answer?.speaker||response.robot_name||'Robot',item.step.toUpperCase(),`${item.result} [${item.source}]`);
  if(response.answer)await bubble(response.answer);
+ if(response.needs_vision){
+   const editor=window.solviEditor,robot=editor?.items?.find(o=>o.userData.editorId===response.robot_id&&o.userData.editorKind==='robot');
+   if(!robot){const error=response.robot_name+' cannot capture a view because the robot is not loaded in this browser.';$('chatStatus').textContent=error;await bubble({role:'assistant',speaker:response.robot_name||'Robot',model:'camera-error',text:error,created:new Date().toISOString()});return;}
+   try{
+     emitBrainTrace(response.robot_id,robot.name,'EYES REQUEST','Capturing a fresh 512×512 camera frame to answer the specific chat question.');
+     const photo=await captureRobotView(editor.world,robot);
+     if(!photo?.size)throw Error('Robot eye camera returned no image');
+     window.dispatchEvent(new CustomEvent('solvi:brain-frame',{detail:{robotId:response.robot_id,blob:photo,label:'Conversation eye view · '+message.text.slice(0,100)}}));
+     const media=await uploadFile(new File([photo],`conversation-robot-eye-${Date.now()}.jpg`,{type:'image/jpeg'}));
+     emitBrainTrace(response.robot_id,robot.name,'MUSE VISION','Sending captured JPEG and the actual saved user question to the server; image will be attached to reply.');
+     const answer=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:response.robot_id,message_id:message.id,media_id:media.id})});
+     if(answer.answer)await bubble(answer.answer);
+     emitBrainTrace(response.robot_id,robot.name,'VISION RESULT',`${answer.model||answer.answer?.model} · ${answer.answer?.text||'No text'} · estimated US$${Number(answer.usage?.estimated_usd||0).toFixed(6)}`);
+     $('chatStatus').textContent=robot.name+' · camera observation shared'+(answer.usage?' · ~US$'+Number(answer.usage.estimated_usd||0).toFixed(5):'');
+   }catch(error){$('chatStatus').textContent=robot.name+' vision failed: '+error.message;emitBrainTrace(response.robot_id,robot.name,'VISION ERROR',error.message);await bubble({role:'assistant',speaker:robot.name,model:'camera-error',text:'I could not capture or analyse my head-camera image: '+error.message,created:new Date().toISOString()});toast('Robot vision: '+error.message);}
+   return;
+ }
  if(response.command){
    const command=response.command,editor=window.solviEditor;
    const robot=editor?.items?.find(o=>o.userData.editorId===command.robot_id&&o.userData.editorKind==='robot');
@@ -626,6 +649,14 @@ function bindUI(world){
  $('profilePhotoBadge').onclick=()=>$('avatarUpload').click();
  $('avatarUpload').onchange=async e=>{try{const m=await uploadFile(e.target.files[0]);$('profileStatus').textContent='Uploaded '+m.name;
  if(me){const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...profileFields(),avatar:m.id})});me=data.user;saveLocal({...stored(),...me});identity();}}catch(e){toast(e.message);}};
+ $('captureAvatarHeadshot').onclick=async()=>{
+   const robot=window.solviEditor?.robot();if(!robot){$('profileStatus').textContent='Select your 3D robot avatar in Objects, then try headshot.';return;}
+   const button=$('captureAvatarHeadshot');button.disabled=true;
+   try{const blob=await captureRobotPortrait(world,robot);const media=await uploadFile(new File([blob],`avatar-head-${Date.now()}.jpg`,{type:'image/jpeg'}));
+     const fields=profileFields();const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...fields,avatar:media.id})});
+     me=data.user;saveLocal({...stored(),...me});identity();$('profileStatus').textContent='Front-facing 3D avatar headshot saved for chat.';
+   }catch(error){$('profileStatus').textContent='Headshot failed: '+error.message;}finally{button.disabled=false;}
+ };
  $('takeAvatarPhoto').onclick=cameraAvatar;$('recordIntro').onclick=recordIntroGif;$('profileCameraCancel').onclick=closeProfileCamera;$('profileLogout').onclick=logoutProfile;
  window.solviPublishCaption=async text=>{
    if(!text?.trim())return;

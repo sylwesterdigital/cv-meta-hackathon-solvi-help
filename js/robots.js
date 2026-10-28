@@ -138,3 +138,29 @@ export async function captureRobotView(world,robot,options={}){
   ctx.putImageData(frame,0,0);
   return new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.86));
 }
+
+// Render a FRONT-facing avatar headshot, not the head-mounted camera view.
+// 3D model and pose are taken from the current scene; portrait is a real JPEG.
+export async function captureRobotPortrait(world,robot){
+  if(!robot||robot.userData.editorKind!=='robot')throw Error('Select a robot for its 3D portrait.');
+  if(!robot.userData.robotReady)throw Error('Robot avatar model is still loading; try again when visible.');
+  const renderer=world.renderer,oldTarget=renderer.getRenderTarget(),oldXR=renderer.xr.enabled;
+  const camera=new THREE.PerspectiveCamera(34,1,.02,70);
+  robot.updateWorldMatrix(true,true);
+  // SOLVI robot forward is +Z. Place camera in front and look toward the face.
+  const target=robot.localToWorld(new THREE.Vector3(0,1.53,0));
+  const view=robot.localToWorld(new THREE.Vector3(0,1.53,2.05));
+  camera.position.copy(view);camera.lookAt(target);camera.updateMatrixWorld(true);
+  const n=256,rt=new THREE.WebGLRenderTarget(n,n),pixels=new Uint8Array(n*n*4);
+  // Hide furniture and other characters for a clean, unoccluded portrait.
+  const hidden=world.scene.children.filter(o=>o!==robot&&!o.isLight&&o.visible);
+  try{for(const obj of hidden)obj.visible=false;renderer.xr.enabled=false;renderer.setRenderTarget(rt);renderer.render(world.scene,camera);renderer.readRenderTargetPixels(rt,0,0,n,n,pixels);}
+  finally{for(const obj of hidden)obj.visible=true;renderer.setRenderTarget(oldTarget);renderer.xr.enabled=oldXR;rt.dispose();}
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=n;
+  const ctx=canvas.getContext('2d');const out=ctx.createImageData(n,n);
+  for(let y=0;y<n;y++)out.data.set(pixels.subarray((n-1-y)*n*4,(n-y)*n*4),y*n*4);
+  ctx.putImageData(out,0,0);
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.88));
+  if(!blob?.size)throw Error('Headshot render did not create an image.');
+  return blob;
+}

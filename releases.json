@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.34",
+  "currentVersion": "0.2.35",
   "releases": [
+    {
+      "version": "0.2.35",
+      "publishedAt": "2026-10-28T19:17:06Z",
+      "changes": [
+        "Visual questions addressed to a robot now capture a fresh head-camera JPEG before Muse Spark responds; the exact frame is shared in chat.",
+        "Webcam is available directly in top navigation on desktop and mobile.",
+        "Front-facing 3D headshots can be saved for robot chat portraits and user profile photos.",
+        "Robot portrait references persist in scene data; existing conversation history shows robot portraits rather than user photos.",
+        "Server validates visual requests, room ownership, JPEG uploads and billing; failures never impersonate visual perception."
+      ]
+    },
     {
       "version": "0.2.34",
       "publishedAt": "2026-10-28T18:28:35Z",
@@ -306,16 +317,6 @@
         "Add Shift+A Three.js scene editor with transform gizmos, object inspector, colours, procedural texture choices and scene storage.",
         "Add opt-in microphone, video, webcam profile photo, robot-view screenshot and FFmpeg intro GIF conversion.",
         "Keep WebXR controllers, hands, teleportation and existing Mixamo animations."
-      ]
-    },
-    {
-      "version": "0.1.2",
-      "publishedAt": "2026-10-27T00:45:09Z",
-      "changes": [
-        "Select exact Mixamo Idle clip; exclude Falling Idle regardless of animation order.",
-        "Add visible Enter VR control, tracked hands/controller models, XR action menu, and floor teleportation.",
-        "Disable WebSocket retries by default until backend enabled; optional multiplayer with ?live=1.",
-        "Add XR teleport and animation matching unit tests."
       ]
     }
   ]

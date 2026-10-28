@@ -301,6 +301,41 @@ assert proactive_mock.call_count==1
 # A short unambiguous vocative is routed to the full robot name.
 from server import _robot_address
 assert _robot_address('hi Jess how are you?', [robot]) is robot
+# v0.2.35: Visual conversation MUST capture a JPEG before Muse responds,
+# and the server must reject forged/unrelated requests or duplicate paid inferences.
+from server import is_robot_visual_question, chat_attempts
+assert is_robot_visual_question('Jessica, what do you see now? I put a chair in front of you')
+assert is_robot_visual_question('CC: @Jessica can you see the chair?')
+assert not is_robot_visual_question('@Jessica how are you?')
+vision_text='Jessica, what do you see now? I put a chair in front of you'
+question=c.post('/api/message',headers=headers,json={'room':'lab','text':vision_text}).get_json()['message']
+with patch('server.active_model_key',return_value='test-key'):
+    routed=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':vision_text,'message_id':question['id']})
+assert routed.status_code==200,(routed.status_code,routed.data)
+assert routed.get_json()['needs_vision'] is True and not routed.get_json().get('answer')
+assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':question['id'],'robot_id':'testrobot-0220','media_id':'fake'}).status_code==400
+jpeg=b'\xff\xd8'+(b'\x00'*420)+b'\xff\xd9'
+photo=c.post('/api/media',headers=headers,data={'file':(_BytesIO(jpeg),'vision.jpg','image/jpeg')})
+assert photo.status_code==200,(photo.status_code,photo.data)
+photo_id=photo.get_json()['media']['id']
+with patch('server.active_model_key',return_value='test-key'),patch('server.meta_request',return_value={
+    'id':'resp-vision-chat','output':[{'type':'message','content':[{'type':'output_text','text':'I see a chair directly ahead of me.'}]}],
+    'usage':{'input_tokens':180,'output_tokens':12,'images_processed':1}}) as vision_mock:
+    chat_attempts[data['user']['id']]=[]
+    seen=c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':question['id'],'robot_id':'testrobot-0220','media_id':photo_id})
+assert seen.status_code==200,(seen.status_code,seen.data)
+assert 'chair directly ahead' in seen.get_json()['answer']['text']
+assert photo_id in seen.get_json()['answer']['media']
+assert vision_mock.call_count==1
+parts=vision_mock.call_args.args[2]['input'][0]['content']
+assert [part['type'] for part in parts]==['input_text','input_image']
+assert parts[1]['image_url'].startswith('data:image/jpeg;base64,')
+assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':question['id'],'robot_id':'testrobot-0220','media_id':photo_id}).status_code==409
+# The saved portrait is represented as a room-scoped media ID rather than a user avatar.
+robot['brain']['portrait']=photo_id
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==200
+saved=c.get('/api/messages?room=lab',headers=headers).get_json()['messages']
+assert next(m for m in saved if m['id']==seen.get_json()['answer']['id'])['avatar']==photo_id
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-0220'}}).status_code==200
 print('PASS: robot Brains persisted, validated and permissioned; usage and diagnostics secured')
 
