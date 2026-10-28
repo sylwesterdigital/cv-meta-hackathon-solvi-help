@@ -10,7 +10,12 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.25')
+# The macOS watcher omits SOLVI_EXPECTED_VERSION during local tests.
+# Derive it from release metadata rather than carrying a stale hard-coded default.
+from pathlib import Path
+expected_version = os.environ.get('SOLVI_EXPECTED_VERSION') or json.loads((Path(__file__).resolve().parent.parent / 'package.json').read_text())['version']
+health = r.get_json()
+assert health['service'] == 'solvi-help-api' and health['version'] == expected_version, (health, expected_version)
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.

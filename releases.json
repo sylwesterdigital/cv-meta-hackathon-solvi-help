@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.25",
+  "currentVersion": "0.2.28",
   "releases": [
+    {
+      "version": "0.2.28",
+      "publishedAt": "2026-10-28T14:22:44Z",
+      "changes": [
+        "Fix macOS watcher integration-test failure: backend health expected version now defaults to the current package.json release version, not the previous release.",
+        "Unify Ubuntu backend install health checks to use the exported SOLVI_EXPECTED_VERSION and update the standalone fallback to v0.2.28.",
+        "Add release-consistency regression test comparing package, public release history, frontend banner, API health and Ubuntu installer version contracts.",
+        "Preserve v0.2.27 compact Settings, precision sliders, semantic SVG controls, static trimesh collision, and Add menu visibility behaviour without changes."
+      ]
+    },
     {
       "version": "0.2.25",
       "publishedAt": "2026-10-28T13:25:35Z",

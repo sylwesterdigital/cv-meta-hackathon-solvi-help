@@ -4,7 +4,7 @@ const key=()=>{try{const id=JSON.parse(localStorage.getItem('solvi-profile')||'n
 const validColour=c=>/^#[0-9a-fA-F]{6}$/.test(c);
 export const FONT_STACKS=Object.freeze({system:'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',sans:'Inter,Arial,Helvetica,sans-serif',rounded:'ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif',serif:'Georgia,"Times New Roman",serif',mono:'ui-monospace,Menlo,Consolas,monospace'});
 export const validLabelMode=value=>['auto','both','text','icon'].includes(value)?value:'auto';
-export const uiScalePercent=value=>Math.max(50,Math.min(200,Math.round(Number(value)/10)*10||100));
+export const uiScalePercent=value=>Math.max(50,Math.min(200,Math.round(Number(value))||100));
 export function isCompactDevice(){return typeof window!=='undefined' && !!(window.matchMedia?.('(max-width: 750px)').matches);}
 export const resolvedLabelMode=(mode,compact)=>validLabelMode(mode)==='auto'?(compact?'icon':'both'):validLabelMode(mode);
 export function safeFontName(name){const text=String(name||'').trim();return /^[\p{L}\p{N} ._-]{1,80}$/u.test(text)?text:'';}

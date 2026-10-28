@@ -88,13 +88,13 @@ export class SceneEditor{
   this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
  }
  setupUI(){
-  const menu=byId('addMenu');
+  const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
   const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';menu.append(bar);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';menu.append(search);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
   search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
-   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}menu.append(group);}
+   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}menu.append(group);}
   const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton'])toolbox.append(byId(id));
   byId('importModelButton').onclick=()=>byId('modelImportFile').click();byId('quickModelImport').onclick=()=>byId('modelImportFile').click();
   byId('modelImportFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(f)await this.importModel(f);e.target.value='';});
@@ -114,17 +114,17 @@ export class SceneEditor{
   });
   window.addEventListener('dragend',()=>overlay.hidden=true);
 
-  byId('toolboxMinimize').onclick=()=>{const collapsed=byId('editorToolbox').classList.toggle('minimized');byId('toolboxMinimize').textContent=collapsed?'+':'−';};
+  byId('toolboxMinimize').onclick=()=>{const collapsed=byId('editorToolbox').classList.toggle('minimized');byId('toolboxMinimize').dataset.uiIcon=collapsed?'opened':'minified';byId('toolboxMinimize').style.setProperty('--ui-button-icon',`url("./assets/ui-icons/${collapsed?'opened':'minified'}.svg")`);};
   const openMenu=(x,y)=>{menu.hidden=false;menu.style.right='auto';menu.style.left=Math.max(8,Math.min(innerWidth-275,x))+'px';menu.style.top=Math.max(54,Math.min(innerHeight-370,y))+'px';search.value='';for(const b of menu.querySelectorAll('.add-group button'))b.hidden=false;};
   this.showAddMenu=openMenu;
   byId('addObjectButton').onclick=e=>{if(menu.hidden)openMenu(e.clientX+10,e.clientY+10);else menu.hidden=true;};
   document.addEventListener('pointerdown',event=>{if(!menu.hidden&&!menu.contains(event.target)&&!byId('addObjectButton').contains(event.target))menu.hidden=true;});
 
   byId('objectsButton').onclick=()=>{const panel=byId('scenePanel');if(panel.hidden){panel.hidden=false;panel.classList.remove('minimized');}else panel.classList.toggle('minimized');this.refreshList();};
-  byId('minimizeScenePanel').onclick=()=>byId('scenePanel').classList.toggle('minimized');
+  byId('minimizeScenePanel').onclick=()=>{const collapsed=byId('scenePanel').classList.toggle('minimized');const btn=byId('minimizeScenePanel');btn.dataset.uiIcon=collapsed?'opened':'minified';btn.style.setProperty('--ui-button-icon',`url("./assets/ui-icons/${collapsed?'opened':'minified'}.svg")`);};
   byId('closeScenePanel').onclick=()=>byId('scenePanel').hidden=true;
   byId('closeProperties').onclick=()=>{byId('propertiesPanel').hidden=true;this.clearLightHelper();};
-  for(const id of ['objectPhysicsMode','objectRestitution','objectFriction'])byId(id).addEventListener('change',()=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||['robot','light'].includes(obj.userData.editorKind))return;obj.userData.physics=physicsOptions({mode:byId('objectPhysicsMode').value,friction:byId('objectFriction').value,restitution:byId('objectRestitution').value});this.physics.sync(obj);this.queueSave(obj);});
+  for(const id of ['objectPhysicsMode','objectCollider','objectRestitution','objectFriction'])byId(id).addEventListener('change',()=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||['robot','light'].includes(obj.userData.editorKind))return;obj.userData.physics=physicsOptions({mode:byId('objectPhysicsMode').value,collider:byId('objectCollider').value,friction:byId('objectFriction').value,restitution:byId('objectRestitution').value});this.physics.sync(obj);this.queueSave(obj);this.updateColliderOption();});
   const strafe=byId('robotStrafeSpeed');strafe.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotStrafeSpeed=Number(strafe.value);byId('robotStrafeLabel').textContent=Number(strafe.value).toFixed(1)+'×';this.queueSave(this.selected);};
   const turn=byId('robotTurnSpeed');turn.addEventListener('input',()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotTurnSpeed=Number(turn.value);byId('robotTurnLabel').textContent=Number(turn.value).toFixed(2)+'×';this.queueSave(this.selected);});
   byId('openRobotBrains').onclick=()=>window.dispatchEvent(new Event('solvi:open-brains'));
@@ -154,6 +154,22 @@ export class SceneEditor{
   };
   byId('objectNameInput').onchange=e=>{if(!this.selected||!this.canEdit(this.selected))return;const name=e.target.value.trim().slice(0,100);if(!name)return;const before=this.snapshot(this.selected);this.selected.name=name;byId('objectName').textContent=name;this.recordEdit(before,this.snapshot(this.selected));this.refreshList();this.queueSave(this.selected);};
   byId('deleteObject').onclick=()=>this.remove();
+  // Match each editable number with a range and zero/reset control; changes still go through the existing editor history.
+  for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
+   const id=`${field}-${axis}`,number=byId(id),slider=byId(id+'-range'),reset=byId(id+'-reset');
+   slider.addEventListener('input',()=>{number.value=slider.value;number.dispatchEvent(new Event('change',{bubbles:true}));});
+   number.addEventListener('input',()=>{const n=Number(number.value);if(Number.isFinite(n))slider.value=String(Math.min(Number(slider.max),Math.max(Number(slider.min),n)));});
+   reset.onclick=()=>{number.value=field==='scale'?'1':'0';number.dispatchEvent(new Event('change',{bubbles:true}));this.updateInspector();};
+  }
+  // All other inspector numerical controls also offer touch-friendly range sliders.
+  for(const number of byId('objectInspector').querySelectorAll('input[type="number"]')){
+   if(!number.id||number.closest('#propertyGrid')||number.id.startsWith('robot'))continue;
+   const min=Number(number.min),max=Number(number.max);if(!number.min||!number.max||!Number.isFinite(min)||!Number.isFinite(max)||min===max)continue;
+   const slider=document.createElement('input');slider.type='range';slider.className='property-companion-range';slider.min=number.min;slider.max=number.max;slider.step=number.step||'any';slider.value=number.value;slider.setAttribute('aria-label',(number.closest('label')?.textContent||number.id).trim()+' slider');
+   number.insertAdjacentElement('afterend',slider);
+   slider.oninput=()=>{number.value=slider.value;number.dispatchEvent(new Event('change',{bubbles:true}));};
+   number.addEventListener('input',()=>{slider.value=number.value;});
+  }
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
    const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canEdit(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v))return;const before=this.snapshot(this.selected);
     const vec=this.selected[field];const name=['x','y','z'][axis];vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
@@ -240,21 +256,22 @@ export class SceneEditor{
   if(obj)this.world.focusCameraOn(obj);
   if(obj)this.broadcastEdit(true);}
  updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
-  byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
+  byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
   byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);byId('sceneModelControls').hidden=obj.userData.editorKind!=='model';if(obj.userData.editorKind==='model')byId('sceneModelPath').textContent=obj.userData.modelUrl||'No model';if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed||1.8;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed||1.8).toFixed(1)+'×';const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed||1;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';}
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
-    const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);
+    const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);const slider=byId(`${name}-${i}-range`);if(slider && document.activeElement!==slider)slider.value=byId(`${name}-${i}`).value;
   });
   const color=obj.material?.color||obj.children.find(c=>c.material?.color)?.material?.color;
   byId('objectColor').value=color?'#'+color.getHexString():'#88bbdd';byId('texturePreset').value=obj.userData.textureName||'none';
  }
+ updateColliderOption(){const mode=byId('objectPhysicsMode').value;const selector=byId('objectCollider');selector.disabled=mode!=='static';if(mode!=='static')selector.value='box';byId('colliderHint').hidden=mode!=='static';const status=byId('colliderRuntimeStatus');status.hidden=mode!=='static'||selector.value!=='trimesh';status.textContent=this.selected?.userData.colliderStatus||(this.selected?.userData.editorKind==='model'&&!this.selected?.userData.modelReady?'Waiting for imported model geometry':'Physics must be enabled for collider creation');}
  refreshRobotActions(obj){const select=byId('robotActionSelect');select.querySelectorAll('optgroup[data-real-actions]').forEach(n=>n.remove());
   const clips=obj.userData.robotAvailableActions||[];if(clips.length){const group=document.createElement('optgroup');group.label='Model animations';group.dataset.realActions='1';for(const name of clips.slice(0,120))group.append(new Option(name,'clip:'+name));select.append(group);}
   select.value=[...select.options].some(o=>o.value===obj.userData.robotMode)?obj.userData.robotMode:'idle';
  }
-  refreshList(){const list=byId('sceneItems');list.replaceChildren();for(const obj of this.items){const row=document.createElement('div');row.className='scene-item-row';const b=document.createElement('button');b.className=obj===this.selected?'selected':'';b.textContent=`${obj.userData.editorKind} · ${obj.name}`;b.onclick=()=>this.select(obj);const remove=document.createElement('button');remove.className='scene-item-delete';remove.textContent='×';remove.title='Delete '+obj.name;remove.setAttribute('aria-label','Delete '+obj.name);remove.disabled=!this.canEdit(obj);remove.onclick=()=>{this.select(obj);this.remove();};row.append(b,remove);list.append(row);}}
+  refreshList(){const list=byId('sceneItems');list.replaceChildren();for(const obj of this.items){const row=document.createElement('div');row.className='scene-item-row';const b=document.createElement('button');b.className=obj===this.selected?'selected':'';b.textContent=`${obj.userData.editorKind} · ${obj.name}`;b.dataset.objectKind=obj.userData.editorKind;b.onclick=()=>this.select(obj);const remove=document.createElement('button');remove.className='scene-item-delete';remove.textContent='';remove.dataset.uiIcon='delete';remove.title='Delete '+obj.name;remove.setAttribute('aria-label','Delete '+obj.name);remove.disabled=!this.canEdit(obj);remove.onclick=()=>{this.select(obj);this.remove();};row.append(b,remove);list.append(row);}}
  remove(){if(!this.selected)return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
  texture(name){if(!this.selected||this.selected.userData.editorKind==='robot')return;if(this.canEdit(this.selected))this.selected.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}

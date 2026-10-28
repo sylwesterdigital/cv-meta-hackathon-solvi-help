@@ -163,7 +163,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.25',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.28',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1081,6 +1081,7 @@ def patch_scene_object():
         if 'physics' in obj:
             ph=obj['physics']
             if obj['kind'] in ('light','robot') or not isinstance(ph,dict) or ph.get('mode') not in ('off','dynamic','static','kinematic'):return json_error('Invalid physics mode')
+            if ph.get('collider','box') not in ('box','trimesh') or (ph.get('collider')=='trimesh' and ph.get('mode')!='static'):return json_error('Trimesh requires static physics')
             for key,limit in (('friction',2),('restitution',1)):
                 value=ph.get(key)
                 if not isinstance(value,(int,float)) or isinstance(value,bool) or not math.isfinite(value) or not 0<=value<=limit:return json_error('Invalid physics property')

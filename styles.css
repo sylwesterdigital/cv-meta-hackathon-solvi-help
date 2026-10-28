@@ -594,3 +594,114 @@ html[data-button-labels='icon'] body button[data-ui-icon]:not(.profile-photo-bad
 html[data-button-labels='icon'] #toolNav #mobileMenuButton{font-size:0!important;width:44px!important;max-width:44px!important;min-width:44px!important;min-height:44px!important;overflow:hidden!important}
 body button.theme-preset:not(.profile-photo-badge):not(.xr-stage-button):not(.avatar-card):not(.theme-swatch){min-height:max(68px,calc(68px * var(--ui-scale)))!important;font-size:calc(12px * var(--ui-scale))!important}
 @media(max-width:750px){.theme-swatches button.theme-swatch{height:44px!important;min-height:44px!important;width:44px!important;min-width:44px!important}}
+
+/* v0.2.26 semantic icon system: no doubled glyphs, balanced text/icon spacing. */
+button[data-ui-icon],label.icon-btn[data-ui-icon]{
+ display:inline-flex!important;align-items:center!important;justify-content:center!important;
+ column-gap:calc(9px * var(--ui-scale))!important;row-gap:calc(6px * var(--ui-scale))!important;
+}
+button[data-ui-icon]::before,label.icon-btn[data-ui-icon]::before{
+ flex:0 0 calc(19px * var(--ui-scale));width:calc(19px * var(--ui-scale));height:calc(19px * var(--ui-scale));
+ margin:0!important;vertical-align:middle!important;align-self:center;
+}
+/* Header utility buttons have exactly one SVG, not another X from HTML. */
+button.ui-icon-utility[data-ui-icon]{
+ flex:0 0 auto!important;width:max(44px,calc(38px * var(--ui-scale)))!important;
+ min-width:max(44px,calc(38px * var(--ui-scale)))!important;
+ height:max(44px,calc(38px * var(--ui-scale)))!important;
+ min-height:max(44px,calc(38px * var(--ui-scale)))!important;
+ padding:8px!important;gap:0!important;overflow:hidden!important;
+}
+button.ui-icon-utility[data-ui-icon]::before{width:calc(22px * var(--ui-scale));height:calc(22px * var(--ui-scale));flex-basis:calc(22px * var(--ui-scale))}
+/* Object rows: the object type uses its own geometry SVG, names are always readable. */
+#sceneItems .scene-item-row{gap:10px!important;min-height:44px;margin:6px 0!important;align-items:center!important}
+#sceneItems .scene-item-row>button:first-child{
+ flex:1 1 0!important;min-width:0!important;max-width:100%;
+ display:inline-flex!important;align-items:center!important;justify-content:flex-start!important;
+ column-gap:calc(10px * var(--ui-scale))!important;text-align:left!important;
+ font-size:calc(12px * var(--ui-scale))!important;
+ padding:8px 12px!important;white-space:normal!important;line-height:1.4!important;
+}
+#sceneItems .scene-item-delete{
+ display:inline-flex!important;align-items:center!important;justify-content:center!important;
+ width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;
+ margin:0!important;padding:9px!important;line-height:1!important;gap:0!important;
+}
+#sceneItems .scene-item-delete::before{width:22px!important;height:22px!important;flex-basis:22px!important}
+/* Icon-only global preference must not make individual object names disappear. */
+html[data-button-labels='icon'] #sceneItems .scene-item-row>button:first-child[data-ui-icon]{
+ font-size:calc(12px * var(--ui-scale))!important;
+ min-width:0!important;min-height:44px!important;padding:8px 12px!important;
+ justify-content:flex-start!important;gap:calc(10px * var(--ui-scale))!important;
+}
+html[data-button-labels='icon'] #sceneItems .scene-item-row>button:first-child[data-ui-icon]::before{
+ display:inline-block!important;width:calc(20px * var(--ui-scale))!important;
+ height:calc(20px * var(--ui-scale))!important;flex:0 0 calc(20px * var(--ui-scale))!important;
+}
+html[data-button-labels='icon'] #sceneItems .scene-item-delete{
+ min-width:44px!important;width:44px!important;min-height:44px!important;height:44px!important;
+}
+/* The legacy 30px header rule is ID-specific; override it for accessible single icons. */
+:is(#closeLog,#closeCall,#closeScenePanel,#minimizeScenePanel,#closeProperties,#closeChat,#closeRoom,#closeProfile,#closeSettings,#closeAvatarGallery,#closeAdmin,#toolboxMinimize).ui-icon-utility[data-ui-icon]{
+ display:inline-flex!important;align-items:center!important;justify-content:center!important;
+ flex:0 0 44px!important;width:44px!important;min-width:44px!important;max-width:44px!important;
+ height:44px!important;min-height:44px!important;max-height:44px!important;
+ padding:9px!important;
+}
+/* Text-only preference must never make single-purpose delete/close controls blank. */
+html[data-button-labels='text'] button.ui-icon-utility[data-ui-icon]::before{display:inline-block!important}
+
+/* v0.2.27 compact Settings; display editing stays fixed-size even at 50–200% app scale. */
+#addMenu[hidden], .add-menu[hidden] {display:none!important;visibility:hidden!important;pointer-events:none!important}
+#settingsDrawer[hidden], #settingsDrawer [hidden]{display:none!important}
+#settingsDrawer .drawer{width:min(390px,100vw)!important;max-width:100vw!important;gap:4px!important;padding:12px 14px max(14px,env(safe-area-inset-bottom))!important;font-size:14px!important;}
+#settingsDrawer .drawer-head{min-height:44px;padding:0 0 8px;margin-bottom:3px}
+#settingsDrawer .drawer-head strong{font-size:17px!important}
+#settingsDrawer .settings-section{display:block;border:1px solid color-mix(in srgb,var(--ui-fg) 24%,transparent);border-radius:10px;margin:3px 0!important;padding:0!important;min-width:0}
+#settingsDrawer .settings-section>summary{display:list-item;cursor:pointer;font-size:15px!important;font-weight:700!important;padding:11px 12px;line-height:1.45;list-style-position:inside;outline-offset:2px}
+#settingsDrawer .settings-section[open]>summary{border-bottom:1px solid color-mix(in srgb,var(--ui-fg) 20%,transparent);margin-bottom:7px}
+#settingsDrawer .settings-section[open]>:not(summary){margin-left:10px!important;margin-right:10px!important}
+#settingsDrawer .settings-section .small-note{font-size:12px!important;margin:4px 0 7px!important}
+#settingsDrawer .settings-section .field-label{margin-top:6px!important;margin-bottom:8px!important;font-size:13px!important}
+#settingsDrawer :is(button,input,select,legend,label,summary,output){font-size:14px!important;line-height:1.35!important}
+#settingsDrawer .settings-mode-choices{display:flex;flex-wrap:wrap!important;gap:5px 11px!important;margin-top:6px!important;margin-bottom:9px!important;padding:5px 8px!important;border-radius:8px!important;align-items:center}
+#settingsDrawer .settings-mode-choices legend{font-size:13px!important;padding:0 4px}
+#settingsDrawer .settings-mode-choices label{display:inline-flex!important;align-items:center!important;gap:5px!important;padding:4px 0!important;margin:0!important;white-space:nowrap}
+#settingsDrawer .settings-mode-choices input{height:18px!important;width:18px!important;margin:0 2px 0 0!important}
+#settingsDrawer .theme-choices{margin:4px 0 8px!important;padding:0!important}
+#settingsDrawer .theme-choices summary{font-size:13px!important;cursor:pointer;padding:4px 0}
+#settingsDrawer .theme-preset-gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px!important;margin:4px 0 8px!important}
+#settingsDrawer .theme-preset-gallery .theme-preset{min-height:60px!important;padding:4px!important;font-size:12px!important}
+#settingsDrawer .theme-swatches{display:flex;flex-wrap:wrap;gap:8px;margin:5px 0 10px}
+#settingsDrawer .settings-subhead{margin:8px 0 2px!important;display:flex!important;align-items:center;justify-content:space-between;gap:8px;font-size:13px!important}
+#settingsDrawer .toggle-line{display:flex;align-items:center;gap:9px;margin:0 0 3px!important;padding:6px 4px!important;line-height:1.35}
+#settingsDrawer .toggle-line input{flex:0 0 19px;width:19px;height:19px}
+#settingsDrawer .settings-scale{margin:6px 0 10px!important}
+#settingsDrawer .settings-scale>label{display:flex;align-items:center;gap:9px;font-weight:600;padding:2px 0 5px}
+#settingsDrawer .settings-scale-controls{display:flex;align-items:center;gap:7px;min-width:0}
+#settingsDrawer .settings-scale-controls input[type=range]{flex:1 1 90px;min-width:72px;max-width:100%;width:auto!important;min-height:32px!important;margin:0!important}
+#settingsDrawer .settings-scale-controls input[type=number]{flex:0 0 57px;width:57px!important;min-width:0!important;height:38px!important;min-height:38px!important;text-align:center;padding:4px!important;margin:0!important}
+#settingsDrawer .settings-scale-controls>button{flex:0 0 auto;padding:6px 10px!important;min-height:38px!important;margin:0!important}
+#settingsDrawer .settings-font-actions{display:flex;flex-wrap:wrap;gap:6px!important;margin:7px 0!important}
+#settingsDrawer .settings-font-actions>button{flex:1 1 110px;min-width:0;min-height:38px!important;padding:5px 8px!important}
+#settingsDrawer #resetUiPreferences{display:inline-flex!important;width:auto!important;max-width:100%;min-height:38px!important;margin:7px 0 10px!important;padding:7px 12px!important;font-size:13px!important;gap:8px!important}
+#settingsDrawer #resetUiPreferences::before{width:17px!important;height:17px!important;flex-basis:17px!important}
+#settingsDrawer #localFontList{width:100%!important;margin:5px 0 8px!important}
+#settingsDrawer :is(#saveMetaKey,#clearMetaKey,#refreshMetaUsage){display:inline-flex;max-width:100%;width:auto;min-height:38px!important;margin:5px 4px 5px 0;padding:7px 10px!important;gap:8px!important}
+#settingsDrawer #metaKeyStatus{display:block;clear:both;line-height:1.35!important;margin-top:3px!important}
+/* Keep reset and setup controls legible in icon-only mode, regardless of global button preference. */
+html[data-button-labels=icon] #settingsDrawer :is(#applyUiScale,#resetUiPreferences,#useSystemFont,#browseLocalFonts){font-size:13px!important;gap:8px!important;min-width:0!important;white-space:normal!important;padding:7px 9px!important}
+@media(max-width:420px){#settingsDrawer .settings-mode-choices{flex-direction:row!important;gap:3px 9px!important}#settingsDrawer .settings-scale-controls{gap:4px}}
+/* Inspector: numeric precision + finger-friendly paired ranges; reset is deliberately icon only. */
+.properties-panel #propertyGrid.property-grid{display:flex!important;flex-direction:column!important;gap:8px!important;grid-template-columns:none!important;overflow:visible!important}
+.properties-panel .transform-group{min-width:0;border:1px solid color-mix(in srgb,var(--ui-fg) 25%,transparent);border-radius:8px;padding:5px 7px 8px;margin:0}
+.properties-panel .transform-group legend{font-weight:650;font-size:13px!important;padding:0 5px}
+.properties-panel .transform-value{display:grid;grid-template-columns:16px minmax(56px,72px) minmax(38px,1fr) 36px;align-items:center;gap:6px;margin:3px 0}
+.properties-panel .transform-value label{font-size:12px!important;font-weight:700}
+.properties-panel .property-grid .transform-value input[type=number]{box-sizing:border-box;width:100%!important;height:38px!important;min-height:38px!important;padding:4px 5px!important;font-size:13px!important;min-width:0!important}
+.properties-panel .property-grid .transform-value input[type=range]{box-sizing:border-box;width:100%!important;height:36px!important;min-height:36px!important;accent-color:var(--solvi-accent);min-width:0}
+.properties-panel .transform-reset[data-ui-icon]{display:inline-flex!important;min-width:36px!important;width:36px!important;min-height:36px!important;height:36px!important;max-height:36px!important;padding:7px!important;justify-content:center!important;align-items:center!important;gap:0!important;font-size:0!important}
+.properties-panel .transform-reset::before{display:inline-block!important;content:'';width:20px!important;height:20px!important;flex:0 0 20px!important;background:url('./assets/ui-icons/reset.svg') center/contain no-repeat!important;filter:var(--ui-icon-filter)}
+.properties-panel .property-companion-range{width:100%;min-height:34px;accent-color:var(--solvi-accent);margin:4px 0}
+.properties-panel .physics-object-controls label{display:block;margin:4px 0 7px}
+@media(max-width:750px){.properties-panel .transform-value{grid-template-columns:14px minmax(56px,68px) minmax(42px,1fr) 40px;gap:5px}.properties-panel .transform-reset[data-ui-icon]{min-width:40px!important;width:40px!important;min-height:40px!important;height:40px!important}}

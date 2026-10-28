@@ -8,7 +8,7 @@ test('mobile device defaults to icon-only labels and desktop to icon plus descri
  assert.equal(validLabelMode('invalid'),'auto');
 });
 test('50–200 percent scale clamps invalid input, installed font family is sanitised',()=>{
- assert.deepEqual(['0','50','135','200','999'].map(uiScalePercent),[100,50,140,200,200]);
+ assert.deepEqual(['0','50','135','200','999'].map(uiScalePercent),[100,50,135,200,200]);
  assert.equal(safeFontName('Avenir Next'),'Avenir Next');
  assert.equal(safeFontName('Arial; color:red'),'');
  assert.match(fontStack('installed','Avenir Next'),/"Avenir Next"/);

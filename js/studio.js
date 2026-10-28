@@ -353,7 +353,7 @@ function setupSettings(){
  const settings=$('settingsDrawer');
  function paint(p){
   $('accentColor').value=p.accent;$('interfaceTheme').value=p.theme||'midnight';$('bubbleOpacity').value=p.opacity;
-  $('uiScale').value=uiScalePercent(p.uiScale);$('uiScaleOutput').textContent=uiScalePercent(p.uiScale)+'%';
+  $('uiScale').value=uiScalePercent(p.uiScale);$('uiScaleNumber').value=uiScalePercent(p.uiScale);$('uiScaleOutput').textContent=uiScalePercent(p.uiScale)+'%';
   $('uiFontTheme').value=['system','sans','rounded','serif','mono','installed'].includes(p.fontTheme)?p.fontTheme:'system';
   $('uiCustomFont').value=p.customFont||'';$('uiCustomFontLabel').hidden=p.fontTheme!=='installed';
   const mode=p.labelMode==='auto'?(matchMedia('(max-width:750px)').matches?'icon':'both'):p.labelMode;
@@ -368,7 +368,16 @@ function setupSettings(){
  settings.addEventListener('pointerdown',e=>{if(e.target===settings)settings.hidden=true;});
  const apply=(patch)=>{const prefs=updatePreferences(patch);paint(prefs);if('group' in patch){chatSignature='';loadMessages();}};
  for(const control of settings.querySelectorAll('input[name=buttonLabels]'))control.onchange=e=>{if(e.target.checked)apply({labelMode:e.target.value});};
- $('uiScale').oninput=e=>apply({uiScale:uiScalePercent(e.target.value)});
+ // Stage size edits inside the unscaled settings drawer. Applying is explicit so the slider never moves under the pointer.
+ const stageScale=value=>{const number=uiScalePercent(value);$('uiScale').value=number;$('uiScaleNumber').value=number;$('uiScaleOutput').textContent=number+'%';};
+ $('uiScale').oninput=e=>stageScale(e.target.value);
+ $('uiScaleNumber').oninput=e=>{const n=Number(e.target.value);if(Number.isFinite(n)&&n>=50&&n<=200)stageScale(n);};
+ $('applyUiScale').onclick=()=>apply({uiScale:uiScalePercent($('uiScaleNumber').value)});
+ $('uiScaleNumber').addEventListener('keydown',e=>{if(e.key==='Enter'){$('applyUiScale').click();e.preventDefault();}});
+ $('useSystemFont').onclick=()=>apply({fontTheme:'system',customFont:''});
+ $('browseLocalFonts').onclick=async()=>{const status=$('fontBrowseStatus'),list=$('localFontList');if(typeof window.queryLocalFonts!=='function'){status.textContent='Font listing is unsupported here. Select Installed font and enter its family name.';$('uiFontTheme').value='installed';$('uiFontTheme').dispatchEvent(new Event('change'));return;}
+ try{const fonts=await window.queryLocalFonts();const unique=[...new Set(fonts.map(f=>safeFontName(f.family)).filter(Boolean))].sort();list.replaceChildren(new Option('Select a font…',''));for(const name of unique)list.add(new Option(name,name));list.hidden=false;status.textContent=unique.length+' installed font families available.';}catch{status.textContent='Font permission unavailable. Enter an installed font name manually.';}};
+ $('localFontList').onchange=e=>{if(e.target.value)apply({fontTheme:'installed',customFont:safeFontName(e.target.value)});};
  $('uiFontTheme').onchange=e=>apply({fontTheme:e.target.value});
  $('uiCustomFont').onchange=e=>{const name=safeFontName(e.target.value);if(e.target.value.trim()&&!name){e.target.setCustomValidity('Use a font family name with letters, numbers, spaces, periods, underscores or hyphens.');e.target.reportValidity();return;}e.target.setCustomValidity('');apply({customFont:name});};
  $('resetUiPreferences').onclick=()=>{apply({labelMode:'auto',uiScale:100,fontTheme:'system',customFont:''});};

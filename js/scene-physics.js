@@ -51,6 +51,33 @@ export class ScenePhysics{
   for(const map of [this.bodies,this.colliders,this.settings,this.characters,this.remoteTargets,this.lastBroadcast,this.lastSave,this.lastActivity,this.remoteSequence,this.localSequence])map.delete(id);
  }
  owns(object){const id=window.solviAPI?.auth()?.profile?.id;return !object.userData.ownerId||object.userData.ownerId===id;}
+ // Build a real world-space surface mesh in rigid-body local coordinates; the body supplies translation and rotation.
+ // Static only: dynamic triangle meshes are unstable and not supported by this control.
+ triangleMeshShape(object){
+  const positions=[],indices=[],R=this.runtime;
+  object.updateWorldMatrix(true,true);
+  const origin=object.getWorldPosition(new THREE.Vector3());
+  const inverse=object.getWorldQuaternion(new THREE.Quaternion()).invert();
+  const vertex=new THREE.Vector3();let triangles=0,overflow=false;
+  object.traverse(mesh=>{
+   if(!mesh.isMesh||mesh.userData.lightMarker||!mesh.geometry||overflow)return;
+   const geom=mesh.geometry,attribute=geom.getAttribute('position');if(!attribute)return;
+   const index=geom.getIndex(),count=index?index.count:attribute.count;
+   // Imported assets may contain multiple draw groups and unindexed triangles. Budget the entire collider.
+   const triCount=Math.floor(count/3);if(triangles+triCount>50000){overflow=true;return;}
+   const first=positions.length/3;
+   for(let j=0;j<attribute.count;j++){
+    vertex.fromBufferAttribute(attribute,j).applyMatrix4(mesh.matrixWorld).sub(origin).applyQuaternion(inverse);
+    if(!Number.isFinite(vertex.x+vertex.y+vertex.z)){overflow=true;return;}
+    positions.push(vertex.x,vertex.y,vertex.z);
+   }
+   for(let i=0;i<triCount*3;i++)indices.push(first+(index?index.getX(i):i));
+   triangles+=triCount;
+  });
+  if(overflow||triangles===0){object.userData.colliderStatus=overflow?'Trimesh exceeds 50,000 triangles; using bounding box':'No mesh triangles; using bounding box';return null;}
+  object.userData.colliderStatus=`Trimesh: ${triangles} triangles`;
+  return R.ColliderDesc.trimesh(new Float32Array(positions),new Uint32Array(indices));
+ }
  // Use bounds centered relative to the rigid body's origin; imported meshes have arbitrary pivots.
  colliderShape(object){
   const R=this.runtime;
@@ -93,10 +120,15 @@ export class ScenePhysics{
   descriptor.setRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
   if(isRobot){descriptor.lockRotations();}
   const body=this.world.createRigidBody(descriptor);
-  const shape=isRobot?R.ColliderDesc.capsule(CHARACTER.halfHeight,CHARACTER.radius).setTranslation(0,CHARACTER.centerY,0):this.colliderShape(object);
+  const shape=isRobot?R.ColliderDesc.capsule(CHARACTER.halfHeight,CHARACTER.radius).setTranslation(0,CHARACTER.centerY,0):opts.mode==='static'&&opts.collider==='trimesh'?(this.triangleMeshShape(object)||this.colliderShape(object)):this.colliderShape(object);
   if(!isRobot)shape.setFriction(opts.friction).setRestitution(opts.restitution);
   else shape.setFriction(.85).setRestitution(0);
-  const collider=this.world.createCollider(shape,body);
+  let collider;
+  try{collider=this.world.createCollider(shape,body);}catch(error){
+   if(opts.collider!=='trimesh'||type!=='static')throw error;
+   object.userData.colliderStatus='Trimesh creation failed; using bounding box: '+String(error?.message||error).slice(0,120);
+   collider=this.world.createCollider(this.colliderShape(object).setFriction(opts.friction).setRestitution(opts.restitution),body);
+  }
   this.bodies.set(id,body);this.colliders.set(id,collider);this.settings.set(id,signature);
   if(isRobot){
    this.characters.set(id,{verticalSpeed:0,grounded:object.position.y<=.08,previousJump:false});

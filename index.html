@@ -11,9 +11,9 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.19</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.28</small></div>
     <nav aria-label="Navigation" id="toolNav">
-      <button type="button" id="chatButton">Chat</button><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="Show more world tools">More tools</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
+      <button type="button" id="chatButton">Chat</button><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="Show more world tools">More tools</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">Room</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" title="Open in a WebXR headset browser">Enter VR</button>
       <button type="button" id="callButton">Voice / video</button><button type="button" id="messagesToggleButton" aria-pressed="true" title="Show or hide chat messages">Messages</button><button type="button" id="settingsButton" aria-label="Settings" title="Appearance and chat settings">⚙</button><button type="button" id="profileButton" aria-label="Your profile" title="Your profile">?</button>
     </nav>
@@ -46,14 +46,14 @@
   <div id="toast" role="status" class="toast" hidden></div>
   <div id="devBackdrop" class="backdrop open dev-backdrop">
     <section class="overlay" role="dialog" aria-modal="true" aria-labelledby="devTitle">
-      <div class="overlay-head"><div><span class="eyebrow">PROJECT UPDATES</span><h1 id="devTitle">SOLVI.help · Dev log</h1></div><button id="closeLog" aria-label="Close development log">✕</button></div>
+      <div class="overlay-head"><div><span class="eyebrow">PROJECT UPDATES</span><h1 id="devTitle">SOLVI.help · Dev log</h1></div><button id="closeLog" aria-label="Close development log"></button></div>
       <div id="logEntries" class="log-scroll" tabindex="0">Loading release history…</div>
       <div class="overlay-foot"><span id="buildDetails">Initial scaffolding</span><button id="continueButton" class="primary">Enter world ↗</button></div>
     </section>
   </div>
   <div id="callBackdrop" class="backdrop" hidden>
     <section class="overlay callpanel" role="dialog" aria-modal="true" aria-labelledby="callTitle">
-      <div class="overlay-head"><div><span class="eyebrow">OPT-IN MEDIA</span><h2 id="callTitle">Voice / video</h2></div><button id="closeCall" aria-label="Close call dialog">✕</button></div>
+      <div class="overlay-head"><div><span class="eyebrow">OPT-IN MEDIA</span><h2 id="callTitle">Voice / video</h2></div><button id="closeCall" aria-label="Close call dialog"></button></div>
       <p>WebRTC signaling scaffold. Media access requires your explicit permission. A TURN server and access control are required for reliable public calls.</p>
       <div class="call-actions"><button id="joinAudio" class="primary">Enable microphone</button><button id="joinVideo">Enable camera + mic</button><button id="leaveCall" disabled>Stop media</button></div>
       <video id="localVideo" autoplay muted playsinline hidden></video>
@@ -62,20 +62,32 @@
   </div>
   <aside id="addMenu" class="add-menu" hidden aria-label="Add an object"><input id="addSearch" aria-label="Search objects" placeholder="Add object · type and press Enter"></aside>
   <aside id="scenePanel" class="scene-panel minimized" aria-label="Scene editor">
-    <div class="panel-title drag-handle"><strong>Objects</strong><button id="minimizeScenePanel" type="button" aria-label="Expand or minimize objects">▣</button><button id="closeScenePanel" aria-label="Close editor">×</button></div>
+    <div class="panel-title drag-handle"><strong>Objects</strong><button id="minimizeScenePanel" type="button" aria-label="Expand or minimize objects"></button><button id="closeScenePanel" aria-label="Close editor"></button></div>
     <div id="sceneItems" class="scene-items"></div>
     <div class="panel-footer"><button id="reloadScene">Load</button><button id="saveScene" class="primary">Save scene</button></div>
   </aside>
-  <aside id="propertiesPanel" class="scene-panel properties-panel" hidden><div class="panel-title drag-handle"><strong id="objectName">Object</strong><button id="closeProperties" title="Hide properties">×</button></div><div id="objectInspector" hidden>
+  <aside id="propertiesPanel" class="scene-panel properties-panel" hidden><div class="panel-title drag-handle"><strong id="objectName">Object</strong><button id="closeProperties" title="Hide properties"></button></div><div id="objectInspector" hidden>
       <div class="object-rename"><input id="objectNameInput" maxlength="100" aria-label="Object name" placeholder="Object name"></div><div class="object-actions"><button id="deleteObject" title="Delete selected object">Delete</button></div>
       <div class="transform-modes"><button id="transform-translate">Move (G)</button><button id="transform-rotate">Rotate (R)</button><button id="transform-scale">Scale (S)</button></div>
       <div id="propertyGrid" class="property-grid">
-        <label>Position</label><input aria-label="Position X" type="number" step="0.1" id="position-0"><input aria-label="Position Y" type="number" step="0.1" id="position-1"><input aria-label="Position Z" type="number" step="0.1" id="position-2">
-        <label>Rotation °</label><input aria-label="Rotation X" type="number" step="1" id="rotation-0"><input aria-label="Rotation Y" type="number" step="1" id="rotation-1"><input aria-label="Rotation Z" type="number" step="1" id="rotation-2">
-        <label>Scale</label><input aria-label="Scale X" type="number" step="0.1" id="scale-0"><input aria-label="Scale Y" type="number" step="0.1" id="scale-1"><input aria-label="Scale Z" type="number" step="0.1" id="scale-2">
+        <fieldset class="transform-group"><legend>Position</legend>
+<div class="transform-value"><label for="position-0">X</label><input aria-label="Position X" type="number" step="0.05" id="position-0"><input id="position-0-range" type="range" min="-25" max="25" step="0.05" aria-label="Position X slider"><button id="position-0-reset" class="transform-reset" type="button" title="Reset Position X to 0" aria-label="Reset Position X to 0" data-ui-icon="reset"></button></div>
+<div class="transform-value"><label for="position-1">Y</label><input aria-label="Position Y" type="number" step="0.05" id="position-1"><input id="position-1-range" type="range" min="-25" max="25" step="0.05" aria-label="Position Y slider"><button id="position-1-reset" class="transform-reset" type="button" title="Reset Position Y to 0" aria-label="Reset Position Y to 0" data-ui-icon="reset"></button></div>
+<div class="transform-value"><label for="position-2">Z</label><input aria-label="Position Z" type="number" step="0.05" id="position-2"><input id="position-2-range" type="range" min="-25" max="25" step="0.05" aria-label="Position Z slider"><button id="position-2-reset" class="transform-reset" type="button" title="Reset Position Z to 0" aria-label="Reset Position Z to 0" data-ui-icon="reset"></button></div>
+</fieldset>
+<fieldset class="transform-group"><legend>Rotation °</legend>
+<div class="transform-value"><label for="rotation-0">X</label><input aria-label="Rotation ° X" type="number" step="0.5" id="rotation-0"><input id="rotation-0-range" type="range" min="-180" max="180" step="0.5" aria-label="Rotation ° X slider"><button id="rotation-0-reset" class="transform-reset" type="button" title="Reset Rotation ° X to 0" aria-label="Reset Rotation ° X to 0" data-ui-icon="reset"></button></div>
+<div class="transform-value"><label for="rotation-1">Y</label><input aria-label="Rotation ° Y" type="number" step="0.5" id="rotation-1"><input id="rotation-1-range" type="range" min="-180" max="180" step="0.5" aria-label="Rotation ° Y slider"><button id="rotation-1-reset" class="transform-reset" type="button" title="Reset Rotation ° Y to 0" aria-label="Reset Rotation ° Y to 0" data-ui-icon="reset"></button></div>
+<div class="transform-value"><label for="rotation-2">Z</label><input aria-label="Rotation ° Z" type="number" step="0.5" id="rotation-2"><input id="rotation-2-range" type="range" min="-180" max="180" step="0.5" aria-label="Rotation ° Z slider"><button id="rotation-2-reset" class="transform-reset" type="button" title="Reset Rotation ° Z to 0" aria-label="Reset Rotation ° Z to 0" data-ui-icon="reset"></button></div>
+</fieldset>
+<fieldset class="transform-group"><legend>Scale</legend>
+<div class="transform-value"><label for="scale-0">X</label><input aria-label="Scale X" type="number" step="0.05" id="scale-0"><input id="scale-0-range" type="range" min="0.05" max="10" step="0.05" aria-label="Scale X slider"><button id="scale-0-reset" class="transform-reset" type="button" title="Reset Scale X to 1" aria-label="Reset Scale X to 1" data-ui-icon="reset"></button></div>
+<div class="transform-value"><label for="scale-1">Y</label><input aria-label="Scale Y" type="number" step="0.05" id="scale-1"><input id="scale-1-range" type="range" min="0.05" max="10" step="0.05" aria-label="Scale Y slider"><button id="scale-1-reset" class="transform-reset" type="button" title="Reset Scale Y to 1" aria-label="Reset Scale Y to 1" data-ui-icon="reset"></button></div>
+<div class="transform-value"><label for="scale-2">Z</label><input aria-label="Scale Z" type="number" step="0.05" id="scale-2"><input id="scale-2-range" type="range" min="0.05" max="10" step="0.05" aria-label="Scale Z slider"><button id="scale-2-reset" class="transform-reset" type="button" title="Reset Scale Z to 1" aria-label="Reset Scale Z to 1" data-ui-icon="reset"></button></div>
+</fieldset>
       </div>
       <div id="objectAppearance" class="object-appearance"><input id="objectColor" type="color" title="Colour" aria-label="Object colour" value="#88bbee"><select id="texturePreset" aria-label="Texture" title="Texture"><option value="none">No texture</option><option value="checker">Checker</option><option value="gradient">Gradient</option><option value="stripes">Stripes</option><option value="dots">Dots</option><option value="custom">Custom</option></select><button type="button" id="textureUploadButton">Upload texture</button><input id="textureUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden></div>
-      <section id="physicsObjectControls" class="physics-object-controls" hidden><label>Physics<select id="objectPhysicsMode"><option value="off">No physics</option><option value="dynamic">Dynamic · gravity</option><option value="static">Static · collider</option><option value="kinematic">Kinematic · movable</option></select></label><label>Bounciness<input id="objectRestitution" type="number" min="0" max="1" step="0.05" value="0.2"></label><label>Friction<input id="objectFriction" type="number" min="0" max="2" step="0.05" value="0.7"></label></section><div id="sceneModelControls" class="small-note" hidden>3D asset · <span id="sceneModelPath"></span></div><section id="lightControls" class="light-controls" hidden>
+      <section id="physicsObjectControls" class="physics-object-controls" hidden><label>Physics<select id="objectPhysicsMode"><option value="off">No physics</option><option value="dynamic">Dynamic · gravity</option><option value="static">Static · collider</option><option value="kinematic">Kinematic · movable</option></select></label><label>Collider<select id="objectCollider" aria-label="Collision shape"><option value="box">Box / default</option><option value="trimesh">Trimesh · static detailed surfaces</option></select></label><label>Bounciness<input id="objectRestitution" type="number" min="0" max="1" step="0.05" value="0.2"></label><label>Friction<input id="objectFriction" type="number" min="0" max="2" step="0.05" value="0.7"></label></section><small id="colliderHint" class="small-note" hidden>Detailed surface collision is available for static objects.</small><small id="colliderRuntimeStatus" class="small-note" role="status" aria-live="polite" hidden></small><div id="sceneModelControls" class="small-note" hidden>3D asset · <span id="sceneModelPath"></span></div><section id="lightControls" class="light-controls" hidden>
         <label>Type<select id="lightType"><option value="point">Point</option><option value="spot">Spot</option><option value="directional">Directional</option><option value="ambient">Ambient</option><option value="hemisphere">Hemisphere</option></select></label>
         <label>Intensity<input type="number" id="lightIntensity" min="0" max="50" step="0.1" value="2"></label>
         <label id="lightRangeRow">Range<input type="number" id="lightRange" min="0" max="100" step="0.5" value="10"></label>
@@ -90,7 +102,7 @@
     </div>
 </aside>
   <section id="chatPanel" class="chat-panel" aria-label="Chat">
-    <div class="panel-title drag-handle chat-drag"><div><strong id="roomChatTitle">Main realm · messages</strong><small id="backendLabel">Checking backend…</small></div><div><button type="button" id="floatChatButton" title="Return to overlay">Overlay</button><button id="closeChat" aria-label="Close chat">×</button></div></div>
+    <div class="panel-title drag-handle chat-drag"><div><strong id="roomChatTitle">Main realm · messages</strong><small id="backendLabel">Checking backend…</small></div><div><button type="button" id="floatChatButton" title="Return to overlay">Overlay</button><button id="closeChat" aria-label="Close chat"></button></div></div>
     <div id="chatFeed" class="chat-feed" aria-live="polite" aria-relevant="additions text"></div>
     <div class="chat-composer">
       <div class="composer-line"><span id="composerName">Guest</span><select id="modelSelect" aria-label="Meta model"><option value="">AI unavailable</option></select></div>
@@ -110,11 +122,11 @@
     </div>
     <span id="chatResizeGrip" class="chat-resize-grip" title="Resize chat window" aria-label="Resize chat"></span>
   </section>
-  <div id="roomBackdrop" class="backdrop" hidden><section class="overlay" role="dialog" aria-label="Create realm"><div class="panel-title"><strong>New room / realm</strong><button id="closeRoom">×</button></div><label class="field-label">Room title<input id="roomTitle" maxlength="80" placeholder="Robot laboratory"></label><label class="field-label">Room slug<input id="roomSlug" maxlength="40" placeholder="robot-lab"></label><div class="panel-footer"><button class="primary" id="saveRoom">Create realm</button></div><small id="roomError"></small></section></div>
+  <div id="roomBackdrop" class="backdrop" hidden><section class="overlay" role="dialog" aria-label="Create realm"><div class="panel-title"><strong>New room / realm</strong><button id="closeRoom"></button></div><label class="field-label">Room title<input id="roomTitle" maxlength="80" placeholder="Robot laboratory"></label><label class="field-label">Room slug<input id="roomSlug" maxlength="40" placeholder="robot-lab"></label><div class="panel-footer"><button class="primary" id="saveRoom">Create realm</button></div><small id="roomError"></small></section></div>
   <video id="facePreview" autoplay muted playsinline hidden></video>
   <div id="profileBackdrop" class="backdrop profile-backdrop" hidden>
     <section class="overlay profile-modal" role="dialog" aria-label="Your SOLVI profile">
-      <div class="panel-title"><div><strong id="profilePanelTitle">Your profile</strong><small id="profilePanelNote">Only your name is required.</small></div><button id="closeProfile">×</button></div>
+      <div class="panel-title"><div><strong id="profilePanelTitle">Your profile</strong><small id="profilePanelNote">Only your name is required.</small></div><button id="closeProfile"></button></div>
       <label class="field-label">Name * <input id="profileName" maxlength="80" required placeholder="Your name" autocomplete="nickname"></label>
       <label class="field-label">Email (optional) <input id="profileEmail" type="email" maxlength="180" placeholder="you@example.com"></label>
       <label class="field-label">Bio (optional) <textarea id="profileBio" maxlength="500" rows="2" placeholder="About you"></textarea></label>
@@ -126,45 +138,45 @@
       <div class="panel-footer"><button id="exportProfile">Export profile</button><label class="icon-btn">Import profile<input type="file" id="importProfile" accept="application/json" hidden></label><button class="primary" id="saveProfile">Save / Sign in</button></div>
     </section>
   </div>
-  <div id="settingsDrawer" class="drawer-shell" hidden><aside class="drawer" aria-label="Appearance and chat settings"><div class="drawer-head"><strong>Settings · display &amp; accessibility</strong><button id="closeSettings" aria-label="Close settings">×</button></div>
-      <section class="settings-section" aria-labelledby="settings-appearance-title"><h2 id="settings-appearance-title">Appearance &amp; colour themes</h2>
-      <p class="small-note">Select a complete high-contrast or colour theme. Preview cards show actual background, panel and accent colours.</p>
-      <div id="themePresetGallery" class="theme-preset-gallery" aria-label="Available colour themes"></div>
+  <div id="settingsDrawer" class="drawer-shell" hidden><aside class="drawer" aria-label="Appearance and chat settings"><div class="drawer-head"><strong>Settings · display &amp; accessibility</strong><button id="closeSettings" aria-label="Close settings"></button></div>
+      <details class="settings-section"><summary id="settings-appearance-title">Appearance & themes</summary>
+      
+      <details class="theme-choices"><summary>Theme previews</summary><div id="themePresetGallery" class="theme-preset-gallery" aria-label="Available colour themes"></div></details>
       <label class="field-label">Colour theme <select id="interfaceTheme">
  <option value="midnight">Midnight blue</option><option value="light">Light</option><option value="dark">Dark charcoal</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="dusk">Dusk</option><option value="contrastDark">High contrast · dark</option><option value="contrastLight">High contrast · light</option></select></label>
       <label class="field-label">Accent <input id="accentColor" type="color" value="#79cde5"></label>
       <div class="settings-subhead">Accent colours <button id="generateTheme" type="button">Generate accent</button></div>
       <div id="themeSwatches" class="theme-swatches" role="group" aria-label="Choose an accent colour"></div>
-      </section><section class="settings-section" aria-labelledby="settings-layout-title"><h2 id="settings-layout-title">Interface &amp; accessibility</h2>
+      </details><details class="settings-section" open><summary id="settings-layout-title">Display & fonts</summary>
       <fieldset class="settings-mode-choices"><legend>Button labels</legend><label><input type="radio" name="buttonLabels" value="both"> Icon + text</label><label><input type="radio" name="buttonLabels" value="text"> Text only</label><label><input type="radio" name="buttonLabels" value="icon"> Icons only</label></fieldset>
-      <p class="small-note">Phones default to icons; larger screens default to icon + text. This preference can be changed at any time. Icon-only controls retain screen-reader names and tooltips.</p>
-      <label class="field-label" for="uiScale">UI size: <output id="uiScaleOutput" for="uiScale">100%</output><input type="range" id="uiScale" min="50" max="200" step="10" value="100"></label>
+      
+      <div class="settings-scale" role="group" aria-label="Display size"><label for="uiScale">Interface size <output id="uiScaleOutput" for="uiScale">100%</output></label><div class="settings-scale-controls"><input type="range" id="uiScale" min="50" max="200" step="1" value="100" aria-label="Interface size preview, percent"><input id="uiScaleNumber" aria-label="Interface size in percent" type="number" min="50" max="200" step="1" value="100"><span aria-hidden="true">%</span><button id="applyUiScale" type="button">Apply</button></div></div>
       <label class="field-label" for="uiFontTheme">Font theme<select id="uiFontTheme"><option value="system">System interface</option><option value="sans">Clean sans-serif</option><option value="rounded">Rounded</option><option value="serif">Readable serif</option><option value="mono">Monospace</option><option value="installed">Installed font (this device)</option></select></label>
       <label class="field-label" for="uiCustomFont" id="uiCustomFontLabel" hidden>Installed font family name<input id="uiCustomFont" type="text" maxlength="80" placeholder="e.g. Avenir Next" autocomplete="off" spellcheck="false"></label>
-      <p class="small-note">Installed fonts are resolved by this browser on this device; fonts are not uploaded. UI size is independent of browser zoom.</p>
-      <button id="resetUiPreferences" type="button">Reset display preferences</button>
-      </section><section class="settings-section" aria-labelledby="settings-chat-title"><h2 id="settings-chat-title">Chat &amp; sound</h2>
+      <div class="settings-font-actions"><button id="useSystemFont" type="button">Use system font</button><button id="browseLocalFonts" type="button">Browse installed fonts</button></div><select id="localFontList" aria-label="Installed fonts" hidden></select><small id="fontBrowseStatus" role="status" aria-live="polite"></small>
+      <button id="resetUiPreferences" type="button">Reset display</button>
+      </details><details class="settings-section"><summary id="settings-chat-title">Chat & sound</summary>
       <label class="field-label">Bubble opacity <input id="bubbleOpacity" type="range" min="0" max="100" value="78"></label>
       <label class="toggle-line"><input id="bubbleBackgrounds" type="checkbox" checked> Bubble backgrounds</label>
       <label class="toggle-line"><input id="bubbleBorders" type="checkbox" checked> Bubble borders</label>
       <label class="toggle-line"><input id="groupMessages" type="checkbox" checked> Group nearby messages</label>
       <label class="toggle-line"><input id="soundEffects" type="checkbox" checked> Sound cues</label>
       <label class="toggle-line"><input id="flipHead" type="checkbox" checked> Correct avatar facing</label>
-      </section><section class="settings-section" aria-labelledby="settings-ai-title"><h2 id="settings-ai-title">Meta AI · developer settings</h2>
+      </details><details class="settings-section"><summary id="settings-ai-title">Meta AI</summary>
       <label class="field-label">API key (optional)<input id="metaApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Use backend key or enter session key"></label>
       <label class="field-label">Key handling <select id="metaKeyStorage"><option value="session">Browser session only (not XSS-proof)</option><option value="server">Store on Ubuntu (admin only)</option></select></label>
       <button type="button" id="saveMetaKey">Apply API key</button><button type="button" id="clearMetaKey">Clear session key</button><small id="metaKeyStatus" class="small-note">Server keys are only saved by an administrator. Browser keys leave the browser over HTTPS for each inference request.</small>
       <label class="field-label">Estimated spend budget (USD) <input type="number" id="metaBudget" min="0" max="10000" step="0.10" value="5"></label><button type="button" id="refreshMetaUsage">Refresh usage</button><small id="metaUsageStatus" class="small-note">Usage is a local estimate, not a Meta account balance.</small>
-      </section><section class="settings-section" aria-labelledby="settings-caption-title"><h2 id="settings-caption-title">Live captions / speech recognition</h2><p class="small-note">Tap CC in chat to start or stop listening. Final words are posted as <code>CC: recognised speech</code> when auto-send is enabled. Interim words stay on this device.</p><p class="small-note">Status: <strong id="ccSettingsStatus" role="status" aria-live="polite">Off · microphone released</strong></p>
+      </details><details class="settings-section"><summary id="settings-caption-title">Captions & microphone</summary><p class="small-note">Status: <strong id="ccSettingsStatus" role="status" aria-live="polite">Off · microphone released</strong></p>
       <label class="field-label">Recognition engine<select id="ccEngine"><option value="browser">Browser / device</option><option value="server">Ubuntu Whisper (requires backend)</option></select></label>
       <label class="field-label">Speech language<select id="ccLanguage"><option value="auto">Auto / device language</option><option value="pl-PL">Polski · pl-PL</option><option value="en-GB">English · en-GB</option><option value="en-US">English · en-US</option></select></label>
       <label class="toggle-line"><input id="ccAutoSend" type="checkbox" checked> Send final captions to room automatically</label>
       <small class="small-note" id="ccEngineStatus">Browser recognition depends on device support. Whisper is hosted on Ubuntu.</small>
-      </section><section class="settings-section" aria-labelledby="settings-import-title"><h2 id="settings-import-title">3D model imports &amp; exports</h2><label class="field-label">Maximum upload size <select id="sceneModelMaxSize"><option value="0.1">100 KB</option><option value="0.25">250 KB</option><option value="0.5">500 KB</option><option value="1">1 MB</option><option value="2">2 MB</option><option value="5" selected>5 MB</option><option value="10">10 MB</option><option value="20">20 MB</option></select></label><small class="small-note">Your import limit applies before uploading. Server hard limit: 20 MiB. Drop .glb or .fbx onto the 3D view.</small><button id="exportChatSettings" type="button">Export room messages</button>
+      </details><details class="settings-section"><summary id="settings-import-title">3D models</summary><label class="field-label">Maximum upload size <select id="sceneModelMaxSize"><option value="0.1">100 KB</option><option value="0.25">250 KB</option><option value="0.5">500 KB</option><option value="1">1 MB</option><option value="2">2 MB</option><option value="5" selected>5 MB</option><option value="10">10 MB</option><option value="20">20 MB</option></select></label><small class="small-note">Your import limit applies before uploading. Server hard limit: 20 MiB. Drop .glb or .fbx onto the 3D view.</small><button id="exportChatSettings" type="button">Export room messages</button>
       <button id="exportChatSettingsJson" type="button">Export room JSON</button>
-      <button id="openAdminSettings" type="button">Admin dashboard</button></section>
+      <button id="openAdminSettings" type="button">Admin dashboard</button></details>
     </aside></div>
-  <div id="worldSettingsDrawer" class="drawer-shell" hidden><aside class="drawer" aria-label="World editing settings"><div class="drawer-head"><strong>World settings</strong><button type="button" id="closeWorldSettings" aria-label="Close world settings">×</button></div>
+  <div id="worldSettingsDrawer" class="drawer-shell" hidden><aside class="drawer" aria-label="World editing settings"><div class="drawer-head"><strong>World settings</strong><button type="button" id="closeWorldSettings" aria-label="Close world settings"></button></div>
       <p class="small-note">Room permissions apply to everyone in this realm. Open editing is the default.</p>
       <label class="field-label">Objects<select id="worldObjectsPolicy"><option value="open">Anyone can modify</option><option value="owned">Only the owner</option></select></label>
       <label class="field-label">Robots / avatars<select id="worldRobotsPolicy"><option value="open">Anyone can control or modify</option><option value="owned">Only the owner</option></select></label>
@@ -173,13 +185,13 @@
     </aside></div>
   <div id="avatarGalleryBackdrop" class="backdrop avatar-gallery-backdrop" hidden>
   <section class="overlay avatar-gallery" role="dialog" aria-modal="true" aria-label="Choose an avatar">
-   <div class="panel-title"><strong>Avatar library</strong><button id="closeAvatarGallery" type="button" aria-label="Close avatar library">×</button></div>
+   <div class="panel-title"><strong>Avatar library</strong><button id="closeAvatarGallery" type="button" aria-label="Close avatar library"></button></div>
    <p class="small-note">Select an avatar to place it in the world or apply it to your selected robot.</p>
    <div id="avatarGalleryGrid" class="avatar-gallery-grid" role="list"></div>
    <div class="avatar-gallery-upload"><label class="icon-btn">+ Upload your own GLB<input id="uploadRobotAvatar" type="file" accept=".glb,model/gltf-binary" hidden></label><small id="avatarGalleryStatus" aria-live="polite">Upload size limit: 20 MB · public to the realm.</small></div>
   </section></div>
   <aside id="robotBrainsPanel" class="solvi-floating-window" hidden aria-label="Robot Brains panel">
-    <div class="panel-title drag-handle"><strong id="brainsHeading">Robot Brains</strong><button id="closeRobotBrains" type="button" aria-label="Close Brains">×</button></div>
+    <div class="panel-title drag-handle"><strong id="brainsHeading">Robot Brains</strong><button id="closeRobotBrains" type="button" aria-label="Close Brains"></button></div>
     <div class="brains-scroll">
       <section id="brainsObservation" aria-label="Robot eye camera and AI vision" class="brain-observation">
       <div class="brain-eye-header"><div><h2 id="brainsEyeTitle">Robot eyes · live observation</h2><p class="small-note">Actual rendered JPEG, not an AI-generated illustration. Camera captures are local until sent.</p></div><button type="button" id="expandBrainsEye">View full-size</button></div>
@@ -211,14 +223,14 @@
   </aside>
   <div id="brainsEyeLightbox" class="brains-eye-lightbox" hidden role="dialog" aria-modal="true" aria-label="Jessica eye-camera image full size"><div class="brains-lightbox-head"><strong id="brainsLightboxTitle">Robot-eye capture · 512 × 512</strong><button type="button" id="closeBrainsEyeLightbox" aria-label="Close full size image">Close ×</button></div><img id="brainsEyeLarge" width="512" height="512" alt="Enlarged exact robot-eye screenshot sent or ready to send to Meta"><p id="brainsLightboxCaption">This is a rendered robot-eye JPEG.</p></div>
   <aside id="diagnosticsPanel" class="solvi-floating-window diagnostics-window" hidden aria-label="Backend diagnostics">
-    <div class="panel-title drag-handle"><strong>Backend diagnostics</strong><button id="closeDiagnostics" type="button">×</button></div>
+    <div class="panel-title drag-handle"><strong>Backend diagnostics</strong><button id="closeDiagnostics" type="button"></button></div>
     <p class="small-note">Admin session required. Refresh retrieves the application's bounded, redacted event log; server journal output is not exposed.</p>
     <div class="brain-actions"><button id="refreshDiagnostics" type="button">Refresh logs</button><button id="analyzeDiagnostics" type="button">Ask Meta to analyze logs</button></div>
     <pre id="diagnosticsOutput" class="brain-results">Unlock Admin dashboard in Settings before viewing backend logs.</pre>
   </aside>
   <div id="adminBackdrop" class="backdrop" hidden>
     <section class="overlay admin-modal" role="dialog" aria-label="Admin dashboard">
-      <div class="panel-title"><strong>Server administration</strong><button id="closeAdmin">×</button></div>
+      <div class="panel-title"><strong>Server administration</strong><button id="closeAdmin"></button></div>
       <p class="small-note">Admin access requires a separately configured server-side password hash. No default password.</p>
       <input id="adminPassword" type="password" placeholder="Admin password" autocomplete="current-password">
       <div class="panel-footer"><button id="adminLogin">Unlock</button><button id="adminRefresh">Refresh metrics</button></div>
