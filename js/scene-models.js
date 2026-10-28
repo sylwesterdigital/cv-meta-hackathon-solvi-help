@@ -32,6 +32,7 @@ export async function hydrateSceneModel(group){
   group.children.filter(o=>o.userData.sceneModelVisual||o.userData.sceneModelPlaceholder).forEach(o=>{group.remove(o);if(o.userData.sceneModelPlaceholder){o.geometry?.dispose();o.material?.dispose();}});
   model.userData.sceneModelVisual=true;group.add(model);
   group.userData.modelReady=true;group.userData.modelError=null;
+  window.solviEditor?.physics.sync(group);
  }catch(error){if(ticket===group.userData.modelTicket){group.userData.modelError=error.message;console.warn('Scene asset load failed',url,error);}}
 }
 export function makeSceneModel(){

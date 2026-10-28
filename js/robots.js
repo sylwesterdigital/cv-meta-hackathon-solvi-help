@@ -56,7 +56,7 @@ export function tickRobots(items,dt,onMove=()=>{}){
   for(const robot of items){
     if(robot.userData.editorKind!=='robot')continue;
     let mode=robot.userData.robotMode||'idle';
-    if(mode==='jump'&&robot.userData.jumpVel!==undefined){
+    if(mode==='jump'&&robot.userData.jumpVel!==undefined&&!robot.userData.physicsCharacterActive){
       robot.position.y+=robot.userData.jumpVel*dt;robot.userData.jumpVel-=12.5*dt;
       if(robot.position.y<=(robot.userData.groundY??0)){robot.position.y=robot.userData.groundY??0;delete robot.userData.jumpVel;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;}
     }

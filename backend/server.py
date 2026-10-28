@@ -136,7 +136,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.16',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.17',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -740,6 +740,7 @@ def websocket(ws):
             ws.send(json.dumps({'type':'snapshot','room':room_id,'peers':peers}))
         publish({'type':'presence','event':'joined','id':uid,'name':name,'state':{}},uid,room_id)
         last=0
+        last_physics=0
         while True:
             raw=ws.receive()
             if raw is None:break
@@ -817,6 +818,29 @@ def websocket(ws):
                 publish({'type':'robot-input','room':room_id,'by':uid,'id':identifier,
                         'f':f,'t':t,'r':r,'b':reverse,'m':moving,'x':round(x,2),'y':round(y,2),
                         'z':round(z,2),'yaw':round(yaw,3),'s':round(speed,2),'q':round(strafe,2),'j':jump,'seq':max(0,min(2147483647,seq))},except_id=uid,room_id=room_id)
+            elif msg.get('type')=='physics-state':
+                if time.monotonic()-last_physics<.115:continue
+                last_physics=time.monotonic()
+                # Short motion snapshots; GLB meshes and room scenes are never rebroadcast.
+                identifier=str(msg.get('id',''))
+                if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
+                try:
+                    position=[float(msg[k]) for k in ('x','y','z')]
+                    quaternion=[float(n) for n in msg.get('q',[])]
+                    seq=int(msg.get('seq',0))
+                except (TypeError,ValueError,OverflowError):continue
+                if len(quaternion)!=4 or any(not math.isfinite(n) or abs(n)>1000 for n in position):continue
+                if any(not math.isfinite(n) or abs(n)>1.01 for n in quaternion):continue
+                if not 0<=seq<=2147483647:continue
+                with db() as con:
+                    row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+                    objects=json.loads(row['payload']) if row else []
+                    controlled=next((o for o in objects if o.get('id')==identifier and o.get('kind')!='robot' and (o.get('physics') or {}).get('mode')=='dynamic'),None)
+                # Dynamic-body simulation has one owner even when editing policy is open.
+                if not controlled or controlled.get('owner')!=uid:continue
+                publish({'type':'physics-state','room':room_id,'by':uid,'id':identifier,
+                         'x':round(position[0],3),'y':round(position[1],3),'z':round(position[2],3),
+                         'q':[round(n,4) for n in quaternion],'seq':seq},except_id=uid,room_id=room_id)
             elif msg.get('type')=='signal' and isinstance(msg.get('payload'),dict):
                 to=msg.get('to')
                 with room_lock:peer=room.get(to)

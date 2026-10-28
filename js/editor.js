@@ -82,7 +82,7 @@ export class SceneEditor{
    else{world.editorGizmoPointer=false;world.cameraOrbitGesture=null;}
   });
   this.transform.addEventListener('mouseDown',()=>{this.broadcastEdit(true);this.transformBefore=this.snapshot(this.selected);world.editorDragging=true;world.editorGizmoPointer=true;world.controls.enabled=false;});
-  this.transform.addEventListener('mouseUp',()=>{this.broadcastEdit(false);world.editorDragging=false;this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
+  this.transform.addEventListener('mouseUp',()=>{this.broadcastEdit(false);world.editorDragging=false;this.physics.sync(this.selected);this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
   this.transform.addEventListener('objectChange',()=>{if(!this.canEdit(this.selected))return;this.updateInspector();this.queueSave(this.selected);});
   window.addEventListener('solvi:robot-model-ready',e=>{if(this.selected?.userData.editorId===e.detail.id)this.updateInspector();});
   this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
@@ -155,7 +155,7 @@ export class SceneEditor{
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
    const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canEdit(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v))return;const before=this.snapshot(this.selected);
     const vec=this.selected[field];const name=['x','y','z'][axis];vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
-    this.recordEdit(before,this.snapshot(this.selected));this.refreshList();this.queueSave(this.selected);};}
+    this.physics.sync(this.selected);this.recordEdit(before,this.snapshot(this.selected));this.refreshList();this.queueSave(this.selected);};}
   byId('objectColor').addEventListener('focus',()=>this.colorBefore=this.snapshot(this.selected));byId('objectColor').addEventListener('change',()=>{this.recordEdit(this.colorBefore,this.snapshot(this.selected));this.colorBefore=null;});
   byId('objectColor').oninput=e=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||obj.userData.editorKind==='robot')return;obj.traverse(o=>{if(o.material?.color)o.material.color.set(e.target.value);});this.queueSave(obj);};
   byId('texturePreset').onchange=e=>{const before=this.snapshot(this.selected);this.texture(e.target.value);this.recordEdit(before,this.snapshot(this.selected));};byId('textureUploadButton').onclick=()=>byId('textureUpload').click();
@@ -397,7 +397,6 @@ export class SceneEditor{
   broadcastEdit(active){const o=this.selected;if(o&&this.canEdit(o))window.solviRoomSocket?.send({type:'object-edit',id:o.userData.editorId,editing:active});}
   showRemoteEdit(packet){const id=packet.id;const obj=this.items.find(o=>o.userData.editorId===id);if(!obj)return;const previous=this.editMarkers.get(id);if(previous&&packet.editing){previous.expires=performance.now()+6500;return;}if(previous){this.world.scene.remove(previous.sprite);previous.sprite.material.map?.dispose();previous.sprite.material.dispose();this.editMarkers.delete(id);}if(!packet.editing)return;const canvas=document.createElement('canvas');canvas.width=512;canvas.height=80;const ctx=canvas.getContext('2d');ctx.fillStyle='rgba(8,20,37,.87)';ctx.fillRect(0,0,512,80);ctx.fillStyle='#ffffff';ctx.font='bold 32px sans-serif';ctx.fillText('Editing · '+String(packet.name||'Guest').slice(0,21),12,50);const texture=new THREE.CanvasTexture(canvas);const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));sprite.scale.set(2.6,.42,1);this.world.scene.add(sprite);this.editMarkers.set(id,{sprite,expires:performance.now()+6500});}
   tick(dt){
-    this.physics.tick(dt);
     const clock=performance.now();for(const [id,marker] of this.editMarkers){const item=this.items.find(o=>o.userData.editorId===id);if(!item||clock>marker.expires){this.world.scene.remove(marker.sprite);marker.sprite.material.map?.dispose();marker.sprite.material.dispose();this.editMarkers.delete(id);continue;}const bounds=new THREE.Box3().setFromObject(item);marker.sprite.position.copy(bounds.getCenter(new THREE.Vector3()));marker.sprite.position.y=(bounds.isEmpty()?item.position.y+2:bounds.max.y)+.42;}
     if(this.selected&&this.canEdit(this.selected)&&(this.world.editorDragging||this.robotKeys.size)&&clock-this.lastEditPing>2500){this.broadcastEdit(true);this.lastEditPing=clock;}
     if(this.lightHelper&&!byId('propertiesPanel').hidden){this.lightHelper.visible=!this.world.renderer.xr.isPresenting;this.lightHelper.update?.();}
@@ -411,7 +410,7 @@ export class SceneEditor{
       robot.userData.robotVelocity=motion.velocity;robot.userData.robotSteer=motion.steer;robot.userData.robotLateral=motion.lateral;
       const walking=Math.abs(motion.velocity)>.04;const strafing=Math.abs(motion.lateral)>.04;
       if(input.f||input.t)robot.userData.robotGoal=null;
-      if(robot.userData.jumpVel===undefined){
+      if(robot.userData.jumpVel===undefined&&!robot.userData.physicsAirborne){
        robot.userData.robotMode=!walking?(strafing?(motion.lateral>0?'strafeLeft':'strafeRight'):'idle'):motion.velocity<0?'walkBackward':(input.r&&motion.velocity>1.4?'run':'walk');
       }
     }
@@ -433,7 +432,7 @@ export class SceneEditor{
       if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotMode='idle';other.userData.robotVelocity=0;other.userData.robotSteer=0;other.userData.robotLateral=0;}continue;}
       const next=stepRobotMotion({x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0,steer:other.userData.robotSteer||0,lateral:other.userData.robotLateral||0},remote,dt);
       other.position.x=next.x;other.position.z=next.z;other.rotation.y=next.yaw;other.userData.robotVelocity=next.velocity;other.userData.robotSteer=next.steer;other.userData.robotLateral=next.lateral;
-      if(other.userData.jumpVel===undefined){other.userData.robotMode=Math.abs(next.velocity)<.04?(Math.abs(next.lateral)>.04?(next.lateral>0?'strafeLeft':'strafeRight'):'idle'):next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
+      if(other.userData.jumpVel===undefined&&!other.userData.physicsAirborne){other.userData.robotMode=Math.abs(next.velocity)<.04?(Math.abs(next.lateral)>.04?(next.lateral>0?'strafeLeft':'strafeRight'):'idle'):next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
     }
     // Smooth server-authoritative corrections without reloading the avatar mesh.
     for(const [id,correction] of this.remoteCorrections){
@@ -446,6 +445,7 @@ export class SceneEditor{
     tickRobots(this.items,dt,(o,arrived)=>{
       if(arrived&&this.canEdit(o))this.queueSave(o);
     });
+    this.physics.tick(dt);
   }
   applyRobotInput(packet){
     const robot=this.items.find(o=>o.userData.editorId===packet.id&&o.userData.editorKind==='robot');

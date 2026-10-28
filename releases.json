@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.16",
+  "currentVersion": "0.2.17",
   "releases": [
+    {
+      "version": "0.2.17",
+      "publishedAt": "2026-10-28T03:40:49Z",
+      "changes": [
+        "Rapier kinematic capsule avatars with gravity, jump, steps, slopes, object and avatar collisions",
+        "Dynamic bodies receive impulses; GLB/FBX objects get colliders after asset load",
+        "Owner-authorized compact physics-state snapshots for multiplayer with smoothed remote motion",
+        "Stable character controller avoids reloading GLB models during movement; world physics defaults Off"
+      ]
+    },
     {
       "version": "0.2.16",
       "publishedAt": "2026-10-28T03:20:02Z",
