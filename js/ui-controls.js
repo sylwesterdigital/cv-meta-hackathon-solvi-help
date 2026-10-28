@@ -9,7 +9,7 @@ const iconIds={
  exportChatSettings:'download',exportChatSettingsJson:'download',openAdminSettings:'config',closeWorldSettings:'close',saveWorldSettings:'check',
  closeAvatarGallery:'close',closeRobotBrains:'close',closeDiagnostics:'close',refreshDiagnostics:'history',analyzeDiagnostics:'brain',closeProperties:'close',minimizeScenePanel:'minified',closeScenePanel:'close',
  closeLog:'close',continueButton:'play',closeCall:'close',joinAudio:'mic',joinVideo:'video',leaveCall:'stop',closeProfile:'close',saveProfile:'check',
- transformTranslate:'move',deleteObject:'delete',transformRotate:'rotate',transformScale:'scale',reloadScene:'history',saveScene:'check',
+ 'transform-translate':'move','transform-rotate':'rotate','transform-scale':'scale',robotEyeFront:'eye',robotEye180:'eye',robotEye360:'eye',openRobotBrains:'brain',openAvatarGallery:'avatar-3d',deleteObject:'delete',reloadScene:'history',saveScene:'check',
  saveSceneButton:'check',textureUploadButton:'photo',chatFile:'file',adminLogin:'check',adminRefresh:'history',
  closeAdmin:'close',roomSelect:'rooms',robotAvatar:'avatar-3d',uploadRobotAvatar:'avatar-maker',
 };

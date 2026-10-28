@@ -154,13 +154,6 @@ export function initRobotBrains(world,api,getRoom,toast){
    for(const [key,id] of Object.entries(fields)){$(id).value=brain[key];$(id).disabled=!window.solviEditor.canEdit(robot);}
    $('brainsInitiative').checked=Boolean(robot.userData.robotBrain?.initiative);
    $('brainsInitiativeVision').checked=Boolean(robot.userData.robotBrain?.initiativeVision);
-   for(const [field,id,fallback] of [['voiceProvider','brainsVoiceProvider','local'],['voiceId','brainsVoiceId',''],['voiceLang','brainsVoiceLang','auto'],['voiceRate','brainsVoiceRate','1'],['voicePitch','brainsVoicePitch','1']])$(id).value=String(robot.userData.robotBrain?.[field]||fallback);
-   populateDeviceVoices(robot.userData.robotBrain?.voiceName||'');
-   for(const id of ['brainsVoiceProvider','brainsVoiceId','brainsElevenVoiceList','loadElevenVoices','brainsVoiceLang','brainsVoiceName','brainsVoiceRate','brainsVoicePitch'])$(id).disabled=!window.solviEditor.canEdit(robot);
-   $('robotVoiceStatus').textContent='Select ElevenLabs and load voices or enter an ID, then Test voice.';
-   const list=$('brainsElevenVoiceList');list.replaceChildren(new Option('Load voices from your account',''));
-   if($('brainsVoiceId').value)list.add(new Option('Saved voice · '+$('brainsVoiceId').value,$('brainsVoiceId').value));
-   list.value=$('brainsVoiceId').value||'';
    $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);$('brainsInitiativeVision').disabled=!window.solviEditor.canEdit(robot);
    $('saveRobotBrains').disabled=!window.solviEditor.canEdit(robot);$('saveRobotChatPortrait').disabled=!window.solviEditor.canEdit(robot);
    $('brainsVisionResult').textContent='Capture eyes, then Describe scene with Muse Spark or Find object with SAM 3.1.';
@@ -185,29 +178,26 @@ export function initRobotBrains(world,api,getRoom,toast){
  $('saveRobotBrains').onclick=()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot)){toast('Robot is read-only');return;}
    const before=window.solviEditor.snapshot(activeRobot);
-   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),initiative:$('brainsInitiative').checked,initiativeVision:$('brainsInitiativeVision').checked,
-     voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value.trim(),voiceName:$('brainsVoiceName').value,
-     voiceLang:$('brainsVoiceLang').value,voiceRate:String(Math.max(.6,Math.min(1.6,Number($('brainsVoiceRate').value)||1))),
-     voicePitch:String(Math.max(.5,Math.min(1.7,Number($('brainsVoicePitch').value)||1)))};
+   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),initiative:$('brainsInitiative').checked,initiativeVision:$('brainsInitiativeVision').checked};
    window.solviEditor.recordEdit(before,window.solviEditor.snapshot(activeRobot));
    window.solviEditor.queueSave(activeRobot);
    toast(activeRobot.name+' identity saved');
  };
+ // Voice is configured in Properties for the currently selected robot (not the Brains window).
+ const selectedVoiceRobot=()=>window.solviEditor?.robot();
+ const editableVoiceRobot=()=>{const robot=selectedVoiceRobot();return robot&&window.solviEditor.canEdit(robot)?robot:null;};
+ const voiceIds=['brainsVoiceProvider','brainsVoiceId','brainsElevenVoiceList','loadElevenVoices','brainsVoiceLang','brainsVoiceName','brainsVoiceRate','brainsVoicePitch','testRobotVoice','saveRobotVoice'];
+ let elevenVoiceCache=[],elevenCacheKey='';
  function populateDeviceVoices(selected=''){
    const list=$('brainsVoiceName'),language=$('brainsVoiceLang').value;
    const all=window.speechSynthesis?.getVoices?.()||[];
-   const matches=all.filter(v=>language==='auto'||v.lang.toLowerCase().startsWith(language));
+   const matches=all.filter(v=>language==='auto'||v.lang.toLowerCase().startsWith(language.toLowerCase()));
    list.replaceChildren(new Option(`Automatic voice · ${language==='auto'?'match spoken language':language.toUpperCase()}`,''));
    for(const voice of matches)list.add(new Option(`${voice.name} · ${voice.lang}${voice.localService?' · installed':' · service'}`,voice.name));
    if(selected && !matches.some(v=>v.name===selected))list.add(new Option('Saved voice (not available in this language) · '+selected,selected));
    list.value=selected||'';
    if(!matches.length && language!=='auto')$('robotVoiceStatus').textContent=`No ${language} device voice installed. Ubuntu voice or ElevenLabs may still be available.`;
  }
- $('brainsVoiceLang').addEventListener('change',()=>{
-   populateDeviceVoices();filterElevenVoices();
- });
- window.speechSynthesis?.addEventListener?.('voiceschanged',()=>{if(activeRobot&&!panel.hidden)populateDeviceVoices($('brainsVoiceName').value);});
- let elevenVoiceCache=[];
  function filterElevenVoices(){
    const language=$('brainsVoiceLang').value,list=$('brainsElevenVoiceList'),saved=$('brainsVoiceId').value.trim();
    list.replaceChildren(new Option('Select voice from account',''));
@@ -220,34 +210,67 @@ export function initRobotBrains(world,api,getRoom,toast){
    if(saved&&!Array.from(list.options).some(o=>o.value===saved))list.add(new Option('Saved voice (language unverified) · '+saved,saved));
    list.value=saved||'';
  }
- $('brainsElevenVoiceList').onchange=()=>{
-  if($('brainsElevenVoiceList').value)$('brainsVoiceId').value=$('brainsElevenVoiceList').value;
- };
+ function updateVoiceVisibility(){
+   const provider=$('brainsVoiceProvider').value;
+   $('robotLocalVoicesRow').hidden=provider!=='local';
+   $('robotCloudVoicesRow').hidden=provider!=='elevenlabs';
+   $('robotVoiceIdRow').hidden=provider!=='elevenlabs';
+   $('loadElevenVoices').hidden=provider!=='elevenlabs';
+   $('robotVoiceSummary').textContent=provider==='elevenlabs'?'ElevenLabs':provider==='mute'?'Silent':'System / local';
+ }
+ function syncVoiceInspector(robot=selectedVoiceRobot()){
+   const brain=robot?.userData?.robotBrain||{},canEdit=!!robot&&window.solviEditor.canEdit(robot);
+   for(const [field,id,fallback] of [['voiceProvider','brainsVoiceProvider','local'],['voiceId','brainsVoiceId',''],['voiceLang','brainsVoiceLang','auto'],['voiceRate','brainsVoiceRate','1'],['voicePitch','brainsVoicePitch','1']])$(id).value=String(brain[field]??fallback);
+   populateDeviceVoices(brain.voiceName||'');
+   const list=$('brainsElevenVoiceList');list.replaceChildren(new Option('Browse account voices',''));
+   if(brain.voiceId)list.add(new Option('Saved voice · '+brain.voiceId,brain.voiceId));
+   list.value=brain.voiceId||'';
+   for(const id of voiceIds)$(id).disabled=!canEdit;
+   $('robotVoiceStatus').textContent=robot?`Voice settings for ${robot.name}. Select a voice and Save voice.`:'';
+   updateVoiceVisibility();
+ }
+ window.addEventListener('solvi:properties-robot-selected',()=>syncVoiceInspector());
+ $('brainsVoiceProvider').addEventListener('change',updateVoiceVisibility);
+ $('brainsVoiceLang').addEventListener('change',()=>{populateDeviceVoices();filterElevenVoices();});
+ window.speechSynthesis?.addEventListener?.('voiceschanged',()=>{if(selectedVoiceRobot())populateDeviceVoices($('brainsVoiceName').value);});
+ $('brainsElevenVoiceList').onchange=()=>{if($('brainsElevenVoiceList').value)$('brainsVoiceId').value=$('brainsElevenVoiceList').value;};
  $('loadElevenVoices').onclick=async()=>{
-   if(!activeRobot)return;
+   const robot=editableVoiceRobot();if(!robot)return;
    const button=$('loadElevenVoices'),status=$('robotVoiceStatus');button.disabled=true;
-   status.textContent='Loading ElevenLabs voices…';
+   status.textContent='Loading ElevenLabs account voices…';
+   const robotId=robot.userData.editorId;
    try{
      const auth=api.auth?.();
      const headers={'X-Solvi-Tab':auth?.tab||sessionStorage.getItem('solvi-tab')||''};
      if(auth?.token)headers.Authorization='Bearer '+auth.token;
      const key=sessionStorage.getItem('solvi-elevenlabs-key');if(key)headers['X-Solvi-Voice-Key']=key;
+     if(elevenCacheKey!==key){elevenVoiceCache=[];elevenCacheKey=key||'';}
      const response=await fetch('/api/robots/voices',{headers,cache:'no-store'});
      const data=await response.json();if(!response.ok)throw Error(data.error||`ElevenLabs HTTP ${response.status}`);
+     if(selectedVoiceRobot()?.userData.editorId!==robotId)return; // Selection changed while loading.
      elevenVoiceCache=data.voices||[];filterElevenVoices();
-     status.textContent=`${elevenVoiceCache.length} account voices listed. Only voices verified for the selected language are shown when metadata is available.`;
-   }catch(error){status.textContent='Voice list failed: '+error.message;}
-   finally{button.disabled=!window.solviEditor.canEdit(activeRobot);}
+     status.textContent=`${elevenVoiceCache.length} account voices loaded. Choose one, Test voice, then Save voice.`;
+   }catch(error){if(selectedVoiceRobot()?.userData.editorId===robotId)status.textContent='Voice list failed: '+error.message;}
+   finally{button.disabled=!editableVoiceRobot();}
  };
  window.addEventListener('solvi:robot-voice-status',event=>{
-   if(activeRobot?.userData.editorId!==event.detail?.robotId)return;
+   if(selectedVoiceRobot()?.userData.editorId!==event.detail?.robotId)return;
    $('robotVoiceStatus').textContent=event.detail.message;
  });
  $('testRobotVoice').onclick=()=>{
-   if(!activeRobot)return;
+   const robot=editableVoiceRobot();if(!robot)return;
    $('robotVoiceStatus').textContent='Preparing voice sample…';
-   window.dispatchEvent(new CustomEvent('solvi:test-robot-voice',{detail:{robotId:activeRobot.userData.editorId,name:activeRobot.name,config:{voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value,voiceLang:$('brainsVoiceLang').value,voiceName:$('brainsVoiceName').value,voiceRate:$('brainsVoiceRate').value,voicePitch:$('brainsVoicePitch').value}}}));
+   window.dispatchEvent(new CustomEvent('solvi:test-robot-voice',{detail:{robotId:robot.userData.editorId,name:robot.name,config:{voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value,voiceLang:$('brainsVoiceLang').value,voiceName:$('brainsVoiceName').value,voiceRate:$('brainsVoiceRate').value,voicePitch:$('brainsVoicePitch').value}}}));
  };
+ $('saveRobotVoice').onclick=()=>{
+   const robot=editableVoiceRobot();if(!robot){toast('Robot is read-only');return;}
+   const before=window.solviEditor.snapshot(robot);
+   robot.userData.robotBrain={...(robot.userData.robotBrain||{}),voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value.trim(),voiceName:$('brainsVoiceName').value,voiceLang:$('brainsVoiceLang').value,voiceRate:String(Math.max(.6,Math.min(1.6,Number($('brainsVoiceRate').value)||1))),voicePitch:String(Math.max(.5,Math.min(1.7,Number($('brainsVoicePitch').value)||1)))};
+   window.solviEditor.recordEdit(before,window.solviEditor.snapshot(robot));window.solviEditor.queueSave(robot);
+   $('robotVoiceStatus').textContent=robot.name+' voice saved to room scene.';
+   toast(robot.name+' voice saved');
+ };
+ syncVoiceInspector();
  $('saveRobotChatPortrait').onclick=async()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot))return toast('Select a robot you can edit.');
    const btn=$('saveRobotChatPortrait');btn.disabled=true;
@@ -274,23 +297,49 @@ export function initRobotBrains(world,api,getRoom,toast){
      emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,'SCENARIO RESPONSE',`${data.scenario||'(empty)'} · ${dollars(data.usage)} · not executed`);
    }catch(e){$('brainsScenarioResult').textContent='Scenario error: '+e.message;emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,'SCENARIO ERROR',e.message);}
  };
- $('captureBrainsPanorama').onclick=async()=>{
+ async function sweepRobotEyes(degrees=360){
    if(!activeRobot)return;
-   const button=$('captureBrainsPanorama');button.disabled=true;
-   const directions=observationPlan('look around');
-   emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,'360 SCAN',scanSummary(directions));
+   const button=$(degrees===180?'captureBrainsHemisphere':'captureBrainsPanorama');button.disabled=true;
+   const directions=degrees===180?[-90,-60,-30,0,30,60,90].map(yaw=>({yaw,pitch:0,label:`${yaw}°`})) : observationPlan('look around');
+   emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,`${degrees} SCAN`,scanSummary(directions));
    try{
+     const frames=[];
      for(const view of directions){
        const image=await captureRobotView(world,activeRobot,{yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch});
        if(!image?.size)throw Error('Camera failed at '+view.label);
-       rememberFrame(activeRobot.userData.editorId,image,'360° · '+view.label);
+       rememberFrame(activeRobot.userData.editorId,image,`${degrees}° · `+view.label);
+       frames.push({blob:image,label:view.label});
      }
      renderFrameGallery();const last=latestFrames.get(activeRobot.userData.editorId);
      showFrame(last.blob,last.label);
-     $('brainsVisionResult').textContent='Eight directional frames captured in the gallery. In chat, ask “'+activeRobot.name+', look around” to send all eight labelled JPEGs together to Muse Spark and receive an image-grounded answer.';
-   }catch(error){$('brainsVisionResult').textContent='360° scan failed: '+error.message;}
+     if(!api.online||!api.auth()){
+       $('brainsVisionResult').textContent=`${directions.length} camera frames saved locally. Log in for Muse assessment.`;return;
+     }
+     const robotId=activeRobot.userData.editorId;
+     const mediaIds=[];
+     for(const [i,record] of frames.entries()){
+       const body=new FormData();body.append('file',new File([record.blob],`robot-scan-${degrees}-${i}.jpg`,{type:'image/jpeg'}));
+       const uploaded=await api.req('/api/media',{method:'POST',body});
+       if(!uploaded.media?.id)throw Error('Scan frame upload did not return a media ID');
+       mediaIds.push(uploaded.media.id);
+     }
+     emitBrainTrace(robotId,activeRobot.name,'MUSE SCAN',`${degrees}° · ${mediaIds.length} actual JPEGs uploaded · one model request`);
+     const result=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:window.solviRoom||'main',robot_id:robotId,media_ids:mediaIds,views:frames.map(v=>v.label),manual:true,question:$('brainsVisionQuestion').value.trim()||'Describe the objects and furniture you can actually see.'})});
+     $('brainsVisionResult').textContent=result.answer?.text||'No visual description was returned.';
+     emitBrainTrace(robotId,activeRobot.name,'MUSE SCAN RESULT',`${result.answer?.text||'(empty)'} · ${result.usage?.estimated_usd||0} estimated USD`);
+   }catch(error){$('brainsVisionResult').textContent=`${degrees}° scan failed: `+error.message;}
    finally{button.disabled=false;}
- };
+ }
+ $('captureBrainsPanorama').onclick=()=>sweepRobotEyes(360);
+ $('captureBrainsHemisphere').onclick=()=>sweepRobotEyes(180);
+ window.addEventListener('solvi:robot-eyes-action',event=>{
+   const {robotId,scan}=event.detail||{};
+   const chosen=window.solviEditor?.robot();
+   if(!chosen||chosen.userData.editorId!==robotId)return;
+   open();
+   if(scan==='front')$('captureBrainsEye').click();
+   else if(scan==='180'||scan==='360')sweepRobotEyes(Number(scan));
+ });
  $('captureBrainsEye').onclick=async()=>{
    if(!activeRobot){toast('No robot selected');return;}
    $('brainsVisionResult').textContent='Capturing head camera…';

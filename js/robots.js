@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MotionController,computeMode} from './animations.js';
+import {pathBlocked} from './robot-pathfinding.js';
 
 const loader=new GLTFLoader();
 const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');loader.setDRACOLoader(draco);
@@ -52,6 +53,7 @@ export function interruptRobotMission(robot){
   if(!robot)return;
   robot.userData.robotMission=null;
   robot.userData.robotGoal=null;
+  robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;
   robot.userData.robotSeated=false;
   robot.userData.robotSitPose=null;
 }
@@ -80,9 +82,10 @@ export function tickRobots(items,dt,onMove=()=>{}){
         robot.rotation.y=turning.targetYaw;
         if(turning.kind==='turn_walk'){
           turning.phase='walk';
-          setRobotDestination(robot,{x:robot.position.x+Math.sin(robot.rotation.y)*turning.distance,
-            z:robot.position.z+Math.cos(robot.rotation.y)*turning.distance});
-          mode='walk';
+          const target={x:robot.position.x+Math.sin(robot.rotation.y)*turning.distance,
+            z:robot.position.z+Math.cos(robot.rotation.y)*turning.distance};
+          if(onMove.navigate&&!onMove.navigate(robot,target)){mode='idle';robot.userData.robotMode='idle';}
+          else{if(!onMove.navigate)setRobotDestination(robot,target);mode='walk';}
         }else{
           robot.userData.robotMission=null;
           robot.userData.robotArrived=true;
@@ -105,6 +108,8 @@ export function tickRobots(items,dt,onMove=()=>{}){
       const delta=robot.userData.robotGoal.clone().sub(robot.position);delta.y=0;
       const distance=delta.length();
       if(distance<.07){
+        if(robot.userData.robotWaypoints?.length){const point=robot.userData.robotWaypoints.shift();setRobotDestination(robot,point);onMove(robot,false);continue;}
+        robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;
         robot.userData.robotGoal=null;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;
         const mission=robot.userData.robotMission;
         if(mission){
@@ -121,7 +126,17 @@ export function tickRobots(items,dt,onMove=()=>{}){
       }
       else{
         delta.normalize();const speed=mode==='run'?2.7:1.2;
-        robot.position.addScaledVector(delta,Math.min(distance,speed*dt));
+        const travel=Math.min(distance,speed*dt);const nx=robot.position.x+delta.x*travel,nz=robot.position.z+delta.z*travel;
+        if(robot.userData.robotPathObstacles&&pathBlocked(nx,nz,robot.userData.robotPathObstacles,.25)){
+          const blocked=robot.userData.robotMission;robot.userData.robotGoal=null;robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;robot.userData.robotMission=null;robot.userData.robotMode='idle';mode='idle';
+          window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:blocked?.taskId,target:blocked?.targetName,status:'blocked'}}));
+          continue;
+        }
+        // Occupied robot footprints move during execution; never push them.
+        const neighbour=items.some(other=>other!==robot&&other.userData.editorKind==='robot'&&Math.hypot(other.position.x-nx,other.position.z-nz)<.66);
+        if(neighbour){const mission=robot.userData.robotMission;robot.userData.robotGoal=null;robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;robot.userData.robotMission=null;robot.userData.robotMode='idle';mode='idle';
+          window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission?.taskId,target:mission?.targetName,status:'blocked'}}));continue;}
+        robot.position.addScaledVector(delta,travel);
         const angle=Math.atan2(delta.x,delta.z);robot.rotation.y+=Math.atan2(Math.sin(angle-robot.rotation.y),Math.cos(angle-robot.rotation.y))*clamp(dt*6,0,1);
       }
     }

@@ -31,6 +31,19 @@ export function initMinimap(world){
    if(kind==='robot'){ctx.beginPath();ctx.arc(x,y,size,0,Math.PI*2);ctx.fill();ctx.stroke();let yaw=obj.rotation.y;ctx.strokeStyle='#f3fff8';ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.sin(yaw)*11,y+Math.cos(yaw)*11);ctx.stroke();}
    else{ctx.fillRect(x-size,y-size,size*2,size*2);ctx.strokeRect(x-size,y-size,size*2,size*2);}
   }
+  // The route overlay uses the same geometry-based obstacle footprints as
+  // autonomous robot navigation, not a separate guessed radar map.
+  const editor=world.robotEditor,selected=editor?.robot?.();
+  if(selected&&selected.userData?.robotGoal){
+   const footprint=editor.navigationObstacles?.(selected)||[];
+   ctx.save();ctx.fillStyle='rgba(242,146,116,.12)';ctx.strokeStyle='rgba(242,146,116,.5)';ctx.lineWidth=1;
+   for(const box of footprint){const [a,b]=toXY(box.minX,box.minZ),[c,d]=toXY(box.maxX,box.maxZ);
+     ctx.fillRect(a,b,c-a,d-b);ctx.strokeRect(a,b,c-a,d-b);}
+   const path=[selected.position,selected.userData.robotGoal,...(selected.userData.robotWaypoints||[])];
+   ctx.strokeStyle='#6ce3dd';ctx.lineWidth=2.3;ctx.beginPath();
+   path.forEach((point,i)=>{const [x,y]=toXY(point.x,point.z);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y);});ctx.stroke();
+   ctx.restore();
+  }
   const c=world.camera.position,dir=world.camera.getWorldDirection(world.camera.position.clone().set(0,0,-1));const [cx,cy]=toXY(c.x,c.z);ctx.fillStyle='#ffb4cb';ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ffb4cb';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+dir.x*19,cy+dir.z*19);ctx.stroke();
   ctx.font='11px system-ui';ctx.fillStyle='#e0edf9';ctx.fillText('N',w/2-3,14);
  }

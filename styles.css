@@ -1082,3 +1082,70 @@ html[data-button-labels='icon'] #chatPanel #captionsButton .ui-button-label{
 .chat-media-grid .chat-attachment{min-width:0;aspect-ratio:1;overflow:hidden;border-radius:6px;background:rgba(0,0,0,.2)}
 .chat-media-grid .chat-attachment img{width:100%;height:100%;max-height:none;object-fit:cover;cursor:zoom-in}
 @media(max-width:600px){.chat-media-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v0.2.43 — voice assignment belongs to the selected robot's Properties, not Brains. */
+#robotControls .robot-voice-properties{margin:9px 0 10px;border:1px solid color-mix(in srgb,var(--ui-fg) 25%,transparent);border-radius:9px;padding:7px 9px;min-width:0}
+#robotControls #robotVoiceDetails summary{cursor:pointer;font-size:calc(12px * var(--ui-scale));font-weight:550;line-height:1.45}
+#robotControls .robot-voice-help{margin:6px 0!important;line-height:1.35!important}
+#robotControls .brain-voice-config{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;min-width:0;padding:8px 0 0}
+#robotControls .brain-voice-config .field-label{min-width:0;margin:0!important;display:flex;flex-direction:column;gap:3px}
+#robotControls .brain-voice-config :is(#robotLocalVoicesRow,#robotCloudVoicesRow,#robotVoiceIdRow,#loadElevenVoices,#robotVoiceStatus,.robot-voice-actions){grid-column:1/-1}
+#robotControls .brain-voice-config :is(select,input){width:100%!important;min-width:0!important;max-width:100%!important;box-sizing:border-box!important;min-height:32px!important}
+#robotControls .robot-voice-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+#robotControls .robot-voice-actions button{flex:1;min-width:100px}
+#robotControls #robotVoiceStatus{display:block;line-height:1.4;white-space:normal;font-size:11px!important}
+#robotControls #robotLocalVoicesRow[hidden],#robotControls #robotCloudVoicesRow[hidden],#robotControls #robotVoiceIdRow[hidden],#robotControls #loadElevenVoices[hidden]{display:none!important}
+@media(max-width:420px){#robotControls .brain-voice-config{grid-template-columns:minmax(0,1fr)}}
+
+
+/* v0.2.44 compact scene editor: minimum space, reliable XYZ grid, full-width slider. */
+#propertiesPanel.properties-panel{width:min(342px,calc(100vw - 12px))!important;max-height:74svh!important;overflow-x:hidden!important}
+#propertiesPanel .panel-title{min-height:35px!important;padding:5px 7px!important}
+#propertiesPanel #objectInspector{box-sizing:border-box!important;padding:5px 7px 7px!important;min-width:0!important;overflow-x:hidden!important}
+#propertiesPanel #objectInspector>*{min-width:0!important;max-width:100%!important;box-sizing:border-box!important}
+#propertiesPanel #objectInspector .object-rename{margin:0 0 3px!important}
+#propertiesPanel #objectInspector .object-rename input{height:29px!important;min-height:29px!important}
+#propertiesPanel #objectInspector .object-actions{margin:0!important;display:flex!important;justify-content:flex-end!important}
+#propertiesPanel #objectInspector .object-actions #deleteObject{height:27px!important;min-height:27px!important;min-width:34px!important;padding:3px 5px!important}
+#propertiesPanel .transform-modes{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:3px!important;margin:3px 0!important}
+#propertiesPanel #objectInspector .transform-modes button[data-ui-icon]{min-width:0!important;max-width:none!important;flex:1 1 0!important;height:30px!important;min-height:30px!important;max-height:30px!important;padding:3px 4px!important;box-sizing:border-box!important}
+html[data-button-labels='icon'] #propertiesPanel #objectInspector .transform-modes button[data-ui-icon]{font-size:0!important;min-width:0!important;width:100%!important;min-height:30px!important;height:30px!important;max-height:30px!important;padding:4px!important}
+html[data-button-labels='icon'] #propertiesPanel #objectInspector .transform-modes button[data-ui-icon]>.ui-button-label{display:none!important}
+html[data-button-labels='icon'] #propertiesPanel #objectInspector .transform-modes button[data-ui-icon]::before{display:inline-block!important;width:19px!important;height:19px!important;flex:0 0 19px!important}
+#propertiesPanel #robotTransformDetails{border:0!important;min-width:0!important;padding:0!important;margin:3px 0!important}
+#propertiesPanel #robotTransformDetails>summary{padding:4px 3px!important;cursor:pointer!important;font-weight:700!important;font-size:12px!important;line-height:1.2!important}
+#propertiesPanel #robotTransformDetails>.inspector-fold-body{display:block!important;min-width:0!important;padding:0!important}
+#propertiesPanel #propertyGrid.property-grid{display:flex!important;flex-direction:column!important;gap:2px!important;margin:0!important;min-width:0!important}
+#propertiesPanel #propertyGrid .transform-group{margin:0!important;border:0!important;border-top:1px solid color-mix(in srgb,var(--ui-fg) 20%,transparent)!important;border-radius:0!important;padding:2px 0 3px!important;min-width:0!important}
+#propertiesPanel #propertyGrid .transform-group legend{padding:0 3px!important;font-size:11px!important;line-height:1.2!important}
+#propertiesPanel #propertyGrid .transform-axis-row{box-sizing:border-box!important;display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr)) 28px!important;column-gap:4px!important;align-items:end!important;width:100%!important;min-width:0!important}
+#propertiesPanel #propertyGrid .axis-value{min-width:0!important;gap:0!important;line-height:1!important}
+#propertiesPanel #propertyGrid .axis-value input[type=number]{width:100%!important;min-width:0!important;max-width:100%!important;box-sizing:border-box!important;min-height:28px!important;height:28px!important;max-height:28px!important;padding:2px 3px!important;font-size:12px!important;text-align:center!important;appearance:textfield!important;-moz-appearance:textfield!important}
+#propertiesPanel #propertyGrid .axis-value input[type=number]::-webkit-outer-spin-button,#propertiesPanel #propertyGrid .axis-value input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none!important;margin:0!important}
+#propertiesPanel #propertyGrid button.transform-reset[data-ui-icon],html[data-button-labels='icon'] #propertiesPanel #propertyGrid button.transform-reset[data-ui-icon]{display:inline-flex!important;min-width:28px!important;width:28px!important;max-width:28px!important;flex:0 0 28px!important;min-height:28px!important;height:28px!important;max-height:28px!important;padding:4px!important;box-sizing:border-box!important}
+#propertiesPanel #propertyGrid button.transform-reset::before{width:16px!important;height:16px!important;flex:0 0 16px!important}
+#propertiesPanel #inspectorValueSlider.inspector-value-slider{display:block;box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;padding:2px 0 5px!important;margin:2px 0 0!important;background:none!important;border:0!important;border-radius:0!important}
+#propertiesPanel #inspectorValueSlider[hidden]{display:none!important}
+#propertiesPanel #inspectorValueSlider #inspectorActiveRange{display:block!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:100%!important;margin:0!important}
+#propertiesPanel #inspectorValueSlider .inspector-slider-head{font-size:11px!important;margin:0!important}
+#propertiesPanel #robotControls{min-width:0!important}
+#propertiesPanel #robotControls>strong{display:block!important;font-size:12px!important;margin:3px 0 0!important}
+#propertiesPanel #robotControls .robot-speed-single{margin:2px 0!important}
+#propertiesPanel #robotControls .robot-voice-properties{margin:3px 0!important;border:0!important;border-top:1px solid color-mix(in srgb,var(--ui-fg) 20%,transparent)!important;border-radius:0!important;padding:2px 0!important}
+#propertiesPanel #robotControls .brain-voice-config{padding:2px 0!important;gap:4px!important}
+#propertiesPanel #robotControls .robot-voice-actions button{min-height:30px!important;height:30px!important;padding:3px 5px!important}
+#propertiesPanel #robotControls .robot-voice-properties summary,#propertiesPanel #robotEyesDetails summary{font-size:12px!important;cursor:pointer!important;line-height:1.2!important;padding:5px 2px!important}
+#propertiesPanel #robotEyesDetails{border-top:1px solid color-mix(in srgb,var(--ui-fg) 20%,transparent)!important;padding:0!important;margin:2px 0!important}
+#propertiesPanel #robotEyesDetails .inspector-eye-buttons{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:4px!important;margin:2px 0 4px!important}
+#propertiesPanel #robotEyesDetails button{min-width:0!important;min-height:30px!important;height:30px!important;padding:3px!important}
+#propertiesPanel #robotControls #openRobotBrains{width:34px!important;min-width:34px!important;max-width:34px!important;height:31px!important;min-height:31px!important;padding:5px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;font-size:0!important}
+#propertiesPanel #robotControls #openRobotBrains .ui-button-label{display:none!important}
+#propertiesPanel #robotControls #openRobotBrains::before{content:''!important;display:block!important;width:19px!important;height:19px!important;background:var(--ui-button-icon) center/contain no-repeat!important;filter:var(--ui-icon-filter)}
+#propertiesPanel #robotControls>.field-label{margin:2px 0!important;gap:2px!important}
+#propertiesPanel #robotControls :is(#robotAvatar,#robotActionSelect){width:100%!important;min-height:27px!important;height:27px!important;box-sizing:border-box!important;margin:1px 0!important}
+#propertiesPanel #robotControls #openAvatarGallery{min-height:29px!important;height:29px!important;padding:4px!important}
+/* Compact actual settings checkbox rows. Override the long-standing global label spacing. */
+#settingsDrawer .settings-section label.toggle-line{box-sizing:border-box!important;display:flex!important;align-items:center!important;gap:7px!important;padding:2px 3px!important;margin:0!important;min-height:25px!important;max-height:none!important;line-height:1.15!important;font-size:13px!important}
+#settingsDrawer .settings-section label.toggle-line input[type=checkbox]{box-sizing:border-box!important;width:16px!important;height:16px!important;min-width:16px!important;min-height:16px!important;max-height:16px!important;margin:0!important;flex:0 0 16px!important}
+#settingsDrawer .settings-section[open]>summary{padding:6px 9px!important;margin-bottom:3px!important}
+#settingsDrawer .settings-section[open]>:not(summary){margin-top:2px!important;margin-bottom:3px!important}

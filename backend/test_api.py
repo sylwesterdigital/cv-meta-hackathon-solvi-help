@@ -371,7 +371,8 @@ assert visual['command']['kind']=='vision_search' and visual['command']['target_
 assert visual['trace'][1]['result']=='vision_search'
 assert visual['command']['id']
 failed=c.post('/api/robots/task-result',headers=headers,json={'room':'lab','task_id':visual['command']['id'],'status':'not-found'})
-assert failed.status_code==200 and 'scanned four directions' in failed.get_json()['answer']['text']
+assert failed.status_code==200 and 'scanned eight directions' in failed.get_json()['answer']['text'], (failed.status_code, failed.data)
+print('PASS: eight-direction SAM search failure reports its actual scan coverage')
 assert c.get('/api/robots/memory?room=lab&id=testrobot-0220',headers=headers).status_code==200
 # Muse supplies character-language plans only, with the deterministic motion command unchanged.
 spoken_ai=c.post('/api/message',headers=headers,json={'room':'lab','text':'@Jessica stop'}).get_json()['message']
@@ -490,6 +491,26 @@ assert 'seat' in spontaneous.get_json()['answer']['text']
 assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
     'robot_id':'testrobot-0220','proactive':True,'vision_token':capture_token,
     'media_ids':[photo_id],'views':['forward']}).status_code==403
+# v0.2.44: manually initiated 180/360 camera scans are permitted only
+# for an authenticated editor, with owned JPEGs and replay prevention.
+assert is_robot_visual_question('Jessica, look around 180 degrees')
+with patch('server.active_model_key',return_value='test-key'),patch('server.meta_request',return_value={
+    'id':'resp-manual-scan','output_text':'Ahead: chair, right: doorway.',
+    'usage':{'input_tokens':120,'output_tokens':12,'images_processed':2}}) as manual_mock:
+    chat_attempts[data['user']['id']]=[]
+    manual_scan=c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
+        'robot_id':'testrobot-0220','manual':True,'question':'What can you see in the front half of this room?',
+        'media_ids':[photo_id,photo2_id],'views':['heading -90°','heading 0°']})
+assert manual_scan.status_code==200,(manual_scan.status_code,manual_scan.data)
+assert 'chair' in manual_scan.get_json()['answer']['text']
+assert manual_mock.call_count==1
+assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
+    'robot_id':'testrobot-0220','manual':True,'question':'Replay',
+    'media_ids':[photo_id,photo2_id],'views':['heading -90°','heading 0°']}).status_code==409
+assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
+    'robot_id':'testrobot-0220','manual':True,'proactive':True,
+    'media_ids':[photo_id],'views':['forward']}).status_code==400
+print('PASS: explicit Brains 180/360 vision scan uses one guarded Muse request')
 print('PASS: 360 head-camera batching, real JPEGs, one Muse call, and nonce-protected proactive observation')
 # The saved portrait is represented as a room-scoped media ID rather than a user avatar.
 robot['brain']['portrait']=photo_id

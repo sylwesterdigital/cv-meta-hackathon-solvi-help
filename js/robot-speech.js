@@ -56,7 +56,7 @@ export class RobotSpeech{
   if(settings.provider==='elevenlabs'&&!settings.voiceId){this.report({robotId,settings},'error','Select a valid ElevenLabs voice ID first.');return;}
   settings.lang=settings.lang==='auto'?'en':settings.lang;
   this.jobs.push({robotId:robot.userData.editorId,room:this.room(),settings,test:true,
-    entry:{text:`Hello, I'm ${robot.name}. This is my voice.`,speaker:robot.name}});
+    entry:{text:({pl:`Cześć, jestem ${robot.name}. To jest mój głos.`,de:`Hallo, ich bin ${robot.name}. Das ist meine Stimme.`,es:`Hola, soy ${robot.name}. Esta es mi voz.`,fr:`Bonjour, je suis ${robot.name}. Voici ma voix.`})[settings.lang]||`Hello, I'm ${robot.name}. This is my voice.`,speaker:robot.name}});
   if(!this.playing)this.consume();
  }
  report(job,status,message,provider=job.settings.provider){

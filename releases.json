@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.42",
+  "currentVersion": "0.2.45",
   "releases": [
+    {
+      "version": "0.2.45",
+      "publishedAt": "2026-10-28T23:06:09Z",
+      "changes": [
+        "Repair backend integration test expecting a four-direction SAM search after the vision search was expanded to eight directions.",
+        "Assert the actual eight-direction task-result response and include HTTP status/body on future mismatches.",
+        "Keep all v0.2.44 compact Properties, robot eyes, voice selection, and obstacle-aware navigation unchanged; advance release versions for the strict deployment watcher."
+      ]
+    },
     {
       "version": "0.2.42",
       "publishedAt": "2026-10-28T22:28:54Z",
@@ -302,15 +311,6 @@
         "Object inspector shows object name only: compact transform rows, texture selector and direct texture uploader, no OK button; live save.",
         "Five light types with contextual intensity, distance, falloff, cone, softness and colour controls; temporary light helpers and room-scoped delta persistence.",
         "Profile-photo badge opens upload; Enter VR visible only when immersive WebXR is supported, with central green stage button."
-      ]
-    },
-    {
-      "version": "0.2.7",
-      "publishedAt": "2026-10-27T22:10:07Z",
-      "changes": [
-        "Handle locally edited or relocated assets/solvi-character.glb from assets/avatars/solvi-character.glb; preserve model bytes.",
-        "Allow only verified avatar assets to be reconciled; retain Git conflict checks for unrelated code.",
-        "v0.2.7 avatar gallery, Whisper.cpp shared model, object-scoped updates, and deployment log START/END formatting."
       ]
     }
   ]

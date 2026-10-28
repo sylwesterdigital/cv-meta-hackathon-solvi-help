@@ -3,6 +3,9 @@
 export function observationPlan(message='',proactive=false){
  const t=String(message).toLocaleLowerCase();
  if(proactive)return [0,90,180,270].map(yaw=>({yaw,pitch:-12,label:`heading ${yaw}°`})).concat([{yaw:0,pitch:-38,label:'downward'}]);
+ if(/\b(180(?:°| degrees)?|half[- ]?panorama|front half|półokrąg|polokrag)\b/i.test(t)){
+  return [-90,-60,-30,0,30,60,90].map(yaw=>({yaw,pitch:-12,label:`heading ${yaw}°`}));
+ }
  if(/\b(look around|look all around|scan (?:the |your )?(?:room|area|surroundings)|360|panorama|rozejrzyj|rozejrzeć|dookoła|wokół)\b/.test(t)){
   return Array.from({length:8},(_,i)=>({yaw:i*45,pitch:-12,label:`heading ${i*45}°`}));
  }
