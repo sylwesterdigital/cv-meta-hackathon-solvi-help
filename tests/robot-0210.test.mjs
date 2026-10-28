@@ -12,7 +12,7 @@ test('Idle left and right strafe without spinning the robot',()=>{
  const origin={x:0,z:0,yaw:0,velocity:0};
  for(const key of ['ArrowLeft','ArrowRight']){
   const result=stepFrames(origin,{...intent(new Set([key])),s:1});
-  assert.equal(result.yaw,0);assert.equal(result.velocity,0);assert.ok(Math.abs(result.x)>.05);assert.ok(Math.abs(result.z)<.01);assert.equal(Math.sign(result.x),key==='ArrowLeft'?-1:1);
+  assert.equal(result.yaw,0);assert.equal(result.velocity,0);assert.ok(Math.abs(result.x)>.05);assert.ok(Math.abs(result.z)<.01);assert.equal(Math.sign(result.x),key==='ArrowLeft'?1:-1);
  }
 });
 test('Up drives heading-forward; steering curves while moving, without strafing',()=>{

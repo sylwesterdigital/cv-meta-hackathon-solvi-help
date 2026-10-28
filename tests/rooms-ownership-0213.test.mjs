@@ -7,7 +7,7 @@ const read=f=>readFileSync(new URL('../'+f,import.meta.url),'utf8');
 const simulate=keys=>{let state={x:0,z:0,yaw:0,velocity:0,steer:0,lateral:0};const input={...intent(new Set(keys)),s:1};for(let i=0;i<100;i++)state=stepRobotMotion(state,input,1/60);return state;};
 test('idle left and right strafe sideways, preserve world heading',()=>{
  const left=simulate(['ArrowLeft']),right=simulate(['ArrowRight']);
- assert.ok(left.x<-.9&&right.x>.9,{left,right});
+ assert.ok(left.x>.9&&right.x<-.9,{left,right});
  assert.equal(left.yaw,0);assert.equal(right.yaw,0);
  assert.equal(left.velocity,0);assert.equal(right.velocity,0);
  assert.ok(Math.abs(left.z)<1e-8&&Math.abs(right.z)<1e-8);
@@ -15,7 +15,7 @@ test('idle left and right strafe sideways, preserve world heading',()=>{
 test('releasing strafe smoothly brakes to rest',()=>{
  let state=simulate(['ArrowLeft']);let last=state.x;
  state=stepRobotMotion(state,{f:0,t:0,s:1},1/60);
- assert.ok(state.x<last&&state.lateral<0,'inertia should persist for a frame');
+ assert.ok(state.x>last&&state.lateral>0,'inertia should persist in the corrected left direction for a frame');
  for(let i=0;i<60;i++)state=stepRobotMotion(state,{f:0,t:0,s:1},1/60);
  assert.ok(Math.abs(state.lateral)<1e-7);
  assert.equal(state.yaw,0);

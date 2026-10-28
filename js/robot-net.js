@@ -27,7 +27,11 @@ export function stepRobotMotion(state,input,dt){
  const isStrafing=Math.abs(velocity)<.025&&Math.abs(Number(input?.f)||0)<.001;
  const steer=approach(Number(state.steer)||0,isStrafing?0:steerTarget,time*(steerTarget?6:8));
  // Smooth side-step when stationary: keep the avatar looking forward.
- const lateralTarget=isStrafing?-steerTarget*.85*speedFactor:0;
+ // The default GLB is visually turned 180 degrees relative to the root's
+ // +Z movement convention. Its visible LEFT is +X at yaw=0; unlike turn
+ // input, lateral input must therefore have the SAME sign as ArrowLeft.
+ // Keep this mapping shared by local prediction and remote replay.
+ const lateralTarget=isStrafing?steerTarget*.85*speedFactor:0;
  const lateral=approach(Number(state.lateral)||0,lateralTarget,(lateralTarget?4.4:6.2)*speedFactor*time);
  const steerStrength=clamp(Math.abs(velocity)/(.9*speedFactor),0,1);
  const angularRate=(.55+.95*steerStrength)*steerStrength;

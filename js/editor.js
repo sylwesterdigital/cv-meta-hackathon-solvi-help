@@ -368,7 +368,7 @@ export class SceneEditor{
       const walking=Math.abs(motion.velocity)>.04;const strafing=Math.abs(motion.lateral)>.04;
       if(input.f||input.t)robot.userData.robotGoal=null;
       if(robot.userData.jumpVel===undefined){
-       robot.userData.robotMode=!walking?(strafing?(motion.lateral>0?'strafeRight':'strafeLeft'):'idle'):motion.velocity<0?'walkBackward':(input.r&&motion.velocity>1.4?'run':'walk');
+       robot.userData.robotMode=!walking?(strafing?(motion.lateral>0?'strafeLeft':'strafeRight'):'idle'):motion.velocity<0?'walkBackward':(input.r&&motion.velocity>1.4?'run':'walk');
       }
     }
     const previous=this.localRobotInput;
@@ -389,7 +389,7 @@ export class SceneEditor{
       if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotMode='idle';other.userData.robotVelocity=0;other.userData.robotSteer=0;other.userData.robotLateral=0;}continue;}
       const next=stepRobotMotion({x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0,steer:other.userData.robotSteer||0,lateral:other.userData.robotLateral||0},remote,dt);
       other.position.x=next.x;other.position.z=next.z;other.rotation.y=next.yaw;other.userData.robotVelocity=next.velocity;other.userData.robotSteer=next.steer;other.userData.robotLateral=next.lateral;
-      if(other.userData.jumpVel===undefined){other.userData.robotMode=Math.abs(next.velocity)<.04?(Math.abs(next.lateral)>.04?(next.lateral>0?'strafeRight':'strafeLeft'):'idle'):next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
+      if(other.userData.jumpVel===undefined){other.userData.robotMode=Math.abs(next.velocity)<.04?(Math.abs(next.lateral)>.04?(next.lateral>0?'strafeLeft':'strafeRight'):'idle'):next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
     }
     tickRobots(this.items,dt,(o,arrived)=>{
       if(arrived&&this.canEdit(o))this.queueSave(o);

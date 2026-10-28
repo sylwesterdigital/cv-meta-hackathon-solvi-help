@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.13",
+  "currentVersion": "0.2.14",
   "releases": [
+    {
+      "version": "0.2.14",
+      "publishedAt": "2026-10-28T00:57:52Z",
+      "changes": [
+        "Correct inverted idle avatar strafing: Left moves visually left and Right moves visually right, without turning in place.",
+        "Synchronize correct left/right strafe animations for locally controlled and remote avatars.",
+        "Preserve forward bicycle steering, reverse walking and compact network movement messages."
+      ]
+    },
     {
       "version": "0.2.13",
       "publishedAt": "2026-10-28T00:49:13Z",
