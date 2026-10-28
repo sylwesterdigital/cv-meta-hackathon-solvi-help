@@ -11,7 +11,7 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.14</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.15</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">+ Room</button><button type="button" id="addObjectButton">+ Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" title="Open in a WebXR headset browser">Enter VR</button>
@@ -30,7 +30,7 @@
   <aside id="editorToolbox" class="editor-toolbox" aria-label="World edit tools">
     <div class="toolbox-title drag-handle"><strong>World tools</strong><button type="button" id="toolboxMinimize" title="Minimize tools">−</button></div>
     <div id="toolboxActions" class="toolbox-actions"><button type="button" id="cameraFlyButton" title="Mouse look; Escape to exit. Camera arrows move with inertia when no robot is selected.">Camera: orbit</button><label class="camera-speed">Camera speed <input id="cameraSpeed" type="range" min="0.5" max="12" step="0.5" value="2.5" /></label>
-      <button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button>
+      <button type="button" id="importModelButton">Import GLB / FBX</button><input id="modelImportFile" type="file" accept=".glb,.fbx,model/gltf-binary,application/octet-stream" hidden><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button>
       <button type="button" id="poseButton" title="Track upper body and hands">Posture + hands</button>
       <button type="button" id="worldSettingsButton" title="Realm object permissions">World settings</button>
     </div>
@@ -71,7 +71,7 @@
         <label>Scale</label><input aria-label="Scale X" type="number" step="0.1" id="scale-0"><input aria-label="Scale Y" type="number" step="0.1" id="scale-1"><input aria-label="Scale Z" type="number" step="0.1" id="scale-2">
       </div>
       <div id="objectAppearance" class="object-appearance"><input id="objectColor" type="color" title="Colour" aria-label="Object colour" value="#88bbee"><select id="texturePreset" aria-label="Texture" title="Texture"><option value="none">No texture</option><option value="checker">Checker</option><option value="gradient">Gradient</option><option value="stripes">Stripes</option><option value="dots">Dots</option><option value="custom">Custom</option></select><button type="button" id="textureUploadButton">Upload texture</button><input id="textureUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden></div>
-      <section id="lightControls" class="light-controls" hidden>
+      <div id="sceneModelControls" class="small-note" hidden>3D asset · <span id="sceneModelPath"></span></div><section id="lightControls" class="light-controls" hidden>
         <label>Type<select id="lightType"><option value="point">Point</option><option value="spot">Spot</option><option value="directional">Directional</option><option value="ambient">Ambient</option><option value="hemisphere">Hemisphere</option></select></label>
         <label>Intensity<input type="number" id="lightIntensity" min="0" max="50" step="0.1" value="2"></label>
         <label id="lightRangeRow">Range<input type="number" id="lightRange" min="0" max="100" step="0.5" value="10"></label>
@@ -138,7 +138,7 @@
       <label class="field-label">Speech language<select id="ccLanguage"><option value="auto">Auto / device language</option><option value="pl-PL">Polski · pl-PL</option><option value="en-GB">English · en-GB</option><option value="en-US">English · en-US</option></select></label>
       <label class="toggle-line"><input id="ccAutoSend" type="checkbox" checked> Send final captions to room automatically</label>
       <small class="small-note" id="ccEngineStatus">Browser recognition depends on device support. Whisper is hosted on Ubuntu.</small>
-      <button id="exportChatSettings" type="button">Export room messages</button>
+      <div class="drawer-label">3D model imports</div><label class="field-label">Maximum upload size <select id="sceneModelMaxSize"><option value="0.1">100 KB</option><option value="0.25">250 KB</option><option value="0.5">500 KB</option><option value="1">1 MB</option><option value="2">2 MB</option><option value="5" selected>5 MB</option><option value="10">10 MB</option><option value="20">20 MB</option></select></label><small class="small-note">Your import limit applies before uploading. Server hard limit: 20 MiB. Drop .glb or .fbx onto the 3D view.</small><button id="exportChatSettings" type="button">Export room messages</button>
       <button id="exportChatSettingsJson" type="button">Export room JSON</button>
       <button id="openAdminSettings" type="button">Admin dashboard</button>
     </aside></div>

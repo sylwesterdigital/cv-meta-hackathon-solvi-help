@@ -10,7 +10,7 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.14')
+health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.15')
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.
@@ -91,6 +91,38 @@ assert c.post('/api/scene/object',headers=other_headers,json={'room':'lab','acti
 assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'open','robots':'open'}).status_code==200
 assert c.post('/api/scene/object',headers=other_headers,json={'room':'lab','action':'upsert','object':original}).status_code==200
 assert c.post('/api/scene/object',headers=other_headers,json={'room':'lab','action':'remove','object':{'id':'ownedcube-200'}}).status_code==200
+# 3D asset storage: model bytes stay server-side; only reference+transforms enter room messages.
+from io import BytesIO
+import struct
+scene_doc=b'{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[]}]}'
+scene_doc+=b' ' * ((-len(scene_doc))%4)
+glb=(b'glTF'+struct.pack('<II',2,20+len(scene_doc))+struct.pack('<I',len(scene_doc))+b'JSON'+scene_doc)
+assert c.get('/api/scene/models',headers=headers).status_code==200
+assert c.post('/api/scene/models',headers=headers,data={'model':(BytesIO(b'hello'),'evil.exe')},content_type='multipart/form-data').status_code==400
+assert c.post('/api/scene/models',headers=headers,data={'model':(BytesIO(b'garbage'),'bad.glb')},content_type='multipart/form-data').status_code==400
+assert c.post('/api/scene/models',headers=headers,data={'model':(BytesIO(b'not fbx'),'bad.fbx')},content_type='multipart/form-data').status_code==400
+assert c.post('/api/scene/models',headers={**headers,'Origin':'https://invalid.test'},data={'model':(BytesIO(glb),'bad.glb')},content_type='multipart/form-data').status_code==403
+r=c.post('/api/scene/models',headers=headers,data={'model':(BytesIO(glb),'mesh.glb')},content_type='multipart/form-data')
+assert r.status_code==201,(r.status_code,r.data)
+model=r.get_json()['model'];asset=model['url']
+assert c.get(asset).status_code==200
+assert c.get('/api/scene/models/'+('0'*32)+'.glb').status_code==404
+assert c.get('/api/scene/models',headers=headers).get_json()['models'][0]['url']==asset
+placed={'id':'modelitem-001','kind':'model','name':'Shared mesh','model':asset,
+        'position':[1,0,1],'rotation':[0,0,0],'scale':[1,1,1]}
+r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':placed})
+assert r.status_code==200,(r.status_code,r.data)
+entry=next(o for o in c.get('/api/scene?room=lab',headers=headers).get_json()['objects'] if o['id']=='modelitem-001')
+assert entry['model']==asset and entry['position']==[1,0,1]
+placed['model']='/api/scene/models/'+('f'*32)+'.glb'
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':placed}).status_code==400
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'modelitem-001'}}).status_code==200
+assert not any(o['id']=='modelitem-001' for o in c.get('/api/scene?room=lab',headers=headers).get_json()['objects'])
+fbx=b'Kaydara FBX Binary  \x00\x1a\x00'+bytes(100)
+r=c.post('/api/scene/models',headers=headers,data={'model':(BytesIO(fbx),'model.fbx')},content_type='multipart/form-data')
+assert r.status_code==201,(r.status_code,r.data)
+assert c.get(r.get_json()['model']['url']).data==fbx
+print('PASS: shared GLB/FBX uploads, validation, room references and file serving')
 print('PASS: room-scoped ownership policies, shared editing and independent access')
 print('PASS: typed light settings and robot speed persist per object')
 print('PASS: atomic object create/update/delete with room isolation')

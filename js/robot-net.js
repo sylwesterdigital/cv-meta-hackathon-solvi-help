@@ -46,3 +46,22 @@ export function stepRobotMotion(state,input,dt){
 export function stepIntent(x,z,yaw,input,dt){return stepRobotMotion({x,z,yaw,velocity:Number(input?.v)||0},input,dt);}
 export function packetFor(id,i,object,final=false){return {type:'robot-input',id,f:i.f,t:i.t,r:i.r,b:i.b||0,m:final?0:1,
   x:+object.position.x.toFixed(2),z:+object.position.z.toFixed(2),y:+object.position.y.toFixed(2),yaw:+object.rotation.y.toFixed(3),s:+(i.s||1).toFixed(2),j:i.j?1:0};}
+
+// Integrate the same input on every client and blend *one-off residual errors*.
+// Unlike chasing a fixed packet position every frame, this never drags a moving
+// avatar backwards between network packets.
+export function makeRemoteCorrection(current,packet){
+ const dx=packet.x-current.x,dz=packet.z-current.z,dyaw=signedAngle(packet.yaw,current.yaw);
+ return {dx,dz,dyaw};
+}
+export function applyRemoteCorrection(state,correction,dt){
+ const time=clamp(Number(dt)||0,0,.08),distance=Math.hypot(correction.dx,correction.dz);
+ if(distance>8){return {x:state.x+correction.dx,z:state.z+correction.dz,yaw:state.yaw+correction.dyaw,
+  residual:{dx:0,dz:0,dyaw:0},done:true,teleport:true};}
+ const alpha=1-Math.exp(-time*8);
+ const gain=distance>0?Math.min(alpha,Math.min(3*time/distance,1)):alpha;
+ const xAdjust=correction.dx*gain,zAdjust=correction.dz*gain,yawAdjust=correction.dyaw*alpha;
+ const residual={dx:correction.dx-xAdjust,dz:correction.dz-zAdjust,dyaw:correction.dyaw-yawAdjust};
+ return {x:state.x+xAdjust,z:state.z+zAdjust,yaw:state.yaw+yawAdjust,residual,
+  done:Math.hypot(residual.dx,residual.dz)<.008&&Math.abs(residual.dyaw)<.008,teleport:false};
+}

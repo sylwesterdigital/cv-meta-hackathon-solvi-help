@@ -76,6 +76,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL, mime TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, created TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS avatar_library (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, created TEXT NOT NULL, filename TEXT NOT NULL, size INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS scene_models (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, created TEXT NOT NULL, filename TEXT NOT NULL, size INTEGER NOT NULL, extension TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS scene (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, payload TEXT NOT NULL);
         INSERT OR IGNORE INTO scene VALUES(1,0,'[]');
         CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, title TEXT NOT NULL, created TEXT NOT NULL);
@@ -134,7 +135,80 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.14',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.15',ai=bool(MODEL_KEY),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+
+# Model assets are stored once and referenced by an opaque identifier in room state.
+# The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
+MAX_SCENE_MODEL_BYTES = 20 * 1024 * 1024
+SCENE_MODEL_PATTERN = re.compile(r'^/api/scene/models/([0-9a-f]{32})\.(glb|fbx)$')
+
+def model_asset_exists(value):
+    if not isinstance(value,str):return False
+    match = SCENE_MODEL_PATTERN.fullmatch(value)
+    if not match:return False
+    with db() as con:
+        row=con.execute('SELECT extension FROM scene_models WHERE id=?',(match.group(1),)).fetchone()
+    return bool(row and row['extension']==match.group(2))
+
+@app.get('/api/scene/models')
+def list_scene_models():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:
+        rows=con.execute('SELECT id,title,extension,size FROM scene_models ORDER BY created DESC LIMIT 100').fetchall()
+    return jsonify(models=[{'id':r['id'],'label':r['title'],'bytes':r['size'],'format':r['extension'],
+        'url':f"/api/scene/models/{r['id']}.{r['extension']}"} for r in rows],maxBytes=MAX_SCENE_MODEL_BYTES)
+
+@app.post('/api/scene/models')
+def upload_scene_model():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    incoming=request.files.get('model')
+    if not incoming:return json_error('GLB or FBX file required')
+    extension=Path(incoming.filename or '').suffix.lower().removeprefix('.')
+    if extension not in ('glb','fbx'):return json_error('Supported formats: GLB, FBX')
+    content=incoming.stream.read(MAX_SCENE_MODEL_BYTES+1)
+    if len(content)>MAX_SCENE_MODEL_BYTES:return json_error('Model exceeds server limit (20 MiB)',413)
+    if extension=='glb':
+        # glTF 2.0 binary header + a parseable JSON chunk declaring a 2.0 asset.
+        json_length=int.from_bytes(content[12:16],'little') if len(content)>=20 else 0
+        good=(len(content)>=20 and content[:4]==b'glTF' and int.from_bytes(content[4:8],'little')==2
+             and int.from_bytes(content[8:12],'little')==len(content)
+             and 2<=json_length<=len(content)-20 and content[16:20]==b'JSON')
+        if good:
+            try:
+                definition=json.loads(content[20:20+json_length])
+                good=isinstance(definition,dict) and definition.get('asset',{}).get('version')=='2.0'
+            except (ValueError,UnicodeError,AttributeError):good=False
+    else:
+        # FBX 7.x binary or legacy ASCII header; no arbitrary file types accepted.
+        good=(content.startswith(b'Kaydara FBX Binary  \x00\x1a\x00') or
+              content[:256].lstrip().startswith((b'; FBX',b'FBXHeaderExtension:')))
+    if not good:return json_error('Invalid '+extension.upper()+' model')
+    identifier=secrets.token_hex(16)
+    directory=STATE/'scene-models';directory.mkdir(mode=0o700,parents=True,exist_ok=True)
+    target=directory/f'{identifier}.{extension}'
+    target.write_bytes(content)
+    title=re.sub(r'[^a-zA-Z0-9 _.-]','',Path(incoming.filename or '').stem).strip()[:80] or '3D model'
+    with db() as con:
+        con.execute('INSERT INTO scene_models VALUES(?,?,?,?,?,?,?)',
+                    (identifier,user['id'],title,now(),str(target),len(content),extension))
+    return jsonify(model={'id':identifier,'label':title,'bytes':len(content),'format':extension,
+                          'url':f'/api/scene/models/{identifier}.{extension}'}),201
+
+@app.get('/api/scene/models/<identifier>.<extension>')
+def serve_scene_model(identifier,extension):
+    if not re.fullmatch(r'[0-9a-f]{32}',identifier) or extension not in ('glb','fbx'):
+        return json_error('Model not found',404)
+    with db() as con:
+        row=con.execute('SELECT filename,extension FROM scene_models WHERE id=?',(identifier,)).fetchone()
+    if not row or row['extension']!=extension:return json_error('Model not found',404)
+    path=Path(row['filename'])
+    if not path.is_file() or path.parent.resolve()!=(STATE/'scene-models').resolve():
+        return json_error('Model unavailable',404)
+    response=send_file(path,mimetype='model/gltf-binary' if extension=='glb' else 'application/octet-stream')
+    response.headers['X-Content-Type-Options']='nosniff'
+    return response
 
 @app.get('/api/avatars')
 def list_avatars():
@@ -508,9 +582,10 @@ def set_scene():
     if not room_id:return json_error('Unknown room',404)
     objects=data.get('objects',[]);revision=data.get('revision');policy=room_policy(room_id)
     if not isinstance(objects,list) or len(objects)>128 or not isinstance(revision,int):return json_error('Invalid scene')
-    allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot'}
+    allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'}
     for o in objects:
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
+        if o['kind']=='model' and not model_asset_exists(o.get('model')):return json_error('Unknown scene model')
         if not all(isinstance(o.get(n),list) and len(o[n])==3 and all(isinstance(x,(int,float)) and abs(x)<1000 for x in o[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
     with db() as con:
         old=con.execute('SELECT revision FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['revision']
@@ -542,10 +617,12 @@ def patch_scene_object():
     if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',obj_id):return json_error('Invalid object id')
     if action not in ('upsert','remove'):return json_error('Invalid object action')
     if action=='upsert':
-        if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot'}:return json_error('Unsupported object type')
+        if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','model') if key in obj}
         if len(str(obj.get('name','')))>100:return json_error('Object name too long')
+        if obj['kind']=='model' and not model_asset_exists(obj.get('model')):return json_error('Unknown scene model')
+        if obj['kind']!='model' and obj.get('model'):return json_error('Unexpected model reference')
         avatar=str(obj.get('avatar',''))
         if avatar and not (avatar=='./assets/solvi-character.glb' or (re.fullmatch(r'\./assets/avatars/[A-Za-z0-9_-]+\.glb',avatar) or re.fullmatch(r'/api/avatars/[0-9a-f]{32}\.glb',avatar))):
             return json_error('Invalid avatar reference')
@@ -720,7 +797,7 @@ def websocket(ws):
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
                 try:
                     f=int(msg.get('f',0));t=int(msg.get('t',0));r=int(msg.get('r',0));reverse=int(msg.get('b',0));moving=int(msg.get('m',0))
-                    x=float(msg.get('x',0));y=float(msg.get('y',0));z=float(msg.get('z',0));yaw=float(msg.get('yaw',0));speed=float(msg.get('s',1));jump=int(msg.get('j',0))
+                    x=float(msg.get('x',0));y=float(msg.get('y',0));z=float(msg.get('z',0));yaw=float(msg.get('yaw',0));speed=float(msg.get('s',1));jump=int(msg.get('j',0));seq=int(msg.get('seq',0) or 0)
                 except (ValueError,TypeError,OverflowError):continue
                 if any(v not in (-1,0,1) for v in (f,t)) or r not in (0,1) or reverse not in (0,1) or moving not in (0,1) or jump not in (0,1) or not math.isfinite(speed) or not .35<=speed<=3:continue
                 if not all(math.isfinite(v) and abs(v)<1000 for v in (x,y,z,yaw)):continue
@@ -731,7 +808,7 @@ def websocket(ws):
                 if not controlled or not may_edit(uid,controlled,room_policy(room_id)):continue
                 publish({'type':'robot-input','room':room_id,'by':uid,'id':identifier,
                         'f':f,'t':t,'r':r,'b':reverse,'m':moving,'x':round(x,2),'y':round(y,2),
-                        'z':round(z,2),'yaw':round(yaw,3),'s':round(speed,2),'j':jump},except_id=uid,room_id=room_id)
+                        'z':round(z,2),'yaw':round(yaw,3),'s':round(speed,2),'j':jump,'seq':max(0,min(2147483647,seq))},except_id=uid,room_id=room_id)
             elif msg.get('type')=='signal' and isinstance(msg.get('payload'),dict):
                 to=msg.get('to')
                 with room_lock:peer=room.get(to)

@@ -3,9 +3,10 @@ import {setupAvatarGallery} from './avatar-gallery.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
 import {EditHistory,duplicateElevation,nextDuplicateName} from './edit-history.js';
 import {makeRobot,hydrateRobot,robotAction,tickRobots,setRobotDestination,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
-import {intent,active,packetFor,stepRobotMotion,signedAngle} from './robot-net.js';
+import {intent,active,packetFor,stepRobotMotion,signedAngle,makeRemoteCorrection,applyRemoteCorrection} from './robot-net.js';
+import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneModelRenderer} from './scene-models.js';
 
-const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot'];
+const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'];
 const byId=id=>document.getElementById(id);
 const material=(color='#8bc3ff')=>new THREE.MeshStandardMaterial({color,roughness:.7,side:THREE.DoubleSide});
 const xyz=v=>[+v.x.toFixed(4),+v.y.toFixed(4),+v.z.toFixed(4)];
@@ -31,6 +32,7 @@ function objectFor(kind){
  case 'points':{const coords=[];for(let i=0;i<95;i++)coords.push((Math.random()-.5)*1.4,Math.random()*1.2,(Math.random()-.5)*1.4);const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(coords,3));object=new THREE.Points(geo,new THREE.PointsMaterial({color:'#88e1d5',size:.07}));break;}
  case 'text':{const c=document.createElement('canvas');c.width=1024;c.height=256;const ctx=c.getContext('2d');ctx.fillStyle='#f2f5ff';ctx.font='bold 132px system-ui';ctx.textAlign='center';ctx.fillText('SOLVI',512,176);const tex=new THREE.CanvasTexture(c);object=new THREE.Mesh(new THREE.PlaneGeometry(2,.5),new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide}));break;}
  case 'robot':object=makeRobot();break;
+ case 'model':object=makeSceneModel();break;
  case 'light':{object=new THREE.Group();const icon=new THREE.Mesh(new THREE.SphereGeometry(.125,12,8),new THREE.MeshBasicMaterial({color:'#ffe3a2',depthTest:false}));icon.userData.lightMarker=true;object.add(icon);setLight(object,{type:'point',intensity:2,range:10,decay:2,color:'#d0efff'});break;}
  default:throw Error('Unsupported kind');
  }
@@ -66,7 +68,7 @@ export function setLight(group,settings){
 
 export class SceneEditor{
  constructor(world,onToast){
-  this.world=world;this.toast=onToast;this.items=[];this.selected=null;this.revision=0;
+  this.world=world;this.toast=onToast;configureSceneModelRenderer(world.renderer);this.items=[];this.selected=null;this.revision=0;
   this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
   this.history=new EditHistory(120);this.transformBefore=null;
   this.transform=new TransformControls(world.camera,world.renderer.domElement);
@@ -81,17 +83,21 @@ export class SceneEditor{
   this.transform.addEventListener('mouseUp',()=>{this.broadcastEdit(false);world.editorDragging=false;this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
   this.transform.addEventListener('objectChange',()=>{if(!this.canEdit(this.selected))return;this.updateInspector();this.queueSave(this.selected);});
   window.addEventListener('solvi:robot-model-ready',e=>{if(this.selected?.userData.editorId===e.detail.id)this.updateInspector();});
-  this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.remoteInput=new Map();
+  this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
  }
  setupUI(){
   const menu=byId('addMenu');
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Robots',['robot']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Robots',['robot']],['3D models',['import model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';menu.append(bar);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';menu.append(search);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
   search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
-   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.onclick=()=>this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);group.append(button);}menu.append(group);}
+   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.onclick=()=>{if(k==='import model'){menu.hidden=true;byId('modelImportFile').click();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}menu.append(group);}
   const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton'])toolbox.append(byId(id));
+  byId('importModelButton').onclick=()=>byId('modelImportFile').click();
+  byId('modelImportFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(f)await this.importModel(f);e.target.value='';});
+  const canvasDrop=worldCanvas=>{worldCanvas.addEventListener('dragover',e=>{if([...e.dataTransfer?.items||[]].some(i=>i.kind==='file'))e.preventDefault();});worldCanvas.addEventListener('drop',async e=>{const file=[...e.dataTransfer?.files||[]].find(f=>/\.(glb|fbx)$/i.test(f.name));if(!file)return;e.preventDefault();this.lastPointer={x:e.clientX,y:e.clientY};await this.importModel(file);});};
+  canvasDrop(this.world.renderer.domElement);
   byId('toolboxMinimize').onclick=()=>{const collapsed=byId('editorToolbox').classList.toggle('minimized');byId('toolboxMinimize').textContent=collapsed?'+':'−';};
   const openMenu=(x,y)=>{menu.hidden=false;menu.style.right='auto';menu.style.left=Math.max(8,Math.min(innerWidth-275,x))+'px';menu.style.top=Math.max(54,Math.min(innerHeight-370,y))+'px';search.value='';for(const b of menu.querySelectorAll('.add-group button'))b.hidden=false;};
   this.showAddMenu=openMenu;
@@ -196,14 +202,15 @@ export class SceneEditor{
   const measured=box.isEmpty()?0:box.getSize(new THREE.Vector3()).y;
   const height=entry.kind==='robot'?Math.max(1.9,measured):Math.max(.32,measured);
   duplicate.position.y+=duplicateElevation(height);
-  if(entry.color)duplicate.traverse(mesh=>{if(mesh.material?.color)mesh.material.color.set(entry.color);});
+  if(entry.color&&entry.kind!=='model')duplicate.traverse(mesh=>{if(mesh.material?.color)mesh.material.color.set(entry.color);});
   duplicate.userData.textureName=entry.texture||'none';
   if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')duplicate.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.map=makeTexture(entry.texture);mesh.material.needsUpdate=true;}});
+  if(entry.kind==='model'){duplicate.userData.modelUrl=entry.model;hydrateSceneModel(duplicate);}
   if(entry.kind==='light')setLight(duplicate,entry.light||{});duplicate.userData.robotSpeed=entry.speed||1;duplicate.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;duplicate.userData.avatarUrl=source.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;this.items.push(duplicate);this.world.scene.add(duplicate);this.select(duplicate);if(entry.kind==='robot')hydrateRobot(duplicate);this.recordEdit(null,this.snapshot(duplicate));this.queueSave(duplicate);this.toast('Duplicated above original');
  }
  add(kind,showGallery=true,lightType=undefined){const object=objectFor(kind);if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
  const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.raycaster.intersectObject(this.world.floor)?.[0]?.point;if(point){object.position.x=point.x;object.position.z=point.z;}
- object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;this.items.push(object);this.world.scene.add(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}this.recordEdit(null,this.snapshot(object));this.queueSave(object);return object;}
+ object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;this.items.push(object);this.world.scene.add(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}if(kind==='model'&&object.userData.modelUrl)hydrateSceneModel(object);if(kind!=='model'){this.recordEdit(null,this.snapshot(object));this.queueSave(object);}return object;}
  select(obj){if(this.selected&&this.selected!==obj)this.broadcastEdit(false);this.clearLightHelper();this.robotKeys.clear();this.localRobotInput=null;this.selected=obj;
   if(obj?.userData.editorKind==='robot')for(const key of ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'])this.world.keys.delete(key);
   // Robots are controlled with arrows, not a permanent transform gizmo.
@@ -216,7 +223,7 @@ export class SceneEditor{
   byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
-  byId('objectAppearance').hidden=['robot','light'].includes(obj.userData.editorKind);if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';}
+  byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);byId('sceneModelControls').hidden=obj.userData.editorKind!=='model';if(obj.userData.editorKind==='model')byId('sceneModelPath').textContent=obj.userData.modelUrl||'No model';if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';}
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
     const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);
   });
@@ -231,13 +238,14 @@ export class SceneEditor{
  remove(){if(!this.selected)return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
  texture(name){if(!this.selected||this.selected.userData.editorKind==='robot')return;if(this.canEdit(this.selected))this.selected.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
-  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed||1):undefined}));}
- apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);o.traverse(x=>{x.geometry?.dispose();x.material?.dispose?.();});}this.items=[];this.selected=null;byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed||1;if(entry.kind==='light')setLight(o,entry.light||{});
+  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed||1):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined}));}
+ apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed||1;if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
-   this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);}this.refreshList();}
+   this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);}this.refreshList();}
  disposeObject(obj){
+  if(obj.userData.editorKind==='model'){invalidateSceneModel(obj);return;}
   obj.traverse(x=>{x.geometry?.dispose();if(x.material?.map)x.material.map.dispose();x.material?.dispose?.();});
  }
  applyObjectPatch(message){
@@ -263,7 +271,7 @@ export class SceneEditor{
   obj.name=entry.name||obj.name;obj.userData.ownerId=entry.owner||null;
   const oldTexture=obj.userData.textureName||'none',newTexture=entry.texture||'none';
   obj.position.fromArray(entry.position);obj.rotation.fromArray(entry.rotation);obj.scale.fromArray(entry.scale);
-  if(entry.color){obj.traverse(node=>{if(node.material?.color&&node.userData.editorKind!=='robot'){
+  if(entry.color&&entry.kind!=='model'){obj.traverse(node=>{if(node.material?.color&&node.userData.editorKind!=='robot'){
    if(node.isMesh&&!node.userData.robotPlaceholder&&entry.kind==='robot')return;
    if(node.material.color.getHexString()!==entry.color.slice(1))node.material.color.set(entry.color);
   }});}
@@ -276,6 +284,7 @@ export class SceneEditor{
   }
   const avatar=entry.avatar||DEFAULT_ROBOT_AVATAR;
   if(entry.kind==='light')setLight(obj,entry.light||{});obj.userData.robotSpeed=entry.speed||1;
+  if(entry.kind==='model'&&(isNew||obj.userData.modelUrl!==entry.model)){if(!isNew)invalidateSceneModel(obj);obj.userData.modelUrl=entry.model;hydrateSceneModel(obj);}
   if(entry.kind==='robot'&&(isNew||obj.userData.avatarUrl!==avatar)){
    obj.userData.avatarUrl=avatar;
    if(!isNew){for(const child of [...obj.children])if(!child.userData.robotPlaceholder)obj.remove(child);
@@ -302,6 +311,22 @@ export class SceneEditor{
   if(!api?.online){localStorage.setItem('solvi-scene-'+(window.solviRoom||'main'),JSON.stringify(list));this.toast('Scene saved locally (not shared)');return;}
   try{const data=await api.req('/api/scene',{method:'PUT',body:JSON.stringify({room:window.solviRoom||'main',revision:this.revision,objects:list})});this.revision=data.revision;this.toast('Shared scene saved');}catch(e){this.toast(e.message);}}
 
+  async importModel(file){
+   if(!/\.(glb|fbx)$/i.test(file.name))return this.toast('Select a GLB or FBX model');
+   const setting=Number(localStorage.getItem('solvi-model-upload-limit')||5);
+   const limit=Math.max(.1,Math.min(20,setting))*1024*1024;
+   if(file.size>20*1024*1024)return this.toast('Model exceeds server limit (20 MiB)');
+   if(file.size>limit)return this.toast(`Model too large: ${(file.size/1048576).toFixed(2)} MiB; limit ${(limit/1048576).toFixed(2)} MiB`);
+   if(!window.solviAPI?.online)return this.toast('Model upload requires the shared server');
+   try{
+    this.toast('Uploading model…');const form=new FormData();form.append('model',file);
+    const result=await window.solviAPI.req('/api/scene/models',{method:'POST',body:form});
+    const obj=this.add('model',false);obj.name=result.model.label;obj.userData.modelUrl=result.model.url;
+    // Put the file in the room only after upload has succeeded.
+    hydrateSceneModel(obj);this.updateInspector();this.refreshList();this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);
+    this.toast('3D model added · '+result.model.label);
+   }catch(e){this.toast('Model import failed: '+e.message);}
+  }
   changeRobotAvatar(obj,url){
    if(!obj||obj.userData.editorKind!=='robot'||!this.canEdit(obj))return;
    if(typeof url!=='string'||!(url.startsWith('./assets/')||/^\/api\/avatars\/[0-9a-f-]+\.glb$/.test(url)))return;
@@ -376,8 +401,8 @@ export class SceneEditor{
       const moving=active(input)||Math.abs(robot.userData.robotVelocity||0)>.04||Math.abs(robot.userData.robotLateral||0)>.04;
       const wasMoving=previous&&(active(previous)||previous.moving);
       const changed=!previous||input.f!==previous.f||input.t!==previous.t||input.r!==previous.r||input.b!==previous.b||input.s!==previous.s||input.j!==previous.j;
-      if(changed||((moving||wasMoving)&&now-this.lastRobotPacket>1800)){
-        window.solviRoomSocket?.send(packetFor(robot.userData.editorId,{...input,j:input.j&&!previous?.j?1:0},robot,!moving&&!input.j));
+      if(changed||((moving||wasMoving)&&now-this.lastRobotPacket>950)){
+        window.solviRoomSocket?.send({...packetFor(robot.userData.editorId,{...input,j:input.j&&!previous?.j?1:0},robot,!moving&&!input.j),seq:++this.robotPacketSeq});
         this.lastRobotPacket=now;
       }
       if(wasMoving&&!moving){this.queueSave(robot);}
@@ -391,6 +416,14 @@ export class SceneEditor{
       other.position.x=next.x;other.position.z=next.z;other.rotation.y=next.yaw;other.userData.robotVelocity=next.velocity;other.userData.robotSteer=next.steer;other.userData.robotLateral=next.lateral;
       if(other.userData.jumpVel===undefined){other.userData.robotMode=Math.abs(next.velocity)<.04?(Math.abs(next.lateral)>.04?(next.lateral>0?'strafeLeft':'strafeRight'):'idle'):next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
     }
+    // Smooth server-authoritative corrections without reloading the avatar mesh.
+    for(const [id,correction] of this.remoteCorrections){
+      const obj=this.items.find(o=>o.userData.editorId===id);
+      if(!obj){this.remoteCorrections.delete(id);continue;}
+      const next=applyRemoteCorrection({x:obj.position.x,z:obj.position.z,yaw:obj.rotation.y},correction,dt);
+      obj.position.x=next.x;obj.position.z=next.z;obj.rotation.y=next.yaw;
+      if(next.done)this.remoteCorrections.delete(id);else this.remoteCorrections.set(id,next.residual);
+    }
     tickRobots(this.items,dt,(o,arrived)=>{
       if(arrived&&this.canEdit(o))this.queueSave(o);
     });
@@ -398,13 +431,19 @@ export class SceneEditor{
   applyRobotInput(packet){
     const robot=this.items.find(o=>o.userData.editorId===packet.id&&o.userData.editorKind==='robot');
     if(!robot||(this.selected===robot&&this.canEdit(robot)&&this.robotKeys.size))return;
-    const diff=Math.hypot((robot.position.x-(Number(packet.x)||0)),robot.position.z-(Number(packet.z)||0));
-    if(diff>.18){const factor=diff>1?1:.35;robot.position.x+=(Number(packet.x)-robot.position.x)*factor;robot.position.z+=(Number(packet.z)-robot.position.z)*factor;}
-    robot.rotation.y+=signedAngle(Number(packet.yaw)||0,robot.rotation.y)*.95;
+    // Ignore out-of-order input frames (WebSocket ordering is per connection, but reconnects happen).
+    const sequence=Number(packet.seq)||0,prior=this.remoteSequences.get(packet.id);
+    const stamp=performance.now();
+    if(sequence&&prior&&sequence<=prior.seq&&stamp-prior.at<3000)return;
+    if(sequence)this.remoteSequences.set(packet.id,{seq:sequence,at:stamp});
+    const x=Number(packet.x),z=Number(packet.z),yaw=Number(packet.yaw);
+    if(Number.isFinite(x)&&Number.isFinite(z)&&Number.isFinite(yaw))this.remoteCorrections.set(packet.id,makeRemoteCorrection({x:robot.position.x,z:robot.position.z,yaw:robot.rotation.y},{x,z,yaw}));
     if(packet.m&&(packet.f||packet.t))robot.userData.robotGoal=null;
     if(packet.j&&!robot.userData.jumpVel)robotAction(robot,'jump');
-    if(!packet.m){this.remoteInput.delete(packet.id);robot.userData.robotVelocity=0;robot.userData.robotSteer=0;robot.userData.robotLateral=0;if(robot.userData.jumpVel===undefined)robot.userData.robotMode='idle';robot.position.x=Number(packet.x)||0;robot.position.z=Number(packet.z)||0;if(robot.userData.jumpVel===undefined)robot.position.y=Number(packet.y)||0;robot.rotation.y=Number(packet.yaw)||0;}
-    else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,received:performance.now()});
+    if(!packet.m){
+      // Decelerate through the same motion integrator instead of stopping at once.
+      this.remoteInput.set(packet.id,{f:0,t:0,r:0,b:0,s:packet.s||1,received:performance.now()});
+    }else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,received:performance.now()});
   }
   applyRobotMotion(state){this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});}
   robot(){return this.selected?.userData.editorKind==='robot'?this.selected:null;}

@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.14",
+  "currentVersion": "0.2.15",
   "releases": [
+    {
+      "version": "0.2.15",
+      "publishedAt": "2026-10-28T02:35:35Z",
+      "changes": [
+        "Drop .glb/.fbx onto world canvas or import from World tools/Shift+A; model uploads stored once and referenced across rooms.",
+        "Personal upload cap in Settings: 100 KB\u201320 MiB, plus strict 20 MiB server maximum.",
+        "Remote robot movement uses low-bandwidth inputs, client prediction and smoothed position/yaw corrections."
+      ]
+    },
     {
       "version": "0.2.14",
       "publishedAt": "2026-10-28T00:57:52Z",

@@ -383,3 +383,7 @@ function bindUI(world){
  setInterval(async()=>{if(online&&auth){try{await api.req('/api/me');}catch{ /* expiry handler opens sign-in */ }}},45000);
 }
 export function initStudio(world){bindUI(world);}
+
+// Local model cap: a personal import preference, bounded by the server's 20 MiB hard limit.
+const modelLimitPicker=document.getElementById('sceneModelMaxSize');
+if(modelLimitPicker){const storedLimit=localStorage.getItem('solvi-model-upload-limit')||'5';modelLimitPicker.value=[...modelLimitPicker.options].some(o=>o.value===storedLimit)?storedLimit:'5';modelLimitPicker.onchange=()=>localStorage.setItem('solvi-model-upload-limit',modelLimitPicker.value);}

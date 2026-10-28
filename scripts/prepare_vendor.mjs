@@ -38,7 +38,7 @@ function imports(source) {
   return [...new Set(found)];
 }
 
-const queue = ['controls/OrbitControls.js', 'controls/TransformControls.js', 'loaders/GLTFLoader.js', 'loaders/DRACOLoader.js', 'loaders/KTX2Loader.js', 'libs/meshopt_decoder.module.js', 'webxr/XRControllerModelFactory.js', 'webxr/XRHandModelFactory.js'];
+const queue = ['controls/OrbitControls.js', 'controls/TransformControls.js', 'loaders/GLTFLoader.js', 'loaders/FBXLoader.js', 'utils/SkeletonUtils.js', 'loaders/DRACOLoader.js', 'loaders/KTX2Loader.js', 'libs/meshopt_decoder.module.js', 'webxr/XRControllerModelFactory.js', 'webxr/XRHandModelFactory.js'];
 const visited = new Set();
 while (queue.length) {
   const rel = queue.shift();
