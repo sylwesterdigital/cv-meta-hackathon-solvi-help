@@ -204,7 +204,7 @@ r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert
 assert r.status_code==200,(r.status_code,r.data)
 read_robot=[x for x in c.get('/api/scene?room=lab',headers=headers).get_json()['objects'] if x['kind']=='robot'][0]
 assert read_robot['turnSpeed']==3.0 and read_robot['brain']==brain
-# v0.2.37: speech must execute Cybert's physical turn/walk commands, not
+# v0.2.38: speech must execute Cybert's physical turn/walk commands, not
 # fall through to a plausible but idle Muse Spark conversational answer.
 cybert={'id':'testrobot-cybert037','kind':'robot','name':'Cybert','position':[0,0,0],
         'rotation':[0,0,0],'scale':[1,1,1],'speed':1.0}

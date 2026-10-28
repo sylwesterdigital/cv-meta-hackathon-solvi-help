@@ -662,7 +662,7 @@ function bindUI(world){
    if(!text?.trim())return;
    if(!me)throw Error('Sign in to publish CC captions to the room.');
    const caption='CC: '+text.trim().slice(0,500);
-   if(!online||!auth){if(online&&!auth){needSignIn('Sign in to send captions.');return;}await bubble({role:'user',text:caption,speaker:me.name,user_id:me.id,created:new Date().toISOString()});return;}
+   if(!online||!auth){if(online&&!auth)needSignIn('Sign in to send captions.');throw Error(!online?'Backend is offline; CC cannot publish to the shared room.':'Sign in before sending voice captions.');}
    try{const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:caption,media:[]})});await bubble(response.message);try{await reactToRobotMessage(response.message);}catch(error){$('chatStatus').textContent='Caption published; robot reaction failed: '+error.message;}}
    catch(error){toast('Captions not sent: '+error.message);throw error;}
  };

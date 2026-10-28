@@ -8,13 +8,19 @@ export function setupVoiceCaptions(world){
  const waves=document.getElementById('voiceWavesButton'),engine=document.getElementById('ccEngine'),language=document.getElementById('ccLanguage'),autoSend=document.getElementById('ccAutoSend'),engineStatus=document.getElementById('ccEngineStatus');
  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
  let enabled=false,rec=null,epoch=0,mic=null,media=null,loop=null,pendingPromise=Promise.resolve(),pendingSegments=0,ctx=null,analyser=null,src=null,frame=0;let retries=0,heardAt=0,switchedToWhisper=false;
+ // Keep the button's visible label in sync without replacing its accessible SVG wrapper.
+ function setCCLabel(text){
+  const label=button.querySelector?.('.ui-button-label');
+  if(label)label.textContent=text;
+  else button.textContent=text;
+ }
  const localStore=(key,element,allowed)=>{const value=localStorage.getItem('solvi-'+key);if(allowed.includes(value))element.value=value;element.addEventListener('change',()=>{localStorage.setItem('solvi-'+key,element.value);if(enabled){stop();start().catch(e=>failed(e.message));}});};
  localStore('cc-engine',engine,['browser','server']);localStore('cc-language',language,['auto','pl-PL','en-GB','en-US']);
  const autoSetting=localStorage.getItem('solvi-cc-send');if(autoSetting!==null)autoSend.checked=autoSetting==='true';autoSend.addEventListener('change',()=>localStorage.setItem('solvi-cc-send',String(autoSend.checked)));
  function show(state,label,text=''){preview.hidden=!state;preview.dataset.state=state||'off';phase.textContent=label;draft.textContent=text;status.textContent=label+(text?' · '+text.slice(-100):'');
    if(settingsStatus)settingsStatus.textContent=label+(text?' · '+text.slice(-90):'');button.dataset.ccState=state||'off';
    button.setAttribute('aria-label',enabled?'Turn off live captions. '+label:'Turn on live captions. '+label);
-   button.setAttribute('aria-pressed',String(enabled));}
+   button.setAttribute('aria-pressed',String(enabled));button.title=enabled?'CC on · click to stop microphone transcription':'CC off · click to start microphone transcription';}
 
  function failed(msg){show('error','CC error',msg);setTimeout(()=>{if(!enabled)preview.hidden=true;},6000);}
  async function publish(text){text=String(text||'').trim();if(!text)return;
@@ -22,7 +28,7 @@ export function setupVoiceCaptions(world){
   if(typeof window.solviPublishCaption!=='function')throw Error('Room caption publisher is unavailable. Open chat and reconnect.');
   show('sending','Publishing CC transcript…',text);await window.solviPublishCaption(text);if(enabled)show('listening','CC sent to room · listening…',text);}
  function finishMic(){if(rec){rec.onend=null;try{rec.abort();}catch{}rec=null;}if(loop)clearTimeout(loop);loop=null;if(media&&media.state!=='inactive'){try{media.stop();}catch{}}media=null;mic?.getTracks().forEach(t=>t.stop());mic=null;}
- function stop(){enabled=false;++epoch;retries=0;switchedToWhisper=false;if(rec){rec.onend=null;try{rec.stop();}catch{}}rec=null;finishMic();button.textContent='CC off';button.setAttribute('aria-pressed','false');show('off','CC off');preview.hidden=true;}
+ function stop(){enabled=false;++epoch;retries=0;switchedToWhisper=false;if(rec){rec.onend=null;try{rec.stop();}catch{}}rec=null;finishMic();setCCLabel('CC off');button.setAttribute('aria-pressed','false');show('off','CC off');preview.hidden=true;}
  async function browserStart(id){
   if(!Recognition)throw Error('Browser speech recognition is unavailable. Try Ubuntu Whisper.');
   rec=new Recognition();rec.lang=selectedLocale(language.value,navigator.language);rec.continuous=true;rec.interimResults=true;
@@ -75,9 +81,9 @@ export function setupVoiceCaptions(world){
    loop=setTimeout(()=>{if(media?.state==='recording')media.stop();},4000);
   };cycle();
  }
- async function start(){if(enabled)return;enabled=true;retries=0;heardAt=0;switchedToWhisper=false;const id=++epoch;button.textContent='CC on';button.setAttribute('aria-pressed','true');
+ async function start(){if(enabled)return;enabled=true;retries=0;heardAt=0;switchedToWhisper=false;const id=++epoch;setCCLabel('CC on');button.setAttribute('aria-pressed','true');
   try{if(engine.value==='server')await serverStart(id);else if(!Recognition&&window.solviAPI?.online&&window.solviAPI?.auth())await serverStart(id);else await browserStart(id);}catch(e){stop();failed(e.message);}}
- button?.addEventListener('click',()=>{if(enabled){stop();button.setAttribute('aria-pressed','false');}else start();});
+ button?.addEventListener('click',()=>{if(enabled)stop();else start();});
  async function voiceLevels(){
   if(ctx){cancelAnimationFrame(frame);src?.disconnect();analyser?.disconnect();await ctx.close().catch(()=>{});ctx=null;finishVoice();window.dispatchEvent(new CustomEvent('solvi:voice-waves',{detail:{active:false}}));return;}
   try{voiceStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});ctx=new AudioContext();src=ctx.createMediaStreamSource(voiceStream);analyser=ctx.createAnalyser();analyser.fftSize=512;src.connect(analyser);

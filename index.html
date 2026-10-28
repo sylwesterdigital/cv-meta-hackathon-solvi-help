@@ -11,7 +11,7 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.37</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.38</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="Show more world tools">More</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
@@ -104,10 +104,10 @@
       <div class="composer-actions"><button id="attachmentButton" type="button" aria-expanded="false" aria-controls="attachmentMenu" title="Attach to chat">Attach</button><div id="attachmentMenu" class="attachment-menu" hidden role="group" aria-label="Attach to chat"><button type="button" id="attachMediaOption">File / photo</button><button type="button" id="attachAudioOption">Record audio</button><button type="button" id="attachVideoOption">Record video</button><button type="button" id="attachRobotOption">Robot eyes</button></div>
         <button id="composerToolsButton" type="button" aria-expanded="false" title="More chat tools">More</button>
         <label class="icon-btn media-tool" id="legacyAttach" title="Attach media">Attach<input id="chatFile" type="file" accept="image/*,audio/*,video/*" hidden></label>
-        <button class="media-tool" id="recordAudio" title="Record audio file (click again to stop)">Mic</button><button class="media-tool" id="captionsButton" title="Live speech captions to shared room chat">CC off</button><button class="media-tool" id="voiceWavesButton" title="Share microphone loudness as abstract visual rings, no audio uploaded">Voice waves</button>
+        <button class="media-tool" id="recordAudio" title="Record audio file (click again to stop)">Mic</button><button class="media-tool" id="voiceWavesButton" title="Share microphone loudness as abstract visual rings, no audio uploaded">Voice waves</button>
         <button class="media-tool" id="recordVideo" title="Record video (click again to stop)">Video</button>
         <button class="media-tool" id="robotVision" title="Attach view from the robot camera">Robot view</button>
-        <button id="sendChat" class="primary">Send ↗</button>
+        <button type="button" id="captionsButton" class="cc-direct-toggle" aria-label="Turn on microphone-to-chat captions" aria-pressed="false" data-cc-state="off" title="CC off · click to dictate into room chat">CC off</button><button id="sendChat" class="primary">Send ↗</button>
       </div>
       <label class="robot-debug-toggle" title="Show real robot actions, requests, visual matches, timings, and usage in this browser's chat. Never published to other users."><input type="checkbox" id="verboseRobotDebug" checked> Show Jessica Brain operations in chat (local debug)</label>
       <small id="chatStatus">World chat available without an AI key. AI responses require MODEL_API_KEY.</small><small id="captionStatus" aria-live="polite">CC off</small>

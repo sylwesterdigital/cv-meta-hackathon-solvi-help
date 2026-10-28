@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.37",
+  "currentVersion": "0.2.38",
   "releases": [
+    {
+      "version": "0.2.38",
+      "publishedAt": "2026-10-28T20:19:25Z",
+      "changes": [
+        "Restore always-visible CC microphone transcription toggle directly before Send in Messages.",
+        "Repair room caption delivery status and explicit offline/auth errors.",
+        "Prevent chat icon-mode styles from hiding CC state and verify published voice transcripts."
+      ]
+    },
     {
       "version": "0.2.37",
       "publishedAt": "2026-10-28T19:49:43Z",
@@ -303,18 +312,6 @@
         "Atomic room-scoped object persistence with procedural textures, live updates and OK closes properties.",
         "Place Mixamo animated robots, control Idle/Walk/Run/Wave, and capture selected robot first-person camera.",
         "Preserve rooms, VR input and WebXR teleport, full-page chat overlay and empty initial scene."
-      ]
-    },
-    {
-      "version": "0.2.2",
-      "publishedAt": "2026-10-27T13:28:00Z",
-      "changes": [
-        "New realms: independent SQLite chat history, scene data, and room-scoped WebSocket participants.",
-        "Empty starter world, persistent 3D chat overlay, own messages right and other participants / AI left.",
-        "Draggable Add, Objects and Properties panes, Shift+A search and Enter to add, camera-safe transform controls.",
-        "Remote-user heads from FaceCap GLB, name labels, temporary chat balloons, opt-in webcam facial expression tracking.",
-        "WebXR controller input, hand models and teleportation remain available.",
-        "Fix Flask integration test Origin to match the watcher environment without weakening origin protection."
       ]
     }
   ]

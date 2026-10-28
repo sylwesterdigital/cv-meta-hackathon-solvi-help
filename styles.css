@@ -1024,3 +1024,46 @@ html body .topbar #toolNav > button#toolsToggleButton{display:inline-flex!import
 #chatPanel .composer-window-head #webcamButton[aria-pressed="true"]{border-color:#64dbb0!important;background:color-mix(in srgb,#64dbb0 22%,var(--ui-panel,#152a3c))!important}
 #chatPanel .composer-window-head #webcamButton:focus-visible{outline:2px solid var(--solvi-accent)!important;outline-offset:2px!important}
 @media(max-width:750px){#chatPanel .composer-window-head #webcamButton{flex-basis:36px!important;width:36px!important;min-width:36px!important;max-width:36px!important;height:36px!important;min-height:36px!important;max-height:36px!important}}
+
+/* v0.2.38 — always-visible push-to-toggle speech captions, placed just before Send.
+   Do not inherit the hidden .media-tool/More-menu rules. */
+#chatPanel .composer-actions #captionsButton.cc-direct-toggle{
+ display:inline-flex!important;order:8!important;align-items:center!important;
+ justify-content:center!important;flex:0 0 auto!important;
+ gap:7px!important;white-space:nowrap!important;
+ min-height:34px!important;height:34px!important;max-height:38px!important;
+ min-width:72px!important;width:auto!important;
+ padding:4px 9px!important;margin:0 5px 0 auto!important;
+ font-size:12px!important;line-height:1.1!important;
+ border:1px solid var(--ui-border,#667e90)!important;border-radius:7px!important;
+}
+#chatPanel .composer-actions #sendChat{
+ order:9!important;flex:0 0 auto!important;margin-left:0!important;
+ min-height:34px!important;height:34px!important;white-space:nowrap!important;
+}
+#chatPanel .composer-actions #captionsButton[data-cc-state="listening"],
+#chatPanel .composer-actions #captionsButton[data-cc-state="sending"],
+#chatPanel .composer-actions #captionsButton[data-cc-state="transcribing"]{
+ border-color:#67e0b3!important;background:#235a46!important;color:#fff!important;
+}
+#chatPanel .composer-actions #captionsButton[data-cc-state="error"]{
+ border-color:#fa8585!important;background:#592d39!important;color:#fff!important;
+}
+#chatPanel .composer-actions #captionsButton:focus-visible{
+ outline:3px solid #d8f1ff!important;outline-offset:2px!important;
+}
+#chatPanel .composer-actions #captionsButton::before{
+ width:16px!important;height:16px!important;flex:0 0 16px!important;
+}
+@media(max-width:750px){
+ #chatPanel .composer-actions #captionsButton.cc-direct-toggle{
+   min-width:72px!important;min-height:44px!important;height:44px!important;
+   padding:6px 9px!important;font-size:12px!important;margin-right:4px!important;
+ }
+ #chatPanel .composer-actions #sendChat{min-height:44px!important;height:44px!important;}
+}
+
+/* Keep the CC on/off label visible even when the global phone button mode is icons-only. */
+html[data-button-labels='icon'] #chatPanel #captionsButton .ui-button-label{
+ display:inline-block!important;white-space:nowrap!important;
+}
