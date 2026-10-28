@@ -431,7 +431,7 @@ body .xr-stage-button{font-size:18px!important}
 .diagnostics-window .brain-results{max-height:52vh;min-height:180px}
 @media(max-width:650px){.solvi-floating-window{top:70px;left:8px;right:8px;width:auto;max-height:75vh}.diagnostics-window{left:8px;right:8px}}
 
-/* v0.2.23 Brains: legible, collapsible and inspectable. */
+/* v0.2.24 Brains: legible, collapsible and inspectable. */
 #robotBrainsPanel{width:min(900px,calc(100vw - 28px));left:max(10px,calc(50vw - 450px));max-height:88vh;top:5vh;resize:both;min-width:min(380px,95vw);min-height:340px}
 #robotBrainsPanel .brains-scroll{display:flex;flex-direction:column;align-items:stretch;gap:13px;padding:18px 22px}
 .brains-section{border:1px solid #4b627c;border-radius:9px;padding:10px 13px;background:rgba(3,14,27,.28)}
@@ -462,3 +462,135 @@ body .xr-stage-button{font-size:18px!important}
 #robotBrainsPanel .brains-frame-card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:5px}
 #robotBrainsPanel .brains-frame-card span{overflow-wrap:anywhere}
 #robotBrainsPanel .brains-frame-card:hover,#robotBrainsPanel .brains-frame-card:focus-visible{outline:2px solid #86d5c1}
+
+/* v0.2.24: the camera is the FIRST and guaranteed-sized element in Brains.
+   Size the IMG in normal document flow; no percentage-height cycles or zero-height canvas. */
+#robotBrainsPanel{width:min(850px,calc(100vw - 24px));max-height:94svh;top:2svh;min-height:420px}
+#robotBrainsPanel .brains-scroll{min-height:0;overflow-y:auto;overflow-x:hidden;padding:12px 22px 22px;display:flex;flex-direction:column;gap:15px}
+#robotBrainsPanel .brain-observation{display:flex;flex-direction:column;gap:13px;align-items:stretch;min-width:0;order:0}
+#robotBrainsPanel .brain-eye-header{display:flex;justify-content:space-between;align-items:center;gap:15px}
+#robotBrainsPanel .brain-eye-header h2{font-size:18px;margin:0 0 4px;line-height:1.25}
+#robotBrainsPanel .brain-eye-header p{margin:0}
+#robotBrainsPanel #brainsEyeStage.brains-eye-stage{display:block;position:relative;overflow:hidden;flex:0 0 auto;width:min(100%,600px);height:auto;min-height:0;max-height:none;max-width:100%;aspect-ratio:auto;margin:0 auto;background:#07111c;border:2px solid #678aa3;border-radius:12px;line-height:0}
+#robotBrainsPanel #brainsEyeStage.brains-eye-stage[hidden]{display:none!important}
+#robotBrainsPanel #brainsEyeImage{display:block;width:100%;height:auto;min-height:0;max-height:none;max-width:100%;aspect-ratio:1/1;object-fit:contain;position:relative;z-index:0}
+#robotBrainsPanel #brainsEyeImage[hidden]{display:none!important}
+#robotBrainsPanel #brainsEyeOverlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+#robotBrainsPanel .brains-eye-placeholder{min-height:230px;border:1px dashed #678aa3;background:#091728;display:flex;justify-content:center;align-items:center;text-align:center;padding:22px;border-radius:12px;color:#c7dce9;font-size:15px;line-height:1.6}
+#robotBrainsPanel .brains-eye-placeholder[hidden]{display:none!important}
+#robotBrainsPanel .brain-primary-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+#robotBrainsPanel .brains-frame-gallery{display:flex;max-width:100%;min-height:0;overflow-x:auto;padding:4px 0 10px;gap:10px}
+#robotBrainsPanel .brains-frame-gallery:empty{display:none}
+#robotBrainsPanel .brains-frame-card{flex:0 0 126px;min-width:126px}
+#robotBrainsPanel .brains-section{order:1}
+#robotBrainsPanel .brain-observation .brain-results{max-height:360px;min-height:100px}
+#robotBrainsPanel .brains-section summary{list-style:auto;cursor:pointer}
+#robotBrainsPanel .brains-section[open]>.brains-section-body{padding-top:12px}
+.brains-eye-lightbox{position:fixed;inset:0;z-index:600;background:rgba(2,7,15,.96);color:#f4f7fc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;overflow:auto}
+.brains-eye-lightbox[hidden]{display:none!important}
+.brains-lightbox-head{width:min(95vw,900px);display:flex;align-items:center;justify-content:space-between;gap:15px}
+#brainsEyeLarge{object-fit:contain;display:block;width:min(90vmin,900px);height:min(75vmin,75vh);background:#040d1a;border:1px solid #8da8bf;border-radius:8px}
+#brainsLightboxCaption{width:min(90vw,900px);text-align:center;line-height:1.5;overflow-wrap:anywhere;font-size:13px;color:#ccdce9}
+#chatPanel .chat-row.brain-trace{max-width:min(82vw,760px)!important}
+#chatPanel .chat-row.brain-trace .chat-bubble{border:1px solid #77d7c0!important;background:rgba(12,42,50,.94)!important;padding:10px 13px!important}
+#chatPanel .chat-row.brain-trace .chat-body{font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
+@media(max-width:650px){#robotBrainsPanel .brains-scroll{padding:11px}#robotBrainsPanel .brain-eye-header{flex-wrap:wrap}#robotBrainsPanel #brainsEyeStage.brains-eye-stage{width:100%}#chatPanel .chat-row.brain-trace{max-width:95vw!important}}
+
+/* The explicit Show debug in chat action docks two actually visible windows. */
+body.solvi-brain-chat-side-by-side #chatPanel.windowed{z-index:180!important}
+@media(min-width:1101px){body.solvi-brain-chat-side-by-side #robotBrainsPanel{left:12px!important;right:auto!important;width:calc(100vw - 466px)!important;max-width:calc(100vw - 466px)!important}}
+
+#brainsEyeLarge{width:min(82vmin,90vw,850px);height:auto;max-height:80vh;aspect-ratio:1/1}
+
+/* v0.2.25 — accessibility, mobile icon controls and legible settings. */
+:root{--ui-scale:1;--ui-font-stack:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--ui-icon-filter:brightness(0) invert(1);--ui-primary-icon-filter:brightness(0)}
+html,body,button,input,select,textarea,label{font-family:var(--ui-font-stack)!important}
+body{font-size:calc(14px * var(--ui-scale))!important}
+button:not(.theme-swatch):not(.theme-preset),.icon-btn,select,input[type=button],input[type=submit]{font-size:calc(12px * var(--ui-scale))!important;min-height:max(36px,calc(34px * var(--ui-scale)))!important;line-height:1.4!important;max-width:100%;overflow-wrap:anywhere}
+:is(.drawer,.scene-panel,.properties-panel,.editor-toolbox,.overlay,.solvi-floating-window,.chat-composer) :is(p,small,label,summary,.small-note,.field-label,.drawer-label,.settings-subhead){font-size:calc(12px * var(--ui-scale))!important;line-height:1.5!important}
+:is(.drawer,.scene-panel,.properties-panel,.editor-toolbox,.overlay,.solvi-floating-window) :is(h2,h3){font-size:calc(17px * var(--ui-scale))!important;line-height:1.3!important}
+:is(.drawer,.scene-panel,.properties-panel,.editor-toolbox,.overlay,.solvi-floating-window) :is(input,select,textarea){font-size:calc(13px * var(--ui-scale))!important;min-height:max(34px,calc(35px * var(--ui-scale)))!important;max-width:100%}
+:is(.drawer,.overlay,.scene-panel,.properties-panel,.solvi-floating-window){max-width:100vw;overflow-wrap:anywhere}
+.chat-body{font-size:calc(12px * var(--ui-scale))!important;line-height:1.55!important}
+.chat-meta,.chat-meta strong,.composer-line,.statusbar{font-size:calc(10px * var(--ui-scale))!important}
+.chat-composer textarea{font-size:calc(13px * var(--ui-scale))!important}
+.topbar .wordmark{font-size:calc(20px * var(--ui-scale))!important}
+button[data-ui-icon]::before,label.icon-btn[data-ui-icon]::before{content:"";display:inline-block;flex:0 0 auto;width:calc(17px * var(--ui-scale));height:calc(17px * var(--ui-scale));background-image:var(--ui-button-icon);background-size:contain;background-position:center;background-repeat:no-repeat;filter:var(--ui-icon-filter);vertical-align:middle;pointer-events:none}
+button.primary[data-ui-icon]::before{filter:var(--ui-primary-icon-filter)}
+html[data-button-labels='text'] button[data-ui-icon]::before,html[data-button-labels='text'] label.icon-btn[data-ui-icon]::before{display:none}
+html[data-button-labels='icon'] button[data-ui-icon],html[data-button-labels='icon'] label.icon-btn[data-ui-icon]{font-size:0!important;letter-spacing:0!important;min-width:max(44px,calc(38px * var(--ui-scale)))!important;min-height:max(44px,calc(38px * var(--ui-scale)))!important;padding:8px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:0!important;flex:0 0 auto;text-align:center!important}
+html[data-button-labels='icon'] button[data-ui-icon]::before,html[data-button-labels='icon'] label.icon-btn[data-ui-icon]::before{width:calc(22px * var(--ui-scale));height:calc(22px * var(--ui-scale))}
+/* Named theme cards use real filled colour samples, not generic button styling. */
+.settings-section{border-top:1px solid color-mix(in srgb,var(--ui-fg) 24%,transparent);padding-top:16px;margin:4px 0 10px;min-width:0}
+.settings-section>h2{font-size:calc(17px * var(--ui-scale));font-weight:750;margin:0 0 9px;color:var(--ui-fg)}
+.settings-section .small-note{margin:4px 0 11px;color:var(--ui-fg);opacity:.86}
+.settings-subhead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;font-weight:750;margin:14px 0 8px}
+.settings-mode-choices{display:flex;flex-wrap:wrap;gap:8px;border:1px solid color-mix(in srgb,var(--ui-fg) 27%,transparent);border-radius:10px;padding:12px 10px}
+.settings-mode-choices legend{font-weight:750;padding:0 6px}
+.settings-mode-choices label{display:flex;gap:5px;align-items:center;padding:7px 4px;min-height:36px}
+.settings-mode-choices input{width:18px;height:18px;accent-color:var(--solvi-accent)}
+.theme-preset-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:12px 0}
+.theme-preset-gallery .theme-preset{display:flex;align-items:center;flex-direction:column;gap:7px;min-width:0;padding:9px 5px!important;min-height:69px!important;font-size:calc(12px * var(--ui-scale))!important;background:var(--ui-button)!important;color:var(--ui-button-text)!important;border:2px solid transparent!important;border-radius:9px}
+.theme-preset-gallery .theme-preset.active{border-color:var(--solvi-accent)!important;outline:1px solid var(--ui-fg)}
+.theme-preview-strip{display:flex;width:94%;height:22px;overflow:hidden;border:1px solid #8c99ad;border-radius:5px}
+.theme-preview-strip span{flex:1;min-width:0}
+.theme-swatches button.theme-swatch{background:var(--swatch-color)!important;min-width:38px!important;width:38px!important;height:38px!important;min-height:38px!important;border:2px solid color-mix(in srgb,var(--ui-fg) 75%,transparent)!important;border-radius:12px!important;padding:0!important;box-shadow:inset 0 0 0 1px #0002}
+.theme-swatches .theme-swatch[aria-pressed='true']{outline:3px solid var(--solvi-accent);outline-offset:2px}
+#uiScale{display:block;width:100%;min-height:26px!important;accent-color:var(--solvi-accent)}
+#uiScaleOutput{font-weight:700;font-variant-numeric:tabular-nums;margin-left:8px}
+#uiCustomFontLabel[hidden]{display:none!important}
+#resetUiPreferences{width:100%}
+.drawer{width:min(calc(390px * min(var(--ui-scale),1.25)),100vw)!important;gap:7px!important;scrollbar-width:thin!important}
+.drawer .field-label{display:block;min-width:0;margin:10px 0!important}
+.drawer .field-label :is(input:not([type=checkbox]):not([type=radio]),select,textarea){width:100%;margin-top:6px;box-sizing:border-box}
+:where(button,a,input,textarea,select,summary,[tabindex]):focus-visible{outline:3px solid var(--solvi-accent)!important;outline-offset:3px!important}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+/* Phone: world visible first, compact main controls, expanded tools via explicit More action. */
+#mobileMenuButton{display:none!important}
+@media(max-width:750px){
+ #mobileMenuButton{display:inline-flex!important}
+ #toolNav{width:100%;display:flex!important;justify-content:flex-end!important;flex-wrap:nowrap!important;max-width:100%;overflow-x:auto!important;scrollbar-width:thin}
+ #toolNav>:not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none!important}
+ #toolNav.nav-expanded{flex-wrap:wrap!important;overflow-y:auto!important;max-height:48svh!important;background:var(--ui-panel);border-radius:9px;padding:6px}
+ #toolNav.nav-expanded>:not(#mobileMenuButton){display:inline-flex!important}
+ #toolNav #roomSelect{flex:1 1 70px;min-width:65px!important;max-width:160px}
+ .topbar{flex-direction:column!important;gap:3px!important;padding:5px 7px!important}
+ .topbar .wordmark{align-self:flex-start;font-size:calc(14px * var(--ui-scale))!important;line-height:1.1!important}
+ .topbar nav button{min-width:44px!important;min-height:44px!important}
+ .statusbar{display:none!important}
+ .editor-toolbox{top:108px!important;left:7px!important;width:auto!important;max-width:150px}
+ .editor-toolbox.minimized{width:auto!important}
+ .editor-toolbox .toolbox-title strong{font-size:calc(11px * var(--ui-scale))!important}
+ .editor-toolbox .toolbox-actions{max-height:42svh;overflow:auto;min-width:110px}
+ .scene-panel,.properties-panel{max-width:calc(100vw - 14px)!important}
+ #scenePanel{top:170px;}
+ .chat-composer{max-width:calc(100vw - 12px)!important;min-width:0}
+ .composer-actions{flex-wrap:wrap!important}
+ #composerToolsButton{display:inline-flex!important}
+ .composer-actions .media-tool{display:none!important}
+ .chat-composer.tools-open .composer-actions .media-tool{display:inline-flex!important}
+ .composer-actions #captionsButton{display:inline-flex!important;order:1!important}
+ .composer-actions #sendChat{order:2!important;margin-left:auto!important}
+ .chat-composer.tools-open .composer-actions .media-tool{order:3!important}
+ .drawer{width:100vw!important;max-height:100svh;padding:12px 14px max(16px,env(safe-area-inset-bottom))!important}
+ .drawer .theme-preset-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}
+ button:not(.theme-swatch):not(.theme-preset){min-height:44px!important}
+}
+@media(max-width:420px){
+ .topbar .wordmark small{font-size:9px!important}
+ #toolNav{gap:3px!important}
+ .chat-composer{padding:5px!important}
+ #chatPanel .chat-feed{padding-top:8px!important}
+ .settings-mode-choices{flex-direction:column}
+}
+
+/* Unique scene object names must remain distinguishable in icon-only mode. */
+html[data-button-labels="icon"] #sceneItems .scene-item-row button:not(.scene-item-delete){font-size:calc(12px * var(--ui-scale))!important;min-width:0!important;justify-content:flex-start!important;text-align:left!important;flex:1 1 auto!important;overflow-wrap:anywhere}
+html[data-button-labels="icon"] #sceneItems .scene-item-row button:not(.scene-item-delete)::before{display:none}
+/* Counteract legacy body-button specificity without rewriting historic controls. */
+body button:not(.profile-photo-badge):not(.xr-stage-button):not(.avatar-card):not(.theme-swatch){font-size:calc(12px * var(--ui-scale))!important;min-height:max(36px,calc(34px * var(--ui-scale)))!important}
+html[data-button-labels='icon'] body button[data-ui-icon]:not(.profile-photo-badge):not(.xr-stage-button):not(.avatar-card):not(.theme-swatch){font-size:0!important;min-height:max(44px,calc(38px * var(--ui-scale)))!important;min-width:max(44px,calc(38px * var(--ui-scale)))!important;padding:8px!important;display:inline-flex!important;justify-content:center!important;align-items:center!important}
+@media(max-width:750px){body button:not(.profile-photo-badge):not(.xr-stage-button):not(.avatar-card):not(.theme-swatch){min-height:44px!important}}
+html[data-button-labels='icon'] #toolNav #mobileMenuButton{font-size:0!important;width:44px!important;max-width:44px!important;min-width:44px!important;min-height:44px!important;overflow:hidden!important}
+body button.theme-preset:not(.profile-photo-badge):not(.xr-stage-button):not(.avatar-card):not(.theme-swatch){min-height:max(68px,calc(68px * var(--ui-scale)))!important;font-size:calc(12px * var(--ui-scale))!important}
+@media(max-width:750px){.theme-swatches button.theme-swatch{height:44px!important;min-height:44px!important;width:44px!important;min-width:44px!important}}

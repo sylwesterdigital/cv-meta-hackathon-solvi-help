@@ -4,18 +4,23 @@ export const supportedLanguage = value => ['auto','pl-PL','en-GB','en-US'].inclu
 export const selectedLocale = (setting,browserLang='en-GB') => supportedLanguage(setting)==='auto'?(browserLang||'en-GB'):setting;
 export function setupVoiceCaptions(world){
  const button=document.getElementById('captionsButton'),status=document.getElementById('captionStatus');
- const preview=document.getElementById('captionPreview'),phase=document.getElementById('captionPhase'),draft=document.getElementById('captionDraft');
+ const preview=document.getElementById('captionPreview'),phase=document.getElementById('captionPhase'),draft=document.getElementById('captionDraft'),settingsStatus=document.getElementById('ccSettingsStatus');
  const waves=document.getElementById('voiceWavesButton'),engine=document.getElementById('ccEngine'),language=document.getElementById('ccLanguage'),autoSend=document.getElementById('ccAutoSend'),engineStatus=document.getElementById('ccEngineStatus');
  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
- let enabled=false,rec=null,epoch=0,mic=null,media=null,loop=null,pendingPromise=Promise.resolve(),transcribing=false,ctx=null,analyser=null,src=null,frame=0;
+ let enabled=false,rec=null,epoch=0,mic=null,media=null,loop=null,pendingPromise=Promise.resolve(),pendingSegments=0,ctx=null,analyser=null,src=null,frame=0;
  const localStore=(key,element,allowed)=>{const value=localStorage.getItem('solvi-'+key);if(allowed.includes(value))element.value=value;element.addEventListener('change',()=>{localStorage.setItem('solvi-'+key,element.value);if(enabled){stop();start().catch(e=>failed(e.message));}});};
  localStore('cc-engine',engine,['browser','server']);localStore('cc-language',language,['auto','pl-PL','en-GB','en-US']);
  const autoSetting=localStorage.getItem('solvi-cc-send');if(autoSetting!==null)autoSend.checked=autoSetting==='true';autoSend.addEventListener('change',()=>localStorage.setItem('solvi-cc-send',String(autoSend.checked)));
- function show(state,label,text=''){preview.hidden=!state;preview.dataset.state=state||'off';phase.textContent=label;draft.textContent=text;status.textContent=label+(text?' · '+text.slice(-100):'');}
+ function show(state,label,text=''){preview.hidden=!state;preview.dataset.state=state||'off';phase.textContent=label;draft.textContent=text;status.textContent=label+(text?' · '+text.slice(-100):'');
+   if(settingsStatus)settingsStatus.textContent=label+(text?' · '+text.slice(-90):'');button.dataset.ccState=state||'off';
+   button.setAttribute('aria-label',enabled?'Turn off live captions. '+label:'Turn on live captions. '+label);
+   button.setAttribute('aria-pressed',String(enabled));}
+
  function failed(msg){show('error','CC error',msg);setTimeout(()=>{if(!enabled)preview.hidden=true;},6000);}
  async function publish(text){text=String(text||'').trim();if(!text)return;
   if(!autoSend.checked){const input=document.getElementById('chatInput');input.value+=(input.value.trim()?' ':'')+text;input.dispatchEvent(new Event('input'));show('listening','Listening · transcript added to input');return;}
-  show('sending','Sending…',text);await window.solviPublishCaption?.(text);if(enabled)show('listening','Listening…');}
+  if(typeof window.solviPublishCaption!=='function')throw Error('Room caption publisher is unavailable. Open chat and reconnect.');
+  show('sending','Publishing CC transcript…',text);await window.solviPublishCaption(text);if(enabled)show('listening','CC sent to room · listening…',text);}
  function finishMic(){if(rec){rec.onend=null;try{rec.abort();}catch{}rec=null;}if(loop)clearTimeout(loop);loop=null;if(media&&media.state!=='inactive'){try{media.stop();}catch{}}media=null;mic?.getTracks().forEach(t=>t.stop());mic=null;}
  function stop(){enabled=false;++epoch;if(rec){rec.onend=null;try{rec.stop();}catch{}}rec=null;finishMic();button.textContent='CC off';button.setAttribute('aria-pressed','false');show('off','CC off');preview.hidden=true;}
  async function browserStart(id){
@@ -45,12 +50,12 @@ export function setupVoiceCaptions(world){
   const cycle=()=>{if(!enabled||id!==epoch)return;
    const parts=[];media=new MediaRecorder(mic,{mimeType:type,audioBitsPerSecond:32000});
    media.ondataavailable=e=>{if(e.data.size)parts.push(e.data);};
-   media.onstop=()=>{const blob=new Blob(parts,{type});if(blob.size>=1000&&enabled&&id===epoch&&!transcribing){
-    transcribing=true;pendingPromise=pendingPromise.catch(()=>{}).then(async()=>{
+   media.onstop=()=>{const blob=new Blob(parts,{type});if(blob.size>=1000&&enabled&&id===epoch){
+    if(pendingSegments>=3){failed('Speech recognition queue is full. Check Ubuntu Whisper connection.');}else{pendingSegments++;pendingPromise=pendingPromise.catch(()=>{}).then(async()=>{
      if(!enabled||id!==epoch)return;
      show('transcribing','Whisper transcribing…');const form=new FormData();form.append('audio',blob,'speech.'+(type.includes('mp4')?'m4a':type.includes('ogg')?'ogg':'webm'));form.append('language',language.value==='auto'?'auto':language.value.slice(0,2));
      const result=await window.solviAPI.req('/api/stt',{method:'POST',body:form});if(result.text)await publish(result.text);else if(enabled)show('listening','Listening · no speech detected');
-    }).catch(e=>failed(e.message)).finally(()=>{transcribing=false;});}
+    }).catch(e=>failed(e.message)).finally(()=>{pendingSegments--;});}}
     if(enabled&&id===epoch)cycle();};
    media.onerror=e=>{failed(e.error?.message||'Recording error');stop();};
    media.start();show('listening',`Listening · Ubuntu Whisper (${language.value})…`);
@@ -73,5 +78,6 @@ export function setupVoiceCaptions(world){
  waves?.addEventListener('click',voiceLevels);
  window.addEventListener('pagehide',()=>{stop();finishVoice();});
  window.addEventListener('solvi:session-lost',()=>{if(enabled&&engine.value==='server'){stop();failed('Sign in again to use server transcription.');}});
+ show('off','CC off · microphone released');preview.hidden=true;
  engineStatus.textContent='The orange/red OS icon means your microphone is active. Browser CC sends final phrases; Ubuntu Whisper sends 4-second chunks to the shared Rantlist model. Disable CC to release the mic.';
 }

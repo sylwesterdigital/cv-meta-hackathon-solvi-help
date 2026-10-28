@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
 import {captureRobotView} from './robots.js';
 import {initRobotBrains,runRobotVisualSearch,emitBrainTrace} from './robot-brains.js';
-import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
+import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,uiScalePercent,safeFontName,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
 import {playCue,primeAudio} from './audio-cues.js';
 
 const $=id=>document.getElementById(id);
@@ -134,12 +134,14 @@ async function reportRobotTask(command,status){
 }
 async function reactToRobotMessage(message){
  if(!message?.id||!message.text||!online||!auth)return;
+ if($('verboseRobotDebug')?.checked)emitBrainTrace('chat','Brain router','CHAT RECEIVED',`Room ${activeRoom}; ${message.text.startsWith('CC:')?'speech caption':'typed message'}: ${message.text.slice(0,400)}. Checking addressed robot and allowed actions.`);
  const response=await api.req('/api/robots/react',{method:'POST',body:JSON.stringify({room:activeRoom,text:message.text,message_id:message.id})});
+ const traceRobot=response.command?.robot_id||response.robot_id||'chat';
+ for(const item of response.trace||[])emitBrainTrace(traceRobot,response.answer?.speaker||response.robot_name||'Jessica',item.step.toUpperCase(),`${item.result} [${item.source}]`);
  if(response.answer)await bubble(response.answer);
  if(response.command){
    const command=response.command,editor=window.solviEditor;
    const robot=editor?.items?.find(o=>o.userData.editorId===command.robot_id&&o.userData.editorKind==='robot');
-   for(const item of response.trace||[])emitBrainTrace(command.robot_id,robot?.name||response.answer?.speaker||'Robot',item.step.toUpperCase(),`${item.result} [${item.source}]`);
    const previous=runningRobotTasks.get(command.robot_id);if(previous)previous.cancelled=true;
    const run={cancelled:false,command};runningRobotTasks.set(command.robot_id,run);
    if(command.kind==='vision_search'){
@@ -351,6 +353,13 @@ function setupSettings(){
  const settings=$('settingsDrawer');
  function paint(p){
   $('accentColor').value=p.accent;$('interfaceTheme').value=p.theme||'midnight';$('bubbleOpacity').value=p.opacity;
+  $('uiScale').value=uiScalePercent(p.uiScale);$('uiScaleOutput').textContent=uiScalePercent(p.uiScale)+'%';
+  $('uiFontTheme').value=['system','sans','rounded','serif','mono','installed'].includes(p.fontTheme)?p.fontTheme:'system';
+  $('uiCustomFont').value=p.customFont||'';$('uiCustomFontLabel').hidden=p.fontTheme!=='installed';
+  const mode=p.labelMode==='auto'?(matchMedia('(max-width:750px)').matches?'icon':'both'):p.labelMode;
+  const opt=settings.querySelector(`input[name=buttonLabels][value="${mode}"]`);if(opt)opt.checked=true;
+  for(const btn of $('themePresetGallery').querySelectorAll('button')){const active=btn.dataset.theme===p.theme;btn.setAttribute('aria-pressed',String(active));btn.classList.toggle('active',active);}
+  for(const btn of $('themeSwatches').querySelectorAll('button'))btn.setAttribute('aria-pressed',String(btn.dataset.color===p.accent));
   for(const [id,key] of [['bubbleBackgrounds','backgrounds'],['bubbleBorders','borders'],['groupMessages','group'],['soundEffects','sounds'],['flipHead','flipHead']])$(id).checked=!!p[key];
  }
  paint(current);
@@ -358,12 +367,21 @@ function setupSettings(){
  $('closeSettings').onclick=()=>{settings.hidden=true;};
  settings.addEventListener('pointerdown',e=>{if(e.target===settings)settings.hidden=true;});
  const apply=(patch)=>{const prefs=updatePreferences(patch);paint(prefs);if('group' in patch){chatSignature='';loadMessages();}};
+ for(const control of settings.querySelectorAll('input[name=buttonLabels]'))control.onchange=e=>{if(e.target.checked)apply({labelMode:e.target.value});};
+ $('uiScale').oninput=e=>apply({uiScale:uiScalePercent(e.target.value)});
+ $('uiFontTheme').onchange=e=>apply({fontTheme:e.target.value});
+ $('uiCustomFont').onchange=e=>{const name=safeFontName(e.target.value);if(e.target.value.trim()&&!name){e.target.setCustomValidity('Use a font family name with letters, numbers, spaces, periods, underscores or hyphens.');e.target.reportValidity();return;}e.target.setCustomValidity('');apply({customFont:name});};
+ $('resetUiPreferences').onclick=()=>{apply({labelMode:'auto',uiScale:100,fontTheme:'system',customFont:''});};
+ const themeNames={midnight:'Midnight',light:'Light',dark:'Dark',ocean:'Ocean',forest:'Forest',dusk:'Dusk',contrastDark:'High contrast · dark',contrastLight:'High contrast · light'};
+ for(const [key,theme] of Object.entries(THEME_PRESETS)){const btn=document.createElement('button');btn.type='button';btn.className='theme-preset';btn.dataset.theme=key;btn.setAttribute('aria-label',`Choose ${themeNames[key]} colour theme`);btn.setAttribute('aria-pressed',String(key===current.theme));
+  const strip=document.createElement('span');strip.className='theme-preview-strip';strip.setAttribute('aria-hidden','true');for(const color of [theme.background,theme.panel,theme.accent]){const colorSpan=document.createElement('span');colorSpan.style.backgroundColor=color;strip.append(colorSpan);}
+  const label=document.createElement('span');label.textContent=themeNames[key];btn.append(strip,label);btn.onclick=()=>apply({theme:key,accent:theme.accent});$('themePresetGallery').append(btn);}
  $('accentColor').oninput=e=>apply({accent:e.target.value});
  $('interfaceTheme').onchange=e=>{const key=e.target.value;const theme=THEME_PRESETS[key];apply({theme:key,accent:theme.accent});};
  $('bubbleOpacity').oninput=e=>apply({opacity:Number(e.target.value)});
  for(const [id,key] of [['bubbleBackgrounds','backgrounds'],['bubbleBorders','borders'],['groupMessages','group'],['soundEffects','sounds'],['flipHead','flipHead']])$(id).onchange=e=>apply({[key]:e.target.checked});
  const colors=['#79cde5','#e7b073','#a5db91','#d9a0d7','#a0b5f5','#f3a1a1'];
- function swatches(){const grid=$('themeSwatches');grid.replaceChildren();for(const color of colors){const b=document.createElement('button');b.className='theme-swatch';b.title='Apply '+color;b.style.background=color;b.onclick=()=>apply({accent:color});grid.append(b);}}
+ function swatches(){const grid=$('themeSwatches');grid.replaceChildren();for(const color of colors){const b=document.createElement('button');b.className='theme-swatch';b.type='button';b.dataset.color=color;b.title='Use accent '+color;b.setAttribute('aria-label','Use accent '+color);b.setAttribute('aria-pressed',String(readPreferences().accent===color));b.style.setProperty('--swatch-color',color);b.onclick=()=>apply({accent:color});grid.append(b);}}
  swatches();$('generateTheme').onclick=()=>{const color=themePalette(Math.floor(Math.random()*10000));colors[colors.length-1]=color;swatches();apply({accent:color});};
  $('metaBudget').value=localStorage.getItem('solvi-ai-budget-usd')||'5';
  $('metaBudget').onchange=event=>{const budget=Math.max(0,Number(event.target.value)||0);localStorage.setItem('solvi-ai-budget-usd',String(budget));$('refreshMetaUsage').click();};
@@ -462,6 +480,16 @@ function bindUI(world){
      text:`[${d.at}] ${d.step}\n${d.detail}`,created:new Date().toISOString(),isBrainTrace:true};
    localBrainTrace.push(entry);if(localBrainTrace.length>100)localBrainTrace.shift();bubble(entry);
  });
+ window.addEventListener('solvi:show-brain-chat',()=>{
+   $('verboseRobotDebug').checked=true;sessionStorage.setItem('solvi-brain-debug','1');
+   show('chatPanel',true);document.body.classList.remove('chat-muted');$('messagesToggleButton').setAttribute('aria-pressed','true');chatSignature='';loadMessages();
+   const panel=$('chatPanel');if(innerWidth<=1100){$('robotBrainsPanel').hidden=true;document.body.classList.remove('solvi-brain-chat-side-by-side');}
+   if(innerWidth>1100){
+     document.body.classList.add('solvi-brain-chat-side-by-side');
+     panel.classList.add('windowed');panel.style.setProperty('--chat-width','420px');panel.style.setProperty('--chat-height','min(79vh,780px)');
+     panel.style.setProperty('--chat-left',Math.max(6,innerWidth-432)+'px');panel.style.setProperty('--chat-top','92px');
+   }
+ });
  window.addEventListener('solvi:chat-updated',loadMessages);
  $('chatButton').onclick=()=>{show('chatPanel',$('chatPanel').hidden);document.body.classList.remove('chat-muted');$('messagesToggleButton').setAttribute('aria-pressed','true');};$('closeChat').onclick=()=>show('chatPanel',false);
  $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?'Your profile':'Sign in';show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
@@ -489,7 +517,7 @@ function bindUI(world){
  window.addEventListener('solvi:auth-required',event=>needSignIn(event.detail?.reason||'Session expired.'));
  window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id)playCue(event.detail.action==='left'?'leave':'join');});
  document.addEventListener('pointerdown',primeAudio,{once:true});
- $('verboseRobotDebug').checked=sessionStorage.getItem('solvi-brain-debug')==='1';$('verboseRobotDebug').onchange=()=>{sessionStorage.setItem('solvi-brain-debug',$('verboseRobotDebug').checked?'1':'0');chatSignature='';loadMessages();};
+ $('verboseRobotDebug').checked=sessionStorage.getItem('solvi-brain-debug')!=='0';$('verboseRobotDebug').onchange=()=>{sessionStorage.setItem('solvi-brain-debug',$('verboseRobotDebug').checked?'1':'0');chatSignature='';loadMessages();};
  setupChatPresentation();setupSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();initRobotBrains(world,api,()=>activeRoom,toast);begin();
  setInterval(async()=>{if(online&&auth){try{await api.req('/api/me');}catch{ /* expiry handler opens sign-in */ }}},45000);
 }

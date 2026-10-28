@@ -10,7 +10,7 @@ assert c.get('/').status_code == 200
 assert c.get('/styles.css').status_code == 200
 r=c.get('/api/health')
 assert r.status_code==200,r.data
-health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.23')
+health=r.get_json();assert health['service']=='solvi-help-api' and health['version']==__import__('os').environ.get('SOLVI_EXPECTED_VERSION','0.2.25')
 assert c.get('/api/messages').status_code==401
 name='Solvi test user'
 # The watcher provides a constrained origin for isolated integration tests.
@@ -234,7 +234,7 @@ with patch('server.active_model_key',return_value=''):
 assert other_reply.status_code==403,(other_reply.status_code,other_reply.data)
 assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'owned','robots':'open','physics':0}).status_code==200
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testsofa-0222'}}).status_code==200
-# v0.2.23: a real task result writes persistent chat/memory and rejects replay.
+# v0.2.24: a real task result writes persistent chat/memory and rejects replay.
 assert c.post('/api/robots/task-result',headers=other_headers,json={'room':'lab','task_id':reply['command']['id'],'status':'sitting'}).status_code==403
 completed=c.post('/api/robots/task-result',headers=headers,json={'room':'lab','task_id':reply['command']['id'],'status':'sitting'})
 assert completed.status_code==200,(completed.status_code,completed.data)

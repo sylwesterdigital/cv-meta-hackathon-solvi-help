@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.23",
+  "currentVersion": "0.2.25",
   "releases": [
+    {
+      "version": "0.2.25",
+      "publishedAt": "2026-10-28T13:25:35Z",
+      "changes": [
+        "Add icon+description, description-only and icon-only UI modes with device-aware mobile default, preserving accessible button names and tooltips.",
+        "Use the supplied SVG Repo icon collection for semantic controls, including an original matching cube pictogram for the add menu.",
+        "Rebuild Settings with clear visual sections, populated colour theme preview cards, corrected coloured accent swatches and high-contrast themes.",
+        "Add persistent 50\u2013200% interface scaling and system, sans, serif, rounded, monospace or installed-device font choices.",
+        "Make smartphone layout world-first: collapsed world tools, accessible More navigation and permanently visible CC/chat send controls with 44px touch targets.",
+        "Clarify CC microphone on/off states and delivery to room chat as CC: transcript; guard missing publisher and queue Whisper segments without silently dropping while busy.",
+        "Add regression tests for device modes, font input safety, contrast, icons and captions; retain robot Brains, Meta AI, multiplayer, and the unchanged release watcher contract."
+      ]
+    },
     {
       "version": "0.2.23",
       "publishedAt": "2026-10-28T05:57:58Z",

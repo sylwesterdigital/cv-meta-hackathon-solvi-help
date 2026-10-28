@@ -87,8 +87,10 @@ const dollars=usage=>'US$'+Number(usage?.estimated_usd||0).toFixed(6)+' estimate
 function showFrame(blob,label='Robot head camera · local JPEG',boxes=[]){
   frame=blob;if(frameURL)URL.revokeObjectURL(frameURL);frameURL=URL.createObjectURL(blob);
   $('brainsEyeImage').onload=()=>{const image=$('brainsEyeImage'),canvas=$('brainsEyeOverlay');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;clearBoxes();if(boxes.length)showBoxes(boxes);};
-  $('brainsEyeImage').src=frameURL;$('brainsEyeImage').hidden=false;$('brainsEyeStage').hidden=false;
-  $('brainsEyeMeta').textContent=label+` · ${blob.size} bytes. This exact JPEG is the frame used for the stated request; images are sent only for explicit actions or directed visual-search tasks.`;
+  const preview=$('brainsEyeImage');preview.src=frameURL;preview.hidden=false;$('brainsEyeStage').hidden=false;$('brainsEyePlaceholder').hidden=true;
+  $('brainsEyeLarge').src=frameURL;$('brainsLightboxCaption').textContent=label+' · '+blob.size+' JPEG bytes';
+  $('expandBrainsEye').disabled=false;
+  $('brainsEyeMeta').textContent=label+` · ${blob.size} JPEG bytes. This is the exact frame selected for this operation. Check chat Brain trace to confirm a Meta request was actually sent.`;
 }
 function renderTaskTrace(){
  const rows=taskTraces.get(activeRobot?.userData.editorId)||[];
@@ -110,7 +112,12 @@ function showBoxes(boxes){
 }
 export function initRobotBrains(world,api,getRoom,toast){
  const panel=$('robotBrainsPanel');
- $('closeRobotBrains').onclick=()=>{panel.hidden=true;};
+ $('closeRobotBrains').onclick=()=>{panel.hidden=true;$('brainsEyeLightbox').hidden=true;document.body.classList.remove('solvi-brain-chat-side-by-side');};
+ $('expandBrainsEye').onclick=()=>{if(!frame)return;$('brainsEyeLarge').src=$('brainsEyeImage').src;$('brainsEyeLightbox').hidden=false;};
+ $('closeBrainsEyeLightbox').onclick=()=>$('brainsEyeLightbox').hidden=true;
+ $('brainsEyeLightbox').addEventListener('click',e=>{if(e.target===$('brainsEyeLightbox'))$('brainsEyeLightbox').hidden=true;});
+ document.addEventListener('keydown',e=>{if(e.key==='Escape')$('brainsEyeLightbox').hidden=true;});
+ $('showBrainChat').onclick=()=>window.dispatchEvent(new CustomEvent('solvi:show-brain-chat'));
  async function refreshMemory(){
    if(!api.online||!api.auth()||!activeRobot)return;
    try{const data=await api.req('/api/robots/memory?room='+encodeURIComponent(getRoom())+'&id='+encodeURIComponent(activeRobot.userData.editorId));
@@ -135,8 +142,8 @@ export function initRobotBrains(world,api,getRoom,toast){
    const robot=window.solviEditor?.robot();if(!robot){toast('Select a robot in Objects first.');return;}
    activeRobot=robot;frame=null;
    if(frameURL)URL.revokeObjectURL(frameURL);frameURL=null;
-   $('brainsEyeStage').hidden=true;$('brainsEyeImage').hidden=true;$('brainsEyeImage').removeAttribute('src');clearBoxes();
-   $('brainsHeading').textContent=robot.name+' · Brains';
+   $('brainsEyeStage').hidden=true;$('brainsEyeImage').hidden=true;$('brainsEyeImage').removeAttribute('src');$('brainsEyeLarge').removeAttribute('src');$('brainsEyePlaceholder').hidden=false;$('expandBrainsEye').disabled=true;clearBoxes();
+   $('brainsHeading').textContent=robot.name+' · Brains';$('brainsEyeTitle').textContent=robot.name+' · eye-camera observation';$('brainsLightboxTitle').textContent=robot.name+' · 512 × 512 eye capture';
    const brain=cleanBrain(robot.userData.robotBrain);
    for(const [key,id] of Object.entries(fields)){$(id).value=brain[key];$(id).disabled=!window.solviEditor.canEdit(robot);}
    $('saveRobotBrains').disabled=!window.solviEditor.canEdit(robot);
@@ -183,8 +190,9 @@ export function initRobotBrains(world,api,getRoom,toast){
    try{const blob=await captureRobotView(world,activeRobot);if(!blob)throw Error('Head camera returned no image');
      rememberFrame(activeRobot.userData.editorId,blob,'Manual head-camera capture · not sent');
      showFrame(blob,'Manually captured head camera · no API call yet');renderFrameGallery();
+     emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,'EYE CAPTURE',`512 × 512 JPEG (${blob.size} bytes) captured in browser. Image visible in Brains, no Meta request sent. Press Describe or Find object to submit.`);
      $('brainsVisionResult').textContent='JPEG screenshot captured locally. No AI request sent yet. Choose one action to send the frame and visible prompt to Meta.';
-   }catch(error){$('brainsVisionResult').textContent=error.message;}
+   }catch(error){$('brainsVisionResult').textContent=error.message;emitBrainTrace(activeRobot?.userData.editorId,activeRobot?.name||'Robot','CAPTURE FAILED',error.message);}
  };
  async function inspect(mode){
    if(!frame){$('brainsVisionResult').textContent='Capture eyes first.';return;}
@@ -217,5 +225,5 @@ export function initRobotBrains(world,api,getRoom,toast){
  }
  $('analyzeBrainsEye').onclick=()=>inspect('segment');
  $('describeBrainsEye').onclick=()=>inspect('describe');
- window.addEventListener('solvi:room-changed',()=>{panel.hidden=true;activeRobot=null;frame=null;});
+ window.addEventListener('solvi:room-changed',()=>{panel.hidden=true;$('brainsEyeLightbox').hidden=true;document.body.classList.remove('solvi-brain-chat-side-by-side');activeRobot=null;frame=null;});
 }

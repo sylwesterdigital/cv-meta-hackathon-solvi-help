@@ -1,7 +1,14 @@
 // User-local appearance preferences. No profile secrets are stored here.
-export const DEFAULT_PREFERENCES=Object.freeze({accent:'#79cde5',theme:'midnight',opacity:78,backgrounds:true,borders:true,group:true,sounds:true,flipHead:true});
+export const DEFAULT_PREFERENCES=Object.freeze({accent:'#79cde5',theme:'midnight',opacity:78,backgrounds:true,borders:true,group:true,sounds:true,flipHead:true,labelMode:'auto',uiScale:100,fontTheme:'system',customFont:''});
 const key=()=>{try{const id=JSON.parse(localStorage.getItem('solvi-profile')||'null')?.id;return 'solvi-ui-prefs-v1'+(id?'-'+id:'');}catch{return 'solvi-ui-prefs-v1';}};
 const validColour=c=>/^#[0-9a-fA-F]{6}$/.test(c);
+export const FONT_STACKS=Object.freeze({system:'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',sans:'Inter,Arial,Helvetica,sans-serif',rounded:'ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif',serif:'Georgia,"Times New Roman",serif',mono:'ui-monospace,Menlo,Consolas,monospace'});
+export const validLabelMode=value=>['auto','both','text','icon'].includes(value)?value:'auto';
+export const uiScalePercent=value=>Math.max(50,Math.min(200,Math.round(Number(value)/10)*10||100));
+export function isCompactDevice(){return typeof window!=='undefined' && !!(window.matchMedia?.('(max-width: 750px)').matches);}
+export const resolvedLabelMode=(mode,compact)=>validLabelMode(mode)==='auto'?(compact?'icon':'both'):validLabelMode(mode);
+export function safeFontName(name){const text=String(name||'').trim();return /^[\p{L}\p{N} ._-]{1,80}$/u.test(text)?text:'';}
+export function fontStack(theme,custom=''){if(theme==='installed'){const font=safeFontName(custom);return font?`"${font}",system-ui,sans-serif`:FONT_STACKS.system;}return FONT_STACKS[theme]||FONT_STACKS.system;}
 export function readPreferences(){try{return {...DEFAULT_PREFERENCES,...JSON.parse(localStorage.getItem(key())||'{}')};}catch{return {...DEFAULT_PREFERENCES};}}
 export function updatePreferences(p){const next={...readPreferences(),...p};localStorage.setItem(key(),JSON.stringify(next));return applyPreferences(next);}
 export const THEME_PRESETS=Object.freeze({
@@ -24,6 +31,11 @@ export function applyPreferences(p=readPreferences()){
  for(const [k,v] of Object.entries(vars))document.documentElement.style.setProperty(k,v);
  document.documentElement.dataset.solviTheme=p.theme||'midnight';
  const d=document.documentElement;
+ d.dataset.buttonLabels=resolvedLabelMode(p.labelMode,isCompactDevice());
+ d.style.setProperty('--ui-scale',String(uiScalePercent(p.uiScale)/100));
+ d.style.setProperty('--ui-font-stack',fontStack(p.fontTheme,p.customFont));
+ d.style.setProperty('--ui-icon-filter',readableText(theme.button)==='#ffffff'?'brightness(0) invert(1)':'brightness(0)');
+ d.style.setProperty('--ui-primary-icon-filter',readableText(p.accent||theme.accent)==='#ffffff'?'brightness(0) invert(1)':'brightness(0)');
  const colour=validColour(p.accent)?p.accent:theme.accent;
  d.style.setProperty('--solvi-accent',colour);
  d.style.setProperty('--ui-accent-text',readableText(colour));

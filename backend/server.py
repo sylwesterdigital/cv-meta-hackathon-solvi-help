@@ -163,7 +163,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.23',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.25',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -845,7 +845,7 @@ def robot_react():
                                'text':ack,'media':'[]','created':ts,'avatar':''},
                        trace=trace,usage=plan_usage,task_id=command['id'] if command else None,
                        note='Scene index is attempted first. Unnamed target invokes real SAM head-camera scan and raycast. Debug shows executed steps, not hidden AI reasoning.')
-    if not active_model_key():return jsonify(triggered=True,responded=False,note='Robot heard the message. Set a Meta key to enable speech.')
+    if not active_model_key():return jsonify(triggered=True,responded=False,robot_id=robot['id'],robot_name=robot['name'],note='Robot heard the message. Set a Meta key to enable speech.',trace=[{'step':'route','result':'Matched '+robot['name'],'source':'address or phrase trigger'},{'step':'model','result':'Muse Spark not called: no Meta key configured','source':'API configuration'}])
     attempts=[v for v in chat_attempts.get(user['id'],[]) if time.time()-v<60]
     if len(attempts)>=5:return json_error('AI rate limit: five requests per minute',429)
     attempts.append(time.time());chat_attempts[user['id']]=attempts
@@ -873,7 +873,12 @@ def robot_react():
         con.execute('DELETE FROM robot_memories WHERE room_id=? AND robot_id=? AND id NOT IN (SELECT id FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 30)',(room_id,robot['id'],room_id,robot['id']))
     audit_event('robot-reacted',room=room_id,robot_id=robot['id'],model='muse-spark-1.3')
     publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
-    return jsonify(triggered=True,responded=True,answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'muse-spark-1.3','text':answer,'media':'[]','created':ts,'avatar':''},usage=usage)
+    return jsonify(triggered=True,responded=True,robot_id=robot['id'],robot_name=robot['name'],
+       trace=[{'step':'route','result':'Addressed '+robot['name'],'source':'direct mention or subscribed phrase'},
+              {'step':'intent','result':'Conversational reply, no physical motion requested','source':'command parser'},
+              {'step':'muse request','result':'muse-spark-1.3 · saved identity + recent room chat + robot memory · store=false','source':'Meta Responses API'},
+              {'step':'muse response','result':str(response.get('id','unknown'))+' · '+str(usage.get('input_tokens',0))+' input, '+str(usage.get('output_tokens',0))+' output tokens · estimated US$'+str(usage.get('estimated_usd',0)),'source':'Meta API usage'}],
+       answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'muse-spark-1.3','text':answer,'media':'[]','created':ts,'avatar':''},usage=usage)
 
 @app.post('/api/robots/task-result')
 def robot_task_result():
