@@ -7,7 +7,7 @@ export function setupVoiceCaptions(world){
  const preview=document.getElementById('captionPreview'),phase=document.getElementById('captionPhase'),draft=document.getElementById('captionDraft'),settingsStatus=document.getElementById('ccSettingsStatus');
  const waves=document.getElementById('voiceWavesButton'),engine=document.getElementById('ccEngine'),language=document.getElementById('ccLanguage'),autoSend=document.getElementById('ccAutoSend'),engineStatus=document.getElementById('ccEngineStatus');
  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
- let enabled=false,rec=null,epoch=0,mic=null,media=null,loop=null,pendingPromise=Promise.resolve(),pendingSegments=0,ctx=null,analyser=null,src=null,frame=0;
+ let enabled=false,rec=null,epoch=0,mic=null,media=null,loop=null,pendingPromise=Promise.resolve(),pendingSegments=0,ctx=null,analyser=null,src=null,frame=0;let retries=0,heardAt=0,switchedToWhisper=false;
  const localStore=(key,element,allowed)=>{const value=localStorage.getItem('solvi-'+key);if(allowed.includes(value))element.value=value;element.addEventListener('change',()=>{localStorage.setItem('solvi-'+key,element.value);if(enabled){stop();start().catch(e=>failed(e.message));}});};
  localStore('cc-engine',engine,['browser','server']);localStore('cc-language',language,['auto','pl-PL','en-GB','en-US']);
  const autoSetting=localStorage.getItem('solvi-cc-send');if(autoSetting!==null)autoSend.checked=autoSetting==='true';autoSend.addEventListener('change',()=>localStorage.setItem('solvi-cc-send',String(autoSend.checked)));
@@ -18,27 +18,40 @@ export function setupVoiceCaptions(world){
 
  function failed(msg){show('error','CC error',msg);setTimeout(()=>{if(!enabled)preview.hidden=true;},6000);}
  async function publish(text){text=String(text||'').trim();if(!text)return;
-  if(!autoSend.checked){const input=document.getElementById('chatInput');input.value+=(input.value.trim()?' ':'')+text;input.dispatchEvent(new Event('input'));show('listening','Listening · transcript added to input');return;}
+  if(!autoSend.checked){const input=document.getElementById('chatInput');input.value+=(input.value.trim()?' ':'')+'CC: '+text;input.dispatchEvent(new Event('input'));show('listening','Listening · transcript added to input');return;}
   if(typeof window.solviPublishCaption!=='function')throw Error('Room caption publisher is unavailable. Open chat and reconnect.');
   show('sending','Publishing CC transcript…',text);await window.solviPublishCaption(text);if(enabled)show('listening','CC sent to room · listening…',text);}
  function finishMic(){if(rec){rec.onend=null;try{rec.abort();}catch{}rec=null;}if(loop)clearTimeout(loop);loop=null;if(media&&media.state!=='inactive'){try{media.stop();}catch{}}media=null;mic?.getTracks().forEach(t=>t.stop());mic=null;}
- function stop(){enabled=false;++epoch;if(rec){rec.onend=null;try{rec.stop();}catch{}}rec=null;finishMic();button.textContent='CC off';button.setAttribute('aria-pressed','false');show('off','CC off');preview.hidden=true;}
+ function stop(){enabled=false;++epoch;retries=0;switchedToWhisper=false;if(rec){rec.onend=null;try{rec.stop();}catch{}}rec=null;finishMic();button.textContent='CC off';button.setAttribute('aria-pressed','false');show('off','CC off');preview.hidden=true;}
  async function browserStart(id){
   if(!Recognition)throw Error('Browser speech recognition is unavailable. Try Ubuntu Whisper.');
   rec=new Recognition();rec.lang=selectedLocale(language.value,navigator.language);rec.continuous=true;rec.interimResults=true;
   rec.onresult=event=>{if(!enabled||id!==epoch)return;let interim='';for(let i=event.resultIndex;i<event.results.length;i++){
     const result=event.results[i],text=result[0]?.transcript?.trim();if(!text)continue;
-    if(result.isFinal){publish(text).catch(e=>failed(e.message));}else interim+=text+' ';
+    if(result.isFinal){heardAt=Date.now();retries=0;publish(text).catch(e=>failed(e.message));}else{heardAt=Date.now();retries=0;interim+=text+' ';}
    }if(interim)show('listening','Hearing words…',interim.trim());};
-  rec.onerror=e=>{if(id!==epoch)return;failed(e.error);if(['not-allowed','service-not-allowed','audio-capture'].includes(e.error))stop();};
-  rec.onend=()=>{if(enabled&&id===epoch){
-   // Many browsers end continuous recognition after a pause; debounce restarts.
-   show('listening','Reconnecting microphone…');
-   loop=setTimeout(()=>{if(!enabled||id!==epoch)return;
-    try{rec.start();show('listening',`Listening (${rec.lang})…`);}catch(e){failed(e.message);stop();}
-   },550);
-  }};
-  rec.start();show('listening',`Listening (${rec.lang})…`);
+  rec.onerror=e=>{if(id!==epoch||!enabled)return;
+   if(['not-allowed','service-not-allowed','audio-capture'].includes(e.error)){stop();failed('Microphone permission or capture unavailable: '+e.error);return;}
+   if(e.error!=='no-speech')failed('Browser speech recognition: '+e.error);
+  };
+  async function fallback(){if(!enabled||id!==epoch)return;
+   rec.onend=null;try{rec.abort();}catch{}rec=null;
+   if(window.solviAPI?.online&&window.solviAPI?.auth()&&window.MediaRecorder){
+    switchedToWhisper=true;show('transcribing','Switching to Ubuntu Whisper…');
+    try{await serverStart(id);return;}catch(e){stop();failed('Whisper fallback failed: '+e.message);return;}
+   }
+   stop();failed('Browser speech recognition stopped repeatedly without text. Select Ubuntu Whisper in Settings, or check browser microphone and speech permissions.');
+  }
+  rec.onend=()=>{if(!enabled||id!==epoch)return;
+   // Browser speech services sometimes terminate immediately. Never enter an infinite restart loop.
+   retries+=1;
+   if(retries>4){fallback();return;}
+   show('listening',`Listening (${rec.lang}) · recovering ${retries}/4`);
+   loop=setTimeout(()=>{if(!enabled||id!==epoch||!rec)return;
+    try{rec.start();show('listening',`Listening (${rec.lang})…`);}catch(e){fallback();}
+   },Math.min(4500,650*2**(retries-1)));
+  };
+  retries=0;rec.start();show('listening',`Listening (${rec.lang})…`);
  }
  function mediaMime(){return ['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus'].find(t=>MediaRecorder.isTypeSupported(t))||'';}
  async function serverStart(id){
@@ -62,17 +75,17 @@ export function setupVoiceCaptions(world){
    loop=setTimeout(()=>{if(media?.state==='recording')media.stop();},4000);
   };cycle();
  }
- async function start(){if(enabled)return;enabled=true;const id=++epoch;button.textContent='CC on';button.setAttribute('aria-pressed','true');
-  try{if(engine.value==='server')await serverStart(id);else await browserStart(id);}catch(e){stop();failed(e.message);}}
+ async function start(){if(enabled)return;enabled=true;retries=0;heardAt=0;switchedToWhisper=false;const id=++epoch;button.textContent='CC on';button.setAttribute('aria-pressed','true');
+  try{if(engine.value==='server')await serverStart(id);else if(!Recognition&&window.solviAPI?.online&&window.solviAPI?.auth())await serverStart(id);else await browserStart(id);}catch(e){stop();failed(e.message);}}
  button?.addEventListener('click',()=>{if(enabled){stop();button.setAttribute('aria-pressed','false');}else start();});
  async function voiceLevels(){
-  if(ctx){cancelAnimationFrame(frame);src?.disconnect();analyser?.disconnect();await ctx.close().catch(()=>{});ctx=null;finishVoice();return;}
+  if(ctx){cancelAnimationFrame(frame);src?.disconnect();analyser?.disconnect();await ctx.close().catch(()=>{});ctx=null;finishVoice();window.dispatchEvent(new CustomEvent('solvi:voice-waves',{detail:{active:false}}));return;}
   try{voiceStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});ctx=new AudioContext();src=ctx.createMediaStreamSource(voiceStream);analyser=ctx.createAnalyser();analyser.fftSize=512;src.connect(analyser);
   const wave=new Uint8Array(analyser.fftSize),fft=new Uint8Array(analyser.frequencyBinCount),hz=ctx.sampleRate/analyser.fftSize;let last=0;
   function tick(now){if(!ctx)return;if(now-last>80){last=now;analyser.getByteTimeDomainData(wave);let rms=0;for(const x of wave)rms+=((x-128)/128)**2;world.localVoiceLevel=Math.min(1,Math.max(0,(Math.sqrt(rms/wave.length)-.02)*12));
    analyser.getByteFrequencyData(fft);world.localVoiceBands=[[90,360],[360,1600],[1600,7000]].map(([a,b])=>{let sum=0,n=0;for(let j=Math.floor(a/hz);j<Math.min(fft.length,Math.ceil(b/hz));j++){sum+=fft[j];n++;}return n?Math.min(1,(sum/n)/255):0;});}
    frame=requestAnimationFrame(tick);
-  }frame=requestAnimationFrame(tick);waves.textContent='Waves on';}catch(e){failed(e.message);finishVoice();}
+  }frame=requestAnimationFrame(tick);waves.textContent='Waves on';window.dispatchEvent(new CustomEvent('solvi:voice-waves',{detail:{active:true}}));}catch(e){failed(e.message);finishVoice();}
  }
  let voiceStream=null;function finishVoice(){cancelAnimationFrame(frame);voiceStream?.getTracks().forEach(t=>t.stop());voiceStream=null;world.localVoiceLevel=0;world.localVoiceBands=[0,0,0];waves.textContent='Voice waves';}
  waves?.addEventListener('click',voiceLevels);

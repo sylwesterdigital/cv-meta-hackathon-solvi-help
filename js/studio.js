@@ -119,13 +119,14 @@ async function bubble(entry){
  const content=document.createElement('div');content.className='chat-body chat-message-item';content.dataset.messageId=entry.id||'';content.textContent=entry.text||'';panel.append(content);
  let mids=[];try{mids=typeof entry.media==='string'?JSON.parse(entry.media):entry.media||[];}catch{}
  for(const id of mids){const slot=document.createElement('div');slot.className='chat-attachment';slot.textContent='Attachment';panel.append(slot);
-  if(online&&auth){api.mediaBlobInfo(id).then(({url,mime})=>{const el=document.createElement(mime.startsWith('video/')?'video':mime.startsWith('audio/')?'audio':'img');el.src=url;if(el.tagName==='IMG'){el.alt='Image attachment';el.loading='lazy';}else{el.controls=true;el.preload='metadata';}el.onerror=()=>{slot.textContent='Media attachment';URL.revokeObjectURL(url);};slot.replaceChildren(el);}).catch(()=>{});}}
- lastBubbleEntry=entry;feed.scrollTop=feed.scrollHeight;
+  if(online&&auth){api.mediaBlobInfo(id).then(({url,mime})=>{const el=document.createElement(mime.startsWith('video/')?'video':mime.startsWith('audio/')?'audio':'img');el.src=url;if(el.tagName==='IMG'){el.alt='Image attachment';el.loading='lazy';}else{el.controls=true;el.preload='metadata';}el.onerror=()=>{slot.textContent='Media attachment';URL.revokeObjectURL(url);};slot.replaceChildren(el);if(el.tagName==='IMG')el.addEventListener('load',scrollChatToLatest,{once:true});scrollChatToLatest();}).catch(()=>{});}}
+ lastBubbleEntry=entry;scrollChatToLatest();
 }
 async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask backend to store media');if(file.size>11_000_000)throw Error('File must be under 11 MB');
  const body=new FormData();body.append('file',file,file.name);const response=await api.req('/api/media',{method:'POST',body});return response.media;}
+function scrollChatToLatest(){const feed=$('chatFeed');if(!feed)return;requestAnimationFrame(()=>{feed.scrollTop=feed.scrollHeight;requestAnimationFrame(()=>{if(feed.scrollHeight-feed.scrollTop-feed.clientHeight>2)feed.scrollTop=feed.scrollHeight;});});}
 function updatePending(){const p=$('pendingMedia');p.replaceChildren();for(const m of pending){const badge=document.createElement('button');badge.textContent=`${m.name} ×`;badge.title='Remove attachment';badge.onclick=()=>{pending=pending.filter(x=>x!==m);updatePending();};p.append(badge);}}
-async function attach(file){if(!file)return;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');}catch(e){toast(e.message);}}
+async function attach(file){if(!file)return false;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');return true;}catch(e){toast(e.message);return false;}}
 async function reportRobotTask(command,status){
  if(!command?.id||status==='cancelled')return;
  try{const result=await api.req('/api/robots/task-result',{method:'POST',body:JSON.stringify({room:command.room,task_id:command.id,status})});
@@ -244,7 +245,7 @@ async function loadMessages(){
    const feed=$('chatFeed');feed.replaceChildren();lastBubbleEntry=null;
    for(const entry of messages)await bubble(entry);
    if($('verboseRobotDebug')?.checked)for(const entry of localBrainTrace.filter(x=>x.room===room).slice(-100))await bubble(entry);
-   feed.scrollTop=feed.scrollHeight;
+   scrollChatToLatest();
    initialRoomLoads.add(room);
    if(newcomers.length)playCue('incoming');
    for(const entry of newcomers)if(entry.role==='user')window.dispatchEvent(new CustomEvent('solvi:peer-message',{detail:{userId:entry.user_id,text:entry.text}}));
@@ -444,7 +445,7 @@ function setupChatPresentation(){
     if(!floating){panel.style.removeProperty('--chat-left');panel.style.removeProperty('--chat-top');}
     else{panel.style.setProperty('--chat-left',Math.max(4,window.innerWidth-Math.min(390,window.innerWidth-10)-14)+'px');panel.style.setProperty('--chat-top',window.innerWidth<=750?'100px':'72px');}
     $('floatChatButton').textContent='Overlay';
-    feed.scrollTop=feed.scrollHeight;window.solviSaveWindow?.('chatPanel',panel);
+    scrollChatToLatest();window.solviSaveWindow?.('chatPanel',panel);
   });
   $('floatChatButton').onclick=()=>$('chatModeButton').click();
   const grip=$('chatResizeGrip');let start=null;
@@ -461,11 +462,29 @@ function setupChatPresentation(){
   });
   for(const name of ['pointerup','pointercancel'])grip.addEventListener(name,()=>{if(start)window.solviSaveWindow?.('chatPanel',panel);start=null;});
 
-  const mobileTools=$('composerToolsButton');
-  mobileTools.onclick=()=>{
-    const expanded=composer.classList.toggle('tools-open');
-    mobileTools.setAttribute('aria-expanded',String(expanded));
-  };
+  // Standalone composer: drag its header when undocked, minimize the body, or dock it.
+  const move=$('composerMove'),float=$('composerFloat'),minimize=$('composerMinimize');
+  let moving=null;
+  float.onclick=()=>{const undocked=composer.classList.toggle('composer-floating');
+   composer.classList.remove('composer-minimized');minimize.setAttribute('aria-label','Minimize composer');
+   float.setAttribute('aria-label',undocked?'Dock composer':'Undock composer');
+   if(undocked){composer.style.left=Math.max(6,Math.round((innerWidth-composer.offsetWidth)/2))+'px';composer.style.top=Math.max(65,innerHeight-composer.offsetHeight-20)+'px';}
+   else{composer.style.removeProperty('left');composer.style.removeProperty('top');}scrollChatToLatest();};
+  minimize.onclick=()=>{const collapsed=composer.classList.toggle('composer-minimized');minimize.setAttribute('aria-label',collapsed?'Restore composer':'Minimize composer');minimize.textContent=collapsed?'+':'−';scrollChatToLatest();};
+  move.addEventListener('pointerdown',e=>{if(!composer.classList.contains('composer-floating'))return;
+   moving={x:e.clientX,y:e.clientY,left:composer.offsetLeft,top:composer.offsetTop};move.setPointerCapture(e.pointerId);e.preventDefault();});
+  move.addEventListener('pointermove',e=>{if(!moving)return;composer.style.left=Math.max(4,Math.min(innerWidth-composer.offsetWidth-4,moving.left+e.clientX-moving.x))+'px';composer.style.top=Math.max(52,Math.min(innerHeight-composer.offsetHeight-4,moving.top+e.clientY-moving.y))+'px';});
+  for(const event of ['pointerup','pointercancel'])move.addEventListener(event,()=>moving=null);
+  const attachments=$('attachmentMenu'),toggle=$('attachmentButton');
+  const closeAttach=()=>{attachments.hidden=true;toggle.setAttribute('aria-expanded','false');};
+  toggle.onclick=()=>{attachments.hidden=!attachments.hidden;toggle.setAttribute('aria-expanded',String(!attachments.hidden));};
+  $('attachMediaOption').onclick=()=>{closeAttach();$('chatFile').click();};
+  $('attachAudioOption').onclick=()=>{closeAttach();$('recordAudio').click();};
+  $('attachVideoOption').onclick=()=>{closeAttach();$('recordVideo').click();};
+  $('attachRobotOption').onclick=()=>{closeAttach();$('robotVision').click();};
+  document.addEventListener('pointerdown',event=>{if(!attachments.hidden&&!attachments.contains(event.target)&&!toggle.contains(event.target))closeAttach();});
+  const mobileTools=$('composerToolsButton');mobileTools.onclick=()=>toggle.click();
+  const watchSize=new ResizeObserver(()=>scrollChatToLatest());watchSize.observe(composer);watchSize.observe(feed);
   // Compact navigation remains horizontally scrollable on small screens; no redundant More button.
   // Multiline by default: Enter sends, Shift+Enter inserts a newline.
   const input=$('chatInput');
@@ -510,7 +529,8 @@ function bindUI(world){
  if(me){const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...profileFields(),avatar:m.id})});me=data.user;saveLocal({...stored(),...me});identity();}}catch(e){toast(e.message);}};
  $('takeAvatarPhoto').onclick=cameraAvatar;$('recordIntro').onclick=()=>startRecording(true,true);
  window.solviPublishCaption=async text=>{
-   if(!me||!text?.trim())return;
+   if(!text?.trim())return;
+   if(!me)throw Error('Sign in to publish CC captions to the room.');
    const caption='CC: '+text.trim().slice(0,500);
    if(!online||!auth){if(online&&!auth){needSignIn('Sign in to send captions.');return;}await bubble({role:'user',text:caption,speaker:me.name,user_id:me.id,created:new Date().toISOString()});return;}
    try{const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:caption,media:[]})});await bubble(response.message);try{await reactToRobotMessage(response.message);}catch(error){$('chatStatus').textContent='Caption published; robot reaction failed: '+error.message;}}
@@ -519,7 +539,7 @@ function bindUI(world){
  $('sendChat').onclick=send;$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
  $('chatFile').onchange=e=>attach(e.target.files[0]);$('recordAudio').onclick=()=>startRecording(false);
  $('recordVideo').onclick=()=>startRecording(true);
- $('robotVision').onclick=async()=>{try{const img=await robotView(world);await attach(new File([img],`robot-vision-${Date.now()}.jpg`,{type:'image/jpeg'}));show('chatPanel',true);$('chatInput').value='What does the robot see? Describe the surrounding objects and their positions.';}catch(e){toast(e.message);}};
+ $('robotVision').onclick=async()=>{try{const img=await robotView(world);const ok=await attach(new File([img],`robot-vision-${Date.now()}.jpg`,{type:'image/jpeg'}));if(!ok)return;show('chatPanel',true);$('chatInput').value='Robot eye view · '+(window.solviEditor?.selected?.name||'selected robot');await send();scrollChatToLatest();}catch(e){toast(e.message);}};
  $('adminButton').onclick=()=>show('adminBackdrop',true);$('closeAdmin').onclick=()=>show('adminBackdrop',false);
  $('adminLogin').onclick=adminLogin;$('adminRefresh').onclick=stats;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){show('addMenu',false);show('adminBackdrop',false);if(me)show('profileBackdrop',false);}});

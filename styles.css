@@ -813,3 +813,77 @@ html[data-button-labels='icon'] #sceneItems .scene-item-delete{
 }
 .properties-panel #objectInspector .transform-modes button::before{width:16px!important;height:16px!important;flex:0 0 16px!important}
 .properties-panel #objectInspector .transform-modes button>.ui-button-label{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+
+/* v0.2.30 — chat surface anchored to the viewport bottom, no cropped last bubble. */
+#chatPanel:not(.windowed){bottom:0!important;top:53px!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;display:flex!important;flex-direction:column!important}
+#chatPanel:not(.windowed)>.panel-title{flex:0 0 auto}
+#chatPanel .chat-feed{min-height:0!important;flex:1 1 auto!important;overflow-y:auto!important;overflow-x:hidden!important;scroll-padding-bottom:12px!important;padding-bottom:12px!important;overscroll-behavior:contain;mask-image:none!important;-webkit-mask-image:none!important}
+#chatPanel:not(.windowed) .chat-feed{pointer-events:auto!important}
+#chatPanel .chat-row:last-child{margin-bottom:2px!important}
+#chatPanel .chat-composer{flex:0 0 auto!important;max-height:min(48svh,390px)!important}
+#chatPanel:not(.windowed) .chat-composer:not(.composer-floating){margin:0 auto max(5px,env(safe-area-inset-bottom))!important}
+#chatPanel.windowed .chat-composer{max-height:60%!important}
+#chatPanel .composer-window-head{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-height:24px;margin-bottom:3px}
+#chatPanel .composer-window-head button{min-width:26px!important;min-height:24px!important;height:24px!important;max-height:24px!important;padding:2px 7px!important;line-height:1.1!important;font-size:12px!important}
+#chatPanel #composerMove{margin-right:auto;cursor:grab;text-align:left;color:var(--ui-fg);opacity:.88;touch-action:none;background:transparent;border:0}
+#chatPanel #composerMove:active{cursor:grabbing}
+#chatPanel .chat-composer.composer-floating{position:fixed!important;z-index:160!important;left:var(--composer-x,10px);top:var(--composer-y,auto);bottom:auto!important;width:min(440px,calc(100vw - 12px))!important;margin:0!important;border:1px solid var(--solvi-accent)!important;pointer-events:auto!important;box-shadow:0 10px 40px #000b!important;overflow:visible!important}
+#chatPanel .chat-composer.composer-minimized{height:34px!important;min-height:34px!important;max-height:34px!important;width:min(260px,calc(100vw - 20px))!important;overflow:hidden!important;padding:3px 7px!important}
+#chatPanel .chat-composer.composer-minimized>:not(.composer-window-head){display:none!important}
+#chatPanel .chat-composer.composer-minimized .composer-window-head{margin:0!important}
+#chatPanel .composer-actions{position:relative;flex-wrap:nowrap!important;min-height:36px!important;align-items:center!important}
+#chatPanel .composer-actions .media-tool,#chatPanel .composer-actions #composerToolsButton{display:none!important}
+#chatPanel .composer-actions #attachmentButton{display:inline-flex!important;flex:0 0 auto;min-width:38px!important;padding:5px 9px!important}
+#chatPanel .attachment-menu[hidden]{display:none!important}
+#chatPanel .attachment-menu{position:absolute;bottom:calc(100% + 8px);left:0;display:flex;flex-direction:column;gap:3px;min-width:160px;padding:6px;border:1px solid #6c89a5;border-radius:9px;background:var(--ui-panel,#152a3c);box-shadow:0 8px 35px #000a;z-index:220;pointer-events:auto}
+#chatPanel .attachment-menu button{display:flex!important;justify-content:flex-start!important;min-width:100%!important;min-height:36px!important;line-height:1.2!important;text-align:left!important;font-size:12px!important;padding:6px 10px!important}
+#chatPanel #captionsButton[data-cc-state="listening"]{border-color:#62d8a9!important;color:#d2fff2!important;background:#245849!important}
+#chatPanel #captionsButton[data-cc-state="error"]{border-color:#ff7676!important;color:#ffeaea!important}
+#chatPanel #captionPreview{max-width:min(100%,550px);overflow:hidden}
+#chatPanel #captionPhase{white-space:nowrap;min-width:0;text-overflow:ellipsis;overflow:hidden}
+#chatPanel #captionDraft{white-space:nowrap;text-overflow:ellipsis}
+
+/* Object list: owned-object bulk operations, search, type filter, single-line rows. */
+#scenePanel:not(.minimized){width:min(330px,calc(100vw - 12px))!important;max-height:min(70svh,610px)!important}
+#scenePanel.minimized .scene-list-tools{display:none!important}
+#scenePanel .scene-list-tools{display:grid;gap:6px;padding:7px 9px 5px;border-bottom:1px solid #51677d;flex:0 0 auto}
+#scenePanel .scene-filter-row{display:flex;gap:5px;min-width:0}
+#scenePanel .scene-filter-row input{min-width:0;flex:1 1 65%;width:65%;font-size:12px!important;min-height:32px!important;padding:4px 7px}
+#scenePanel .scene-filter-row select{flex:0 1 34%;min-width:76px;max-width:34%;font-size:12px!important;min-height:32px!important;padding:3px}
+#scenePanel .scene-bulk-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+#scenePanel .scene-bulk-row label{font-size:11px!important;display:inline-flex;align-items:center;gap:4px;margin-right:auto}
+#scenePanel .scene-bulk-row input{width:17px;height:17px;accent-color:var(--solvi-accent)}
+#scenePanel .scene-bulk-row button{min-height:30px!important;max-height:34px!important;padding:4px 7px!important;font-size:11px!important;flex:0 0 auto}
+#scenePanel .scene-bulk-row button:disabled{opacity:.45}
+#scenePanel .scene-items{min-height:0!important;max-height:none!important;flex:1 1 auto!important;padding:4px 7px!important;overflow-y:auto!important}
+#sceneItems .scene-item-row{display:flex!important;gap:5px!important;align-items:center!important;margin:2px 0!important;min-height:36px!important}
+#sceneItems .scene-row-check{flex:0 0 16px;min-width:16px;width:16px;height:16px;cursor:pointer;accent-color:var(--solvi-accent);margin:0}
+#sceneItems .scene-item-row>button:not(.scene-item-delete),html[data-button-labels='icon'] #sceneItems .scene-item-row>button:not(.scene-item-delete)[data-ui-icon]{min-width:0!important;flex:1 1 auto!important;max-height:42px!important;min-height:36px!important;padding:5px 7px!important;justify-content:flex-start!important;font-size:clamp(11px,calc(12px * var(--ui-scale)),14px)!important;text-align:left!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+#sceneItems .scene-item-row>button:not(.scene-item-delete) .ui-button-label{display:block!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;line-clamp:unset!important;-webkit-line-clamp:unset!important}
+#sceneItems .scene-item-row>button:not(.scene-item-delete)::before{flex-basis:16px!important;width:16px!important;height:16px!important}
+#sceneItems .scene-item-delete{flex:0 0 34px!important;min-width:34px!important;width:34px!important;min-height:36px!important;height:36px!important}
+
+/* Dedicated live webcam viewer, with independent track toggles. */
+#webcamPanel[hidden]{display:none!important}
+#webcamPanel.webcam-panel{position:fixed;right:10px;bottom:max(12px,env(safe-area-inset-bottom));width:min(300px,calc(100vw - 18px));display:flex;flex-direction:column;gap:5px;z-index:30;border:1px solid #6a879a;background:var(--ui-panel,#11283c);color:var(--ui-fg,#fff);padding:8px;border-radius:10px;box-shadow:0 8px 30px #0009}
+#webcamPanel .webcam-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#webcamPanel .webcam-head button{width:30px!important;min-width:30px!important;height:30px!important;min-height:30px!important;padding:2px!important}
+#webcamPanel #facePreview{position:static!important;display:block;width:100%!important;max-width:100%!important;height:auto!important;max-height:230px!important;aspect-ratio:4/3;object-fit:cover;transform:scaleX(-1);border-radius:7px;z-index:auto;pointer-events:auto}
+#webcamPanel .webcam-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+#webcamPanel .webcam-actions button{min-width:0!important;min-height:38px!important;padding:4px!important;font-size:11px!important;white-space:nowrap!important}
+#webcamPanel [aria-pressed="true"]{background:#256e5f!important;color:#fff!important;border:2px solid #7ce0b5!important}
+#webcamPanel #webcamStatus{font-size:10px!important;color:var(--ui-fg);opacity:.82}
+#toolboxActions #webcamButton[aria-pressed="true"]{background:#256e5f!important;border:2px solid #7ce0b5!important;color:#fff!important}
+@media(max-width:750px){#chatPanel:not(.windowed){top:90px!important;bottom:0!important}#chatPanel .chat-composer{max-width:calc(100vw - 10px)!important}#chatPanel .chat-composer.composer-floating{max-width:calc(100vw - 10px)!important}#scenePanel:not(.minimized){max-height:min(62svh,540px)!important}}
+/* Never resurrect hidden controls through the icon system's display!important rules. */
+#chatPanel[hidden],#scenePanel[hidden],#propertiesPanel[hidden],#addMenu[hidden],#webcamPanel[hidden],
+#toolboxActions #faceButton[hidden],#toolboxActions #poseButton[hidden],#chatPanel .composer-actions .media-tool[hidden]{display:none!important}
+/* The overlay chat mode switch must not overlap the mobile composer. */
+@media(max-width:750px){#chatModeButton.bottom-chat-mode{bottom:calc(205px + env(safe-area-inset-bottom))!important;left:8px!important;max-height:36px!important;min-height:34px!important}}
+/* Compact, single-line World tools labels. No fixed 116px bottleneck. */
+#editorToolbox.editor-toolbox:not(.minimized){width:176px!important;max-width:min(176px,calc(100vw - 16px))!important;padding:6px!important}
+#editorToolbox.editor-toolbox.minimized{width:102px!important;max-width:102px!important}
+#editorToolbox .toolbox-actions{min-width:0!important;gap:4px!important}
+#editorToolbox .toolbox-actions>button{min-width:0!important;width:100%!important;min-height:34px!important;max-height:40px!important;padding:5px 7px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;overflow-wrap:normal!important;justify-content:flex-start!important}
+#editorToolbox .toolbox-actions>button .ui-button-label{min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;display:block!important}
+@media(max-width:750px){#editorToolbox.editor-toolbox:not(.minimized){width:176px!important;max-width:min(176px,calc(100vw - 16px))!important}#editorToolbox.editor-toolbox.minimized{width:102px!important;max-width:102px!important}}

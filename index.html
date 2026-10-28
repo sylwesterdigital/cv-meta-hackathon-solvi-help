@@ -11,7 +11,7 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.29</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.30</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="Show more world tools">More</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
@@ -30,8 +30,8 @@
   <aside id="editorToolbox" class="editor-toolbox" aria-label="World edit tools">
     <div class="toolbox-title drag-handle"><strong>World tools</strong><button type="button" id="toolboxMinimize" title="Minimize tools">−</button></div>
     <div id="toolboxActions" class="toolbox-actions"><button type="button" id="cameraFlyButton" title="Mouse look; Escape to exit. Camera arrows move with inertia when no robot is selected.">Camera: orbit</button><label class="camera-speed">Camera speed <input id="cameraSpeed" type="range" min="0.5" max="12" step="0.5" value="2.5" /></label>
-      <button type="button" id="importModelButton" title="Add 3D Model from this device">+ 3D Model</button><input id="modelImportFile" type="file" accept=".glb,.fbx,model/gltf-binary,application/octet-stream" hidden><button type="button" id="faceButton" title="Track webcam expressions locally">Face tracking</button>
-      <button type="button" id="poseButton" title="Track upper body and hands">Posture + hands</button>
+      <button type="button" id="importModelButton" title="Add 3D Model from this device">+ 3D Model</button><input id="modelImportFile" type="file" accept=".glb,.fbx,model/gltf-binary,application/octet-stream" hidden><button type="button" id="webcamButton" title="Open webcam preview">Webcam</button><button type="button" id="faceButton" title="Track webcam expressions locally" hidden>Face tracking</button>
+      <button type="button" id="poseButton" title="Track upper body and hands" hidden>Posture + hands</button>
       <button type="button" id="diagnosticsButton">Backend logs</button><button type="button" id="worldSettingsButton" title="Realm object permissions">World settings</button>
     </div>
   </aside>
@@ -63,7 +63,10 @@
   <aside id="addMenu" class="add-menu" hidden aria-label="Add an object"><input id="addSearch" aria-label="Search objects" placeholder="Add object · type and press Enter"></aside>
   <aside id="scenePanel" class="scene-panel minimized" aria-label="Scene editor">
     <div class="panel-title drag-handle"><strong>Objects</strong><button id="minimizeScenePanel" type="button" aria-label="Expand or minimize objects"></button><button id="closeScenePanel" aria-label="Close editor"></button></div>
-    <div id="sceneItems" class="scene-items"></div>
+    <div class="scene-list-tools" aria-label="Object list controls">
+      <div class="scene-filter-row"><input id="sceneObjectSearch" type="search" placeholder="Find objects…" aria-label="Search object names"><select id="sceneObjectFilter" aria-label="Object type"><option value="all">All</option><option value="robot">Robots</option><option value="object">Objects</option></select></div>
+      <div class="scene-bulk-row"><label><input id="sceneSelectAll" type="checkbox"> Select visible</label><button type="button" id="sceneDeleteSelected" disabled>Delete selected</button><button type="button" id="sceneDeleteAll">Delete all</button></div>
+    </div><div id="sceneItems" class="scene-items"></div>
     <div class="panel-footer"><button id="reloadScene">Load</button><button id="saveScene" class="primary">Save</button></div>
   </aside>
   <aside id="propertiesPanel" class="scene-panel properties-panel" hidden><div class="panel-title drag-handle"><strong id="objectName">Object</strong><button id="closeProperties" title="Hide properties"></button></div><div id="objectInspector" hidden>
@@ -108,13 +111,13 @@
   <section id="chatPanel" class="chat-panel" aria-label="Chat">
     <div class="panel-title drag-handle chat-drag"><div><strong id="roomChatTitle">Main realm · messages</strong><small id="backendLabel">Checking backend…</small></div><div><button type="button" id="floatChatButton" title="Return to overlay">Overlay</button><button id="closeChat" aria-label="Close chat"></button></div></div>
     <div id="chatFeed" class="chat-feed" aria-live="polite" aria-relevant="additions text"></div>
-    <div class="chat-composer">
+    <div class="chat-composer" id="chatComposer"><div class="composer-window-head"><button type="button" id="composerMove" title="Drag composer" aria-label="Drag message composer">Message</button><button type="button" id="composerMinimize" aria-label="Minimize composer" title="Minimize composer">−</button><button type="button" id="composerFloat" aria-label="Undock composer" title="Float or dock composer">▣</button></div>
       <div class="composer-line"><span id="composerName">Guest</span><select id="modelSelect" aria-label="Meta model"><option value="">AI unavailable</option></select></div>
       <div id="pendingMedia" class="pending-media"></div>
       <textarea id="chatInput" rows="2" maxlength="3000" placeholder="Message or challenge a robot…"></textarea>
-      <div class="composer-actions">
-        <button id="composerToolsButton" type="button" aria-expanded="false" title="Media tools">＋</button>
-        <label class="icon-btn media-tool" title="Attach media">Attach<input id="chatFile" type="file" accept="image/*,audio/*,video/*" hidden></label>
+      <div class="composer-actions"><button id="attachmentButton" type="button" aria-expanded="false" aria-controls="attachmentMenu" title="Attach to chat">Attach</button><div id="attachmentMenu" class="attachment-menu" hidden role="group" aria-label="Attach to chat"><button type="button" id="attachMediaOption">File / photo</button><button type="button" id="attachAudioOption">Record audio</button><button type="button" id="attachVideoOption">Record video</button><button type="button" id="attachRobotOption">Robot eyes</button></div>
+        <button id="composerToolsButton" type="button" aria-expanded="false" title="More chat tools">More</button>
+        <label class="icon-btn media-tool" id="legacyAttach" title="Attach media">Attach<input id="chatFile" type="file" accept="image/*,audio/*,video/*" hidden></label>
         <button class="media-tool" id="recordAudio" title="Record audio file (click again to stop)">Mic</button><button class="media-tool" id="captionsButton" title="Live speech captions to shared room chat">CC off</button><button class="media-tool" id="voiceWavesButton" title="Share microphone loudness as abstract visual rings, no audio uploaded">Voice waves</button>
         <button class="media-tool" id="recordVideo" title="Record video (click again to stop)">Video</button>
         <button class="media-tool" id="robotVision" title="Attach view from the robot camera">Robot view</button>
@@ -127,7 +130,7 @@
     <span id="chatResizeGrip" class="chat-resize-grip" title="Resize chat window" aria-label="Resize chat"></span>
   </section>
   <div id="roomBackdrop" class="backdrop" hidden><section class="overlay" role="dialog" aria-label="Create realm"><div class="panel-title"><strong>New room / realm</strong><button id="closeRoom"></button></div><label class="field-label">Room title<input id="roomTitle" maxlength="80" placeholder="Robot laboratory"></label><label class="field-label">Room slug<input id="roomSlug" maxlength="40" placeholder="robot-lab"></label><div class="panel-footer"><button class="primary" id="saveRoom">Create realm</button></div><small id="roomError"></small></section></div>
-  <video id="facePreview" autoplay muted playsinline hidden></video>
+  <aside id="webcamPanel" class="webcam-panel" hidden aria-label="Webcam and tracking"><div class="webcam-head"><strong>My camera</strong><button type="button" id="closeWebcam" aria-label="Close webcam">×</button></div><video id="facePreview" autoplay muted playsinline hidden></video><div class="webcam-actions"><button type="button" id="facePreviewToggle" aria-pressed="false">Face off</button><button type="button" id="posePreviewToggle" aria-pressed="false">Hands off</button><button type="button" id="wavesPreviewToggle" aria-pressed="false">Waves off</button></div><small id="webcamStatus" aria-live="polite">Camera off</small></aside>
   <div id="profileBackdrop" class="backdrop profile-backdrop" hidden>
     <section class="overlay profile-modal" role="dialog" aria-label="Your SOLVI profile">
       <div class="panel-title"><div><strong id="profilePanelTitle">Your profile</strong><small id="profilePanelNote">Only your name is required.</small></div><button id="closeProfile"></button></div>

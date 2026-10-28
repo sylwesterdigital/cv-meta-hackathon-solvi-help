@@ -3,7 +3,7 @@ import {applyPreferences,readPreferences,resolvedLabelMode,isCompactDevice} from
 const iconIds={
  chatButton:'chat',mobileMenuButton:'more',createRoom:'rooms',addObjectButton:'add',avatarsButton:'avatar-3d',objectsButton:'list-objects',devLogButton:'history',xrButton:'avatar-3d',callButton:'video',messagesToggleButton:'chat',settingsButton:'config',profileButton:'profile',
  cameraFlyButton:'camera',importModelButton:'model',faceButton:'avatar-maker',poseButton:'users',diagnosticsButton:'transcript',worldSettingsButton:'config',quickModelImport:'model',chatModeButton:'window',cameraFollowButton:'change-camera',toolboxMinimize:'minified',
- captionsButton:'captions',voiceWavesButton:'sound-on',recordAudio:'mic',recordVideo:'video',robotVision:'eye',sendChat:'send',composerToolsButton:'more',
+ attachmentButton:'attach',webcamButton:'camera',closeWebcam:'close',facePreviewToggle:'avatar-maker',posePreviewToggle:'users',wavesPreviewToggle:'sound-on',sceneDeleteSelected:'delete',sceneDeleteAll:'delete',composerFloat:'window',composerMinimize:'minified',captionsButton:'captions',voiceWavesButton:'sound-on',recordAudio:'mic',recordVideo:'video',robotVision:'eye',sendChat:'send',composerToolsButton:'more',
  captureBrainsEye:'camera',describeBrainsEye:'brain',analyzeBrainsEye:'eye',showBrainChat:'chat',expandBrainsEye:'fullscreen',closeBrainsEyeLightbox:'close',saveRobotBrains:'check',suggestBrainsScenario:'brain',
  generateTheme:'render',resetUiPreferences:'reset',useSystemFont:'reset',browseLocalFonts:'file',closeSettings:'close',saveMetaKey:'check',clearMetaKey:'delete',refreshMetaUsage:'history',
  exportChatSettings:'download',exportChatSettingsJson:'download',openAdminSettings:'config',closeWorldSettings:'close',saveWorldSettings:'check',
@@ -39,7 +39,7 @@ const words=[
  [/settings|config|setup|theme|palette/i,'config'],[/log|history|refresh|reload/i,'history'],
  [/more|options|tools/i,'more'],[/copy|duplicate/i,'copy'],[/share|link/i,'share']
 ];
-const fileIcons=new Set('opened minified reset move rotate scale add config chat rooms avatar-3d render download fullscreen captions mic sound-on sound-mute video camera photo eye brain send close x more profile users edit delete stop play pause copy window sidebar-in sidebar-out history preview file stream link check plus share drawing game chat-3d-orbit change-camera transcript background bottom exit media full grab cancel swap speak avatar-maker chat-3d-capture cube sphere cylinder torus plane curve surface text-object points light model list-objects collapse'.split(' '));
+const fileIcons=new Set('attach opened minified reset move rotate scale add config chat rooms avatar-3d render download fullscreen captions mic sound-on sound-mute video camera photo eye brain send close x more profile users edit delete stop play pause copy window sidebar-in sidebar-out history preview file stream link check plus share drawing game chat-3d-orbit change-camera transcript background bottom exit media full grab cancel swap speak avatar-maker chat-3d-capture cube sphere cylinder torus plane curve surface text-object points light model list-objects collapse'.split(' '));
 const utilityIconOnly=new Set(['minimizeScenePanel','toolboxMinimize']);
 // Header close controls have an accessible name but no extra visible x or text.
 export function shouldUseIconOnlyControl(button){return /^(?:close[A-Z]|close$)/.test(button.id||'')||utilityIconOnly.has(button.id||'')||button.classList.contains('scene-item-delete');}
