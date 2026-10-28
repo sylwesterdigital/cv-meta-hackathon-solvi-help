@@ -21,8 +21,8 @@ test('Up drives heading-forward; steering curves while moving, without strafing'
  assert.ok(a.z>.1 && Math.abs(a.x)<1e-9 && a.yaw===0);
  const left=stepFrames(a,{...intent(new Set(['ArrowUp','ArrowLeft'])),s:1},30);
  const right=stepFrames(a,{...intent(new Set(['ArrowUp','ArrowRight'])),s:1},30);
- assert.ok(left.yaw<0 && left.x<0);
- assert.ok(right.yaw>0 && right.x>0);
+ assert.ok(left.yaw>0 && left.x>0);
+ assert.ok(right.yaw<0 && right.x<0);
 });
 test('Down first brakes, then reverses without 180-degree snap',()=>{
  const start={x:0,z:0,yaw:.8,velocity:1.2};
@@ -36,7 +36,7 @@ test('Steering responsiveness changes smoothly with speed',()=>{
  const input={...intent(new Set(['ArrowUp','ArrowRight'])),s:1};
  const slow=stepRobotMotion({x:0,z:0,yaw:0,velocity:.2},input,1/60);
  const fast=stepRobotMotion({x:0,z:0,yaw:0,velocity:1.1},input,1/60);
- assert.ok(fast.yaw>slow.yaw && slow.yaw>0);
+ assert.ok(fast.yaw<slow.yaw && slow.yaw<0);
 });
 test('Releasing throttle coasts briefly then stops; no standing rotation',()=>{
  const coast={f:0,t:-1,r:0,b:0,s:1};
@@ -47,7 +47,7 @@ test('Releasing throttle coasts briefly then stops; no standing rotation',()=>{
 });
 test('Compact packet supports signed reverse without geometry payload',()=>{
  const packet=packetFor('robot123',{...intent(new Set(['ArrowDown','ArrowLeft'])),s:1},{position:{x:0,y:0,z:0},rotation:{y:0}});
- assert.equal(packet.f,-1);assert.equal(packet.b,1);assert.equal(packet.t,-1);
+ assert.equal(packet.f,-1);assert.equal(packet.b,1);assert.equal(packet.t,1);
  assert.ok(JSON.stringify(packet).length<155);
 });
 test('Clones use sequential suffixes, never copy copy copy',()=>{

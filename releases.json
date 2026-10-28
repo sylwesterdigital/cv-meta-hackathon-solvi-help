@@ -1,6 +1,14 @@
 {
-  "currentVersion": "0.2.11",
+  "currentVersion": "0.2.12",
   "releases": [
+    {
+      "version": "0.2.12",
+      "publishedAt": "2026-10-28T00:11:36Z",
+      "changes": [
+        "Fix swapped left/right robot steering by calibrating signed keyboard intent across local and networked movement.",
+        "Retains speed-dependent turning, smooth acceleration, reverse walk animation without rotating the avatar, and camera lock while robot is selected."
+      ]
+    },
     {
       "version": "0.2.11",
       "publishedAt": "2026-10-28T00:04:22Z",

@@ -11,8 +11,8 @@ function frames(state,keys,n=60){const input={...intent(new Set(keys)),s:1};for(
 test('Forward left faces/travels left, forward right faces/travels right',()=>{
   const left=frames(start(),['ArrowUp','ArrowLeft']);
   const right=frames(start(),['ArrowUp','ArrowRight']);
-  assert.ok(left.yaw<-.1&&left.x<-.01&&left.z>.01,left);
-  assert.ok(right.yaw>.1&&right.x>.01&&right.z>.01,right);
+  assert.ok(left.yaw>.1&&left.x>.01&&left.z>.01,left);
+  assert.ok(right.yaw<-.1&&right.x<-.01&&right.z>.01,right);
   assert.ok(Math.abs(left.yaw+right.yaw)<1e-10);
 });
 
@@ -29,7 +29,7 @@ test('Left always turns facing LEFT, right always RIGHT, including in reverse',(
   const reverseState=start(-1.2);
   const backLeft=frames(reverseState,['ArrowDown','ArrowLeft'],45);
   const backRight=frames(reverseState,['ArrowDown','ArrowRight'],45);
-  assert.ok(backLeft.yaw<-.1&&backRight.yaw>.1,{backLeft,backRight});
+  assert.ok(backLeft.yaw>.1&&backRight.yaw<-.1,{backLeft,backRight});
   assert.ok(backLeft.velocity<0&&backRight.velocity<0);
   assert.ok(Math.abs(backLeft.yaw+backRight.yaw)<1e-10);
 });
@@ -47,7 +47,7 @@ test('At rest left/right do not pivot in place; reverse brakes progressively',()
 test('Input packets stay compact and contain only signed intent and corrections',()=>{
   const packet=packetFor('robot-id',{...intent(new Set(['ArrowDown','ArrowLeft'])),s:1},
     {position:{x:1,y:0,z:-2},rotation:{y:.2}});
-  assert.deepEqual([packet.f,packet.t,packet.b],[-1,-1,1]);
+  assert.deepEqual([packet.f,packet.t,packet.b],[-1,1,1]);
   assert.equal(packet.yaw,.2);
   assert.ok(!('geometry' in packet)&&!('animation' in packet));
 });

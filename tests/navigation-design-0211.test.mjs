@@ -30,10 +30,10 @@ test('robot throttle and steering ease on release while retaining forward headin
  const started=stepRobotMotion(initial,turn,1/60);
  assert.ok(started.velocity>0&&started.velocity<1.2);
  const moving=advance(started,turn,25);
- assert.ok(moving.steer>started.steer&&moving.yaw>0);
+ assert.ok(moving.steer<started.steer&&moving.yaw<0);
  const coasting=stepRobotMotion(moving,{f:0,t:0,s:1},1/60);
  assert.ok(coasting.velocity>0&&coasting.velocity<moving.velocity);
- assert.ok(coasting.steer>=0&&coasting.steer<moving.steer);
+ assert.ok(coasting.steer<=0&&coasting.steer>moving.steer);
  const back=advance({x:0,z:0,yaw:.4,velocity:0,steer:0},{...intent(new Set(['ArrowDown'])),s:1},90);
  assert.ok(back.velocity<0&&back.z<0&&back.yaw===.4);
 });

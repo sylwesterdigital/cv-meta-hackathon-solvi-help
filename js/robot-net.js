@@ -1,10 +1,13 @@
 // Predictable robot controls: compact key-change packets, local acceleration,
-// signed forward/reverse velocity, left/right facing directions consistent in both gears.
+// signed forward/reverse velocity, avatar-calibrated steering in both gears.
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 const approach=(value,target,step)=>value<target?Math.min(value+step,target):Math.max(value-step,target);
 export function intent(keys){
  const f=Number(keys.has('ArrowUp'))-Number(keys.has('ArrowDown'));
- const t=Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft'));
+ // Actual avatar meshes use the opposite steering sense from the generic
+ // yaw convention. Map user LEFT to positive yaw and RIGHT to negative yaw
+ // here, once, so local movement and WebSocket packets share this calibration.
+ const t=Number(keys.has('ArrowLeft'))-Number(keys.has('ArrowRight'));
  const r=keys.has('ShiftLeft')||keys.has('ShiftRight')?1:0;
  return {f,t,r,b:f<0?1:0};
 }
@@ -24,8 +27,8 @@ export function stepRobotMotion(state,input,dt){
  const steer=approach(Number(state.steer)||0,Math.abs(velocity)>.025?steerTarget:0,time*(steerTarget?6:8));
  const steerStrength=clamp(Math.abs(velocity)/(.9*speedFactor),0,1);
  const angularRate=(.55+.95*steerStrength)*steerStrength;
- // ArrowLeft always rotates the *facing* direction left (negative yaw),
- // ArrowRight always rotates it right. Reversing only flips translation;
+ // The input sign is calibrated to match the on-screen avatar steering:
+ // left raises yaw, right lowers it. Reversing only flips translation;
  // it must NOT flip the heading or turn the avatar around by 180 degrees.
  const yaw=Number(state.yaw||0)+steer*angularRate*time;
  return {x:(Number(state.x)||0)+Math.sin(yaw)*velocity*time,
