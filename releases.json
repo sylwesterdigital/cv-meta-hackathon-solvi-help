@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.17",
+  "currentVersion": "0.2.18",
   "releases": [
+    {
+      "version": "0.2.18",
+      "publishedAt": "2026-10-28T04:16:58Z",
+      "changes": [
+        "Bottom camera button cycles Free \u2192 Chase (smooth inertial trailing behind selected robot) \u2192 Orbit follow (camera tracks robot while preserving user-set orbit angle).",
+        "The follow camera tracks selected moving robots without stealing arrow-key locomotion or moving the XR headset camera.",
+        "OrbitControls drag updates the follow offset; numpad camera presets are respected; camera mode persists locally and sends no network traffic."
+      ]
+    },
     {
       "version": "0.2.17",
       "publishedAt": "2026-10-28T03:40:49Z",

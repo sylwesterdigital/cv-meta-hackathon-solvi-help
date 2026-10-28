@@ -397,3 +397,9 @@ body .xr-stage-button{font-size:18px!important}
 
 .quick-model-import{position:fixed;left:16px;bottom:67px;z-index:16;font-size:12px!important;font-weight:750!important;padding:8px 12px!important;border:1px solid var(--solvi-accent,#7ed8f9)!important;background:var(--ui-panel,#152338)!important;color:var(--ui-fg,#fff)!important;}
 @media(max-width:750px){.quick-model-import{left:6px;bottom:75px}}
+
+/* v0.2.18 — persistent bottom follow-mode control, separate from the free-camera fly tool. */
+#cameraFollowButton.bottom-camera-mode{position:fixed;left:130px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:19;max-width:min(220px,calc(100vw - 150px));min-height:30px;padding:5px 10px!important;border:1px solid var(--ui-border,#647b90)!important;background:var(--ui-panel,#152338)!important;color:var(--ui-fg,#fff)!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cameraFollowButton[data-mode="chase"],#cameraFollowButton[data-mode="orbit"]{border-color:var(--solvi-accent,#8bdfff)!important}
+#cameraFollowButton:focus-visible{outline:2px solid var(--solvi-accent,#8bdfff);outline-offset:2px}
+@media(max-width:750px){#cameraFollowButton.bottom-camera-mode{left:118px;bottom:calc(65px + env(safe-area-inset-bottom));max-width:calc(100vw - 126px);font-size:11px!important;padding:4px 7px!important}}

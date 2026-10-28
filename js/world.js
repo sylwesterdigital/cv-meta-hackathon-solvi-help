@@ -9,6 +9,7 @@ import {teleportOffset,validTeleport} from './xr-navigation.js';
 import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
 import {XRHandModelFactory} from 'three/addons/webxr/XRHandModelFactory.js';
 import {readPreferences} from './preferences.js';
+import {nextCameraMode,followAnchor,localOrbitOffset,cameraFromLocalOffset,chaseOffset,smoothFactor} from './camera-follow.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const random=(a,b)=>a+Math.random()*(b-a);
@@ -34,6 +35,8 @@ export class SolviWorld {
     this.controls.enableDamping=false;this.controls.target.set(0,1,0);
     this.cameraOrbitGesture=null;this.editorGizmoPointer=false;
     this.cameraVelocity=new THREE.Vector3();
+    this.cameraFollowMode=['free','chase','orbit'].includes(localStorage.getItem('solvi-camera-follow'))?localStorage.getItem('solvi-camera-follow'):'free';
+    this.followRobotId=null;this.followOrbitOffset=null;this.followChaseDistance=5;this.lastFollowLabel='';
     // Left drag = orbit, right drag = pan, wheel = dolly; gizmos temporarily lock orbit.
     this.controls.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN};
     this.controls.touches={ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_ROTATE};
@@ -51,8 +54,11 @@ export class SolviWorld {
     this.setupEnvironment();this.setupEvents();this.setupXR();
     const fly=document.getElementById('cameraFlyButton');
     document.getElementById('cameraSpeed').value=this.cameraMoveSpeed;document.getElementById('cameraSpeed').oninput=e=>{this.cameraMoveSpeed=Number(e.target.value);localStorage.setItem('solvi-camera-speed',String(this.cameraMoveSpeed));};
-    fly.onclick=async()=>{if(document.pointerLockElement===this.renderer.domElement){document.exitPointerLock();return;}try{await this.renderer.domElement.requestPointerLock();}catch{fly.title='Pointer lock is unavailable in this browser';}};
+    fly.onclick=async()=>{if(this.cameraFollowMode!=='free')this.setCameraFollowMode('free');if(document.pointerLockElement===this.renderer.domElement){document.exitPointerLock();return;}try{await this.renderer.domElement.requestPointerLock();}catch{fly.title='Pointer lock is unavailable in this browser';}};
     document.addEventListener('pointerlockchange',()=>{const locked=document.pointerLockElement===this.renderer.domElement;fly.textContent=locked?'Camera: fly · Esc':'Camera: orbit';this.controls.enabled=!locked;});
+    const followButton=document.getElementById('cameraFollowButton');
+    if(followButton)followButton.addEventListener('click',()=>this.setCameraFollowMode(nextCameraMode(this.cameraFollowMode)));
+    this.refreshFollowButton();
     document.addEventListener('mousemove',event=>{if(document.pointerLockElement!==this.renderer.domElement)return;
        const euler=new THREE.Euler().setFromQuaternion(this.camera.quaternion,'YXZ');euler.y-=event.movementX*.002;euler.x=Math.max(-1.53,Math.min(1.53,euler.x-event.movementY*.002));this.camera.quaternion.setFromEuler(euler);
        const distance=Math.max(2,this.camera.position.distanceTo(this.controls.target));this.controls.target.copy(this.camera.position).addScaledVector(this.camera.getWorldDirection(new THREE.Vector3()),distance);
@@ -452,6 +458,63 @@ export class SolviWorld {
     }
     this.teleportIndicator.visible=found;
   }
+  refreshFollowButton(){
+    const button=document.getElementById('cameraFollowButton');if(!button)return;
+    const labels={free:'Camera: Free',chase:'Camera: Chase',orbit:'Camera: Orbit follow'};
+    const hasRobot=Boolean(this.robotEditor?.robot());
+    const label=labels[this.cameraFollowMode]+(this.cameraFollowMode!=='free'&&!hasRobot?' · select robot':'');
+    if(label!==this.lastFollowLabel){button.textContent=label;this.lastFollowLabel=label;}
+    button.dataset.mode=this.cameraFollowMode;
+    button.setAttribute('aria-label',label+'. Click to switch camera mode.');
+    button.title='Cycle: Free camera → Smooth chase behind the selected avatar → Follow from your orbit angle. Drag to change the orbit angle.';
+  }
+  setCameraFollowMode(mode){
+    if(!['free','chase','orbit'].includes(mode))return;
+    this.cameraFollowMode=mode;localStorage.setItem('solvi-camera-follow',mode);
+    this.followRobotId=null;this.followOrbitOffset=null;this.cameraVelocity.set(0,0,0);
+    if(mode!=='free'&&document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();
+    this.refreshFollowButton();
+  }
+  syncFollowAfterManualView(){
+    if(this.cameraFollowMode==='free')return;
+    const robot=this.robotEditor?.robot();if(!robot)return;
+    // Numpad views should not be immediately overwritten by chase mode.
+    if(this.cameraFollowMode==='chase')this.setCameraFollowMode('orbit');
+    const anchor=followAnchor(robot);
+    this.followOrbitOffset=localOrbitOffset(this.camera.position,anchor,robot.rotation.y);
+    this.followRobotId=robot.userData.editorId;
+    this.refreshFollowButton();
+  }
+  updateFollowCamera(dt){
+    if(this.renderer.xr.isPresenting||document.pointerLockElement===this.renderer.domElement||this.cameraFollowMode==='free')return;
+    const robot=this.robotEditor?.robot();
+    if(!robot){this.followRobotId=null;this.followOrbitOffset=null;this.refreshFollowButton();return;}
+    if(this.editorDragging||this.editorGizmoPointer)return;
+    const anchor=followAnchor(robot),yaw=robot.rotation.y,id=robot.userData.editorId;
+    if(id!==this.followRobotId){
+      this.followRobotId=id;
+      const currentDistance=Math.hypot(this.camera.position.x-anchor.x,this.camera.position.z-anchor.z);
+      this.followChaseDistance=Math.max(3,Math.min(14,currentDistance));
+      this.followOrbitOffset=localOrbitOffset(this.camera.position,anchor,yaw);
+      this.refreshFollowButton();
+    }
+    const target=this.controls.target;
+    const orbiting=this.cameraOrbitGesture===true&&this.controls.enabled;
+    if(this.cameraFollowMode==='orbit'&&orbiting){
+      // Keep the moving robot under the orbit pivot without fighting the mouse.
+      const previous=target.clone();target.lerp(new THREE.Vector3(anchor.x,anchor.y,anchor.z),smoothFactor(dt,12));
+      this.camera.position.add(target.clone().sub(previous));
+      this.followOrbitOffset=localOrbitOffset(this.camera.position,target,yaw);
+      this.controls.update();return;
+    }
+    const local=this.cameraFollowMode==='chase'?chaseOffset(this.followChaseDistance):this.followOrbitOffset;
+    if(!local)return;
+    const desired=cameraFromLocalOffset(anchor,local,yaw);
+    target.lerp(new THREE.Vector3(anchor.x,anchor.y,anchor.z),smoothFactor(dt,this.cameraFollowMode==='chase'?9:12));
+    // Chase has deliberate drone inertia; orbit-follow keeps the chosen relative angle.
+    this.camera.position.lerp(new THREE.Vector3(desired.x,desired.y,desired.z),smoothFactor(dt,this.cameraFollowMode==='chase'?4.5:10));
+    this.controls.update();
+  }
   focusCameraOn(object){
     // Preserve orientation and distance when changing the orbit pivot; do not orbit around scene origin.
     const center=new THREE.Vector3();
@@ -478,6 +541,8 @@ export class SolviWorld {
     this.controls.target.copy(center);
     this.camera.lookAt(center);
     this.controls.update();
+    if(this.cameraFollowMode==='chase')this.followChaseDistance=Math.max(2.8,Math.min(18,nextDistance));
+    else this.syncFollowAfterManualView();
     return true;
   }
   cameraPreset(key,reverse=false){
@@ -499,7 +564,7 @@ export class SolviWorld {
     if(key===7)offset=new THREE.Vector3(0,reverse?-1:1,0);
     if(key===9)offset=current.clone().negate();
     if(key===0)offset=new THREE.Vector3(.7,.42,1);
-    if(key===5){if(selected)this.focusCameraOn(selected);else{this.controls.target.copy(this.camera.position).addScaledVector(this.camera.getWorldDirection(new THREE.Vector3()),Math.max(3,distance));this.controls.update();}return;}
+    if(key===5){if(selected)this.focusCameraOn(selected);else{this.controls.target.copy(this.camera.position).addScaledVector(this.camera.getWorldDirection(new THREE.Vector3()),Math.max(3,distance));this.controls.update();}this.syncFollowAfterManualView();return;}
     if([2,4,6,8].includes(key)){
       const v=current.clone();const spherical=new THREE.Spherical().setFromVector3(v);
       if(key===4)spherical.theta-=Math.PI/12;
@@ -514,12 +579,13 @@ export class SolviWorld {
     this.camera.up.set(0,1,0);
     if(Math.abs(offset.y)>.995)this.camera.up.set(0,0,reverse?1:-1);
     this.camera.position.copy(center).addScaledVector(offset,distance);
-    this.camera.lookAt(center);this.controls.update();
+    this.camera.lookAt(center);this.controls.update();this.syncFollowAfterManualView();
   }
   navigateCamera(dt){
     // Inertia applies only to free camera translations, never gizmo drags.
     if(this.renderer.xr.isPresenting||this.editorDragging||this.editorGizmoPointer){this.cameraVelocity.set(0,0,0);return;}
     const robot=this.robotEditor?.robot();
+    if(this.cameraFollowMode!=='free'&&robot){this.cameraVelocity.set(0,0,0);return;}
     if(robot&&this.robotEditor.canEdit(robot)){this.cameraVelocity.set(0,0,0);return;}
     const f=Number(this.keys.has('ArrowUp'))-Number(this.keys.has('ArrowDown'));
     const side=Number(this.keys.has('ArrowRight'))-Number(this.keys.has('ArrowLeft'));
@@ -547,7 +613,7 @@ export class SolviWorld {
     this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.editorGizmoPointer&&cameraAllowed&&document.pointerLockElement!==this.renderer.domElement;
     this.navigateCamera(dt);
     if(!this.renderer.xr.isPresenting)this.controls.update();
-    this.updateXR();this.robotEditor?.tick(dt);this.updateVoiceRings(dt);
+    this.updateXR();this.robotEditor?.tick(dt);this.updateFollowCamera(dt);this.updateVoiceRings(dt);
     if(this.onPose&&(!this.lastPose||performance.now()-this.lastPose>180)){
       this.lastPose=performance.now();const cam=this.renderer.xr.isPresenting?this.renderer.xr.getCamera():this.camera;
       const position=cam.getWorldPosition(new THREE.Vector3());
