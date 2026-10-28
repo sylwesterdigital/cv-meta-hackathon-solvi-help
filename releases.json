@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.33",
+  "currentVersion": "0.2.34",
   "releases": [
+    {
+      "version": "0.2.34",
+      "publishedAt": "2026-10-28T18:28:35Z",
+      "changes": [
+        "Restore scene orbit and orbit-follow gestures by making transparent chat overlays pass through mouse/touch events.",
+        "Re-enable OrbitControls at the start of canvas drags when transform gizmos are not active.",
+        "Remove orphaned minimized Objects and World tools panels from the upper-left corner; reopen World tools from an explicit navigation control.",
+        "Keep object list accessible through World tools and preserve normal interactions with actual chat bubbles and the composer.",
+        "Remove obsolete top-level Export chat and Admin buttons; keep intentional actions in Settings only, with no corner artifacts."
+      ]
+    },
     {
       "version": "0.2.33",
       "publishedAt": "2026-10-28T18:16:46Z",
@@ -305,16 +316,6 @@
         "Add visible Enter VR control, tracked hands/controller models, XR action menu, and floor teleportation.",
         "Disable WebSocket retries by default until backend enabled; optional multiplayer with ?live=1.",
         "Add XR teleport and animation matching unit tests."
-      ]
-    },
-    {
-      "version": "0.1.1",
-      "publishedAt": "2026-10-27T00:30:48Z",
-      "changes": [
-        "Fix missing Three.js BufferGeometryUtils module that prevented the scene loading.",
-        "Bundle all transitive Three.js addon dependencies instead of just three selected files.",
-        "Add automatic static ES module import-graph checks to catch missing browser modules.",
-        "Strengthen deployment verification to check module URLs before marking a release live."
       ]
     }
   ]

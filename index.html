@@ -11,11 +11,11 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.33</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.34</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="Show more world tools">More</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
-      <button type="button" id="callButton">Call</button><button type="button" id="messagesToggleButton" aria-pressed="true" title="Show or hide chat messages">Chat</button><button type="button" id="minimapButton" aria-label="Open minimap" title="Minimap" aria-controls="minimapPanel" aria-expanded="false" data-ui-icon="map"></button><button type="button" id="settingsButton" aria-label="Settings" title="Appearance and chat settings">⚙</button><button type="button" id="profileButton" aria-label="Your profile" title="Your profile">?</button>
+      <button type="button" id="callButton">Call</button><button type="button" id="messagesToggleButton" aria-pressed="true" title="Show or hide chat messages">Chat</button><button type="button" id="toolsToggleButton" title="Open world tools" aria-label="Open world tools" aria-expanded="false" aria-controls="editorToolbox">Tools</button><button type="button" id="minimapButton" aria-label="Open minimap" title="Minimap" aria-controls="minimapPanel" aria-expanded="false" data-ui-icon="map"></button><button type="button" id="settingsButton" aria-label="Settings" title="Appearance and chat settings">⚙</button><button type="button" id="profileButton" aria-label="Your profile" title="Your profile">?</button>
     </nav>
   </header>
   <div class="statusbar" aria-live="polite"><span class="signal"></span> <span id="networkStatus">Connecting…</span> <span class="sep">/</span> <span id="visitorCount">1 viewer</span></div>
@@ -27,7 +27,7 @@
     <button data-motion="run">Run</button>
     <button data-motion="wave">Wave</button>
   </section>
-  <aside id="editorToolbox" class="editor-toolbox" aria-label="World edit tools">
+  <aside id="editorToolbox" class="editor-toolbox" hidden aria-label="World edit tools">
     <div class="toolbox-title drag-handle"><strong>World tools</strong><button type="button" id="toolboxMinimize" title="Minimize tools">−</button></div>
     <div id="toolboxActions" class="toolbox-actions"><button type="button" id="cameraFlyButton" title="Drag scene to orbit; right-drag to pan; mouse wheel to zoom. Alt-click for pointer-lock fly.">Orbit scene</button><label class="camera-speed">Camera speed <input id="cameraSpeed" type="range" min="0.5" max="12" step="0.5" value="2.5" /></label>
       <button type="button" id="importModelButton" title="Add 3D Model from this device">+ 3D Model</button><input id="modelImportFile" type="file" accept=".glb,.fbx,model/gltf-binary,application/octet-stream" hidden><button type="button" id="webcamButton" title="Open webcam preview">Webcam</button><button type="button" id="faceButton" title="Track webcam expressions locally" hidden>Face tracking</button>
@@ -39,8 +39,6 @@
   <button id="chatModeButton" type="button" class="bottom-chat-mode" title="Toggle floating or overlay chat">Float chat</button>
   <button id="cameraFollowButton" type="button" class="bottom-camera-mode" data-mode="free" aria-label="Camera: Free. Click to switch camera mode." title="Cycle camera with V: Free · Chase · Orbit follow">Camera: Free</button>
   <label id="chaseDistanceControl" class="chase-distance-control" hidden title="Chase and Orbit follow distances; scroll or use trackpad over the scene"><span>Distance</span><input type="range" id="chaseDistanceSlider" min="1.8" max="35" step="0.1" value="5" aria-label="Chase camera distance"/><output id="chaseDistanceOutput" for="chaseDistanceSlider">5.0 m</output></label>
-  <button id="exportChatButton" type="button" hidden>Export chat</button>
-  <button id="adminButton" type="button" hidden>Admin</button>
   <button type="button" id="xrStageButton" class="xr-stage-button" hidden>VR</button>
   <div id="sceneDropOverlay" class="scene-drop-overlay" hidden aria-live="polite"><div><strong>Drop 3D model into world</strong><small>GLB or FBX · placed at pointer position</small></div></div>
   <div id="toast" role="status" class="toast" hidden></div>
@@ -61,7 +59,7 @@
     </section>
   </div>
   <aside id="addMenu" class="add-menu" hidden aria-label="Add an object"><input id="addSearch" aria-label="Search objects" placeholder="Add object · type and press Enter"></aside>
-  <aside id="scenePanel" class="scene-panel minimized" aria-label="Scene editor">
+  <aside id="scenePanel" class="scene-panel" hidden aria-label="Scene editor">
     <div class="panel-title drag-handle"><strong>Objects</strong><button id="minimizeScenePanel" type="button" aria-label="Expand or minimize objects"></button><button id="closeScenePanel" aria-label="Close editor"></button></div>
     <div class="scene-list-tools" aria-label="Object list controls">
       <div class="scene-filter-row"><button id="sceneBulkToggle" type="button" aria-expanded="false" aria-controls="sceneBulkRow">Bulk</button><input id="sceneObjectSearch" type="search" placeholder="Find objects…" aria-label="Search object names"><select id="sceneObjectFilter" aria-label="Object type"><option value="all">All</option><option value="robot">Robots</option><option value="object">Objects</option></select></div>

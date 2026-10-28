@@ -114,8 +114,19 @@ export class SceneEditor{
   });
   window.addEventListener('dragend',()=>overlay.hidden=true);
 
+  const toolsPanel=byId('editorToolbox'),toolsLauncher=byId('toolsToggleButton');
+  const showTools=visible=>{
+    toolsPanel.hidden=!visible;toolsPanel.classList.remove('minimized');
+    toolsLauncher.setAttribute('aria-expanded',String(visible));
+    toolsLauncher.setAttribute('aria-label',visible?'Hide world tools':'Open world tools');
+    toolsLauncher.title=visible?'Hide world tools':'Open world tools';
+  };
+  toolsLauncher.onclick=()=>showTools(toolsPanel.hidden);
   byId('toolboxMinimize').textContent='';
-  byId('toolboxMinimize').onclick=()=>{const collapsed=byId('editorToolbox').classList.toggle('minimized');byId('toolboxMinimize').dataset.uiIcon=collapsed?'opened':'minified';byId('toolboxMinimize').style.setProperty('--ui-button-icon',`url("./assets/ui-icons/${collapsed?'opened':'minified'}.svg")`);};
+  byId('toolboxMinimize').onclick=()=>showTools(false);
+  // Old persisted minimize state must not leave a stray title or icon on screen.
+  toolsPanel.classList.remove('minimized');toolsPanel.hidden=true;
+
   const openMenu=(x,y)=>{menu.hidden=false;menu.style.right='auto';menu.style.left=Math.max(8,Math.min(innerWidth-275,x))+'px';menu.style.top=Math.max(54,Math.min(innerHeight-370,y))+'px';search.value='';for(const b of menu.querySelectorAll('.add-group button'))b.hidden=false;};
   this.showAddMenu=openMenu;
   byId('addObjectButton').onclick=e=>{if(menu.hidden)openMenu(e.clientX+10,e.clientY+10);else menu.hidden=true;};
@@ -128,8 +139,14 @@ export class SceneEditor{
   byId('sceneBulkToggle').onclick=()=>{const panel=byId('scenePanel'),active=panel.classList.toggle('bulk-mode');byId('sceneBulkToggle').setAttribute('aria-expanded',String(active));byId('sceneBulkRow').hidden=!active;if(!active)this.bulkChecked.clear();this.refreshList();};
   byId('sceneDeleteSelected').onclick=()=>this.removeBulk(false);
   byId('sceneDeleteAll').onclick=()=>this.removeBulk(true);
-  byId('objectsButton').onclick=()=>{const panel=byId('scenePanel');if(panel.hidden){panel.hidden=false;panel.classList.remove('minimized');}else panel.classList.toggle('minimized');this.refreshList();};
-  byId('minimizeScenePanel').onclick=()=>{const collapsed=byId('scenePanel').classList.toggle('minimized');const btn=byId('minimizeScenePanel');btn.dataset.uiIcon=collapsed?'opened':'minified';btn.style.setProperty('--ui-button-icon',`url("./assets/ui-icons/${collapsed?'opened':'minified'}.svg")`);};
+  byId('objectsButton').onclick=()=>{
+    const panel=byId('scenePanel');panel.hidden=!panel.hidden;panel.classList.remove('minimized');
+    if(!panel.hidden)this.refreshList();
+  };
+  byId('minimizeScenePanel').onclick=()=>{
+    // Minimized panels belong in the launcher, not as orphaned floating header buttons.
+    byId('scenePanel').hidden=true;byId('scenePanel').classList.remove('minimized');
+  };
   byId('closeScenePanel').onclick=()=>byId('scenePanel').hidden=true;
   byId('closeProperties').onclick=()=>{byId('propertiesPanel').hidden=true;this.clearLightHelper();};
   for(const id of ['objectPhysicsMode','objectCollider','objectRestitution','objectFriction'])byId(id).addEventListener('change',()=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||['robot','light'].includes(obj.userData.editorKind))return;obj.userData.physics=physicsOptions({mode:byId('objectPhysicsMode').value,collider:byId('objectCollider').value,friction:byId('objectFriction').value,restitution:byId('objectRestitution').value});this.physics.sync(obj);this.queueSave(obj);this.updateColliderOption();});
@@ -236,7 +253,9 @@ export class SceneEditor{
    startX=e.clientX;startY=e.clientY;
    this.world.cameraOrbitGesture=!this.transform.dragging&&!this.transform.axis;
    this.world.editorGizmoPointer=!this.world.cameraOrbitGesture;
-   if(this.world.editorGizmoPointer)this.world.controls.enabled=false;
+   // OrbitControls must be enabled at pointerdown, before its own target listener runs.
+   // The animation loop can otherwise leave it disabled after hovering a transform gizmo.
+   this.world.controls.enabled=this.world.cameraOrbitGesture&&!this.world.renderer.xr.isPresenting&&document.pointerLockElement!==canvas;
   },true);
   const endGesture=()=>{queueMicrotask(()=>{if(!this.transform.dragging){this.world.cameraOrbitGesture=null;this.world.editorGizmoPointer=false;}});};
   window.addEventListener('pointerup',endGesture,true);window.addEventListener('pointercancel',endGesture,true);

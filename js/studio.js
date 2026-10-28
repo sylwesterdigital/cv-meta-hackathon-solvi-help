@@ -396,7 +396,7 @@ function configureDragging(){
  for(const id of panelIds){
   const panel=$(id),handle=panel?.querySelector('.drag-handle');if(!panel||!handle)continue;
   try{const stored=JSON.parse(localStorage.getItem('solvi-window-'+id)||'null');if(stored){
-    if(stored.minimized!==undefined)panel.classList.toggle('minimized',stored.minimized);
+    if(stored.minimized!==undefined&&id!=='scenePanel'&&id!=='editorToolbox')panel.classList.toggle('minimized',stored.minimized);
     if(id==='chatPanel'&&stored.windowed){panel.classList.add('windowed');panel.style.setProperty('--chat-width',stored.width+'px');panel.style.setProperty('--chat-height',stored.height+'px');$('chatModeButton').textContent='Overlay chat';}
     if(id!=='chatPanel'||stored.windowed){
       const x=Math.max(4,Math.min(innerWidth-100,Number(stored.left)||0)),y=Math.max(45,Math.min(innerHeight-60,Number(stored.top)||70));
@@ -514,7 +514,7 @@ function setupSettings(){
      $('diagnosticsOutput').textContent=(response.analysis||'No analysis text returned')+'\n\nEstimated cost: US$'+Number(response.usage?.estimated_usd||0).toFixed(6);
    }catch(e){$('diagnosticsOutput').textContent=e.message;}
  };
- $('exportChatButton').onclick=()=>exportMessages('json');$('exportChatSettings').onclick=()=>exportMessages('md');$('exportChatSettingsJson').onclick=()=>exportMessages('json');$('openAdminSettings').onclick=()=>{settings.hidden=true;show('adminBackdrop',true);};
+ $('exportChatSettings').onclick=()=>exportMessages('md');$('exportChatSettingsJson').onclick=()=>exportMessages('json');$('openAdminSettings').onclick=()=>{settings.hidden=true;show('adminBackdrop',true);};
 }
 function setupChatPresentation(){
   const feed=$('chatFeed'),panel=$('chatPanel'),composer=panel.querySelector('.chat-composer');
@@ -646,7 +646,7 @@ function bindUI(world){
    emitBrainTrace(robot.userData.editorId,robot.name,'EYE FRAME SHARED',`512×512 JPEG attached as ${robot.name}'s own reply; ${reply.model||'local'}; usage ${reply.usage?.estimated_usd||0}`);
    scrollChatToLatest();
   }catch(e){toast(e.message);}};
- $('adminButton').onclick=()=>show('adminBackdrop',true);$('closeAdmin').onclick=()=>show('adminBackdrop',false);
+ $('closeAdmin').onclick=()=>show('adminBackdrop',false);
  $('adminLogin').onclick=adminLogin;$('adminRefresh').onclick=stats;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){show('addMenu',false);show('adminBackdrop',false);if(me)show('profileBackdrop',false);}});
  window.addEventListener('solvi:auth-required',event=>needSignIn(event.detail?.reason||'Session expired.'));

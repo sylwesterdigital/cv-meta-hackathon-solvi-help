@@ -265,7 +265,7 @@ button:hover:not(:disabled){filter:brightness(1.13)!important;}
 [hidden]{display:none!important}
 #toolNav{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
 #toolNav #mobileMenuButton{display:inline-flex!important}
-#toolNav>:not(#minimapButton):not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:none!important}
+#toolNav>:not(#toolsToggleButton):not(#minimapButton):not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:none!important}
 #toolNav.nav-expanded>:not(#mobileMenuButton):not(#messagesToggleButton):not(#roomSelect):not(#createRoom):not(#settingsButton):not(#profileButton):not(#xrButton){display:inline-flex!important}
 #toolNav #mobileMenuButton{font-size:12px!important}
 .editor-toolbox{position:fixed;left:18px;top:92px;z-index:19;width:116px;padding:6px;border:1px solid #43586d;border-radius:11px;background:var(--ui-panel);color:var(--ui-fg);box-shadow:0 8px 26px #0005}
@@ -550,7 +550,7 @@ html[data-button-labels='icon'] button[data-ui-icon]::before,html[data-button-la
 @media(max-width:750px){
  #mobileMenuButton{display:inline-flex!important}
  #toolNav{width:100%;display:flex!important;justify-content:flex-end!important;flex-wrap:nowrap!important;max-width:100%;overflow-x:auto!important;scrollbar-width:thin}
- #toolNav>:not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none!important}
+ #toolNav>:not(#toolsToggleButton):not(#minimapButton):not(#chatButton):not(#roomSelect):not(#messagesToggleButton):not(#mobileMenuButton):not(#profileButton):not(#settingsButton){display:none!important}
  #toolNav.nav-expanded{flex-wrap:wrap!important;overflow-y:auto!important;max-height:48svh!important;background:var(--ui-panel);border-radius:9px;padding:6px}
  #toolNav.nav-expanded>:not(#mobileMenuButton){display:inline-flex!important}
  #toolNav #roomSelect{flex:1 1 70px;min-width:65px!important;max-width:160px}
@@ -818,7 +818,7 @@ html[data-button-labels='icon'] #sceneItems .scene-item-delete{
 #chatPanel:not(.windowed){bottom:0!important;top:53px!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;display:flex!important;flex-direction:column!important}
 #chatPanel:not(.windowed)>.panel-title{flex:0 0 auto}
 #chatPanel .chat-feed{min-height:0!important;flex:1 1 auto!important;overflow-y:auto!important;overflow-x:hidden!important;scroll-padding-bottom:12px!important;padding-bottom:12px!important;overscroll-behavior:contain;mask-image:none!important;-webkit-mask-image:none!important}
-#chatPanel:not(.windowed) .chat-feed{pointer-events:auto!important}
+#chatPanel:not(.windowed) .chat-feed{pointer-events:none!important}
 #chatPanel .chat-row:last-child{margin-bottom:2px!important}
 #chatPanel .chat-composer{flex:0 0 auto!important;max-height:min(48svh,390px)!important}
 #chatPanel:not(.windowed) .chat-composer:not(.composer-floating){margin:0 auto max(5px,env(safe-area-inset-bottom))!important}
@@ -984,3 +984,20 @@ html body .topbar #toolNav > button#minimapButton{display:inline-flex!important;
 @media(max-width:750px){html body .topbar #toolNav > button#minimapButton{width:40px!important;max-width:40px!important;min-width:40px!important;padding:0!important;}}
 #minimapButton::before{content:'';display:inline-block;flex:0 0 18px;width:18px;height:18px;background:url('./assets/ui-icons/map.svg') center/contain no-repeat}
 @media(max-width:750px){html body .topbar #toolNav #minimapButton{font-size:0!important;gap:0!important}}
+
+/* v0.2.34 — restore scene pointer navigation; remove orphaned corner controls. */
+#chatPanel:not(.windowed),#chatPanel:not(.windowed) .chat-feed{pointer-events:none!important}
+#chatPanel:not(.windowed) .chat-row,#chatPanel:not(.windowed) .chat-row *,
+#chatPanel:not(.windowed) .chat-composer,#chatPanel:not(.windowed) .chat-composer *,
+#chatPanel:not(.windowed) > .panel-title,#chatPanel:not(.windowed) > .panel-title *{pointer-events:auto!important}
+#editorToolbox[hidden],#scenePanel[hidden],#editorToolbox.minimized,#scenePanel.minimized{display:none!important}
+#toolNav #toolsToggleButton{display:inline-flex!important;align-items:center!important;justify-content:center!important;white-space:nowrap!important;min-width:38px!important;height:38px!important;max-height:40px!important;padding:5px 9px!important}
+#toolNav #toolsToggleButton[aria-expanded="true"]{border-color:var(--solvi-accent)!important;background:color-mix(in srgb,var(--solvi-accent) 20%,var(--ui-panel))!important}
+@media(max-width:750px){
+ html body .topbar #toolNav>button#toolsToggleButton{display:inline-flex!important;order:3!important;flex:0 0 40px!important;min-width:40px!important;width:40px!important;padding:0!important;font-size:0!important;gap:0!important}
+ html body .topbar #toolNav>button#minimapButton{order:4!important}
+ html body .topbar #toolNav>button#settingsButton{order:5!important}
+ html body .topbar #toolNav>button#profileButton{order:6!important}
+}
+/* Beat the legacy #toolNav>:not(...) responsive visibility lists. */
+html body .topbar #toolNav > button#toolsToggleButton{display:inline-flex!important;align-items:center!important;justify-content:center!important}

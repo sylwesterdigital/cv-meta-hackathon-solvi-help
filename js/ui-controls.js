@@ -1,7 +1,7 @@
 // Browser-local responsive controls: icons remain decorative, native button names stay accessible.
 import {applyPreferences,readPreferences,resolvedLabelMode,isCompactDevice} from './preferences.js';
 const iconIds={
- chatButton:'chat',minimapButton:'map',minimapClose:'close',minimapMinimize:'minified',minimapReset:'reset',profileLogout:'exit',takeAvatarPhoto:'camera',recordIntro:'video',profileCameraCancel:'close',mobileMenuButton:'more',createRoom:'rooms',addObjectButton:'add',avatarsButton:'avatar-3d',objectsButton:'list-objects',devLogButton:'history',xrButton:'avatar-3d',callButton:'video',messagesToggleButton:'chat',settingsButton:'config',profileButton:'profile',
+ chatButton:'chat',toolsToggleButton:'window',minimapButton:'map',minimapClose:'close',minimapMinimize:'minified',minimapReset:'reset',profileLogout:'exit',takeAvatarPhoto:'camera',recordIntro:'video',profileCameraCancel:'close',mobileMenuButton:'more',createRoom:'rooms',addObjectButton:'add',avatarsButton:'avatar-3d',objectsButton:'list-objects',devLogButton:'history',xrButton:'avatar-3d',callButton:'video',messagesToggleButton:'chat',settingsButton:'config',profileButton:'profile',
  cameraFlyButton:'camera',importModelButton:'model',faceButton:'avatar-maker',poseButton:'users',diagnosticsButton:'transcript',worldSettingsButton:'config',quickModelImport:'model',chatModeButton:'window',cameraFollowButton:'change-camera',toolboxMinimize:'minified',
  attachmentButton:'attach',attachMediaOption:'attach',attachAudioOption:'mic',attachVideoOption:'video',attachRobotOption:'eye',webcamButton:'camera',closeWebcam:'close',facePreviewToggle:'avatar-maker',posePreviewToggle:'users',wavesPreviewToggle:'sound-on',sceneDeleteSelected:'delete',sceneDeleteAll:'delete',sceneBulkToggle:'check',composerFloat:'window',composerMinimize:'minified',captionsButton:'captions',voiceWavesButton:'sound-on',recordAudio:'mic',recordVideo:'video',robotVision:'eye',sendChat:'send',composerToolsButton:'more',
  captureBrainsEye:'camera',describeBrainsEye:'brain',analyzeBrainsEye:'eye',showBrainChat:'chat',expandBrainsEye:'fullscreen',closeBrainsEyeLightbox:'close',saveRobotBrains:'check',suggestBrainsScenario:'brain',
@@ -10,8 +10,8 @@ const iconIds={
  closeAvatarGallery:'close',closeRobotBrains:'close',closeDiagnostics:'close',refreshDiagnostics:'history',analyzeDiagnostics:'brain',closeProperties:'close',minimizeScenePanel:'minified',closeScenePanel:'close',
  closeLog:'close',continueButton:'play',closeCall:'close',joinAudio:'mic',joinVideo:'video',leaveCall:'stop',closeProfile:'close',saveProfile:'check',
  transformTranslate:'move',deleteObject:'delete',transformRotate:'rotate',transformScale:'scale',reloadScene:'history',saveScene:'check',
- saveSceneButton:'check',textureUploadButton:'photo',chatFile:'file',adminButton:'config',adminLogin:'check',adminRefresh:'history',
- exportChatButton:'download',closeAdmin:'close',roomSelect:'rooms',robotAvatar:'avatar-3d',uploadRobotAvatar:'avatar-maker',
+ saveSceneButton:'check',textureUploadButton:'photo',chatFile:'file',adminLogin:'check',adminRefresh:'history',
+ closeAdmin:'close',roomSelect:'rooms',robotAvatar:'avatar-3d',uploadRobotAvatar:'avatar-maker',
 };
 // One semantic pictogram per type; never treat every geometry as a cube.
 export const objectKindIcons=Object.freeze({
