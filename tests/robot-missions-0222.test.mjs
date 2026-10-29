@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 test('CC captions and typed chat use same authenticated robot reaction handler',()=>{
  const studio=read('js/studio.js');
- assert.match(studio,/async function reactToRobotMessage\(message\)/);
+ assert.match(studio,/async function reactToRobotMessage\(message(?:,relayHops=0)?\)/);
  assert.match(studio,/await reactToRobotMessage\(response\.message\)/);
  assert.match(studio,/window\.solviPublishCaption=async text/);
  assert.match(studio,/receiveRobotCommand\(command\)/);

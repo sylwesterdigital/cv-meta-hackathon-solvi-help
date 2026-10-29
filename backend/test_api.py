@@ -671,6 +671,53 @@ robot['brain']['portrait']=photo_id
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==200
 saved=c.get('/api/messages?room=lab',headers=headers).get_json()['messages']
 assert next(m for m in saved if m['id']==seen.get_json()['answer']['id'])['avatar']==photo_id
+# v0.2.60: PDF/text attachments are validated and served as safe authenticated blobs.
+pdf_upload=c.post('/api/media',headers=headers,data={'file':(_BytesIO(b'%PDF-1.4\n1 0 obj\n<<>>\nendobj\n'),'manual.pdf','application/pdf')})
+assert pdf_upload.status_code==200,(pdf_upload.status_code,pdf_upload.data)
+pdf_id=pdf_upload.get_json()['media']['id']
+pdf_response=c.get('/api/media/'+pdf_id,headers=headers)
+assert pdf_response.status_code==200 and pdf_response.mimetype=='application/pdf'
+assert pdf_response.headers['X-Solvi-File-Name']=='manual.pdf'
+assert c.post('/api/media',headers=headers,data={'file':(_BytesIO(b'not a pdf'),'fake.pdf','application/pdf')}).status_code==400
+text_upload=c.post('/api/media',headers=headers,data={'file':(_BytesIO('Hello from SOLVI'.encode()),'notes.txt','text/plain')})
+assert text_upload.status_code==200,(text_upload.status_code,text_upload.data)
+assert c.get('/api/media/'+text_upload.get_json()['media']['id'],headers=headers).data==b'Hello from SOLVI'
+assert c.post('/api/media',headers=headers,data={'file':(_BytesIO(b'bad\x00data'),'bad.txt','text/plain')}).status_code==400
+# The full speech robot is not enough to relay: only exact @handles of actual robots count.
+from server import robot_handle_mentions,plan_robot_command
+elox={**robot,'id':'testrobot-elox-060','name':'Elox','brain':{'personality':'Friendly researcher'}}
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':elox}).status_code==200
+assert robot_handle_mentions('Please @Elox check with @Jessica', [robot,elox])==[elox,robot]
+assert robot_handle_mentions('Discuss Jessica with Elox', [robot,elox])==[]
+sofas=[{'id':'black-sofa','kind':'cube','name':'Black Sofa 2','position':[0,0,1]},
+       {'id':'grey-sofa','kind':'cube','name':'Grey Sofa 1','position':[10,0,10]}]
+command,ack=plan_robot_command('@Elox find Grey Sofa 1 and sit on it',elox,sofas)
+assert command['target_id']=='grey-sofa',(command,ack)
+no_match,_=plan_robot_command('@Elox find Grey Sofa 9 and sit',elox,sofas)
+assert no_match['kind']=='vision_search' and 'grey sofa 9' in no_match['target_phrase']
+# Each generated reply may relay once to a different robot; two hops maximum.
+chat_attempts[data['user']['id']]=[]
+source=c.post('/api/message',headers=headers,json={'room':'lab','text':'@Jessica talk to @Elox about the scene'}).get_json()['message']
+from unittest.mock import patch as _patch
+fake={'id':'relay-1','output_text':'@Elox, shall we review the scene?','usage':{'input_tokens':5,'output_tokens':10}}
+with _patch('server.active_model_key',return_value='test-key'),_patch('server.meta_request',return_value=fake):
+    initial=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':source['text'],'message_id':source['id']})
+assert initial.status_code==200,(initial.status_code,initial.data)
+first=initial.get_json()['answer'];assert first['speaker']=='Jessica'
+chat_attempts[data['user']['id']]=[]
+with _patch('server.active_model_key',return_value='test-key'),_patch('server.meta_request',return_value={'id':'relay-2','output_text':'@Jessica, yes.','usage':{'input_tokens':5,'output_tokens':5}}):
+    relay=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':first['text'],'message_id':first['id']})
+assert relay.status_code==200,(relay.status_code,relay.data)
+second=relay.get_json()['answer'];assert second['speaker']=='Elox'
+assert c.post('/api/robots/react',headers=headers,json={'room':'lab','text':first['text'],'message_id':first['id']}).get_json()['triggered'] is False
+chat_attempts[data['user']['id']]=[]
+with _patch('server.active_model_key',return_value='test-key'),_patch('server.meta_request',return_value={'id':'relay-3','output_text':'@Elox understood.','usage':{'input_tokens':5,'output_tokens':5}}):
+    third_reply=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':second['text'],'message_id':second['id']})
+assert third_reply.status_code==200,(third_reply.status_code,third_reply.data)
+third=third_reply.get_json()['answer']
+assert c.post('/api/robots/react',headers=headers,json={'room':'lab','text':third['text'],'message_id':third['id']}).get_json()['triggered'] is False
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-elox-060'}}).status_code==200
+print('PASS: attachments, exact furniture matching, verified 2-hop robot-robot @handles and deduplication')
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-0220'}}).status_code==200
 print('PASS: robot Brains persisted, validated and permissioned; usage and diagnostics secured')
 

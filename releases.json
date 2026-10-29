@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.59",
+  "currentVersion": "0.2.60",
   "releases": [
+    {
+      "version": "0.2.60",
+      "publishedAt": "2026-10-29T16:01:04Z",
+      "changes": [
+        "Render authenticated chat attachments in context: full-screen readable images, native audio/video players, and safe PDF/UTF-8 text previews with filename and Save controls.",
+        "Accept and validate PDF and UTF-8 plain-text uploads alongside existing image/audio/video types, including format checks and text file size limits.",
+        "Enable explicit robot-to-robot @handle conversation and sharing of mission-relevant context with identity/room validation, per-robot memory, one reply per source message and a hard two-hop relay limit.",
+        "Teach robot conversational models to use @handles when addressing another participant and to avoid unneeded or self-perpetuating mentions; relay model suggestions but never allow generated text to command physical robot actions.",
+        "Respect requested sofa/chair colours and numeric identifiers in robot navigation, preventing Grey Sofa 1 instructions from selecting a nearby Black Sofa 2.",
+        "Add JavaScript and backend regression tests for attachment formats, viewer safety, @handle routing, relay deduplication and exact-object targeting."
+      ]
+    },
     {
       "version": "0.2.59",
       "publishedAt": "2026-10-29T15:28:10Z",
@@ -313,17 +325,6 @@
         "Add chat verbose robot trace, persisted task-completion replies and Brains trace with exact last JPEG shown.",
         "Make robot identity collapsible; widen and resize Brains, enlarge images and diagnostics, and explain scenario AI explicitly.",
         "Use real Sit clips when available and labelled approximate procedural seating fallback; preserve Ubuntu release watcher compatibility."
-      ]
-    },
-    {
-      "version": "0.2.22",
-      "publishedAt": "2026-10-28T05:38:00Z",
-      "changes": [
-        "Add Muse Spark scene-description action for robot head-camera images and SAM 3.1 object bounding-box overlays with prompt and estimated-cost details.",
-        "Route typed chat and opt-in published CC captions to named robots, including unambiguous one-character name corrections.",
-        "Execute permission-checked, deterministic scene commands to approach named objects, walk short distances, stop and attempt real Sit animation clips.",
-        "Use saved scene labels and coordinates for robot navigation; missing targets/clips report limitations without claiming autonomous perception.",
-        "Preserve the existing macOS watcher, Ubuntu backend, avatar assets and previously released controls."
       ]
     }
   ]

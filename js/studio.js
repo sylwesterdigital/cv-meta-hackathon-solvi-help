@@ -1,5 +1,6 @@
 import {makeRealmCards,captureRealmPreview} from './realm-gallery.js';
 import {mentionQuery,mentionCandidates,insertMention} from './chat-mentions.js';
+import {renderChatAttachment,ensureChatMediaViewer} from './chat-attachments.js';
 import {ROBOT_DEBUG_ALL_KEY,robotDebugVisible,setRobotDebug,readDebugSelection} from './robot-debug.js';
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
@@ -30,7 +31,7 @@ function establishTabChannel(uid){
 }
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
-let cachedMessages=[],chatSignature='',lastBubbleEntry=null;const runningRobotTasks=new Map();const localBrainTrace=[];const initialRoomLoads=new Set();
+let cachedMessages=[],chatSignature='',lastBubbleEntry=null;const chatMediaURLs=new Set();const runningRobotTasks=new Map();const localBrainTrace=[];const initialRoomLoads=new Set();
 let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};let sessionPrompt=false;
 let robotSpeech=null;let suppressRobotSpeech=false;
 const robotDebugAllowed=id=>robotDebugVisible(id,sessionStorage);
@@ -87,7 +88,7 @@ const api={
     throw Error(data.error||`${res.status} ${res.statusText}`);}
   return data;
  },
- async mediaBlobInfo(id){if(!auth)throw Error('Sign in to view media');const res=await fetch(`/api/media/${encodeURIComponent(id)}`,{headers:{Authorization:'Bearer '+auth.token,'X-Solvi-Tab':tab}});if([401,409].includes(res.status))needSignIn('Media session expired');if(!res.ok)throw Error('Media unavailable');const blob=await res.blob();return {url:URL.createObjectURL(blob),mime:blob.type};},
+ async mediaBlobInfo(id){if(!auth)throw Error('Sign in to view media');const res=await fetch(`/api/media/${encodeURIComponent(id)}`,{headers:{Authorization:'Bearer '+auth.token,'X-Solvi-Tab':tab}});if([401,409].includes(res.status))needSignIn('Media session expired');if(!res.ok)throw Error('Media unavailable');const blob=await res.blob();return {url:URL.createObjectURL(blob),mime:blob.type,name:decodeURIComponent(res.headers.get('X-Solvi-File-Name')||''),blob};},
  async mediaBlob(id){return (await this.mediaBlobInfo(id)).url;}
 };
 window.solviAPI=api;
@@ -159,10 +160,22 @@ async function bubble(entry){
  const content=document.createElement('div');content.className='chat-body chat-message-item';content.dataset.messageId=entry.id||'';content.textContent=entry.text||'';panel.append(content);
  let mids=[];try{mids=typeof entry.media==='string'?JSON.parse(entry.media):entry.media||[];}catch{}
  const mediaContainer=mids.length>1?document.createElement('div'):panel;
- if(mids.length>1){mediaContainer.className='chat-media-grid';mediaContainer.setAttribute('aria-label',mids.length+' robot-eye photographs');panel.append(mediaContainer);}
- for(const id of mids){const slot=document.createElement('div');slot.className='chat-attachment';slot.textContent='Attachment';mediaContainer.append(slot);
-  if(online&&auth){api.mediaBlobInfo(id).then(({url,mime})=>{const el=document.createElement(mime.startsWith('video/')?'video':mime.startsWith('audio/')?'audio':'img');el.src=url;if(el.tagName==='IMG'){el.alt='Image attachment';el.loading='lazy';}else{el.controls=true;el.preload='metadata';}el.onerror=()=>{slot.textContent='Media attachment';URL.revokeObjectURL(url);};slot.replaceChildren(el);if(el.tagName==='IMG')el.addEventListener('load',scrollChatToLatest,{once:true});scrollChatToLatest();}).catch(()=>{});}}
+ if(mids.length>1){mediaContainer.className='chat-media-grid';mediaContainer.setAttribute('aria-label',mids.length+' attachments');panel.append(mediaContainer);}
+ for(const id of mids){
+  const slot=document.createElement('div');slot.className='chat-attachment';slot.textContent='Loading attachment…';mediaContainer.append(slot);
+  if(online&&auth){api.mediaBlobInfo(id).then(info=>{
+    if(!slot.isConnected){URL.revokeObjectURL(info.url);return;}
+    chatMediaURLs.add(info.url);
+    renderChatAttachment(slot,info,detail=>ensureChatMediaViewer().showFile(detail));
+    scrollChatToLatest();
+  }).catch(()=>{slot.textContent='Attachment unavailable';});}
+ }
  lastBubbleEntry=entry;scrollChatToLatest();if(!suppressRobotSpeech&&role==='assistant'&&!entry.isBrainTrace)robotSpeech?.speak(entry);
+}
+function clearChatAttachments(){
+ const viewer=document.getElementById('chatMediaViewer');viewer?.dismiss?.();
+ for(const url of chatMediaURLs)URL.revokeObjectURL(url);
+ chatMediaURLs.clear();
 }
 async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask backend to store media');if(file.size>11_000_000)throw Error('File must be under 11 MB');
  const body=new FormData();body.append('file',file,file.name);const response=await api.req('/api/media',{method:'POST',body});return response.media;}
@@ -229,13 +242,18 @@ async function captureRobotObservation(robot,question,{proactive=false}={}){
  }
  return {media_ids:ids,views,panorama_media_id:panoramaMediaId,plan,target_phrase:target?.phrase||'',scanned_count:plan.length};
 }
-async function reactToRobotMessage(message){
+async function reactToRobotMessage(message,relayHops=0){
  if(!message?.id||!message.text||!online||!auth)return;
  // Do not flood chat with a router diagnostic for messages no robot addresses.
  const response=await api.req('/api/robots/react',{method:'POST',body:JSON.stringify({room:activeRoom,text:message.text,message_id:message.id})});
  const traceRobot=response.command?.robot_id||response.robot_id||'chat';
  if(response.triggered)for(const item of response.trace||[])emitBrainTrace(traceRobot,response.answer?.speaker||response.robot_name||'Robot',item.step.toUpperCase(),`${item.result} [${item.source}]`);
- if(response.answer)await bubble(response.answer);
+ if(response.answer){await bubble(response.answer);
+  if(relayHops<2&&response.answer.model==='muse-spark-1.3'&&/@[\w-]+/.test(response.answer.text||'')){
+   try{await reactToRobotMessage(response.answer,relayHops+1);}
+   catch(error){emitBrainTrace(response.robot_id||'chat',response.answer.speaker||'Robot','HANDOFF FAILED',error.message);}
+  }
+ }
  if(response.needs_vision){
    const editor=window.solviEditor,robot=editor?.items?.find(o=>o.userData.editorId===response.robot_id&&o.userData.editorKind==='robot');
    if(!robot){const error=response.robot_name+' cannot capture a view because the robot is not loaded in this browser.';$('chatStatus').textContent=error;await bubble({role:'assistant',speaker:response.robot_name||'Robot',model:'camera-error',text:error,created:new Date().toISOString()});return;}
@@ -438,7 +456,7 @@ async function loadMessages(){
    const hasLoaded=initialRoomLoads.has(room);
    const newcomers=hasLoaded?messages.filter(m=>!oldIds.has(m.id)&&m.user_id!==me?.id):[];
    cachedMessages=messages;chatSignature=nextSignature;
-   const feed=$('chatFeed');feed.replaceChildren();lastBubbleEntry=null;
+   const feed=$('chatFeed');clearChatAttachments();feed.replaceChildren();lastBubbleEntry=null;
    suppressRobotSpeech=true;try{for(const entry of messages)await bubble(entry);}finally{suppressRobotSpeech=false;}
    for(const entry of localBrainTrace.filter(x=>x.room===room&&robotDebugAllowed(x.robotId)).slice(-100))await bubble(entry);
    scrollChatToLatest();
@@ -471,7 +489,7 @@ async function configureRooms(){
    environmentAutosave?.flushAll();policyAutosave?.flushAll();
    activeRoom=select.value;window.solviRoom=activeRoom;sessionStorage.setItem('solvi-room',activeRoom);loadWorldSettings();
    $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
-   chatSignature='';cachedMessages=[];lastBubbleEntry=null;$('chatFeed').replaceChildren();playCue('leave');
+   chatSignature='';cachedMessages=[];lastBubbleEntry=null;clearChatAttachments();$('chatFeed').replaceChildren();playCue('leave');
    window.dispatchEvent(new CustomEvent('solvi:room-changed',{detail:{room:activeRoom}}));
  };
 }
@@ -1037,9 +1055,9 @@ function bindUI(world){
      if(outcome.needs_vision){
        const scan=await captureRobotObservation(robot,'look around', {proactive:true});
        const report=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:robot.userData.editorId,proactive:true,vision_token:outcome.vision_token,media_ids:scan.media_ids,views:scan.views})});
-       if(report.answer)await bubble(report.answer);
+       if(report.answer){await bubble(report.answer);if(report.answer.model==='muse-spark-1.3'&&/@[\w-]+/.test(report.answer.text||''))await reactToRobotMessage(report.answer);}
        emitBrainTrace(robot.userData.editorId,robot.name,'AUTONOMOUS OBSERVATION',`${scan.media_ids.length} camera views · ${report.answer?.text||'No observation'} · ~US$${Number(report.usage?.estimated_usd||0).toFixed(6)}`);
-     }else if(outcome.answer){await bubble(outcome.answer);emitBrainTrace(robot.userData.editorId,robot.name,'INITIATIVE',`Muse Spark question · ~US$${Number(outcome.usage?.estimated_usd||0).toFixed(6)} · no movement executed`);}
+     }else if(outcome.answer){await bubble(outcome.answer);if(outcome.answer.model==='muse-spark-1.3'&&/@[\w-]+/.test(outcome.answer.text||''))await reactToRobotMessage(outcome.answer);emitBrainTrace(robot.userData.editorId,robot.name,'INITIATIVE',`Muse Spark question · ~US$${Number(outcome.usage?.estimated_usd||0).toFixed(6)} · no movement executed`);}
    }catch(e){console.info('Robot initiative unavailable:',e.message);}
    finally{initiativeBusy=false;}
  };

@@ -13,7 +13,7 @@
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <form id="elevenLabsKeyForm" class="solvi-key-form" autocomplete="off"></form><form id="metaApiKeyForm" class="solvi-key-form" autocomplete="off"></form><form id="adminPasswordForm" class="solvi-key-form" autocomplete="off"></form>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.59</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.60</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="realmGalleryButton" title="Browse realms as cards" aria-label="Browse realms" aria-haspopup="dialog">Realms</button><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="assetsButton" title="Browse uploaded 3D assets">Assets</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
@@ -136,7 +136,7 @@
       <div id="chatMentions" class="chat-mentions" role="listbox" aria-label="Mention a participant or robot" hidden></div><textarea id="chatInput" rows="2" maxlength="3000" placeholder="Message or challenge a robot…"></textarea>
       <div class="composer-actions"><button id="attachmentButton" type="button" aria-expanded="false" aria-controls="attachmentMenu" title="Attach to chat">Attach</button><div id="attachmentMenu" class="attachment-menu" hidden role="group" aria-label="Attach to chat"><button type="button" id="attachMediaOption">File / photo</button><button type="button" id="attachAudioOption">Record audio</button><button type="button" id="attachVideoOption">Record video</button><button type="button" id="attachRobotOption">Robot eyes</button></div>
         <button id="composerToolsButton" type="button" aria-expanded="false" title="More chat tools">More</button>
-        <label class="icon-btn media-tool" id="legacyAttach" title="Attach media">Attach<input id="chatFile" type="file" accept="image/*,audio/*,video/*" hidden></label>
+        <label class="icon-btn media-tool" id="legacyAttach" title="Attach media">Attach<input id="chatFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,audio/*,video/*,application/pdf,text/plain,.pdf,.txt" hidden></label>
         <button class="media-tool" id="recordAudio" title="Record audio file (click again to stop)">Mic</button><button class="media-tool" id="voiceWavesButton" title="Share microphone loudness as abstract visual rings, no audio uploaded">Voice waves</button>
         <button class="media-tool" id="recordVideo" title="Record video (click again to stop)">Video</button>
         <button class="media-tool" id="robotVision" title="Attach view from the robot camera">Robot view</button>
