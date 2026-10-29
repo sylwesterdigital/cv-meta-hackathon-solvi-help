@@ -1,5 +1,5 @@
 // User-local appearance preferences. No profile secrets are stored here.
-export const DEFAULT_PREFERENCES=Object.freeze({accent:'#79cde5',theme:'midnight',opacity:78,backgrounds:true,borders:true,group:true,sounds:true,flipHead:true,labelMode:'auto',uiScale:100,fontTheme:'system',customFont:''});
+export const DEFAULT_PREFERENCES=Object.freeze({accent:'#79cde5',theme:'midnight',opacity:78,backgrounds:true,borders:true,group:true,sounds:true,flipHead:true,labelMode:'auto',uiScale:100,fontTheme:'system',customFont:'',flatButtons:false,noShadows:false,noBlur:true,deleteConfirm:true});
 const key=()=>{try{const id=JSON.parse(localStorage.getItem('solvi-profile')||'null')?.id;return 'solvi-ui-prefs-v1'+(id?'-'+id:'');}catch{return 'solvi-ui-prefs-v1';}};
 const validColour=c=>/^#[0-9a-fA-F]{6}$/.test(c);
 export const FONT_STACKS=Object.freeze({system:'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',sans:'Inter,Arial,Helvetica,sans-serif',rounded:'ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif',serif:'Georgia,"Times New Roman",serif',mono:'ui-monospace,Menlo,Consolas,monospace'});
@@ -41,6 +41,7 @@ export function applyPreferences(p=readPreferences()){
  d.style.setProperty('--ui-accent-text',readableText(colour));
  d.style.setProperty('--bubble-alpha',String(Math.max(0,Math.min(1,Number(p.opacity)/100))));
  d.dataset.chatBg=String(!!p.backgrounds);d.dataset.chatBorder=String(!!p.borders);
+ d.dataset.flatButtons=String(!!p.flatButtons);d.dataset.noShadows=String(!!p.noShadows);d.dataset.noBlur=String(!!p.noBlur);
  window.dispatchEvent(new CustomEvent('solvi:prefs-changed',{detail:p}));return p;
 }
 export function shouldGroupMessages(previous,current,enabled=true){

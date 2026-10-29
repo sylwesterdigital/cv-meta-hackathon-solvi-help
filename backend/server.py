@@ -109,10 +109,12 @@ def init_db():
         CREATE TABLE IF NOT EXISTS room_policies (room_id TEXT PRIMARY KEY, objects TEXT NOT NULL DEFAULT 'open', robots TEXT NOT NULL DEFAULT 'open');
         CREATE TABLE IF NOT EXISTS room_environments (room_id TEXT PRIMARY KEY, payload TEXT NOT NULL DEFAULT '{}');
         CREATE TABLE IF NOT EXISTS room_scenes (room_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL DEFAULT '[]');
-        INSERT OR IGNORE INTO rooms VALUES('main','Main realm','2026-10-27T00:00:00Z');
+        INSERT OR IGNORE INTO rooms(id,title,created) VALUES('main','Main realm','2026-10-27T00:00:00Z');
         INSERT OR IGNORE INTO room_scenes VALUES('main',0,'[]');
         INSERT OR IGNORE INTO room_policies(room_id) VALUES('main');
         ''')
+        if 'owner_id' not in {r[1] for r in con.execute('PRAGMA table_info(rooms)').fetchall()}:
+            con.execute('ALTER TABLE rooms ADD COLUMN owner_id TEXT')
         if 'intro' not in {r[1] for r in con.execute('PRAGMA table_info(users)').fetchall()}:
             con.execute("ALTER TABLE users ADD COLUMN intro TEXT NOT NULL DEFAULT ''")
         cols={r[1] for r in con.execute('PRAGMA table_info(messages)').fetchall()}
@@ -168,7 +170,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.53',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.54',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -396,8 +398,21 @@ def selected_room(value):
 def list_rooms():
     user,msg,status=actor()
     if not user:return json_error(msg,status)
-    with db() as con:rows=con.execute('SELECT id,title,created FROM rooms ORDER BY created,id LIMIT 100').fetchall()
-    return jsonify(rooms=[dict(r) for r in rows])
+    with room_lock:
+        occupants={}
+        for uid,peer in room.items():
+            occupants.setdefault(peer['room'],set()).add(uid)
+    with db() as con:
+        rows=con.execute('SELECT id,title,created,owner_id FROM rooms ORDER BY created,id LIMIT 100').fetchall()
+        cards=[dict(r) for r in rows]
+        active_users=set().union(*occupants.values()) if occupants else set()
+        profiles={r['id']:dict(r) for r in con.execute(
+            'SELECT id,name,avatar FROM users WHERE id IN ('+','.join('?' for _ in active_users)+')',tuple(active_users)).fetchall()} if active_users else {}
+    for card in cards:
+        card['participants']=[profiles[uid] for uid in sorted(occupants.get(card['id'],())) if uid in profiles][:20]
+        card['participantCount']=len(occupants.get(card['id'],()))
+        card['canManage']=(card['owner_id']==user['id']) or admin_authorized()
+    return jsonify(rooms=cards)
 
 @app.post('/api/rooms')
 def create_room():
@@ -409,10 +424,43 @@ def create_room():
     with db() as con:
         if con.execute('SELECT COUNT(*) AS n FROM rooms').fetchone()['n']>=100:return json_error('Room capacity reached',409)
         if con.execute('SELECT 1 FROM rooms WHERE id=?',(rid,)).fetchone():return json_error('Room already exists',409)
-        con.execute('INSERT INTO rooms VALUES(?,?,?)',(rid,title,now()))
+        con.execute('INSERT INTO rooms(id,title,created,owner_id) VALUES(?,?,?,?)',(rid,title,now(),user['id']))
         con.execute('INSERT INTO room_scenes(room_id) VALUES(?)',(rid,))
         con.execute('INSERT INTO room_policies(room_id) VALUES(?)',(rid,))
     return jsonify(room={'id':rid,'title':title})
+
+@app.patch('/api/rooms/<room_id>')
+def rename_room(room_id):
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    title=str(data.get('title','')).strip()
+    if not (1<=len(title)<=80):return json_error('Realm name must be 1–80 characters')
+    with db() as con:
+        old=con.execute('SELECT id,owner_id FROM rooms WHERE id=?',(room_id,)).fetchone()
+        if not old:return json_error('Realm not found',404)
+        if old['owner_id']!=user['id'] and not admin_authorized():return json_error('Realm owner or admin required',403)
+        con.execute('UPDATE rooms SET title=? WHERE id=?',(title,room_id))
+    publish({'type':'realm-updated','room':room_id,'title':title},room_id=room_id)
+    return jsonify(room={'id':room_id,'title':title})
+
+@app.delete('/api/rooms/<room_id>')
+def delete_room(room_id):
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    if room_id=='main':return json_error('Main realm cannot be deleted',403)
+    data=request.get_json(silent=True) or {}
+    with db() as con:
+        old=con.execute('SELECT title,owner_id FROM rooms WHERE id=?',(room_id,)).fetchone()
+        if not old:return json_error('Realm not found',404)
+        if old['owner_id']!=user['id'] and not admin_authorized():return json_error('Realm owner or admin required',403)
+        if data.get('confirm_title')!=old['title']:return json_error('Enter the exact realm name to confirm deletion',400)
+        with room_lock:
+            if any(peer['room']==room_id for peer in room.values()):return json_error('Realm still has connected participants; ask them to leave first',409)
+        for table in ('messages','robot_memories','room_environments','room_policies','room_scenes'):
+            con.execute(f'DELETE FROM {table} WHERE room_id=?',(room_id,))
+        con.execute('DELETE FROM rooms WHERE id=?',(room_id,))
+    return jsonify(deleted=room_id)
 
 def room_policy(room_id):
     with db() as con:

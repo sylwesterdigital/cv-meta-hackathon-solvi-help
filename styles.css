@@ -1319,3 +1319,64 @@ html body :is(#closeLog,#closeCall,#closeScenePanel,#closeProperties,#closeChat,
  border:1px solid #5c7890!important;background:var(--ui-button)!important;
  font-size:0!important;line-height:1!important;
 }
+
+/* v0.2.54 — one-cycle chat, image-first realms and low-cost interface options */
+#chatPanel[hidden],#chatPanel.chat-mode-hidden{display:none!important;pointer-events:none!important}
+#chatModeButton.bottom-chat-mode{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:36px!important;white-space:nowrap!important;z-index:60!important;pointer-events:auto!important}
+#chatPanel .panel-title #closeChat,#messagesToggleButton{display:none!important}
+#modelSelect[hidden],#sceneModelControls{display:none!important}
+/* The round profile/cog controls remain round; their text sits on an unframed surface beside them. */
+@media(min-width:751px){
+ html[data-button-labels='both'] body .topbar #toolNav #profileButton,
+ html[data-button-labels='both'] body .topbar #toolNav #settingsButton,
+ html[data-button-labels='text'] body .topbar #toolNav #profileButton,
+ html[data-button-labels='text'] body .topbar #toolNav #settingsButton{
+   border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;
+   height:40px!important;min-height:40px!important;max-height:40px!important;
+   padding:2px 5px!important;gap:8px!important;overflow:visible!important;
+ }
+ html[data-button-labels='both'] #settingsButton::before,html[data-button-labels='text'] #settingsButton::before{
+   border:1px solid var(--ui-fg)!important;background-color:var(--ui-button)!important;
+   box-sizing:content-box!important;border-radius:50%!important;background-size:18px!important;
+   padding:8px!important;width:18px!important;height:18px!important;flex:0 0 18px!important;
+ }
+ html[data-button-labels='both'] #profileButton .ui-profile-avatar,
+ html[data-button-labels='text'] #profileButton .ui-profile-avatar{border-radius:50%!important}
+}
+.topbar #toolNav>button[data-ui-icon]>.ui-button-label{display:block;overflow:hidden;white-space:nowrap!important;text-overflow:ellipsis!important;-webkit-line-clamp:1!important;line-clamp:1!important;word-break:normal!important}
+.topbar #toolNav>button{white-space:nowrap!important;flex-shrink:0!important}
+#settingsDrawer .settings-font-actions>button{white-space:nowrap!important;font-size:clamp(10px,calc(11px * var(--ui-scale)),13px)!important}
+#settingsDrawer .settings-font-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:5px!important}
+#settingsDrawer #resetUiPreferences{margin:4px 0!important}
+@media(max-width:450px){#settingsDrawer .settings-font-actions{grid-template-columns:1fr!important}}
+/* Gallery artwork is the entire card; text is overlaid with a high-contrast edge fade. */
+.realm-gallery-dialog{width:min(1000px,calc(100vw - 16px))!important;max-height:89svh!important}
+.realm-gallery-dialog>.panel-title{justify-content:flex-end!important;gap:10px!important;min-height:52px!important}
+.realm-gallery-dialog>.panel-title>strong{font-size:clamp(21px,calc(23px * var(--ui-scale)),33px)!important;margin-inline:auto!important;text-align:center!important}
+.realm-card-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(215px,100%),1fr))!important;gap:10px!important;align-items:stretch!important}
+.realm-card-tile{position:relative;min-width:0;min-height:190px;display:flex;flex-direction:column;gap:0}
+.realm-card-grid .realm-card{position:relative;flex:1!important;width:100%!important;min-height:190px!important;margin:0!important;padding:0!important;border-radius:10px!important;overflow:hidden!important;background:var(--ui-panel)!important;border:1px solid #59758e!important;gap:0!important}
+.realm-card-grid .realm-card-image{position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto!important;border-radius:0!important;background:linear-gradient(138deg,#243e5b,#0b182a)!important;display:block!important}
+.realm-card-grid .realm-card-image img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.realm-card-grid .realm-card-image::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,#07101bcc 0%,transparent 38%,transparent 60%,#07101be8 100%);pointer-events:none}
+.realm-card-grid .realm-card-title{position:absolute;z-index:1;top:11px;left:9px;right:9px;font-size:clamp(19px,calc(20px * var(--ui-scale)),25px)!important;font-weight:750;line-height:1.15;text-align:center;color:#fff!important;overflow-wrap:anywhere;white-space:normal!important;text-shadow:0 1px 5px #000b}
+.realm-card-grid .realm-card-people{position:absolute;z-index:1;bottom:15px;left:9px;right:9px;display:flex;justify-content:center;align-items:center;gap:3px!important;color:#fff}
+.realm-card-grid .realm-card-count{font-size:12px!important;font-weight:650;color:#fff!important;margin-right:4px}
+.realm-card-grid .realm-card-avatar{width:26px;height:26px;flex:0 0 26px;background:#36647c;border:1px solid #ddd;border-radius:50%;display:grid;place-items:center;overflow:hidden;font-size:13px!important;color:#fff!important}
+.realm-card-grid .realm-card-avatar img{position:static;width:100%;height:100%;object-fit:cover}
+.realm-card-grid .realm-card-controls{display:flex;gap:4px;position:absolute;z-index:4;right:5px;bottom:5px;transform:translateY(calc(100% + 2px));pointer-events:auto}
+.realm-card-grid .realm-card-managed{margin-bottom:27px!important;min-height:164px!important}
+.realm-card-grid .realm-card-action{font-size:11px!important;padding:4px 8px!important;min-height:26px!important;height:26px!important;white-space:nowrap!important}
+.realm-card-grid .realm-card-tile:has(.realm-card-controls){margin-bottom:26px}
+.realm-card-grid .realm-card[aria-pressed='true']{outline:2px solid var(--solvi-accent)!important;outline-offset:-3px!important}
+@media(max-width:550px){.realm-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important}.realm-card-tile,.realm-card-grid .realm-card{min-height:155px!important}.realm-card-grid .realm-card-title{font-size:15px!important}.realm-card-grid .realm-card-people{bottom:9px}}
+.solvi-key-form{display:none!important}
+/* Entirely local, reversible interface performance options. */
+html[data-flat-buttons='true'] body :is(button,.icon-btn,.panel-title,.drawer,.overlay,.scene-panel,.properties-panel,.chat-composer,.minimap-panel,.settings-section,.realm-card){border:0!important;outline-offset:1px!important}
+html[data-no-shadows='true'] body *,html[data-no-shadows='true'] body *::before,html[data-no-shadows='true'] body *::after{box-shadow:none!important;text-shadow:none!important}
+html[data-no-blur='true'] body *,html[data-no-blur='true'] body *::before,html[data-no-blur='true'] body *::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+
+/* One line of text for action buttons, never a line-wrapped or ellipsized two-line pill. */
+button[data-ui-icon]>.ui-button-label{display:block!important;white-space:nowrap!important;line-clamp:1!important;-webkit-line-clamp:1!important;overflow:hidden!important;text-overflow:ellipsis!important}
+html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:none!important}
+#sceneItems .scene-item-name>.ui-button-label{white-space:normal!important;display:-webkit-box!important;-webkit-line-clamp:2!important;line-clamp:2!important}

@@ -1,42 +1,52 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
+import {renderModelThumbnail} from './preview-renderer.js';
 const $=id=>document.getElementById(id);
 const loader=new GLTFLoader();const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');loader.setDRACOLoader(draco);
 const safe=(a)=>typeof a?.url==='string'&&(a.url.startsWith('./assets/')||/^\/api\/avatars\/[0-9a-f-]+\.glb$/.test(a.url));
 export function setupAvatarGallery(editor){
  const backdrop=$('avatarGalleryBackdrop'),grid=$('avatarGalleryGrid'),status=$('avatarGalleryStatus');
- let collection=[];
- const close=()=>backdrop.hidden=true;
+ let collection=[],renderGeneration=0,previewObserver=null,thumbnailQueue=Promise.resolve();
+ const close=()=>{backdrop.hidden=true;renderGeneration++;previewObserver?.disconnect();previewObserver=null;};
  $('closeAvatarGallery').onclick=close;backdrop.addEventListener('pointerdown',e=>{if(e.target===backdrop)close();});
  const chooser=(useSelected)=>{const robot=editor.selected?.userData.editorKind==='robot'&&editor.canEdit(editor.selected)?editor.selected:null;
   return robot&&useSelected?robot:editor.add('robot',false);};
  async function thumbnail(canvas,url){
   // Render a real snapshot of the GLB, never a generic placeholder pretending to be the model.
-  let renderer=null;try{
+  try{
    const gltf=await loader.loadAsync(url);if(!canvas.isConnected)return;
-   renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,preserveDrawingBuffer:true});renderer.setSize(176,142,false);
+
    const scene=new THREE.Scene(),light=new THREE.HemisphereLight(0xffffff,0x7a91ae,3);scene.add(light);
    const box=new THREE.Box3().setFromObject(gltf.scene);const size=box.getSize(new THREE.Vector3());
    const center=box.getCenter(new THREE.Vector3());gltf.scene.position.sub(center);scene.add(gltf.scene);
    const cam=new THREE.PerspectiveCamera(37,176/142,.03,200);const distance=Math.max(size.x,size.y,size.z,1)*2.1;cam.position.set(distance*.4,distance*.28,distance);cam.lookAt(0,0,0);
-   renderer.render(scene,cam);
-   const image=new Image();image.alt='';image.src=canvas.toDataURL('image/png');canvas.replaceWith(image);
+   const snapshot=renderModelThumbnail(scene,cam,176,142);
+   if(!canvas.isConnected)return;const image=new Image();image.alt='';image.src=snapshot;canvas.replaceWith(image);
   }catch{const parent=canvas.parentElement;if(parent){parent.classList.add('unavailable');parent.textContent='Model not on server';}}
-  finally{renderer?.dispose();}
+
  }
- async function render(){grid.replaceChildren();
-  const promises=[];for(const avatar of collection.filter(safe)){
+ async function render(){const generation=++renderGeneration;previewObserver?.disconnect();previewObserver=null;grid.replaceChildren();
+  const previews=[];for(const avatar of collection.filter(safe)){
    const card=document.createElement('button');card.type='button';card.className='avatar-card';card.setAttribute('role','listitem');
    const preview=document.createElement('span');preview.className='avatar-preview';const canvas=document.createElement('canvas');canvas.width=176;canvas.height=142;preview.append(canvas);
    const name=document.createElement('strong');name.textContent=avatar.label||avatar.id;
    const description=document.createElement('small');description.textContent=(avatar.genderPresentation||'')+(avatar.ownerName?' · by '+avatar.ownerName:'');
-   card.append(preview,name,description);grid.append(card);
+   card.append(preview,name,description);card._avatar=avatar;grid.append(card);
    card.onclick=()=>{if(preview.classList.contains('unavailable')){status.textContent='Avatar file is not on the server. Add it to the release or upload GLB.';return;}
     const obj=chooser(true);if(!obj)return;editor.changeRobotAvatar(obj,avatar.url);editor.select(obj);editor.updateInspector();close();};
-   promises.push(thumbnail(canvas,avatar.url));
+   previews.push([canvas,avatar.url]);
   }
-  await Promise.allSettled(promises);
+  if(typeof IntersectionObserver==='function'){
+   previewObserver=new IntersectionObserver(entries=>{
+    for(const entry of entries){if(!entry.isIntersecting)continue;
+     previewObserver?.unobserve(entry.target);
+     const canvas=entry.target.querySelector('canvas');const avatar=entry.target._avatar;
+     if(canvas&&avatar)thumbnailQueue=thumbnailQueue.catch(()=>{}).then(()=>generation===renderGeneration&&!backdrop.hidden?thumbnail(canvas,avatar.url):undefined);
+    }
+   },{root:grid,rootMargin:'80px'});
+   for(const card of grid.children)previewObserver.observe(card);
+  }else for(const [canvas,url] of previews){if(generation!==renderGeneration||backdrop.hidden)break;await thumbnail(canvas,url);}
  }
  async function open(){backdrop.hidden=false;status.textContent='Preview models from the server or upload your own GLB.';
   let builtins=[];try{const r=await fetch('./assets/avatars/catalog.json',{cache:'no-cache'});builtins=(await r.json()).avatars||[];}catch{}

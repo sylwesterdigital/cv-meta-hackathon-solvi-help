@@ -41,10 +41,14 @@ function syncRobotDebugUI(){
 }
 
 function saveRealmView(room=activeRoom){
+ // A single on-demand screenshot from the EXISTING world renderer if not cached.
+ // Never allocate WebGL contexts for realm previews or refresh on every room change.
+ const key='solvi-realm-preview-v1-'+room;
+ try{if(localStorage.getItem(key))return true;}catch{}
  const world=window.solviEditor?.world;
- try{if(world?.renderer&&world.scene&&world.camera)world.renderer.render(world.scene,world.camera);}
- catch{/* Preserve navigation when a renderer is temporarily unavailable. */}
- return captureRealmPreview(room,world?.renderer?.domElement);
+ if(!world?.renderer||!world.scene||!world.camera||world.renderer.xr?.isPresenting||document.hidden)return false;
+ try{world.renderer.render(world.scene,world.camera);return captureRealmPreview(room,world.renderer.domElement);}
+ catch{return false;}
 }
 const toast=text=>{const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5200);};
 const show=(id,yes=true)=>{$(id).hidden=!yes;};
@@ -103,7 +107,7 @@ function identity(){const text=me?.name||'Guest';$('profilePanelTitle').textCont
  if(me?.intro&&online&&auth){api.mediaBlob(me.intro).then(url=>{if(me?.intro){$('introPreview').src=url;$('introPreview').hidden=false;}}).catch(()=>{});}
  $('profileLogout').hidden=!me;$('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;}
 async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
- try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();select.hidden=!modelIds.length;
+ try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();select.hidden=true;
   select.add(new Option('World chat · people',''));
   for(const id of modelIds)select.add(new Option('AI · '+id,id));
   select.value='' // Default to human world chat so @robot mentions can trigger character replies;select.disabled=false;
@@ -280,7 +284,7 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
  if(online&&!auth){needSignIn('Sign in before sending messages.');return;}
  const ids=pending.map(x=>x.id);
  if(!online){await bubble({role:'user',text,speaker:me.name,user_id:me.id,created:new Date().toISOString()});toast('Local demo only. AI requires backend and MODEL_API_KEY.');return;}
- const useAI=!!$('modelSelect').value;
+ const useAI=false; // Ordinary messages always go to shared chat; robots have their own AI route.
  $('sendChat').disabled=true;$('chatStatus').textContent='Model processing…';
  try{const response=await api.req(useAI?'/api/chat':'/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text,model:$('modelSelect').value,media:ids})});
   $('chatInput').value='';pending=[];updatePending();playCue('sent');await bubble(response.message);if(response.answer)await bubble(response.answer);
@@ -455,7 +459,7 @@ async function configureRooms(){
  $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
  window.solviRoomCards=rooms;
  select.onchange=()=>{
-   saveRealmView(window.solviRoom);
+   // Switching rooms must never render a thumbnail or interrupt the WebGL context.
    environmentAutosave?.flushAll();policyAutosave?.flushAll();
    activeRoom=select.value;window.solviRoom=activeRoom;sessionStorage.setItem('solvi-room',activeRoom);loadWorldSettings();
    $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
@@ -612,7 +616,7 @@ function configureDragging(){
   const panel=$(id),handle=panel?.querySelector('.drag-handle');if(!panel||!handle)continue;
   try{const stored=JSON.parse(localStorage.getItem('solvi-window-'+id)||'null');if(stored){
     if(stored.minimized!==undefined&&id!=='scenePanel'&&id!=='editorToolbox')panel.classList.toggle('minimized',stored.minimized);
-    if(id==='chatPanel'&&stored.windowed){panel.classList.add('windowed');panel.style.setProperty('--chat-width',stored.width+'px');panel.style.setProperty('--chat-height',stored.height+'px');$('chatModeButton').textContent='Overlay chat';}
+    if(id==='chatPanel'&&stored.windowed){panel.classList.add('windowed');panel.style.setProperty('--chat-width',stored.width+'px');panel.style.setProperty('--chat-height',stored.height+'px');$('chatModeButton').textContent='Hide chat';$('chatModeButton').setAttribute('aria-label','Chat window · hide chat');}
     if(id!=='chatPanel'||stored.windowed){
       const x=Math.max(4,Math.min(innerWidth-100,Number(stored.left)||0)),y=Math.max(45,Math.min(innerHeight-60,Number(stored.top)||70));
       if(id==='chatPanel'){panel.style.setProperty('--chat-left',x+'px');panel.style.setProperty('--chat-top',y+'px');}
@@ -638,18 +642,42 @@ function configureDragging(){
  }
 }
 function setupNewRoom(){
- const openGallery=()=>{
-  const backdrop=$('realmGalleryBackdrop'),holder=$('realmGalleryCards');
+ const backdrop=$('realmGalleryBackdrop'),holder=$('realmGalleryCards');
+ async function openGallery(){
+  // No forced renderer.render(), no per-card WebGL contexts, no room-switch screenshots.
   saveRealmView(activeRoom);
-  const cards=makeRealmCards(window.solviRoomCards||[{id:'main',title:'Main realm'}],activeRoom);
-  holder.replaceChildren(cards);cards.addEventListener('click',event=>{
-   const btn=event.target.closest('button.realm-card');if(!btn)return;
-   saveRealmView(activeRoom);
-   $('roomSelect').value=btn.dataset.room;$('roomSelect').dispatchEvent(new Event('change'));
-   show('realmGalleryBackdrop',false);
-  });
+  try{if(online&&auth)window.solviRoomCards=(await api.req('/api/rooms',{headers:adminToken?{'X-Solvi-Admin':adminToken}:{}})).rooms||window.solviRoomCards;}
+  catch(error){toast(error.message);}
+  holder.replaceChildren(makeRealmCards(window.solviRoomCards||[{id:'main',title:'Main realm'}],activeRoom));
   show('realmGalleryBackdrop',true);
- };
+ }
+ holder.addEventListener('click',async event=>{
+  const control=event.target.closest('button.realm-card-action');
+  if(control){
+   const card=(window.solviRoomCards||[]).find(r=>r.id===control.dataset.room);if(!card)return;
+   const headers=adminToken?{'X-Solvi-Admin':adminToken}:{};
+   try{
+    if(control.dataset.action==='rename'){
+     const title=window.prompt('New realm name',card.title);if(!title||title.trim()===card.title)return;
+     await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'PATCH',headers,body:JSON.stringify({title:title.trim()})});
+    }else{
+     if(card.id==='main')return;
+     if(!window.confirm(`Permanently delete realm "${card.title}" and its objects, messages and settings? This cannot be undone.`))return;
+     const exact=window.prompt(`Second confirmation: type exactly "${card.title}" to delete it.`);
+     if(exact!==card.title){toast('Deletion cancelled: realm name did not match.');return;}
+     await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'DELETE',headers,body:JSON.stringify({confirm_title:exact})});
+     try{localStorage.removeItem('solvi-realm-preview-v1-'+card.id);}catch{}
+     if(activeRoom===card.id){activeRoom='main';window.solviRoom='main';}
+    }
+    await configureRooms();await openGallery();
+   }catch(error){toast(error.message);}
+   return;
+  }
+  const btn=event.target.closest('button.realm-card');if(!btn)return;
+  if(![...$('roomSelect').options].some(o=>o.value===btn.dataset.room))return;
+  $('roomSelect').value=btn.dataset.room;$('roomSelect').dispatchEvent(new Event('change'));
+  show('realmGalleryBackdrop',false);
+ });
  $('realmGalleryButton').onclick=openGallery;
  $('closeRealmGallery').onclick=()=>show('realmGalleryBackdrop',false);
  $('newRealmFromGallery').onclick=()=>{show('realmGalleryBackdrop',false);$('createRoom').click();};
@@ -676,7 +704,7 @@ function setupSettings(){
   const opt=settings.querySelector(`input[name=buttonLabels][value="${mode}"]`);if(opt)opt.checked=true;
   for(const btn of $('themePresetGallery').querySelectorAll('button')){const active=btn.dataset.theme===p.theme;btn.setAttribute('aria-pressed',String(active));btn.classList.toggle('active',active);}
   for(const btn of $('themeSwatches').querySelectorAll('button'))btn.setAttribute('aria-pressed',String(btn.dataset.color===p.accent));
-  for(const [id,key] of [['bubbleBackgrounds','backgrounds'],['bubbleBorders','borders'],['groupMessages','group'],['soundEffects','sounds'],['flipHead','flipHead']])$(id).checked=!!p[key];
+  for(const [id,key] of [['bubbleBackgrounds','backgrounds'],['bubbleBorders','borders'],['groupMessages','group'],['soundEffects','sounds'],['flipHead','flipHead'],['flatButtons','flatButtons'],['noShadows','noShadows'],['noBlur','noBlur'],['deleteConfirm','deleteConfirm']])$(id).checked=!!p[key];
  }
  paint(current);
  $('settingsButton').onclick=()=>{settings.hidden=false;show('profileBackdrop',false);};
@@ -684,6 +712,7 @@ function setupSettings(){
  settings.addEventListener('pointerdown',e=>{if(e.target===settings)settings.hidden=true;});
  const apply=(patch)=>{const prefs=updatePreferences(patch);paint(prefs);if('group' in patch){chatSignature='';loadMessages();}};
  for(const control of settings.querySelectorAll('input[name=buttonLabels]'))control.onchange=e=>{if(e.target.checked)apply({labelMode:e.target.value});};
+ for(const [id,key] of [['flatButtons','flatButtons'],['noShadows','noShadows'],['noBlur','noBlur'],['deleteConfirm','deleteConfirm']])$(id).onchange=e=>apply({[key]:e.target.checked});
  // Stage size edits inside the unscaled settings drawer. Applying is explicit so the slider never moves under the pointer.
  const stageScale=value=>{const number=uiScalePercent(value);$('uiScale').value=number;$('uiScaleNumber').value=number;$('uiScaleOutput').textContent=number+'%';};
  $('uiScale').oninput=e=>stageScale(e.target.value);
@@ -704,7 +733,7 @@ function setupSettings(){
  $('accentColor').oninput=e=>apply({accent:e.target.value});
  $('interfaceTheme').onchange=e=>{const key=e.target.value;const theme=THEME_PRESETS[key];apply({theme:key,accent:theme.accent});};
  $('bubbleOpacity').oninput=e=>apply({opacity:Number(e.target.value)});
- for(const [id,key] of [['bubbleBackgrounds','backgrounds'],['bubbleBorders','borders'],['groupMessages','group'],['soundEffects','sounds'],['flipHead','flipHead']])$(id).onchange=e=>apply({[key]:e.target.checked});
+ for(const [id,key] of [['bubbleBackgrounds','backgrounds'],['bubbleBorders','borders'],['groupMessages','group'],['soundEffects','sounds'],['flipHead','flipHead'],['flatButtons','flatButtons'],['noShadows','noShadows'],['noBlur','noBlur'],['deleteConfirm','deleteConfirm']])$(id).onchange=e=>apply({[key]:e.target.checked});
  const colors=['#79cde5','#e7b073','#a5db91','#d9a0d7','#a0b5f5','#f3a1a1'];
  function swatches(){const grid=$('themeSwatches');grid.replaceChildren();for(const color of colors){const b=document.createElement('button');b.className='theme-swatch';b.type='button';b.dataset.color=color;b.title='Use accent '+color;b.setAttribute('aria-label','Use accent '+color);b.setAttribute('aria-pressed',String(readPreferences().accent===color));b.style.setProperty('--swatch-color',color);b.onclick=()=>apply({accent:color});grid.append(b);}}
  swatches();$('generateTheme').onclick=()=>{const color=themePalette(Math.floor(Math.random()*10000));colors[colors.length-1]=color;swatches();apply({accent:color});};
@@ -721,7 +750,7 @@ function setupSettings(){
        $('metaApiKey').value='';$('metaKeyStatus').textContent=response.notice;
      }catch(e){$('metaKeyStatus').textContent=e.message;return;}
    }
-   if(online&&auth){const result=await api.req('/api/models');modelIds=result.models||[];const select=$('modelSelect');select.replaceChildren(new Option('World chat · people',''),...modelIds.map(id=>new Option('Ask AI · '+id,id)));select.hidden=!modelIds.length;}
+   if(online&&auth){const result=await api.req('/api/models');modelIds=result.models||[];const select=$('modelSelect');select.replaceChildren(new Option('World chat · people',''),...modelIds.map(id=>new Option('Ask AI · '+id,id)));select.hidden=true;}
  };
  $('clearMetaKey').onclick=()=>{sessionStorage.removeItem('solvi-meta-session-key');$('metaApiKey').value='';$('metaKeyStatus').textContent='Browser session key cleared. Server-side key, if present, is unchanged.';};
  $('refreshMetaUsage').onclick=async()=>{
@@ -748,21 +777,26 @@ function setupSettings(){
 }
 function setupChatPresentation(){
   const feed=$('chatFeed'),panel=$('chatPanel'),composer=panel.querySelector('.chat-composer');
-  const messages=$('messagesToggleButton');
-  messages.addEventListener('click',()=>{
-    const hidden=document.body.classList.toggle('chat-muted');
-    messages.setAttribute('aria-pressed',String(!hidden));
-    messages.textContent=hidden?'Show chat':'Hide chat';
-  });
-  $('chatModeButton').addEventListener('click',()=>{
-    const floating=panel.classList.toggle('windowed');
-    $('chatModeButton').textContent=floating?'Overlay chat':'Float chat';
-    if(!floating){panel.style.removeProperty('--chat-left');panel.style.removeProperty('--chat-top');}
-    else{panel.style.setProperty('--chat-left',Math.max(4,window.innerWidth-Math.min(390,window.innerWidth-10)-14)+'px');panel.style.setProperty('--chat-top',window.innerWidth<=750?'100px':'72px');}
-    $('floatChatButton').textContent='Overlay';
-    scrollChatToLatest();window.solviSaveWindow?.('chatPanel',panel);
-  });
-  $('floatChatButton').onclick=()=>$('chatModeButton').click();
+  // A single always-visible bottom-left control cycles overlay → floating → hidden.
+  // The third click restores overlay, so hiding chat cannot strand the user.
+  let mode=panel.classList.contains('windowed')?'window':'overlay';
+  function setMode(next){
+   mode=next;panel.classList.toggle('windowed',mode==='window');
+   panel.hidden=mode==='hidden';document.body.classList.toggle('chat-hidden-by-mode',mode==='hidden');
+   const btn=$('chatModeButton');btn.dataset.chatMode=mode;
+   btn.setAttribute('aria-label',mode==='overlay'?'Chat overlay · switch to window':mode==='window'?'Chat window · hide chat':'Chat hidden · show overlay');
+   btn.title=btn.getAttribute('aria-label');btn.textContent=mode==='hidden'?'Show chat':mode==='window'?'Hide chat':'Float chat';
+   if(mode==='overlay'){panel.style.removeProperty('--chat-left');panel.style.removeProperty('--chat-top');}
+   if(mode==='window'){
+    panel.style.setProperty('--chat-left',Math.max(4,window.innerWidth-Math.min(390,window.innerWidth-10)-14)+'px');
+    panel.style.setProperty('--chat-top',window.innerWidth<=750?'100px':'72px');
+   }
+   if(mode!=='hidden')scrollChatToLatest();
+   if(mode!=='hidden')window.solviSaveWindow?.('chatPanel',panel);
+  }
+  $('chatModeButton').addEventListener('click',()=>setMode(panel.hidden?'overlay':panel.classList.contains('windowed')?'hidden':'window'));
+  $('floatChatButton').onclick=()=>setMode('overlay');
+  window.solviSetChatMode=setMode;
   const grip=$('chatResizeGrip');let start=null;
   grip.addEventListener('pointerdown',event=>{
     if(!panel.classList.contains('windowed'))return;
@@ -851,7 +885,7 @@ function bindUI(world){
  });
  window.addEventListener('solvi:show-brain-chat',()=>{
    const id=debugRobotSelected();if(id){setRobotDebug(id,true,sessionStorage);syncRobotDebugUI();}
-   show('chatPanel',true);document.body.classList.remove('chat-muted');$('messagesToggleButton').setAttribute('aria-pressed','true');chatSignature='';loadMessages();
+   window.solviSetChatMode?.('window');chatSignature='';loadMessages();
    const panel=$('chatPanel');if(innerWidth<=1100){$('robotBrainsPanel').hidden=true;document.body.classList.remove('solvi-brain-chat-side-by-side');}
    if(innerWidth>1100){
      document.body.classList.add('solvi-brain-chat-side-by-side');
@@ -860,7 +894,7 @@ function bindUI(world){
    }
  });
  window.addEventListener('solvi:chat-updated',loadMessages);
- $('chatButton').onclick=()=>{show('chatPanel',$('chatPanel').hidden);document.body.classList.remove('chat-muted');$('messagesToggleButton').setAttribute('aria-pressed','true');};$('closeChat').onclick=()=>show('chatPanel',false);
+ $('chatButton').onclick=()=>window.solviSetChatMode?.('overlay');
  $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?.name||'Sign in';$('profilePanelNote').textContent=me?'Profile & media':'Create profile';show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
  $('closeProfile').onclick=()=>{closeProfileCamera();if(me&&auth)show('profileBackdrop',false);else{$('profileStatus').textContent='Sign in to continue.';$('profileName').focus();}};
  $('saveProfile').onclick=submitProfile;$('exportProfile').onclick=exportProfile;

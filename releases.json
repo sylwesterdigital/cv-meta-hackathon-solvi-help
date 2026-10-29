@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.53",
+  "currentVersion": "0.2.54",
   "releases": [
+    {
+      "version": "0.2.54",
+      "publishedAt": "2026-10-29T12:36:39Z",
+      "changes": [
+        "Rebuild realm gallery as image-first tiles with name overlay, live participant count and round avatar thumbnails; remove redundant card icons, wrap-free labels and oval header pills.",
+        "Add authenticated realm renaming and protected double-confirmation deletion with owner/admin authorization, active-participant guard and persistent SQLite owner migration.",
+        "Use one reusable WebGL preview renderer for Assets and Avatars, lazy sequential thumbnails and one on-demand cached room preview to reduce context-loss risk.",
+        "Replace redundant Hide chat and chat-panel Close controls with a reliable Overlay \u2192 Window \u2192 Hidden \u2192 Overlay cycle on the persistent bottom-left chat mode button.",
+        "Add browser-local settings for borderless controls, disabled interface shadows, backdrop blur and opt-out object-deletion confirmation; require confirmation across object list, Properties and keyboard.",
+        "Remove unused sceneModelPath text and unconfigured AI model selector, associate key fields with forms, add favicon and keep navigation/button labels on one line."
+      ]
+    },
     {
       "version": "0.2.53",
       "publishedAt": "2026-10-29T11:55:33Z",
@@ -303,15 +315,6 @@
         "Visible + 3D Model import button, Shift+A model entry and full-stage GLB/FBX drag-and-drop overlay with drop-location placement and size checks.",
         "Robot strafe-speed control 0.5\u00d7\u20134\u00d7, independently of walking speed, synced as compact remote movement packets.",
         "Experimental optional Rapier world physics with dynamic/static/kinematic bodies; per-object collider mode, friction, restitution. Off by default."
-      ]
-    },
-    {
-      "version": "0.2.15",
-      "publishedAt": "2026-10-28T02:35:35Z",
-      "changes": [
-        "Drop .glb/.fbx onto world canvas or import from World tools/Shift+A; model uploads stored once and referenced across rooms.",
-        "Personal upload cap in Settings: 100 KB\u201320 MiB, plus strict 20 MiB server maximum.",
-        "Remote robot movement uses low-bandwidth inputs, client prediction and smoothed position/yaw corrections."
       ]
     }
   ]

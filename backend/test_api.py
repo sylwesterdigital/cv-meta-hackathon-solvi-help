@@ -40,6 +40,16 @@ assert c.post('/api/admin/login',headers=headers,json={'password':'guess'}).stat
 r=c.post('/api/rooms',headers=headers,json={'id':'lab','title':'Robot Lab'})
 assert r.status_code==200,(r.status_code,r.data)
 assert any(x['id']=='lab' for x in c.get('/api/rooms',headers=headers).get_json()['rooms'])
+assert next(r for r in c.get('/api/rooms',headers=headers).get_json()['rooms'] if r['id']=='lab')['owner_id']==data['user']['id']
+assert c.patch('/api/rooms/lab',headers=headers,json={'title':'Renamed laboratory'}).status_code==200
+assert next(r for r in c.get('/api/rooms',headers=headers).get_json()['rooms'] if r['id']=='lab')['title']=='Renamed laboratory'
+assert c.delete('/api/rooms/lab',headers=headers,json={'confirm_title':'wrong'}).status_code==400
+assert c.delete('/api/rooms/main',headers=headers,json={'confirm_title':'Main realm'}).status_code==403
+assert c.post('/api/rooms',headers=headers,json={'id':'temporary-realm','title':'Temporary Realm'}).status_code==200
+assert c.delete('/api/rooms/temporary-realm',headers=headers,json={'confirm_title':'wrong'}).status_code==400
+assert c.delete('/api/rooms/temporary-realm',headers=headers,json={'confirm_title':'Temporary Realm'}).status_code==200
+assert not any(r['id']=='temporary-realm' for r in c.get('/api/rooms',headers=headers).get_json()['rooms'])
+print('PASS: realm ownership, rename, protected main realm and exact-name double-confirmation delete')
 assert c.post('/api/message',headers=headers,json={'room':'lab','text':'Only lab'}).status_code==200
 main=c.get('/api/messages?room=main',headers=headers).get_json()['messages']
 lab=c.get('/api/messages?room=lab',headers=headers).get_json()['messages']

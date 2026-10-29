@@ -40,9 +40,10 @@ test('editing indicators are room-scoped and carry verified actor names',()=>{
 });
 test('world tools, message and chat mode placement, avatar actions and rename inputs',()=>{
  const html=read('index.html'),css=read('styles.css'),studio=read('js/studio.js'),editor=read('js/editor.js');
- for(const id of ['worldSettingsButton','worldSettingsDrawer','worldObjectsPolicy','worldRobotsPolicy','objectNameInput','robotActionSelect','chatModeButton','messagesToggleButton','exportChatSettingsJson','openAdminSettings'])
+ for(const id of ['worldSettingsButton','worldSettingsDrawer','worldObjectsPolicy','worldRobotsPolicy','objectNameInput','robotActionSelect','chatModeButton','exportChatSettingsJson','openAdminSettings'])
    assert.ok(html.includes(`id="${id}"`),id);
- assert.ok(html.indexOf('id="messagesToggleButton"')<html.indexOf('id="settingsButton"'));
+ assert.doesNotMatch(html,/id="messagesToggleButton"/);
+ assert.match(html,/id="chatModeButton"/);
  assert.ok(html.includes('id="realmGalleryButton"')); // Accessible, collapsible mobile navigation
  assert.match(css,/#chatModeButton\.bottom-chat-mode/);
  assert.match(studio,/solvi-window-/);

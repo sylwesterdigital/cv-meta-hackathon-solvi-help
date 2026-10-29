@@ -2,17 +2,17 @@ import * as THREE from 'three';
 import {clone as cloneSkeleton} from 'three/addons/utils/SkeletonUtils.js';
 import {loadSceneAsset} from './scene-models.js';
 import {visibleAssets,validAssetFile,validAssetURL} from './asset-library.js';
+import {renderModelThumbnail} from './preview-renderer.js';
 const $=id=>document.getElementById(id);
 
 export function setupAssetGallery(editor){
  const backdrop=$('assetGalleryBackdrop'),grid=$('assetGalleryGrid'),status=$('assetGalleryStatus');
- let collection=[],replacing=null,renderSerial=0,observer=null;
+ let collection=[],replacing=null,renderSerial=0,observer=null,previewQueue=Promise.resolve();
  function close(){backdrop.hidden=true;renderSerial++;observer?.disconnect();observer=null;replacing=null;}
  $('closeAssetGallery').onclick=close;
  backdrop.addEventListener('pointerdown',event=>{if(event.target===backdrop)close();});
  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!backdrop.hidden){event.stopPropagation();close();}});
  async function preview(canvas,asset,serial){
-  let renderer;
   try{
    const source=await loadSceneAsset(asset.url);
    if(serial!==renderSerial||!canvas.isConnected)return;
@@ -26,15 +26,14 @@ export function setupAssetGallery(editor){
    const camera=new THREE.PerspectiveCamera(36,1.35,.01,100000);
    const dist=Math.max(dimensions.x,dimensions.y,dimensions.z,.01)*2.3;
    camera.position.set(dist*.65,dist*.35,dist*1.15);camera.lookAt(0,0,0);
-   renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,preserveDrawingBuffer:true});
-   renderer.setSize(176,132,false);renderer.render(scene,camera);
-   if(serial===renderSerial&&canvas.isConnected){const img=new Image();img.alt='';img.src=canvas.toDataURL('image/png');canvas.replaceWith(img);}
+   const thumbnail=renderModelThumbnail(scene,camera,176,132);
+   if(serial===renderSerial&&canvas.isConnected){const img=new Image();img.alt='';img.src=thumbnail;canvas.replaceWith(img);}
   }catch(error){if(serial===renderSerial&&canvas.isConnected){canvas.parentElement.textContent='Preview unavailable';canvas.parentElement.title=String(error.message||error);}}
-  finally{renderer?.dispose();}
+
  }
  function render(){
   const serial=++renderSerial;observer?.disconnect();observer=null;grid.replaceChildren();
-  if(typeof IntersectionObserver==='function')observer=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){observer.unobserve(entry.target);const asset=entry.target._asset,canvas=entry.target.querySelector('canvas');if(canvas&&asset)preview(canvas,asset,serial);}}, {root:grid,rootMargin:'100px'});
+  if(typeof IntersectionObserver==='function')observer=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){observer?.unobserve(entry.target);const asset=entry.target._asset,canvas=entry.target.querySelector('canvas');if(canvas&&asset)previewQueue=previewQueue.catch(()=>{}).then(()=>serial===renderSerial?preview(canvas,asset,serial):undefined);}}, {root:grid,rootMargin:'100px'});
   const models=visibleAssets(collection,$('assetGallerySearch').value);
   if(!models.length){const empty=document.createElement('p');empty.textContent=collection.length?'No matching assets.':'No 3D assets uploaded yet.';grid.append(empty);return;}
   for(const asset of models){
@@ -54,7 +53,7 @@ export function setupAssetGallery(editor){
     }
     close();
    };
-   if(observer){card._asset=asset;observer.observe(card);}else preview(canvas,asset,serial);
+   if(observer){card._asset=asset;observer.observe(card);}else previewQueue=previewQueue.catch(()=>{}).then(()=>serial===renderSerial?preview(canvas,asset,serial):undefined);
   }
  }
  async function refresh(){
