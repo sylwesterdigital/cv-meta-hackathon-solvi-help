@@ -154,7 +154,7 @@ export function initRobotBrains(world,api,getRoom,toast){
    $('brainsGender').value=['female','male','nonbinary'].includes(robot.userData.robotBrain?.gender)?robot.userData.robotBrain.gender:'unspecified';
    $('brainsGender').disabled=!window.solviEditor.canEdit(robot);
    $('brainsInitiative').checked=Boolean(robot.userData.robotBrain?.initiative);
-   $('brainsInitiativeVision').checked=Boolean(robot.userData.robotBrain?.initiativeVision);
+   $('brainsInitiativeVision').checked=robot.userData.robotBrain?.initiativeVision!==false;
    $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);$('brainsInitiativeVision').disabled=!window.solviEditor.canEdit(robot);
    $('saveRobotBrains').disabled=!window.solviEditor.canEdit(robot);$('saveRobotChatPortrait').disabled=!window.solviEditor.canEdit(robot);
    $('brainsVisionResult').textContent='Capture eyes, then Describe scene with Muse Spark or Find object with SAM 3.1.';

@@ -2,6 +2,8 @@ import * as THREE from 'three';
 
 const LAYER_NAME='Robot path debug';
 const robotGroups=new Map();
+const cleanupTimers=new Map();
+const DEBUG_TRAIL_MS=15000;
 
 function root(scene){
   let group=scene.getObjectByName(LAYER_NAME);
@@ -9,13 +11,9 @@ function root(scene){
 }
 function material(color){return new THREE.LineBasicMaterial({color,transparent:true,opacity:.95,depthWrite:false});}
 function line(points,color,closed=false){
-  const geometry=new THREE.BufferGeometry().setFromPoints(points.map(p=>new THREE.Vector3(p.x,p.y??.03,p.z)));
-  const mesh=new THREE.Line(closed?geometry:new THREE.BufferGeometry().setFromPoints(points.map(p=>new THREE.Vector3(p.x,p.y??.03,p.z))),material(color));
-  if(closed){
-    const closedPoints=[...points,points[0]].map(p=>new THREE.Vector3(p.x,p.y??.03,p.z));
-    mesh.geometry.dispose();
-    mesh.geometry=new THREE.BufferGeometry().setFromPoints(closedPoints);
-  }
+  const coordinates=closed?[...points,points[0]]:points;
+  const geometry=new THREE.BufferGeometry().setFromPoints(coordinates.map(p=>new THREE.Vector3(p.x,p.y??.06,p.z)));
+  const mesh=new THREE.Line(geometry,material(color));
   return mesh;
 }
 function obstacleRect(obstacle){
@@ -39,20 +37,32 @@ function sector(origin,target,radius=2.2,spread=Math.PI/3,color=0x58d2ff){
 }
 function disposeGroup(group){group?.traverse?.(node=>{node.geometry?.dispose?.();node.material?.dispose?.();});group?.removeFromParent?.();}
 
-export function updateRobotPathDebug(world,robot,{start,waypoints=[],obstacles=[],destination=null}={}){
+export function updateRobotPathDebug(world,robot,{start,waypoints=[],obstacles=[],destination=null,blocked=false}={}){
   if(!world?.scene||!robot?.userData?.editorId)return;
   clearRobotPathDebug(world,robot.userData.editorId);
   const group=new THREE.Group();group.name='debug-'+robot.userData.editorId;
   group.userData.robotId=robot.userData.editorId;
   const pts=[start||{x:robot.position.x,z:robot.position.z},...waypoints.map(p=>({x:p.x,z:p.z})),destination||waypoints.at(-1)||{x:robot.position.x,z:robot.position.z}];
-  if(pts.length>1)group.add(line(pts,0x66ff95));
+  if(pts.length>1)group.add(line(pts,blocked?0xff5656:0x66ff95));
   for(const obstacle of obstacles.slice(0,60))group.add(line(obstacleRect(obstacle),0xff7b6a,true));
-  const dest=destination||waypoints.at(-1);if(dest){group.add(circle(dest,.34,0xffd15c));group.add(sector(pts[0],dest));}
+  const dest=destination||waypoints.at(-1);if(dest){group.add(circle(dest,.34,blocked?0xff5656:0xffd15c));if(!blocked)group.add(sector(pts[0],dest));}
   root(world.scene).add(group);robotGroups.set(robot.userData.editorId,group);
 }
 
 export function clearRobotPathDebug(world,robotId){
+  const timer=cleanupTimers.get(robotId);if(timer)clearTimeout(timer);cleanupTimers.delete(robotId);
   const group=robotGroups.get(robotId)||world?.scene?.getObjectByName?.('debug-'+robotId);
   if(group)disposeGroup(group);
   robotGroups.delete(robotId);
+}
+
+// Keep completed or blocked plans visible briefly so users can inspect what was actually planned.
+export function finishRobotPathDebug(world,robotId){
+  if(!robotGroups.has(robotId))return;
+  const prior=cleanupTimers.get(robotId);if(prior)clearTimeout(prior);
+  cleanupTimers.set(robotId,setTimeout(()=>clearRobotPathDebug(world,robotId),DEBUG_TRAIL_MS));
+}
+
+export function clearAllRobotPathDebug(world){
+  for(const id of [...robotGroups.keys()])clearRobotPathDebug(world,id);
 }

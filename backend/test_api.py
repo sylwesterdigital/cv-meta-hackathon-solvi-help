@@ -530,6 +530,11 @@ from server import is_robot_visual_question, chat_attempts
 assert is_robot_visual_question('Jessica, what do you see now? I put a chair in front of you')
 assert is_robot_visual_question('CC: @Jessica can you see the chair?')
 assert not is_robot_visual_question('@Jessica how are you?')
+assert is_robot_visual_question('@Elox powiedz co teraz widzisz?')
+assert is_robot_visual_question('@Elox co widzisz?')
+assert is_robot_visual_question('@Elox how are you? There are some new objects in the surroundings?')
+assert is_robot_visual_question('@Elox can you see any new objects?')
+assert not is_robot_visual_question('@Elox how are you?')
 vision_text='Jessica, what do you see now? I put a chair in front of you'
 question=c.post('/api/message',headers=headers,json={'room':'lab','text':vision_text}).get_json()['message']
 with patch('server.active_model_key',return_value='test-key'):
@@ -647,6 +652,43 @@ assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
 assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
     'robot_id':'testrobot-0220','manual':True,'proactive':True,
     'media_ids':[photo_id],'views':['forward']}).status_code==400
+# v0.2.66: autonomous camera perception is separate from social chat and
+# uses a transient JPEG, per-robot nonce, visual memory and hard cooldown.
+from server import ROBOT_PERCEPTION_LAST, ROBOT_PERCEPTION_USER_LAST, ROBOT_PERCEPTION_PENDING, latest_robot_visual_memory
+ROBOT_PERCEPTION_LAST.clear();ROBOT_PERCEPTION_USER_LAST.clear();ROBOT_PERCEPTION_PENDING.clear()
+with patch('server.active_model_key',return_value='test-key'):
+    reservation=c.post('/api/robots/perception/start',headers=headers,json={'room':'lab','robot_id':'testrobot-0220'})
+assert reservation.status_code==200 and reservation.get_json()['ready'],(reservation.status_code,reservation.data)
+vision_token=reservation.get_json()['token']
+with patch('server.active_model_key',return_value='test-key'):
+    reserved_again=c.post('/api/robots/perception/start',headers=headers,json={'room':'lab','robot_id':'testrobot-0220'})
+assert reserved_again.status_code==200 and reserved_again.get_json()['ready'] is False
+with patch('server.active_model_key',return_value='test-key'),patch('server.meta_request',return_value={
+    'id':'obs-1','output_text':'A grey sofa is ahead; no active mission calls for movement.',
+    'usage':{'input_tokens':120,'output_tokens':12}}) as perceive_mock:
+    perception=c.post('/api/robots/perception/complete',headers=headers,data={
+        'room':'lab','robot_id':'testrobot-0220','token':vision_token,
+        'frame':(_BytesIO(b'\xff\xd8'+b'0'*900+b'\xff\xd9'),'camera.jpg','image/jpeg')})
+assert perception.status_code==200,(perception.status_code,perception.data)
+assert perception.get_json()['observed'] is True
+assert 'grey sofa' in latest_robot_visual_memory('lab','testrobot-0220')['text']
+assert perceive_mock.call_count==1
+assert c.post('/api/robots/perception/complete',headers=headers,data={
+    'room':'lab','robot_id':'testrobot-0220','token':vision_token,
+    'frame':(_BytesIO(b'\xff\xd8'+b'0'*900+b'\xff\xd9'),'camera.jpg','image/jpeg')}).status_code==403
+# Normal conversation starts a real observation when visual memory becomes old,
+# without any camera-specific phrase. This is not a text-only assertion.
+with db() as con:
+    con.execute('UPDATE robot_memories SET created=? WHERE room_id=? AND robot_id=? AND event LIKE ?',
+               ('2025-01-01T00:00:00Z','lab','testrobot-0220','Camera observation:%'))
+ordinary='Jessica, how has your day been?'
+ordinary_message=c.post('/api/message',headers=headers,json={'room':'lab','text':ordinary}).get_json()['message']
+with patch('server.active_model_key',return_value='test-key'):
+    ordinary_route=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':ordinary,'message_id':ordinary_message['id']})
+assert ordinary_route.status_code==200,(ordinary_route.status_code,ordinary_route.data)
+assert ordinary_route.get_json().get('needs_vision') is True and ordinary_route.get_json().get('implicit_vision') is True
+print('PASS: autonomous perception nonce, transient JPEG, stored visual memory, cooldown and natural conversation')
+
 print('PASS: explicit Brains 180/360 vision scan uses one guarded Muse request')
 # v0.2.46: target-directed sweep may discard all unmatched frames without
 # sending irrelevant JPEGs to Muse or inventing a detected chair.
@@ -707,6 +749,8 @@ mention_source=c.post('/api/message',headers=headers,json={
 queue=c.post('/api/robots/queue',headers=headers,json={'room':'lab','message_id':mention_source['id']})
 assert queue.status_code==200,(queue.status_code,queue.data)
 assert [r['name'] for r in queue.get_json()['targets']]==['Elox','Jessica'],queue.data
+# Group chat must not be diverted into a camera request simply because one robot's
+# visual memory has expired. Its autonomous perception runs separately.
 assert c.post('/api/robots/react',headers=headers,json={'room':'lab','message_id':mention_source['id'],
     'text':mention_source['text'],'target_robot_id':'wrong-robot'}).status_code==403
 chat_attempts[data['user']['id']]=[]
@@ -714,7 +758,7 @@ with _patch('server.active_model_key',return_value='test-key'),_patch('server.me
     'id':'group-1','output_text':'I can help organise the room.','usage':{'input_tokens':2,'output_tokens':9}}):
     one=c.post('/api/robots/react',headers=headers,json={'room':'lab','message_id':mention_source['id'],
         'text':mention_source['text'],'target_robot_id':elox['id']})
-assert one.status_code==200 and one.get_json()['answer']['speaker']=='Elox',(one.status_code,one.data)
+assert one.status_code==200 and one.get_json().get('answer',{}).get('speaker')=='Elox' and not one.get_json().get('needs_vision'),(one.status_code,one.data)
 queue_after=c.post('/api/robots/queue',headers=headers,json={'room':'lab','message_id':mention_source['id']})
 assert [r['name'] for r in queue_after.get_json()['targets']]==['Jessica'],queue_after.data
 assert c.post('/api/robots/react',headers=headers,json={'room':'lab','message_id':mention_source['id'],

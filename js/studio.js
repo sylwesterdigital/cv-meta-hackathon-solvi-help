@@ -79,7 +79,7 @@ const api={
   const headers={...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...(options.headers||{})};
   if(auth?.token)headers.Authorization='Bearer '+auth.token;
   headers['X-Solvi-Tab']=tab;
-  if(['/api/models','/api/chat','/api/robots/react','/api/robots/scenario','/api/robots/vision-reply','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
+  if(['/api/models','/api/chat','/api/robots/react','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
     const key=sessionStorage.getItem('solvi-meta-session-key');if(key)headers['X-Solvi-Model-Key']=key;
   }
   const res=await fetch(url,{...options,headers,cache:'no-store'});
@@ -277,10 +277,16 @@ async function reactOneRobot(message,targetRobotId,interruptedRobot=''){
    const editor=window.solviEditor,robot=editor?.items?.find(o=>o.userData.editorId===response.robot_id&&o.userData.editorKind==='robot');
    if(!robot){const error=response.robot_name+' cannot capture a view because the robot is not loaded in this browser.';$('chatStatus').textContent=error;await bubble({role:'assistant',speaker:response.robot_name||'Robot',model:'camera-error',text:error,created:new Date().toISOString()});return;}
    try{
-     emitBrainTrace(response.robot_id,robot.name,'EYES REQUEST','Capturing a real head-camera observation for the chat question.');
-     const scan=await captureRobotObservation(robot,message.text);
-     emitBrainTrace(response.robot_id,robot.name,'MUSE VISION',`Sending ${scan.media_ids.length} JPEG(s), labelled camera directions, saved identity, question and goals. No fabricated visual evidence.`);
-     const answer=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:response.robot_id,message_id:message.id,media_ids:scan.media_ids,panorama_media_id:scan.panorama_media_id,views:scan.views,target_phrase:scan.target_phrase,scanned_count:scan.scanned_count})});
+     const attached=response.vision_source==='attachment';
+     emitBrainTrace(response.robot_id,robot.name,'VISUAL CONTEXT',attached?'Analysing saved chat images; these are not robot camera frames.':'Capturing actual head-camera context for natural conversation.');
+     let payload={room:activeRoom,robot_id:response.robot_id,message_id:message.id};
+     if(attached)payload.use_chat_attachments=true;
+     else{
+       const scan=await captureRobotObservation(robot,message.text);
+       payload={...payload,media_ids:scan.media_ids,panorama_media_id:scan.panorama_media_id,views:scan.views,target_phrase:scan.target_phrase,scanned_count:scan.scanned_count,implicit_vision:response.implicit_vision===true};
+       emitBrainTrace(response.robot_id,robot.name,'MUSE VISION',`Sending ${scan.media_ids.length} real JPEG frame(s), with labelled camera directions and the current conversation.`);
+     }
+     const answer=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify(payload)});
      if(answer.answer)await bubble(answer.answer);
      emitBrainTrace(response.robot_id,robot.name,'VISION RESULT',`${answer.model||answer.answer?.model} · ${answer.answer?.text||'No text'} · estimated US$${Number(answer.usage?.estimated_usd||0).toFixed(6)}`);
      $('chatStatus').textContent=robot.name+' · camera observation shared'+(answer.usage?' · ~US$'+Number(answer.usage.estimated_usd||0).toFixed(5):'');
@@ -1109,11 +1115,45 @@ function bindUI(world){
  window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id)playCue(event.detail.action==='left'?'leave':'join');});
  document.addEventListener('pointerdown',primeAudio,{once:true});
  $('debugAllRobots').checked=sessionStorage.getItem(ROBOT_DEBUG_ALL_KEY)==='1';
- $('debugAllRobots').onchange=()=>{sessionStorage.setItem(ROBOT_DEBUG_ALL_KEY,$('debugAllRobots').checked?'1':'0');chatSignature='';loadMessages();};
- $('debugSelectedRobot').onchange=()=>{const id=debugRobotSelected();setRobotDebug(id,$('debugSelectedRobot').checked,sessionStorage);chatSignature='';loadMessages();};
+ $('debugAllRobots').onchange=()=>{sessionStorage.setItem(ROBOT_DEBUG_ALL_KEY,$('debugAllRobots').checked?'1':'0');window.solviEditor?.syncRobotPathDebug();chatSignature='';loadMessages();};
+ $('debugSelectedRobot').onchange=()=>{const id=debugRobotSelected();setRobotDebug(id,$('debugSelectedRobot').checked,sessionStorage);window.solviEditor?.syncRobotPathDebug();chatSignature='';loadMessages();};
  window.addEventListener('solvi:properties-robot-selected',syncRobotDebugUI);
  syncRobotDebugUI();
  setupChatPresentation();setupSettings();setupRobotVoiceSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();initRobotBrains(world,api,()=>activeRoom,toast);begin();
+ // Autonomic, private head-camera perception. A room-scoped server reservation
+ // avoids duplicate billable work across tabs; frames are sent transiently and
+ // stored only as short evidence-labelled memories, not published as chat images.
+ let perceptionBusy=false,perceptionCursor=0;
+ const observeAutonomously=async()=>{
+   if(perceptionBusy||document.visibilityState!=='visible'||!online||!auth||!me||!window.solviEditor)return;
+   if(!window.solviRoom||window.solviRoom!==activeRoom)return;
+   if(window.solviEditor.world?.renderer?.xr?.isPresenting)return;
+   const editor=window.solviEditor;
+   const robots=editor.items.filter(o=>o.userData.editorKind==='robot'&&o.userData.robotBrain?.initiativeVision!==false&&editor.canEdit(o));
+   if(!robots.length)return;
+   const robot=robots[perceptionCursor++%robots.length];
+   const currentRoom=activeRoom;
+   perceptionBusy=true;
+   try{
+     const plan=await api.req('/api/robots/perception/start',{method:'POST',body:JSON.stringify({room:currentRoom,robot_id:robot.userData.editorId})});
+     if(!plan.ready)return;
+     if(activeRoom!==currentRoom||!editor.items.includes(robot))return;
+     const yaw=[0,90,-90,180][Math.floor(perceptionCursor/Math.max(robots.length,1))%4];
+     const photo=await captureRobotView(editor.world,robot,{yawOffset:yaw});
+     if(!photo?.size||activeRoom!==currentRoom)return;
+     const form=new FormData();form.append('room',currentRoom);form.append('robot_id',robot.userData.editorId);form.append('token',plan.token);
+     form.append('frame',photo,`perception-${robot.userData.editorId}.jpg`);
+     const observed=await api.req('/api/robots/perception/complete',{method:'POST',body:form});
+     if(observed.observed){
+       emitBrainTrace(robot.userData.editorId,robot.name,'PRIVATE CAMERA OBSERVATION',`${observed.observation} · yaw ${yaw}° · model usage ~US$${Number(observed.usage?.estimated_usd||0).toFixed(6)}`);
+       robot.userData.lastCameraObservation={text:observed.observation,at:observed.observed_at};
+     }
+   }catch(error){
+     emitBrainTrace(robot.userData.editorId,robot.name,'PERCEPTION UNAVAILABLE',error.message);
+   }finally{perceptionBusy=false;}
+ };
+ setTimeout(observeAutonomously,12000);setInterval(observeAutonomously,30000);
+
  // Opt-in robot social initiatives: the server enforces a six-minute per-robot
  // cooldown even with multiple connected clients. They are never executable moves.
  let initiativeBusy=false,initiativeCursor=0;

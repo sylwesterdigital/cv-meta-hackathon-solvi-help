@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.65",
+  "currentVersion": "0.2.67",
   "releases": [
+    {
+      "version": "0.2.67",
+      "publishedAt": "2026-10-29T23:17:57Z",
+      "changes": [
+        "Fix backend integration regression: group @mentions are answered in sequence and are not redirected to implicit camera vision when visual memory is stale. One-to-one natural camera observations and independent autonomous perception continue.",
+        "Expose robot floor route diagnostics immediately when robot Debug is enabled, including after a route has already been planned; show real A* waypoints, blocked attempts and scene obstacle footprints.",
+        "Keep completed path diagnostics visible for fifteen seconds, distinguish heading guide from verified camera evidence, and add an explanatory status legend to robot Properties.",
+        "Clear navigation debug visuals on scene reload, robot deletion and Stop; add regressions for vision routing and floor debug visibility."
+      ]
+    },
     {
       "version": "0.2.65",
       "publishedAt": "2026-10-29T22:53:09Z",
@@ -314,13 +324,6 @@
         "Make chat composer undock and drag by its header, with remembered position; add video and robot-view attachment icons.",
         "Post robot-eye screenshots in shared chat as robot-authored images, with optional Muse visual description and usage.",
         "Use room geometry, robot pose, time, objectives and memories to ground Jessica conversations; recognize unique short nicknames and offer opt-in rate-limited proactive questions."
-      ]
-    },
-    {
-      "version": "0.2.31",
-      "publishedAt": "2026-10-28T17:26:39Z",
-      "changes": [
-        "Reissue the v0.2.30 Chat, CC, Objects and Webcam release under a newer semantic version so the existing deployment watcher accepts it; application functionality is unchanged."
       ]
     }
   ]
