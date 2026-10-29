@@ -123,12 +123,13 @@ export class SceneEditor{
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!overlay.hidden){byId('cancelModelDrop').click();}});
   window.addEventListener('blur',stopModelDrag);
   window.addEventListener('focus',stopModelDrag);
-  const modelDragging=e=>[...e.dataTransfer?.items||[]].some(i=>i.kind==='file');
-  document.addEventListener('dragenter',e=>{if(modelDragging(e)){if(e.dataTransfer?.types?.includes('Files')&&!modelDragCancelled)overlay.hidden=false;refreshModelDrag();}});
-  document.addEventListener('dragover',e=>{if(modelDragging(e)){e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect=modelDragCancelled?'none':'copy';if(!modelDragCancelled)overlay.hidden=false;refreshModelDrag();}});
+  const modelDragging=e=>[...e.dataTransfer?.items||[]].some(i=>i.kind==='file')||e.dataTransfer?.types?.includes('Files');
+  document.addEventListener('dragenter',e=>{if(modelDragging(e)){if(!modelDragCancelled&&!e.target?.closest?.('.chat-composer'))overlay.hidden=false;refreshModelDrag();}});
+  document.addEventListener('dragover',e=>{if(modelDragging(e)){e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect=modelDragCancelled?'none':'copy';if(!modelDragCancelled&&!e.target?.closest?.('.chat-composer'))overlay.hidden=false;else if(e.target?.closest?.('.chat-composer'))overlay.hidden=true;refreshModelDrag();}});
   document.addEventListener('dragleave',e=>{if(!e.relatedTarget||e.clientX<=0||e.clientY<=0||e.clientX>=innerWidth-1||e.clientY>=innerHeight-1){stopModelDrag();modelDragCancelled=false;}});
   document.addEventListener('drop',async e=>{
     stopModelDrag();const wasCancelled=modelDragCancelled;modelDragCancelled=false;
+    if(e.defaultPrevented)return;
     const files=[...e.dataTransfer?.files||[]];if(wasCancelled){e.preventDefault();return;}if(!files.length)return;
     if(e.target?.closest?.('.avatar-gallery,.profile-modal'))return;
     e.preventDefault();e.stopPropagation();const file=files[0],modelFile=files.find(f=>/\.(glb|fbx)$/i.test(f.name));

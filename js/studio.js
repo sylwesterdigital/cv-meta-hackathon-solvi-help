@@ -1,6 +1,7 @@
 import {makeRealmCards,captureRealmPreview} from './realm-gallery.js';
 import {mentionQuery,mentionCandidates,insertMention} from './chat-mentions.js';
 import {renderChatAttachment,ensureChatMediaViewer} from './chat-attachments.js';
+import {chooseDroppedMediaAction} from './media-drop-dialog.js';
 import {ROBOT_DEBUG_ALL_KEY,robotDebugVisible,setRobotDebug,readDebugSelection} from './robot-debug.js';
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
@@ -181,18 +182,17 @@ async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask 
  const body=new FormData();body.append('file',file,file.name);const response=await api.req('/api/media',{method:'POST',body});return response.media;}
 function scrollChatToLatest(){const feed=$('chatFeed');if(!feed)return;requestAnimationFrame(()=>{feed.scrollTop=feed.scrollHeight;requestAnimationFrame(()=>{if(feed.scrollHeight-feed.scrollTop-feed.clientHeight>2)feed.scrollTop=feed.scrollHeight;});});}
 function updatePending(){const p=$('pendingMedia');p.replaceChildren();for(const m of pending){const badge=document.createElement('button');badge.textContent=`${m.name} ×`;badge.title='Remove attachment';badge.onclick=()=>{pending=pending.filter(x=>x!==m);updatePending();};p.append(badge);}}
-async function chooseDroppedMediaAction(file,target){
- const inChat=target?.closest?.('#chatPanel,.chat-composer,#chatFeed,#pendingMedia');
- if(inChat)return {mode:'chat'};
- if(!(file.type.startsWith('image/')||file.type.startsWith('video/')))return {mode:'chat'};
- const kind=file.type.startsWith('video/')?'video screen':'picture frame';
- const answer=String(window.prompt(`Drop “${file.name}”: type "chat" to attach it to Messages, or "scene white", "scene black", or "scene mirror" to add it to the 3D realm as a ${kind}.`,file.type.startsWith('video/')?'scene black':'scene white')||'').trim().toLowerCase();
- if(!answer)return null;
- if(answer==='chat')return {mode:'chat'};
- if(answer.startsWith('scene')){const parts=answer.split(/\s+/);const backing=['white','black','mirror'].includes(parts[1])?parts[1]:'white';return {mode:'scene',backing};}
- return {mode:'chat'};
-}
 async function attach(file){if(!file)return false;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');return true;}catch(e){toast(e.message);return false;}}
+async function postDroppedMediaToChat(file){
+ if(!me)throw Error('Sign in before posting an attachment');
+ const media=await uploadFile(file);
+ let result;
+ try{result=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:'',media:[media.id]})});}
+ catch(error){pending.push(media);pending=pending.slice(-3);updatePending();throw Error('Posting failed; attachment retained in composer: '+error.message);}
+ window.solviSetChatMode?.('overlay');
+ await bubble(result.message);playCue('sent');toast('Media posted to world chat');
+ return true;
+}
 async function reportRobotTask(command,status){
  if(!command?.id||status==='cancelled')return;
  try{const result=await api.req('/api/robots/task-result',{method:'POST',body:JSON.stringify({room:command.room,task_id:command.id,status})});
@@ -1066,14 +1066,15 @@ function bindUI(world){
  composer?.addEventListener('dragenter',e=>{if([...e.dataTransfer?.items||[]].some(i=>i.kind==='file')){e.preventDefault();dragAttachOn();}});
  composer?.addEventListener('dragover',e=>{if([...e.dataTransfer?.items||[]].some(i=>i.kind==='file')){e.preventDefault();e.dataTransfer.dropEffect='copy';dragAttachOn();}});
  composer?.addEventListener('dragleave',e=>{if(!composer.contains(e.relatedTarget))dragAttachOff();});
- composer?.addEventListener('drop',async e=>{dragAttachOff();const file=e.dataTransfer?.files?.[0];if(!file)return;e.preventDefault();await attach(file);});
+ composer?.addEventListener('drop',async e=>{dragAttachOff();const file=e.dataTransfer?.files?.[0];if(!file)return;e.preventDefault();e.stopPropagation();await attach(file);});
  window.solviHandleWorldFileDrop=async(file,detail={})=>{
-  try{const choice=await chooseDroppedMediaAction(file,detail.target);if(!choice)return false;
-   if(choice.mode==='chat')return await attach(file);
+  try{const choice=await chooseDroppedMediaAction(file);if(!choice)return false;
+   if(choice.mode==='chat')return await postDroppedMediaToChat(file);
    if(!file.type.startsWith('image/')&&!file.type.startsWith('video/'))return await attach(file);
    const media=await uploadFile(file);
-   window.solviEditor?.lastPointer && (window.solviEditor.lastPointer={x:detail.x||innerWidth/2,y:detail.y||innerHeight/2});
-   window.solviEditor?.addSceneMedia(media,{backing:choice.backing||'white'});
+   const editor=window.solviEditor;if(!editor)throw Error('The scene editor is not ready');
+   editor.lastPointer={x:Number.isFinite(detail.x)?detail.x:innerWidth/2,y:Number.isFinite(detail.y)?detail.y:innerHeight/2};
+   editor.addSceneMedia(media,{backing:choice.backing||'white'});
    toast((file.type.startsWith('video/')?'Video screen':'Picture frame')+' added to the realm');
    return true;
   }catch(error){toast(error.message);return false;}

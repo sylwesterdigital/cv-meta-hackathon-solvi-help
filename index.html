@@ -13,7 +13,7 @@
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <form id="elevenLabsKeyForm" class="solvi-key-form" autocomplete="off"></form><form id="metaApiKeyForm" class="solvi-key-form" autocomplete="off"></form><form id="adminPasswordForm" class="solvi-key-form" autocomplete="off"></form>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.63</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.64</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="realmGalleryButton" title="Browse realms as cards" aria-label="Browse realms" aria-haspopup="dialog">Realms</button><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="assetsButton" title="Browse uploaded 3D assets">Assets</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
@@ -43,7 +43,19 @@
   <button id="cameraFollowButton" type="button" class="bottom-camera-mode" data-mode="free" aria-label="Camera: Free. Click to switch camera mode." title="Cycle camera with V: Free · Chase · Orbit follow">Camera: Free</button>
   <label id="chaseDistanceControl" class="chase-distance-control" hidden title="Chase and Orbit follow distances; scroll or use trackpad over the scene"><span>Distance</span><input type="range" id="chaseDistanceSlider" min="1.8" max="35" step="0.1" value="5" aria-label="Chase camera distance"/><output id="chaseDistanceOutput" for="chaseDistanceSlider">5.0 m</output></label>
   <button type="button" id="xrStageButton" class="xr-stage-button" hidden>VR</button>
-  <div id="sceneDropOverlay" class="scene-drop-overlay" hidden aria-live="polite"><div><strong>Drop 3D model into world</strong><small>GLB or FBX · placed at pointer position</small><button id="cancelModelDrop" type="button" aria-label="Cancel model drag">Cancel</button></div></div>
+  <div id="sceneDropOverlay" class="scene-drop-overlay" hidden aria-live="polite"><div><strong>Drop into SOLVI</strong><small>Choose chat attachment or 3D picture / video screen · GLB/FBX imports directly</small><button id="cancelModelDrop" type="button" aria-label="Cancel file drag">Cancel</button></div></div>
+  <div id="mediaDropDialog" class="media-drop-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="mediaDropTitle" aria-describedby="mediaDropFileKind">
+    <section class="media-drop-card">
+      <div class="media-drop-heading"><div><span class="media-drop-eyebrow">FILE DROP</span><h2 id="mediaDropTitle">Where should this image go?</h2><p>Choose how the shared realm should use this file.</p></div><button id="mediaDropCancel" type="button" aria-label="Cancel file drop">✕</button></div>
+      <div class="media-drop-body">
+        <div class="media-drop-file"><div id="mediaDropPreview" class="media-drop-preview" aria-label="Dropped media preview"></div><strong id="mediaDropFileName"></strong><small id="mediaDropFileKind"></small></div>
+        <div class="media-drop-choices"><button id="mediaDropChat" class="media-drop-choice" type="button"><strong>Post to chat</strong><span>Share this media immediately in the current realm chat</span></button>
+          <div id="mediaDropSceneOptions" class="media-drop-scene-options"><label for="mediaDropBacking">Back of the picture frame / screen</label><select id="mediaDropBacking"><option value="white">White</option><option value="black">Black</option><option value="mirror">Mirror</option></select><button id="mediaDropScene" class="media-drop-choice media-drop-choice-primary" type="button"><strong>Add to scene</strong><span>Create an editable 3D frame or video screen at the drop location</span></button></div>
+        </div>
+      </div>
+      <div class="media-drop-footer"><span>No upload occurs until an action is selected.</span><button type="button" id="mediaDropDismiss">Cancel</button></div>
+    </section>
+  </div>
   <div id="toast" role="status" class="toast" hidden></div>
   <div id="devBackdrop" class="backdrop dev-backdrop" hidden>
     <section class="overlay" role="dialog" aria-modal="true" aria-labelledby="devTitle">

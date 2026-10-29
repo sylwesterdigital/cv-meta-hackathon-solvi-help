@@ -13,7 +13,8 @@ test('scene media surfaces are wired through frontend editor and backend validat
   assert.match(editor, /kind==='media'/);
   assert.match(editor, /mediaObjectControls/);
   assert.match(studio, /solviHandleWorldFileDrop/);
-  assert.match(studio, /scene white/);
+  assert.match(studio, /chooseDroppedMediaAction\(file\)/);
+  assert.doesNotMatch(studio, /window\.prompt\(`Drop/);
   assert.match(sceneMedia, /toggleSceneMediaPlayback/);
   assert.match(sceneMedia, /setSceneMediaBacking/);
   assert.match(backend, /stream\.m3u8/);

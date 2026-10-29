@@ -1566,3 +1566,32 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 
 .media-object-controls{display:grid;gap:8px;margin:.55rem 0}.media-object-actions{display:flex;gap:8px}.media-object-controls label{display:grid;gap:4px;font-size:.92rem}
 .chat-composer.drag-attach{outline:2px dashed var(--ui-accent,#79cde5);outline-offset:4px}
+
+/* v0.2.64: in-app, keyboard-accessible drag/drop decision (not browser prompt). */
+.media-drop-backdrop{position:fixed;inset:0;z-index:2200;display:grid;place-items:center;padding:16px;background:rgba(4,11,20,.76);backdrop-filter:blur(9px);pointer-events:auto;color:#ebf4ff}
+.media-drop-backdrop[hidden]{display:none!important}
+.media-drop-card{width:min(670px,100%);max-height:min(90dvh,760px);overflow-y:auto;border-radius:19px;background:linear-gradient(155deg,#1b3445,#0b1b2a 72%);border:1px solid #50708a;box-shadow:0 24px 100px rgba(0,0,0,.7);padding:22px;display:grid;gap:16px}
+.media-drop-heading{display:flex;justify-content:space-between;align-items:start;gap:12px}
+.media-drop-heading h2{font-size:clamp(18px,3.5vw,23px);font-weight:750;line-height:1.24;margin:5px 0 7px;letter-spacing:-.02em}
+.media-drop-heading p{font-size:12px;color:#bbcede;margin:0}
+.media-drop-eyebrow{font-size:10px;letter-spacing:.14em;font-weight:750;color:#79d8ed}
+#mediaDropCancel{border-radius:50%;min-width:36px;height:36px;padding:0;background:#29465b;flex:none;font-size:18px}
+.media-drop-body{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);align-items:stretch;gap:18px}
+.media-drop-file{min-width:0;display:flex;flex-direction:column;gap:6px;font-size:12px}
+.media-drop-file strong{overflow-wrap:anywhere;line-height:1.4;max-height:3.8em;overflow:hidden}
+.media-drop-file small{color:#a4bdd2}
+.media-drop-preview{height:205px;background:#081421;border-radius:12px;border:1px solid #35536a;display:grid;place-items:center;overflow:hidden}
+.media-drop-preview img,.media-drop-preview video{max-width:100%;width:100%;height:100%;object-fit:contain}
+.media-drop-placeholder{font-size:30px;font-weight:750;opacity:.45}
+.media-drop-choices{display:flex;flex-direction:column;gap:12px}
+.media-drop-choice{width:100%;min-height:86px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:6px;text-align:left;border-radius:12px;padding:14px 16px;background:#173348;border:1px solid #4a6b82;color:#e9f7ff;box-shadow:none;backdrop-filter:none}
+.media-drop-choice strong{font-size:15px;font-weight:750}
+.media-drop-choice span{font-size:11px;line-height:1.4;color:#bdd3e1}
+.media-drop-choice:hover:not(:disabled),.media-drop-choice:focus-visible{background:#234b60;border-color:#92d9ef;outline:2px solid #91d7e9;outline-offset:2px}
+.media-drop-choice-primary{background:#16485c;border-color:#5fa9be}
+.media-drop-scene-options{display:grid;gap:8px}
+.media-drop-scene-options label{font-size:12px;color:#cbdce8}
+.media-drop-scene-options select{background:#101e2c;color:#eff8ff;border:1px solid #688ba5;border-radius:9px;padding:10px;font:inherit;font-size:12px;width:100%}
+.media-drop-footer{border-top:1px solid #38566b;padding-top:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;color:#a9bdca}
+#mediaDropDismiss{padding:7px 14px;border:1px solid #698aa0;background:#20384b;border-radius:9px;white-space:nowrap}
+@media(max-width:560px){.media-drop-card{padding:16px;gap:14px}.media-drop-body{grid-template-columns:1fr;gap:12px}.media-drop-file{display:grid;grid-template-columns:95px 1fr;grid-template-rows:auto 1fr;align-content:start}.media-drop-preview{height:95px;grid-row:1/3}.media-drop-file strong{align-self:end}.media-drop-choice{min-height:65px;padding:12px}.media-drop-footer{font-size:10px}}

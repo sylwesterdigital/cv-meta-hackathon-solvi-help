@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.63",
+  "currentVersion": "0.2.64",
   "releases": [
+    {
+      "version": "0.2.64",
+      "publishedAt": "2026-10-29T18:57:44Z",
+      "changes": [
+        "Replace the native browser text prompt for dropped image and video destinations with an accessible SOLVI-themed modal featuring a local preview, one-click Post to chat and Add to scene actions.",
+        "Offer white, black and mirror back-side options directly in the scene-add dialog, remember the drop point and upload only after the user selects an action. Posting to chat publishes the attachment immediately without sending an existing chat draft.",
+        "Replace the misleading Drop 3D model overlay text with a general file-drop hint covering chat attachments, 3D media surfaces and GLB/FBX import.",
+        "Prevent duplicate file attachments caused by the chat composer drop handler and the document-wide drop handler both handling one drop.",
+        "Support Escape, cancel, backdrop dismiss, keyboard focus containment and preview URL cleanup; add release regression tests."
+      ]
+    },
     {
       "version": "0.2.63",
       "publishedAt": "2026-10-29T18:06:03Z",
@@ -312,17 +323,6 @@
         "Move opt-in webcam preview into a dedicated panel with independent Face, Hands and Voice waves toggles, and local camera-based gesture emoji responses.",
         "Attach and send a selected robots actual head-camera JPEG directly in room chat through the existing authenticated media backend.",
         "Widen World tools to 176px and keep labels on a single line; preserve small-screen layouts and avoid hidden controls showing through icon/button CSS overrides; add regression tests."
-      ]
-    },
-    {
-      "version": "0.2.29",
-      "publishedAt": "2026-10-28T14:59:44Z",
-      "changes": [
-        "Restore WebXR feature detection: VR controls start hidden and only appear after an immersive-vr support check, including on expanded mobile navigation.",
-        "Remove duplicate Settings cog; keep profile initials or photo as the only profile graphic; use smaller, consistent panel close and minimize buttons.",
-        "Limit icon-and-text button labels to two lines with restrained navigation and object-panel dimensions, including at 200% UI size.",
-        "Replace nine permanent transform sliders and extra physics/light sliders with one context-sensitive range beneath the focused numeric input, retaining precise editing and individual reset buttons.",
-        "Shorten navigation, transform and save labels; preserve keyboard shortcuts through tooltips, and keep all previous Brains, chat, CC, physics and avatar functionality."
       ]
     }
   ]
