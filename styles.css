@@ -1197,3 +1197,6 @@ html[data-button-labels='text'] #sceneItems .scene-item-row>button.scene-item-lo
 #propertiesPanel #objectInspector .object-actions{display:flex!important;gap:4px!important;flex-wrap:wrap;justify-content:flex-end!important}
 #propertiesPanel #objectInspector .object-actions :is(#replaceModelFile,#replaceModelGallery){height:27px!important;min-height:27px!important;padding:3px 5px!important;font-size:11px!important;width:auto!important;min-width:37px!important}
 @media(max-width:480px){#assetGalleryBackdrop .avatar-gallery-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v0.2.52: keep autosave state visible even when world appearance has many controls. */
+#worldSettingsDrawer #worldSettingsStatus{position:sticky;top:0;z-index:1;display:block;min-height:21px;padding:3px 5px;margin:0;background:var(--ui-panel);color:var(--ui-fg);border-bottom:1px solid color-mix(in srgb,var(--ui-fg) 16%,transparent)}

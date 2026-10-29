@@ -38,9 +38,13 @@ test('sky shader includes cloud, rainbows, stars and valid menu choices',()=>{
 });
 test('world drawer exposes and saves every scene field',()=>{
  const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
- for(const id of ['envFogEnabled','envGridEnabled','envFogColor','envFogNear','envFogFar','envFloorSize','envFloorColor','envGridColor','envSkyType','envBackgroundColor','envSkyTop','envSkyHorizon','envSkySpeed','envSkyIntensity','envStarDensity','envViewDistance','saveWorldSettings'])
+ for(const id of ['envFogEnabled','envGridEnabled','envFogColor','envFogNear','envFogFar','envFloorSize','envFloorColor','envGridColor','envSkyType','envBackgroundColor','envSkyTop','envSkyHorizon','envSkySpeed','envSkyIntensity','envStarDensity','envViewDistance','worldSettingsStatus'])
   assert.ok(html.includes(`id="${id}"`),id);
  const studio=fs.readFileSync(new URL('../js/studio.js',import.meta.url),'utf8');
  assert.match(studio,/\/api\/room\/environment/);
- assert.match(studio,/useRoomEnvironment\(result\.environment\)/);
+ assert.match(studio,/createRoomAutosave/);
+ assert.match(studio,/environmentAutosave\.update\(activeRoom,env/);
+ assert.match(studio,/policyAutosave\.update\(activeRoom,policy/);
+ assert.doesNotMatch(studio,/savedRoomEnvironment\);fillEnvironmentFields\(savedRoomEnvironment\);\$\('worldSettingsDrawer'\)\.hidden/);
+ assert.ok(!html.includes('id="saveWorldSettings"')); 
 });

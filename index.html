@@ -11,7 +11,7 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.51</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.52</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="Show more world tools">More</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="assetsButton" title="Browse uploaded 3D assets">Assets</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
@@ -195,6 +195,7 @@
       <button id="openAdminSettings" type="button">Admin dashboard</button></details>
     </aside></div>
   <div id="worldSettingsDrawer" class="drawer-shell" hidden><aside class="drawer" aria-label="World editing settings"><div class="drawer-head"><strong>World settings</strong><button type="button" id="closeWorldSettings" aria-label="Close world settings"></button></div>
+      <small id="worldSettingsStatus" class="small-note" role="status" aria-live="polite">Changes save automatically</small>
       <p class="small-note">Room permissions apply to everyone in this realm. Open editing is the default.</p>
       <label class="field-label">Objects<select id="worldObjectsPolicy"><option value="open">Anyone can modify</option><option value="owned">Only the owner</option></select></label>
       <label class="field-label">Robots / avatars<select id="worldRobotsPolicy"><option value="open">Anyone can control or modify</option><option value="owned">Only the owner</option></select></label>
@@ -217,10 +218,8 @@
           <label>Star density <input id="envStarDensity" type="range" min="0" max="2" step="0.05" value="0.65"></label>
           <label>View distance <input id="envViewDistance" type="number" min="200" max="100000" step="100" value="1500"></label>
         </div>
-        <div class="world-environment-actions"><button id="previewWorldEnvironment" type="button">Preview</button><button id="resetWorldEnvironment" type="button">Reset</button></div>
+        <div class="world-environment-actions"><button id="resetWorldEnvironment" type="button">Reset appearance</button></div>
       </details>
-      <button type="button" id="saveWorldSettings" class="primary">Save world settings</button>
-      <small id="worldSettingsStatus" class="small-note" aria-live="polite"></small>
     </aside></div>
   <div id="assetGalleryBackdrop" class="backdrop avatar-gallery-backdrop" hidden>
    <section class="overlay avatar-gallery asset-gallery" role="dialog" aria-modal="true" aria-labelledby="assetGalleryTitle">

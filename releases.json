@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.51",
+  "currentVersion": "0.2.52",
   "releases": [
+    {
+      "version": "0.2.52",
+      "publishedAt": "2026-10-29T03:24:16Z",
+      "changes": [
+        "Automatically save per-room World Settings whenever fog, grid, floor, sky, background, view distance or editing permissions change; no Save or Preview action required.",
+        "Keep live appearance edits when closing World Settings and immediately flush outstanding edits to the backend, including policy and physics changes.",
+        "Serialize rapid autosaves, preserve latest edits across concurrent responses, and keep a room-specific local draft on network or permission failures for retry on reopen, reconnect or reload.",
+        "Show compact saving, saved, or failed status directly under the World Settings header, and automatically persist an explicitly confirmed reset to defaults.",
+        "Add autosave lifecycle regression tests for save, failure/retry, room isolation and fast slider changes; verify mobile and desktop drawer layouts."
+      ]
+    },
     {
       "version": "0.2.51",
       "publishedAt": "2026-10-29T03:07:57Z",
@@ -297,18 +308,6 @@
         "Correct inverted idle avatar strafing: Left moves visually left and Right moves visually right, without turning in place.",
         "Synchronize correct left/right strafe animations for locally controlled and remote avatars.",
         "Preserve forward bicycle steering, reverse walking and compact network movement messages."
-      ]
-    },
-    {
-      "version": "0.2.13",
-      "publishedAt": "2026-10-28T00:49:13Z",
-      "changes": [
-        "Idle left/right robot strafing with smoothed acceleration, model animation mixer blend and real GLB clip action selector.",
-        "Room-scoped world settings for independently open/owned editing of geometry and robots (open by default).",
-        "Transient in-world editing presence labels with participant names over selected objects and robots.",
-        "Persist draggable panel positions and floating chat size across page reloads.",
-        "Move Face/Posture to World tools, chat mode control bottom-left, messages toggle beside Settings, export/admin under Settings.",
-        "Rename selected objects, delete via scene list, correct overlapping avatar gallery cards."
       ]
     }
   ]

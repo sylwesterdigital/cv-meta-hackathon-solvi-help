@@ -9,6 +9,7 @@ import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PR
 import {playCue,primeAudio} from './audio-cues.js';
 import {RobotSpeech} from './robot-speech.js';
 import {ENVIRONMENT_DEFAULTS,normalizeEnvironment} from './scene-environment.js';
+import {createRoomAutosave} from './room-settings-autosave.js';
 
 const $=id=>document.getElementById(id);
 const random=()=>crypto.randomUUID();
@@ -436,6 +437,7 @@ async function configureRooms(){
  select.replaceChildren(...rooms.map(room=>new Option(room.title,room.id)));select.value=activeRoom;
  $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
  select.onchange=()=>{
+   environmentAutosave?.flushAll();policyAutosave?.flushAll();
    activeRoom=select.value;window.solviRoom=activeRoom;sessionStorage.setItem('solvi-room',activeRoom);loadWorldSettings();
    $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
    chatSignature='';cachedMessages=[];lastBubbleEntry=null;$('chatFeed').replaceChildren();playCue('leave');
@@ -447,6 +449,7 @@ const envFieldIds={fogEnabled:'envFogEnabled',gridEnabled:'envGridEnabled',fogCo
  backgroundColor:'envBackgroundColor',skyType:'envSkyType',skyTop:'envSkyTop',skyHorizon:'envSkyHorizon',
  skySpeed:'envSkySpeed',skyIntensity:'envSkyIntensity',starDensity:'envStarDensity',viewDistance:'envViewDistance'};
 let savedRoomEnvironment={...ENVIRONMENT_DEFAULTS};
+let environmentAutosave=null,policyAutosave=null;
 function fillEnvironmentFields(settings){
  const values=normalizeEnvironment(settings);
  for(const [key,id] of Object.entries(envFieldIds)){
@@ -461,53 +464,120 @@ function readEnvironmentFields(){
  }
  return normalizeEnvironment(input);
 }
+function readWorldPolicyFields(){return {objects:$('worldObjectsPolicy').value,robots:$('worldRobotsPolicy').value,physics:Number($('worldPhysicsEnabled').value)};}
+function applyWorldPolicy(policy){
+ window.solviRoomPolicy={objects:policy.objects||'open',robots:policy.robots||'open',physics:Number(policy.physics)||0};
+ for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=window.solviRoomPolicy[key];
+ $('worldPhysicsEnabled').value=String(window.solviRoomPolicy.physics);
+ window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics)).catch(e=>toast('Physics unavailable: '+e.message));
+ window.solviEditor?.refreshList();
+}
+function autosaveWorldStatus(){
+ const status=$('worldSettingsStatus');if(!status)return;
+ const entries=[environmentAutosave?.status(activeRoom),policyAutosave?.status(activeRoom)].filter(Boolean);
+ const error=entries.find(e=>e.state==='error');
+ if(error){status.textContent='Not saved · '+(error.error?.message||'Request failed')+' · edits kept locally';return;}
+ if(entries.some(e=>e.state==='saving')){status.textContent='Saving…';return;}
+ if(entries.some(e=>e.pending)){status.textContent='Saving shortly…';return;}
+ status.textContent=entries.some(e=>e.state==='saved')?'Saved automatically':'Changes save automatically';
+}
 function useRoomEnvironment(value){
  savedRoomEnvironment=normalizeEnvironment(value);
- fillEnvironmentFields(savedRoomEnvironment);
- window.solviEditor?.world?.applyEnvironment(savedRoomEnvironment);
+ const live=environmentAutosave?.draft(activeRoom)||savedRoomEnvironment;
+ fillEnvironmentFields(live);
+ window.solviEditor?.world?.applyEnvironment(live);
 }
 async function loadRoomEnvironment(){
  const requestedRoom=activeRoom;
- // Avoid leaking the previous room's appearance into a newly selected room.
+ // Pending drafts are authoritative until the server confirms them. Never roll
+ // an unsaved change back when opening the drawer or loading the room.
  useRoomEnvironment(ENVIRONMENT_DEFAULTS);
- if(!online||!auth)return;
+ if(!online||!auth){
+  let local=null;try{local=JSON.parse(localStorage.getItem('solvi-local-environment-'+requestedRoom)||'null');}catch{}
+  if(requestedRoom===activeRoom&&local)useRoomEnvironment(local);
+  return;
+ }
  try{const data=await api.req('/api/room/environment?room='+encodeURIComponent(requestedRoom));
   if(requestedRoom===activeRoom)useRoomEnvironment(data.environment);
- }catch(error){if(requestedRoom===activeRoom)$('worldSettingsStatus').textContent=error.message;}
+ }catch(error){if(requestedRoom===activeRoom&&!environmentAutosave?.pending(requestedRoom))$('worldSettingsStatus').textContent=error.message;}
 }
 async function loadWorldSettings(){
-  const requestedRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};
-  if(online&&auth){try{const data=await api.req('/api/room/settings?room='+encodeURIComponent(requestedRoom));if(requestedRoom!==activeRoom)return;window.solviRoomPolicy=data.policy;}catch(error){toast(error.message);}}
-  for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=window.solviRoomPolicy[key]||'open';
-  $('worldPhysicsEnabled').value=String(window.solviRoomPolicy.physics||0);
-  window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics)).catch(e=>toast('Physics unavailable: '+e.message));
-  window.solviEditor?.refreshList();
-  await loadRoomEnvironment();
+ const requestedRoom=activeRoom;
+ environmentAutosave?.restore(requestedRoom);policyAutosave?.restore(requestedRoom);
+ const draft=policyAutosave?.draft(requestedRoom);
+ let localPolicy=null;if(!online||!auth){try{localPolicy=JSON.parse(localStorage.getItem('solvi-local-policy-'+requestedRoom)||'null');}catch{}}
+ applyWorldPolicy(draft||localPolicy||{objects:'open',robots:'open',physics:0});
+ if(online&&auth){try{
+   const data=await api.req('/api/room/settings?room='+encodeURIComponent(requestedRoom));
+   if(requestedRoom!==activeRoom)return;
+   applyWorldPolicy(policyAutosave?.draft(requestedRoom)||data.policy);
+  }catch(error){if(requestedRoom===activeRoom&&!policyAutosave?.pending(requestedRoom))toast(error.message);}}
+ await loadRoomEnvironment();autosaveWorldStatus();
 }
 function setupWorldSettings(){
+ fillEnvironmentFields(ENVIRONMENT_DEFAULTS);
+ environmentAutosave=createRoomAutosave({storage:localStorage,storagePrefix:'solvi-world-env-draft-',delay:500,
+  onStatus:(room)=>{if(room===activeRoom)autosaveWorldStatus();},
+  async persist(room,environment){
+   if(online&&auth)return api.req('/api/room/environment',{method:'PUT',body:JSON.stringify({room,environment})});
+   localStorage.setItem('solvi-local-environment-'+room,JSON.stringify(environment));return {environment};
+  },
+  onSaved(room,_value,result){if(room===activeRoom)useRoomEnvironment(result.environment);}
+ });
+ policyAutosave=createRoomAutosave({storage:localStorage,storagePrefix:'solvi-world-policy-draft-',delay:200,
+  onStatus:(room)=>{if(room===activeRoom)autosaveWorldStatus();},
+  async persist(room,policy){
+   if(online&&auth)return api.req('/api/room/settings',{method:'PUT',body:JSON.stringify({room,...policy})});
+   localStorage.setItem('solvi-local-policy-'+room,JSON.stringify(policy));return {policy};
+  },
+  onSaved(room,_value,result){if(room===activeRoom)applyWorldPolicy(result.policy);}
+ });
+ environmentAutosave.restore(activeRoom);policyAutosave.restore(activeRoom);
+ const retryPending=()=>{environmentAutosave.retry(activeRoom);policyAutosave.retry(activeRoom);};
+ $('worldSettingsButton').onclick=()=>{
+  $('worldSettingsDrawer').hidden=false;
+  if(environmentAutosave.pending(activeRoom)||policyAutosave.pending(activeRoom))retryPending();
+  else void loadWorldSettings();
+  autosaveWorldStatus();
+ };
+ $('closeWorldSettings').onclick=()=>{
+  $('worldSettingsDrawer').hidden=true;
+  // Closing must never revert the live scene or throw away a local edit.
+  void environmentAutosave.flush(activeRoom);void policyAutosave.flush(activeRoom);
+ };
+ $('worldSettingsDrawer').onpointerdown=e=>{if(e.target===$('worldSettingsDrawer'))$('closeWorldSettings').click();};
+ $('resetWorldEnvironment').onclick=()=>{
+  if(!window.confirm('Restore the default room appearance? This change will save automatically.'))return;
   fillEnvironmentFields(ENVIRONMENT_DEFAULTS);
-  $('worldSettingsButton').onclick=()=>{loadWorldSettings();$('worldSettingsDrawer').hidden=false;};
-  $('closeWorldSettings').onclick=()=>{window.solviEditor?.world?.applyEnvironment(savedRoomEnvironment);fillEnvironmentFields(savedRoomEnvironment);$('worldSettingsDrawer').hidden=true;};
-  $('worldSettingsDrawer').onpointerdown=e=>{if(e.target===$('worldSettingsDrawer'))$('closeWorldSettings').click();};
-  $('previewWorldEnvironment').onclick=()=>{window.solviEditor?.world?.applyEnvironment(readEnvironmentFields());$('worldSettingsStatus').textContent='Preview only · Save to share with the room';};
-  $('resetWorldEnvironment').onclick=()=>{fillEnvironmentFields(ENVIRONMENT_DEFAULTS);window.solviEditor?.world?.applyEnvironment(ENVIRONMENT_DEFAULTS);$('worldSettingsStatus').textContent='Defaults previewed · Save to apply';};
-  const envInputIds=new Set(Object.values(envFieldIds));
-  $('worldSettingsDrawer').addEventListener('input',e=>{if(envInputIds.has(e.target?.id))window.solviEditor?.world?.applyEnvironment(readEnvironmentFields());});
-  $('saveWorldSettings').onclick=async()=>{
-    const data={room:activeRoom,objects:$('worldObjectsPolicy').value,robots:$('worldRobotsPolicy').value,physics:Number($('worldPhysicsEnabled').value)};
-    try{if(online&&auth){const response=await api.req('/api/room/settings',{method:'PUT',body:JSON.stringify(data)});window.solviRoomPolicy=response.policy;}
-      else window.solviRoomPolicy={objects:data.objects,robots:data.robots,physics:data.physics};
-      const env=readEnvironmentFields();
-      if(online&&auth){const result=await api.req('/api/room/environment',{method:'PUT',body:JSON.stringify({room:activeRoom,environment:env})});useRoomEnvironment(result.environment);}
-      else useRoomEnvironment(env);
-      $('worldSettingsStatus').textContent='Room appearance & policies saved.';await window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics));window.solviEditor?.refreshList();
-    }catch(e){$('worldSettingsStatus').textContent=e.message;}
-  };
-  window.addEventListener('solvi:world-policy',e=>{window.solviRoomPolicy=e.detail.policy;
-    $('worldPhysicsEnabled').value=String(e.detail.policy.physics||0);window.solviEditor?.physics.setEnabled(Boolean(e.detail.policy.physics)).catch(err=>toast('Physics unavailable: '+err.message));
-    for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=e.detail.policy[key]||'open';
-    window.solviEditor?.refreshList();});
-  window.addEventListener('solvi:room-environment',e=>{if(e.detail.room===activeRoom)useRoomEnvironment(e.detail.environment);});
+  window.solviEditor?.world?.applyEnvironment(ENVIRONMENT_DEFAULTS);
+  environmentAutosave.update(activeRoom,ENVIRONMENT_DEFAULTS,{immediate:true});
+ };
+ const envInputIds=new Set(Object.values(envFieldIds));
+ const changeEnvironment=e=>{
+  if(!envInputIds.has(e.target?.id))return;
+  if(e.target.type==='number'&&e.target.value.trim()==='')return;
+  const env=readEnvironmentFields();window.solviEditor?.world?.applyEnvironment(env);
+  environmentAutosave.update(activeRoom,env,{immediate:e.type==='change'});
+ };
+ $('worldSettingsDrawer').addEventListener('input',changeEnvironment);
+ $('worldSettingsDrawer').addEventListener('change',changeEnvironment);
+ for(const id of ['worldObjectsPolicy','worldRobotsPolicy','worldPhysicsEnabled']){
+  $(id).addEventListener('change',()=>{
+   const policy=readWorldPolicyFields();applyWorldPolicy(policy);
+   policyAutosave.update(activeRoom,policy,{immediate:true});
+  });
+ }
+ window.addEventListener('online',()=>{environmentAutosave.retryAll();policyAutosave.retryAll();});
+ window.addEventListener('solvi:authenticated',()=>{environmentAutosave.retryAll();policyAutosave.retryAll();});
+ window.addEventListener('pagehide',()=>{environmentAutosave.flushAll();policyAutosave.flushAll();});
+ window.addEventListener('solvi:world-policy',e=>{
+  if(e.detail.room!==activeRoom)return;
+  if(!policyAutosave.pending(activeRoom))applyWorldPolicy(e.detail.policy);
+ });
+ window.addEventListener('solvi:room-environment',e=>{
+  if(e.detail.room===activeRoom)useRoomEnvironment(e.detail.environment);
+ });
+ autosaveWorldStatus();
 }
 
 function configureDragging(){
