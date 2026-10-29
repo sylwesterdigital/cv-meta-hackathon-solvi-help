@@ -88,6 +88,31 @@ assert stored_light['light']['type']=='spot' and stored_light['light']['intensit
 light['light']['type']='invalid'
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':light}).status_code==400
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testlight-001'}}).status_code==200
+# Transform locks are validated on the server and survive individual patches and full-room saves.
+fixture={'id':'lockcube-0049','kind':'cube','name':'Large model lock test',
+         'position':[0,0,0],'rotation':[0,0,0],'scale':[1,1,1],'transformLocked':True}
+req={'room':'lab','action':'upsert','object':fixture}
+r=c.post('/api/scene/object',headers=headers,json=req)
+assert r.status_code==200,(r.status_code,r.data)
+assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects'][0]['transformLocked'] is True
+bad={**fixture,'transformLocked':'yes'}
+r=c.post('/api/scene/object',headers=headers,json={**req,'object':bad})
+assert r.status_code==400,(r.status_code,r.data)
+assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects'][0]['transformLocked'] is True
+fixture['transformLocked']=False
+assert c.post('/api/scene/object',headers=headers,json=req).status_code==200
+assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects'][0]['transformLocked'] is False
+scene=c.get('/api/scene?room=lab',headers=headers).get_json()
+fixture['transformLocked']=True
+r=c.put('/api/scene',headers=headers,json={'room':'lab','revision':scene['revision'],'objects':[fixture]})
+assert r.status_code==200,(r.status_code,r.data)
+assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects'][0]['transformLocked'] is True
+scene=c.get('/api/scene?room=lab',headers=headers).get_json()
+fixture['transformLocked']='yes'
+r=c.put('/api/scene',headers=headers,json={'room':'lab','revision':scene['revision'],'objects':[fixture]})
+assert r.status_code==400,(r.status_code,r.data)
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'lockcube-0049'}}).status_code==200
+print('PASS: per-object transform locks, bool validation and bulk/patch persistence')
 robot={'id':'testrobot-001','kind':'robot','name':'Pilot','position':[0,0,0],
        'rotation':[0,0,0],'scale':[1,1,1],'speed':1.65}
 r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot})

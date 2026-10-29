@@ -1170,3 +1170,15 @@ html[data-button-labels='icon'] #propertiesPanel #objectInspector .transform-mod
 #worldSettingsDrawer .world-env-fields input[type=range]{padding:0;accent-color:var(--solvi-accent)}
 #worldSettingsDrawer .world-environment-actions{display:flex;gap:7px;justify-content:flex-end;margin-top:8px}
 @media(max-width:440px){#worldSettingsDrawer .drawer{width:100vw!important;padding:10px 12px!important}}
+
+/* v0.2.49: compact per-object transform lock immediately before the trash button. */
+#sceneItems .scene-item-row>button.scene-item-name,
+html[data-button-labels='icon'] #sceneItems .scene-item-row>button.scene-item-name[data-ui-icon]{flex:1 1 0!important;min-width:0!important;width:0!important;max-width:none!important;overflow:hidden!important;text-overflow:ellipsis!important;justify-content:flex-start!important}
+#sceneItems .scene-item-row>button.scene-item-lock,
+html[data-button-labels='icon'] #sceneItems .scene-item-row>button.scene-item-lock[data-ui-icon]{display:inline-flex!important;flex:0 0 34px!important;width:34px!important;min-width:34px!important;max-width:34px!important;height:36px!important;min-height:36px!important;max-height:36px!important;padding:7px!important;align-items:center!important;justify-content:center!important;gap:0!important;font-size:0!important;border-radius:7px!important}
+#sceneItems .scene-item-row>button.scene-item-lock::before,
+html[data-button-labels='icon'] #sceneItems .scene-item-row>button.scene-item-lock::before,
+html[data-button-labels='text'] #sceneItems .scene-item-row>button.scene-item-lock::before{display:inline-block!important;width:19px!important;height:19px!important;flex:0 0 19px!important}
+#sceneItems .scene-item-row>button.scene-item-lock[data-locked='true']{box-shadow:inset 0 0 0 2px var(--solvi-accent,#6bdbe6)!important;background:color-mix(in srgb,var(--solvi-accent,#6bdbe6) 28%,#102b3b)!important}
+#sceneItems .scene-item-row>button.scene-item-lock:disabled{opacity:.45;cursor:not-allowed}
+#sceneItems .scene-item-row{min-width:0!important;gap:4px!important}

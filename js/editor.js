@@ -8,6 +8,7 @@ import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneMode
 import {ScenePhysics} from './scene-physics.js';
 import {planRobotPath,pathBlocked} from './robot-pathfinding.js';
 import {physicsOptions} from './physics-options.js';
+import {isTransformLocked,mayTransform} from './transform-lock.js';
 
 const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'];
 const byId=id=>document.getElementById(id);
@@ -84,7 +85,7 @@ export class SceneEditor{
   });
   this.transform.addEventListener('mouseDown',()=>{this.broadcastEdit(true);this.transformBefore=this.snapshot(this.selected);world.editorDragging=true;world.editorGizmoPointer=true;world.controls.enabled=false;});
   this.transform.addEventListener('mouseUp',()=>{this.broadcastEdit(false);world.editorDragging=false;this.physics.sync(this.selected);this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
-  this.transform.addEventListener('objectChange',()=>{if(!this.canEdit(this.selected))return;this.updateInspector();this.queueSave(this.selected);});
+  this.transform.addEventListener('objectChange',()=>{if(!this.canTransform(this.selected))return;this.updateInspector();this.queueSave(this.selected);});
   window.addEventListener('solvi:robot-model-ready',e=>{if(this.selected?.userData.editorId===e.detail.id)this.updateInspector();});
   this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
  }
@@ -184,7 +185,7 @@ export class SceneEditor{
    hydrateRobot(obj);this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
   };
   for(const mode of ['translate','rotate','scale'])byId('transform-'+mode).onclick=()=>{
-   if(!this.selected||!this.canEdit(this.selected))return;
+   if(!this.selected||!this.canTransform(this.selected))return this.toast('Unlock this object to transform it');
    this.transform.setMode(mode);
    this.transform.attach(this.selected); // Explicit manual placement of robots remains possible.
   };
@@ -232,14 +233,14 @@ export class SceneEditor{
 
   }
   for(const field of ['position','rotation','scale'])byId(field+'-reset').onclick=()=>{
-   const obj=this.selected;if(!obj||!this.canEdit(obj))return;
+   const obj=this.selected;if(!obj||!this.canTransform(obj))return;
    const before=this.snapshot(obj);const neutral=field==='scale'?1:0;
    obj[field].set(neutral,neutral,neutral);this.physics.sync(obj);
    this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.updateInspector();
    byId('inspectorValueSlider').hidden=true;
   };
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
-   const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canEdit(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v))return;const before=this.snapshot(this.selected);
+   const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canTransform(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v))return;const before=this.snapshot(this.selected);
     const vec=this.selected[field];const name=['x','y','z'][axis];vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
     this.physics.sync(this.selected);this.recordEdit(before,this.snapshot(this.selected));this.refreshList();this.queueSave(this.selected);};}
   byId('objectColor').addEventListener('focus',()=>this.colorBefore=this.snapshot(this.selected));byId('objectColor').addEventListener('change',()=>{this.recordEdit(this.colorBefore,this.snapshot(this.selected));this.colorBefore=null;});
@@ -294,12 +295,13 @@ export class SceneEditor{
    else if(this.selected&&e.code==='KeyX'){e.preventDefault();this.remove();}
    else if(this.selected?.userData.editorKind==='robot'&&['ShiftLeft','ShiftRight'].includes(e.code)){this.robotKeys.add(e.code);}
    else if(this.selected?.userData.editorKind==='robot'&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)){e.preventDefault();this.robotKeys.add(e.code);this.world.keys.delete(e.code);if(e.code==='Space'&&!e.repeat){robotAction(this.selected,'jump');/* Jump is synchronised through the compact robot-input event. */}else if(e.code!=='Space'){this.selected.userData.robotGoal=null;}}
-   else if(this.selected&&['KeyG','KeyR','KeyS'].includes(e.code))this.transform.setMode({KeyG:'translate',KeyR:'rotate',KeyS:'scale'}[e.code]);
+   else if(this.selected&&['KeyG','KeyR','KeyS'].includes(e.code)){if(!this.canTransform(this.selected)){this.toast('Unlock this object to transform it');return;}this.transform.setMode({KeyG:'translate',KeyR:'rotate',KeyS:'scale'}[e.code]);}
    else if(this.selected&&['Delete','Backspace'].includes(e.key)){e.preventDefault();this.remove();}
   });
   window.addEventListener('keyup',e=>{this.robotKeys.delete(e.code);});
   window.addEventListener('blur',()=>{this.robotKeys.clear();this.broadcastEdit(false);});
  }
+ canTransform(obj){return mayTransform(obj,this.canEdit(obj));}
  canEdit(obj){if(!obj)return false;const policy=window.solviRoomPolicy||{objects:'open',robots:'open'};const type=obj.userData.editorKind==='robot'?'robots':'objects';if(policy[type]!=='owned')return true;const uid=window.solviAPI?.auth()?.profile?.id;return !obj.userData.ownerId||obj.userData.ownerId===uid;}
  duplicate(){
   if(!this.selected)return;if(!this.canEdit(this.selected))return this.toast('Owner only');const source=this.selected,entry=this.snapshot(source);if(!entry)return;
@@ -320,13 +322,14 @@ export class SceneEditor{
  select(obj){if(this.selected&&this.selected!==obj)this.broadcastEdit(false);this.clearLightHelper();this.robotKeys.clear();this.localRobotInput=null;this.selected=obj;
   if(obj?.userData.editorKind==='robot')for(const key of ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'])this.world.keys.delete(key);
   // Robots are controlled with arrows, not a permanent transform gizmo.
-  if(this.canEdit(obj)&&obj.userData.editorKind!=='robot')this.transform.attach(obj);
+  if(this.canTransform(obj)&&obj.userData.editorKind!=='robot')this.transform.attach(obj);
   else{this.transform.detach();if(!this.canEdit(obj))this.toast('Read-only object · owned by another user');}
   this.updateInspector();this.refreshList();
   window.dispatchEvent(new CustomEvent('solvi:properties-robot-selected',{detail:{robotId:obj?.userData.editorKind==='robot'?obj.userData.editorId:null}}));
   if(obj)this.world.focusCameraOn(obj);
   if(obj)this.broadcastEdit(true);}
  updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;byId('inspectorValueSlider').hidden=true;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
+  this.syncTransformLockControls(obj);
   byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
@@ -337,6 +340,24 @@ export class SceneEditor{
   const color=obj.material?.color||obj.children.find(c=>c.material?.color)?.material?.color;
   byId('objectColor').value=color?'#'+color.getHexString():'#88bbdd';byId('texturePreset').value=obj.userData.textureName||'none';
  }
+ syncTransformLockControls(obj){
+  const locked=isTransformLocked(obj),permitted=this.canEdit(obj);
+  if(locked&&this.transform.object===obj)this.transform.detach();
+  for(const mode of ['translate','rotate','scale']){const button=byId('transform-'+mode);button.disabled=!permitted||locked;button.title=locked?'Unlock object in Objects list before transforming':button.getAttribute('aria-label')||mode;}
+  for(const field of ['position','rotation','scale']){
+   byId(field+'-reset').disabled=!permitted||locked;
+   for(let i=0;i<3;i++)byId(field+'-'+i).disabled=!permitted||locked;
+  }
+  if(locked)byId('inspectorValueSlider').hidden=true;
+ }
+ toggleTransformLock(obj){
+  if(!obj||!this.canEdit(obj))return this.toast('Only permitted users can lock objects');
+  const locked=!isTransformLocked(obj);
+  obj.userData.transformLocked=locked;
+  if(locked&&this.transform.object===obj){this.transform.detach();this.world.editorGizmoPointer=false;this.world.editorDragging=false;}
+  if(obj===this.selected){this.syncTransformLockControls(obj);if(!locked&&obj.userData.editorKind!=='robot')this.transform.attach(obj);}
+  this.queueSave(obj);this.refreshList();this.toast(locked?'Transform locked · '+obj.name:'Transform unlocked · '+obj.name);
+ }
  updateColliderOption(){const mode=byId('objectPhysicsMode').value;const selector=byId('objectCollider');selector.disabled=mode!=='static';if(mode!=='static')selector.value='box';byId('colliderHint').hidden=mode!=='static';const status=byId('colliderRuntimeStatus');status.hidden=mode!=='static'||selector.value!=='trimesh';status.textContent=this.selected?.userData.colliderStatus||(this.selected?.userData.editorKind==='model'&&!this.selected?.userData.modelReady?'Waiting for imported model geometry':'Physics must be enabled for collider creation');}
  refreshRobotActions(obj){const select=byId('robotActionSelect');select.querySelectorAll('optgroup[data-real-actions]').forEach(n=>n.remove());
   const clips=obj.userData.robotAvailableActions||[];if(clips.length){const group=document.createElement('optgroup');group.label='Model animations';group.dataset.realActions='1';for(const name of clips.slice(0,120))group.append(new Option(name,'clip:'+name));select.append(group);}
@@ -345,8 +366,9 @@ export class SceneEditor{
   visibleSceneItems(){const term=byId('sceneObjectSearch')?.value?.trim().toLocaleLowerCase()||'';const filter=byId('sceneObjectFilter')?.value||'all';return this.items.filter(o=>(filter==='all'||(filter==='robot')===(o.userData.editorKind==='robot'))&&(!term||(`${o.name} ${o.userData.editorKind}`).toLocaleLowerCase().includes(term)));}
  refreshList(){const list=byId('sceneItems');if(!list)return;list.replaceChildren();const visible=this.visibleSceneItems();const ids=new Set(this.items.map(o=>o.userData.editorId));for(const id of this.bulkChecked)if(!ids.has(id))this.bulkChecked.delete(id);
   for(const obj of visible){const row=document.createElement('div');row.className='scene-item-row';const check=document.createElement('input');check.type='checkbox';check.className='scene-row-check';check.title='Select '+obj.name;check.setAttribute('aria-label','Select '+obj.name);check.checked=this.bulkChecked.has(obj.userData.editorId);check.disabled=!this.canEdit(obj);check.onchange=()=>{if(check.checked)this.bulkChecked.add(obj.userData.editorId);else this.bulkChecked.delete(obj.userData.editorId);this.updateBulkControls();};
-   const b=document.createElement('button');b.className=obj===this.selected?'selected':'';b.textContent=`${obj.userData.editorKind} · ${obj.name}`;b.dataset.objectKind=obj.userData.editorKind;b.onclick=()=>this.select(obj);
-   const remove=document.createElement('button');remove.className='scene-item-delete';remove.textContent='';remove.dataset.uiIcon='delete';remove.title='Delete '+obj.name;remove.setAttribute('aria-label','Delete '+obj.name);remove.disabled=!this.canEdit(obj);remove.onclick=()=>{this.select(obj);this.remove();};if(byId('scenePanel').classList.contains('bulk-mode'))row.append(check);row.append(b,remove);list.append(row);}
+   const b=document.createElement('button');b.className='scene-item-name'+(obj===this.selected?' selected':'');b.textContent=`${obj.userData.editorKind} · ${obj.name}`;b.dataset.objectKind=obj.userData.editorKind;b.onclick=()=>this.select(obj);
+   const lock=document.createElement('button');lock.type='button';lock.className='scene-item-lock';lock.dataset.uiIcon=isTransformLocked(obj)?'lock':'unlock';lock.dataset.locked=String(isTransformLocked(obj));lock.setAttribute('aria-pressed',String(isTransformLocked(obj)));lock.setAttribute('aria-label',(isTransformLocked(obj)?'Unlock ':'Lock ')+obj.name+' transforms');lock.title=(isTransformLocked(obj)?'Unlock':'Lock')+' transforms · '+obj.name;lock.disabled=!this.canEdit(obj);lock.onclick=()=>this.toggleTransformLock(obj);
+   const remove=document.createElement('button');remove.className='scene-item-delete';remove.textContent='';remove.dataset.uiIcon='delete';remove.title='Delete '+obj.name;remove.setAttribute('aria-label','Delete '+obj.name);remove.disabled=!this.canEdit(obj);remove.onclick=()=>{this.select(obj);this.remove();};if(byId('scenePanel').classList.contains('bulk-mode'))row.append(check);row.append(b,lock,remove);list.append(row);}
   this.updateBulkControls();}
  updateBulkControls(){const visible=this.visibleSceneItems().filter(o=>this.canEdit(o));const n=this.items.filter(o=>this.bulkChecked.has(o.userData.editorId)&&this.canEdit(o)).length;byId('sceneDeleteSelected').disabled=n===0;byId('sceneDeleteSelected').textContent=`Delete ${n||'selected'}`;byId('sceneDeleteAll').disabled=!this.items.some(o=>this.canEdit(o));byId('sceneSelectAll').checked=visible.length>0&&visible.every(o=>this.bulkChecked.has(o.userData.editorId));byId('sceneSelectAll').indeterminate=visible.some(o=>this.bulkChecked.has(o.userData.editorId))&&!byId('sceneSelectAll').checked;}
  removeBulk(all){const targets=this.items.filter(o=>this.canEdit(o)&&(all||this.bulkChecked.has(o.userData.editorId)));if(!targets.length)return;
@@ -357,8 +379,8 @@ export class SceneEditor{
  remove(){if(!this.selected)return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
  texture(name){if(!this.selected||this.selected.userData.editorKind==='robot')return;if(this.canEdit(this.selected))this.selected.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
-  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed||1.8):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed||1):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed||1):undefined,brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined}));}
- apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.physics.clear();if(this.physics.enabled)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed||1;o.userData.robotStrafeSpeed=entry.strafeSpeed||1.8;o.userData.robotTurnSpeed=entry.turnSpeed||1;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;
+  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed||1.8):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed||1):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed||1):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined}));}
+ apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.physics.clear();if(this.physics.enabled)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed||1;o.userData.robotStrafeSpeed=entry.strafeSpeed||1.8;o.userData.robotTurnSpeed=entry.turnSpeed||1;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
@@ -387,7 +409,7 @@ export class SceneEditor{
   const obj=current?.userData.editorKind===entry.kind?current:objectFor(entry.kind);
   const isNew=obj!==current;
   if(isNew){obj.userData.editorId=id;this.items.push(obj);this.world.scene.add(obj);}
-  obj.name=entry.name||obj.name;obj.userData.ownerId=entry.owner||null;
+  obj.name=entry.name||obj.name;obj.userData.ownerId=entry.owner||null;obj.userData.transformLocked=entry.transformLocked===true;
   const oldTexture=obj.userData.textureName||'none',newTexture=entry.texture||'none';
   obj.position.fromArray(entry.position);obj.rotation.fromArray(entry.rotation);obj.scale.fromArray(entry.scale);
   if(entry.color&&entry.kind!=='model'){obj.traverse(node=>{if(node.material?.color&&node.userData.editorKind!=='robot'){
@@ -410,7 +432,11 @@ export class SceneEditor{
     obj.userData.robotReady=false;}
    hydrateRobot(obj);
   }
-  if(this.selected===obj&&byId('propertiesPanel')&&!byId('propertiesPanel').hidden)this.updateInspector();
+  if(this.selected===obj){
+   if(isTransformLocked(obj)&&this.transform.object===obj)this.transform.detach();
+   if(!isTransformLocked(obj)&&this.canTransform(obj)&&obj.userData.editorKind!=='robot'&&this.transform.object!==obj)this.transform.attach(obj);
+   if(byId('propertiesPanel')&&!byId('propertiesPanel').hidden)this.updateInspector();
+  }
   this.refreshList();
  }
  acceptRemoteRevision(message){

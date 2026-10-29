@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.48",
+  "currentVersion": "0.2.49",
   "releases": [
+    {
+      "version": "0.2.49",
+      "publishedAt": "2026-10-29T01:52:21Z",
+      "changes": [
+        "Add a per-object transform lock/unlock icon directly before Delete in the Objects list, with a compact visual locked state and accessible button labels.",
+        "Prevent Move/Rotate/Scale gizmos, G/R/S hotkeys, XYZ value editing and transform resets while locked, preserving selection, other object settings and robot missions.",
+        "Save per-object transform locks in shared scenes, propagate them through object WebSocket patches and local room snapshots, and validate lock fields on the Flask backend.",
+        "Provide new lock/unlock SVGs and regression coverage for the editor controls, API persistence and mobile/desktop row layout."
+      ]
+    },
     {
       "version": "0.2.48",
       "publishedAt": "2026-10-29T01:35:03Z",
@@ -298,16 +308,6 @@
         "Numpad perspectives 1/3/7 and incremental views preserve exact camera distance from selected object; use +/- to zoom.",
         "Consistent button typography and 30px square close, minimize, and expand controls with accessible focus states.",
         "Retains object-specific multiplayer changes, avatar library, room-based WebSocket, shared Whisper.cpp and existing watcher workflow."
-      ]
-    },
-    {
-      "version": "0.2.10",
-      "publishedAt": "2026-10-27T23:50:34Z",
-      "changes": [
-        "Camera +/- zoom is centred on selected object; Blender-style numeric views unaffected.",
-        "Duplicated objects receive next available numeric copy suffix and appear above the source.",
-        "Robot arrows control signed forward/reverse velocity and bicycle steering dependent on motion speed. Down brakes before reversing; no instant 180 turn.",
-        "Camera arrows do not conflict with robot arrow controls; backward clip plays reversed fallback; prediction remains lightweight."
       ]
     }
   ]
