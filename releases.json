@@ -1,6 +1,20 @@
 {
-  "currentVersion": "0.2.56",
+  "currentVersion": "0.2.57",
   "releases": [
+    {
+      "version": "0.2.57",
+      "publishedAt": "2026-10-29T14:19:00Z",
+      "changes": [
+        "Configure newly created robots with walk 1.8x, strafe 2.5x, turn 4x; allow all robot speed controls from 0 to 10x in the UI and server validators, preserving explicitly saved settings.",
+        "Move linked XYZ-scale checkbox immediately beside the Scale label; collapse the voice editor by default; tightly align per-robot Debug and Brains controls, removing unneeded spacing.",
+        "Display a minimal head-anchored animated speech ring only while a robot is actually speaking via spatial or device audio, with reduced-motion support and no added WebGL context.",
+        "Preserve explicit requested walking distances up to 600m instead of silently truncating to 6m. Plan and verify obstacle-aware long routes in short A* sections and report blocked routes without false success.",
+        "Support repeatable walk-and-return patrol commands and bounded random safe roaming with a stoppable sequence, keeping completion tied to the last actual leg and movement permissions intact.",
+        "Reorient chat bubbles so remote users and robots have avatar, name and time on the right, with selectable user favorite chat colors saved to SQLite profiles and included in room messages.",
+        "Show webcam video inside the clickable circular profile avatar during recording, then the converted 15-second GIF in the same roundel after saving, without an overlapping icon.",
+        "Expand regression coverage with long navigation, obstacle rejection, three patrol cycles, speed bounds, voice visualization, profile color persistence, and compact responsive layout."
+      ]
+    },
     {
       "version": "0.2.56",
       "publishedAt": "2026-10-29T13:37:10Z",
@@ -311,15 +325,6 @@
         "Fix SQLite chat history failure caused by a misquoted NULLIF empty-string literal in the messages query.",
         "Add backend integration regression coverage for ordinary speaker names and persisted AI robot speaker overrides.",
         "Preserve all v0.2.20 controls, camera modes, Robot Brains and Meta AI features without modifying the deployment watcher."
-      ]
-    },
-    {
-      "version": "0.2.18",
-      "publishedAt": "2026-10-28T04:16:58Z",
-      "changes": [
-        "Bottom camera button cycles Free \u2192 Chase (smooth inertial trailing behind selected robot) \u2192 Orbit follow (camera tracks robot while preserving user-set orbit angle).",
-        "The follow camera tracks selected moving robots without stealing arrow-key locomotion or moving the XR headset camera.",
-        "OrbitControls drag updates the follow offset; numpad camera presets are respected; camera mode persists locally and sends no network traffic."
       ]
     }
   ]

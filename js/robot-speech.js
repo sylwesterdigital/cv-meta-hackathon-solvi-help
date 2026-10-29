@@ -68,7 +68,6 @@ export class RobotSpeech{
   if(this.playing)return;this.playing=true;
   while(this.jobs.length){const job=this.jobs.shift();if(job.room!==this.room()||!this.enabled())continue;
    const robot=this.robot(null,job.robotId);if(!robot)continue;
-   const started={active:true,name:robot.name};window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:started}));
    try{
      this.report(job,'pending',`Generating ${job.settings.provider==='elevenlabs'?'ElevenLabs':'local'} audio…`);
      const source=await this.play(job,robot);
@@ -128,7 +127,7 @@ export class RobotSpeech{
    frame=requestAnimationFrame(update);
   };
   update();
-  try{await new Promise((resolve,reject)=>{audio.onended=resolve;audio.onerror=()=>reject(Error('Audio playback failed'));audio.play().catch(reject);});}
+  try{await new Promise((resolve,reject)=>{audio.onended=resolve;audio.onplay=()=>window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:true,name:robot.name}}));audio.onerror=()=>reject(Error('Audio playback failed'));audio.play().catch(reject);});}
   finally{cancelAnimationFrame(frame);source.disconnect();panner.disconnect();gain.disconnect();URL.revokeObjectURL(audio.src);if(this.active===audio)this.active=null;}
  }
  async playBrowser(text,robot,settings){
@@ -142,6 +141,6 @@ export class RobotSpeech{
   speech.voice=selected;
   const distance=robot.getWorldPosition(robot.position.clone()).distanceTo(this.world.camera.getWorldPosition(this.world.camera.position.clone()));
   speech.volume=distanceVolume(distance,this.volume());
-  await new Promise((resolve,reject)=>{speech.onend=resolve;speech.onerror=e=>e.error==='interrupted'?resolve():reject(Error('Device TTS '+e.error));window.speechSynthesis.speak(speech);});
+  await new Promise((resolve,reject)=>{speech.onstart=()=>window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:true,name:robot.name}}));speech.onend=resolve;speech.onerror=e=>e.error==='interrupted'?resolve():reject(Error('Device TTS '+e.error));window.speechSynthesis.speak(speech);});
  }
 }

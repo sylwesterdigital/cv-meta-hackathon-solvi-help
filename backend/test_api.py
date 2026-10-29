@@ -28,9 +28,15 @@ assert r.status_code==200,(r.status_code,r.data)
 data=r.get_json();assert data['user']['name']==name and data['token'] and data['recovery']
 headers={'Authorization':'Bearer '+data['token'],'X-Solvi-Tab':'test-tab-unique-001','Origin':origin}
 assert c.get('/api/me',headers=headers).status_code==200
+# v0.2.57: favorite chat color persists, is validated, and flows into messages.
+color_response=c.put('/api/profile',headers=headers,json={'name':name,'color':'#eb6f8a'})
+assert color_response.status_code==200,(color_response.status_code,color_response.data)
+assert color_response.get_json()['user']['color']=='#eb6f8a'
+assert c.put('/api/profile',headers=headers,json={'name':name,'color':'not-a-color'}).status_code==400
 r=c.post('/api/message',json={'text':'Hello SOLVI world','media':[]},headers=headers)
 assert r.status_code==200,(r.status_code,r.data)
 assert r.get_json()['message']['text']=='Hello SOLVI world'
+assert c.get('/api/messages',headers=headers).get_json()['messages'][-1]['speaker_color']=='#eb6f8a'
 r=c.get('/api/messages',headers=headers)
 assert r.status_code==200 and len(r.get_json()['messages'])==1
 assert c.get('/api/scene',headers=headers).status_code==200
@@ -347,7 +353,17 @@ print('PASS: ElevenLabs generation, sanitized errors, and voice selection')
 
 # v0.2.38: speech must execute Cybert's physical turn/walk commands, not
 # fall through to a plausible but idle Muse Spark conversational answer.
-cybert={'id':'testrobot-cybert037','kind':'robot','name':'Cybert','position':[0,0,0],
+# v0.2.57: no silent 6m cap; long routes and return cycles are accepted and bounded.
+from server import plan_robot_command
+long_command,long_ack=plan_robot_command('Cybert, can you walk 100m away from me?',{'name':'Cybert'},[])
+assert long_command['kind']=='walk_forward' and long_command['distance']==100,(long_command,long_ack)
+cycle_command,cycle_ack=plan_robot_command('Cybert, walk 15m and back 3 times',{'name':'Cybert'},[])
+assert cycle_command['kind']=='walk_forward' and cycle_command['repeat']==3 and cycle_command['return_to_start'],(cycle_command,cycle_ack)
+random_command,_=plan_robot_command('Cybert, do something random 3 times',{'name':'Cybert'},[])
+assert random_command['kind']=='random_action' and random_command['repeat']==3,random_command
+assert plan_robot_command('Cybert, walk 800m',{'name':'Cybert'},[])[0] is None
+print('PASS: 100m distances, repeat-return cycles, bounded random actions, validated author color')
+cybert={'id':'testrobot-cybert037' ,'kind':'robot','name':'Cybert','position':[0,0,0],
         'rotation':[0,0,0],'scale':[1,1,1],'speed':1.0}
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':cybert}).status_code==200
 for instruction,kind in [
@@ -385,7 +401,7 @@ assert response.get_json()['command']['kind']=='go_to'
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':chair['id']}}).status_code==200
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':cybert['id']}}).status_code==200
 assert c.get('/api/robots/memory?room=lab&id=testrobot-0220',headers=headers).status_code==200
-robot['turnSpeed']=5
+robot['turnSpeed']=11
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==400
 robot['turnSpeed']=3;robot['brain']['personality']='x'*1001
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==400

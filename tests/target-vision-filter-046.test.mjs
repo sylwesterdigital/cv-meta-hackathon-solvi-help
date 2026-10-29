@@ -34,5 +34,5 @@ test('target scan discards irrelevant frames before uploads and Muse; all-negati
  assert.match(server,/TARGET SEARCH: Respond ONLY about/);
  assert.match(server,/Ignore unrelated objects; do NOT list all directions/);
  assert.doesNotMatch(server,/Examine ALL images before answering/);
- assert.match(server,/I arrived at the destination for/);
+ assert.match(server,/I completed the requested route for/);
 });

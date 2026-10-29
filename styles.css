@@ -1463,3 +1463,46 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 /* Modal layers remain above every moveable editor window. */
 .drawer-shell{z-index:680!important}
 :is(#realmGalleryBackdrop,#avatarGalleryBackdrop,#assetGalleryBackdrop,#profileBackdrop,#adminBackdrop,#settingsBackdrop,#worldSettingsBackdrop){z-index:690!important}
+
+/* v0.2.57: compact controls, linked scale inline, voice controls and author-color chat */
+#propertiesPanel #propertyGrid .scale-title{display:inline-flex!important;align-items:center!important;gap:5px!important;white-space:nowrap!important;min-width:0!important}
+#propertiesPanel #propertyGrid .scale-title .scale-link{display:inline-flex!important;justify-content:flex-start!important;margin:0!important;padding:0!important;cursor:pointer}
+#propertiesPanel #propertyGrid .scale-title .scale-link input{width:15px!important;height:15px!important;min-width:15px!important;margin:0!important}
+#propertiesPanel #robotControls{margin:3px 0!important}
+#propertiesPanel #robotControls>strong{font-size:11px!important;line-height:1.1!important}
+#propertiesPanel #robotControls .robot-speed-single{margin:1px 0!important;gap:5px!important}
+#propertiesPanel #robotControls .robot-speed-single select{width:86px!important;min-width:65px!important;max-width:86px!important;min-height:28px!important;height:28px!important;font-size:11px!important}
+#propertiesPanel #robotControls .robot-speed-single input[type=range]{flex:1!important;width:100%!important;min-width:20px!important}
+#propertiesPanel #robotControls .robot-speed-single output{width:44px!important;text-align:right!important;font-size:11px!important}
+#propertiesPanel #robotVoiceProperties{margin:4px 0!important;padding:0!important}
+#propertiesPanel .brain-voice-config{gap:4px!important;margin:2px 0!important;padding:3px 0!important}
+#propertiesPanel .brain-voice-config label{margin:0!important;gap:2px!important;font-size:11px!important}
+#propertiesPanel .brain-voice-config input[type=number]{box-sizing:border-box!important;background:var(--ui-bg,#0d1929)!important;color:var(--ui-fg,#eef8ff)!important;border:1px solid var(--ui-border,#526779)!important;border-radius:6px!important;width:100%!important;min-width:0!important;min-height:28px!important;height:28px!important;padding:2px 5px!important}
+#propertiesPanel #debugSelectedRobot{margin:0 2px 0 0!important}
+#propertiesPanel .robot-debug-row,#propertiesPanel label:has(#debugSelectedRobot){display:inline-flex!important;align-items:center!important;gap:2px!important;margin:2px 0!important}
+.chat-row.mine{align-self:flex-start!important;margin-right:auto!important;margin-left:0!important;flex-direction:row!important}
+.chat-row.theirs{align-self:flex-end!important;margin-right:0!important;margin-left:auto!important;flex-direction:row-reverse!important}
+.chat-row.theirs .chat-bubble{border-color:var(--speaker-accent,var(--solvi-accent))!important;background:color-mix(in srgb,var(--speaker-accent,#3f7591) 18%,#132436)!important}
+.chat-row.mine .chat-bubble{border-color:var(--speaker-accent,var(--solvi-accent))!important;background:color-mix(in srgb,var(--speaker-accent,#3b7da7) 17%,#102536)!important}
+.chat-row.theirs .chat-meta{text-align:right!important;flex-direction:row-reverse!important}
+.chat-row.theirs .chat-body{text-align:left!important}
+.profile-color-row{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin:6px 0!important;font-size:12px!important}
+.profile-color-row input{width:44px!important;height:28px!important;min-height:28px!important;padding:1px!important;cursor:pointer}
+.profile-photo-badge{position:relative!important;overflow:hidden!important}
+.profile-photo-badge .profile-avatar-live{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;border-radius:50%!important;pointer-events:none!important}
+.robot-speech-wave{position:fixed;z-index:7;width:20px;height:20px;margin:-10px;pointer-events:none;border:2px solid #76dce9;border-radius:50%;filter:drop-shadow(0 0 3px #5ae4e9);animation:solvi-speaking-ring .8s ease-out infinite}
+.robot-speech-wave::after{content:'';position:absolute;inset:-8px;border:2px solid #69c7fa;border-radius:50%;animation:solvi-speaking-ring 1.12s ease-out infinite}
+@keyframes solvi-speaking-ring{0%{transform:scale(.35);opacity:.85}100%{transform:scale(2.0);opacity:0}}
+@media(prefers-reduced-motion:reduce){.robot-speech-wave,.robot-speech-wave::after{animation:none!important}}
+
+#propertiesPanel #robotVoiceProperties .brain-voice-config .voice-tuning-row{display:flex!important;align-items:center!important;gap:5px!important;margin:0!important}
+#propertiesPanel #robotVoiceProperties .brain-voice-config>small{display:none!important}
+#propertiesPanel #robotControls #robotVoiceDetails>summary{padding:3px 0!important;line-height:1.1!important}
+#propertiesPanel .robot-voice-properties select{min-height:30px!important;height:30px!important;font-size:11px!important;max-width:100%!important;padding:3px 7px!important}
+#propertiesPanel .robot-voice-properties button{min-height:31px!important;height:31px!important;white-space:nowrap!important;padding:3px 7px!important}
+
+#propertiesPanel .robot-brain-row{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:3px!important;flex-wrap:nowrap!important;margin:3px 0!important}
+#propertiesPanel .robot-brain-row .robot-debug-toggle{display:inline-flex!important;align-items:center!important;gap:3px!important;margin:0!important;padding:0!important;font-size:11px!important;white-space:nowrap!important}
+#propertiesPanel .robot-brain-row #openRobotBrains{margin:0!important;min-width:31px!important;min-height:31px!important;max-height:31px!important;padding:4px 7px!important}
+#profilePhotoBadge::before{display:none!important;content:none!important}
+#profilePhotoBadge img,#profilePhotoBadge video{display:block!important;width:100%!important;height:100%!important;object-fit:cover!important;border-radius:50%!important}

@@ -12,7 +12,7 @@ test('selected robot voice provider and both voice browsers live in Properties, 
   assert.equal(found.length,1,`${id}: must occur exactly once`);
   assert.ok(found[0].index>voice&&found[0].index<brainButton,`${id} must be in Properties`);
  }
- assert.match(html,/id="robotVoiceDetails" open/);
+ assert.match(html,/id="robotVoiceDetails"/);
  assert.match(html,/id="saveRobotBrains" type="button" class="primary">Save identity</);
 });
 test('changing selected robot rebinds voice inputs and respects edit permissions',()=>{

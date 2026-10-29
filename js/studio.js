@@ -91,8 +91,8 @@ const api={
  async mediaBlob(id){return (await this.mediaBlobInfo(id)).url;}
 };
 window.solviAPI=api;
-function profileFields(){return {name:$('profileName').value.trim(),email:$('profileEmail').value.trim(),bio:$('profileBio').value.trim(),links:$('profileLinks').value.trim()};}
-function fillProfile(o){$('profileName').value=o?.name||'';$('profileEmail').value=o?.email||'';$('profileBio').value=o?.bio||'';$('profileLinks').value=o?.links||'';$('profileIdentity').textContent=o?.id||'New profile';}
+function profileFields(){return {name:$('profileName').value.trim(),email:$('profileEmail').value.trim(),bio:$('profileBio').value.trim(),links:$('profileLinks').value.trim(),color:$('profileColor').value};}
+function fillProfile(o){$('profileName').value=o?.name||'';$('profileEmail').value=o?.email||'';$('profileBio').value=o?.bio||'';$('profileLinks').value=o?.links||'';$('profileColor').value=o?.color||'#69c5e5';$('profileIdentity').textContent=o?.id||'New profile';}
 async function checkBackend(){try{const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),2500);const res=await fetch('/api/health',{cache:'no-store',signal:controller.signal});clearTimeout(timeout);
  const data=await res.json();online=!!data.backend;api.online=online;$('backendLabel').textContent=online?`Backend connected · AI ${data.ai?'configured':'key missing'}`:'Local demo · backend not enabled';}
  catch{online=false;api.online=false;$('backendLabel').textContent='Local demo · backend not enabled';}}
@@ -105,7 +105,7 @@ async function begin(){const p=stored();fillProfile(p);await checkBackend();
 function identity(){const text=me?.name||'Guest';$('profilePanelTitle').textContent=text;$('profilePanelNote').textContent='Profile';$('profileButton').textContent=text.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'?';$('profilePhotoBadge').textContent=$('profileButton').textContent;$('profileButton').title='Profile · '+text;
  if(me?.avatar?.startsWith('data:image/')){for(const id of ['profilePhotoBadge','profileButton']){const el=$(id);el.replaceChildren();const img=document.createElement('img');img.src=me.avatar;img.alt='';el.append(img);}}
  if(me?.avatar&&online&&auth){api.mediaBlob(me.avatar).then(url=>{if(!me||!document.getElementById('profilePhotoBadge'))return;for(const id of ['profilePhotoBadge','profileButton']){const el=$(id);el.replaceChildren();const img=document.createElement('img');img.src=url;img.alt='';img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';el.append(img);}}).catch(()=>{});}
- if(me?.intro&&online&&auth){api.mediaBlob(me.intro).then(url=>{if(me?.intro){$('introPreview').src=url;$('introPreview').hidden=false;}}).catch(()=>{});}
+ if(me?.intro&&online&&auth){api.mediaBlob(me.intro).then(url=>{if(me?.intro){$('introPreview').src=url;$('introPreview').hidden=false;const badge=$('profilePhotoBadge');badge.replaceChildren();const photo=document.createElement('img');photo.src=url;photo.alt='Profile animated GIF';badge.append(photo);}}).catch(()=>{});}
  $('profileLogout').hidden=!me;$('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;}
 async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
  try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();select.hidden=true;
@@ -137,6 +137,10 @@ async function bubble(entry){
  if(!group){
   wrap=document.createElement('article');wrap.className='chat-row '+(mine?'mine':'theirs');
   wrap.dataset.messageId=entry.id||'';
+  // Robot replies have their own stable visual hue, never the human command issuer's color.
+  const speakerColor=role==='assistant'?null:(entry.speaker_color||(mine?me?.color:null));
+  if(/^#[0-9a-fA-F]{6}$/.test(speakerColor||''))wrap.style.setProperty('--speaker-accent',speakerColor);
+  else if(role==='assistant'){const hue=Array.from(entry.speaker||'Robot').reduce((v,c)=>(v*31+c.charCodeAt(0))%360,17);wrap.style.setProperty('--speaker-accent',`hsl(${hue} 65% 60%)`);}
   wrap.addEventListener('wheel',event=>{event.preventDefault();feed.scrollTop+=event.deltaY;},{passive:false});
   const pic=document.createElement('span');pic.className='chat-avatar';pic.textContent=(entry.speaker||(role==='assistant'?'AI':me?.name)||'?').slice(0,2).toUpperCase();
   if(role==='assistant'){pic.title='Open robot Brains and capture portrait';pic.tabIndex=0;pic.setAttribute('role','button');
@@ -323,7 +327,7 @@ function closeProfileCamera(){
  if(profileCameraRecorder?.state==='recording')profileCameraRecorder.stop();
  profileCameraStream?.getTracks().forEach(track=>track.stop());profileCameraStream=null;
  const video=profilePreview();video.pause();video.srcObject=null;video.hidden=true;
- $('profileCameraControls').hidden=true;profilePhotoArmed=false;
+ $('profileCameraControls').hidden=true;profilePhotoArmed=false;document.querySelector('#profilePhotoBadge .profile-avatar-live')?.remove();
  $('takeAvatarPhoto').textContent='Camera photo';
  if(profileCameraRecorder?.state!=='recording')$('recordIntro').textContent='Record 15s GIF';
 }
@@ -333,6 +337,7 @@ async function openProfileCamera(){
  const preview=profilePreview();
  const stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480},facingMode:'user'},audio:false});
  profileCameraStream=stream;preview.srcObject=stream;preview.muted=true;preview.playsInline=true;
+ const badge=$('profilePhotoBadge');const live=document.createElement('video');live.className='profile-avatar-live';live.autoplay=true;live.muted=true;live.playsInline=true;live.srcObject=stream;badge.append(live);live.play().catch(()=>{});
  preview.hidden=false;$('profileCameraControls').hidden=false;
  try{await preview.play();
    if(preview.videoWidth<1||preview.videoHeight<1)await new Promise((resolve,reject)=>{
@@ -380,7 +385,9 @@ async function recordIntroGif(){
     if(!blob.size)throw Error('Camera recorded no frames');
     const media=await uploadFile(new File([blob],`intro-${Date.now()}.${type==='video/mp4'?'mp4':'webm'}`,{type}));
     const result=await api.req('/api/profile/intro',{method:'POST',body:JSON.stringify({id:media.id})});
-    const image=$('introPreview');image.src=await api.mediaBlob(result.media.id);image.hidden=false;if(me){me.intro=result.media.id;saveLocal({...stored(),...me});}
+    const image=$('introPreview');image.src=await api.mediaBlob(result.media.id);image.hidden=false;
+    const badge=$('profilePhotoBadge');badge.replaceChildren();const animated=document.createElement('img');animated.src=image.src;animated.alt='Profile GIF';badge.append(animated);
+    if(me){me.intro=result.media.id;saveLocal({...stored(),...me});}
     $('profileStatus').textContent=`GIF saved (${Math.min(15,(Date.now()-began)/1000).toFixed(1)} seconds captured)`;
    }catch(error){$('profileStatus').textContent='GIF failed: '+error.message;}
    finally{profileCameraRecorder=null;$('recordIntro').disabled=false;closeProfileCamera();}
@@ -917,6 +924,22 @@ function setupRobotVoiceSettings(){
  window.addEventListener('solvi:session-lost',()=>robotSpeech?.stop());
 }
 function bindUI(world){
+ // A lightweight DOM waveform projected from the talking robot's head.
+ let speechWave=null,speechFrame=0;
+ window.addEventListener('solvi:robot-speaking',event=>{
+  cancelAnimationFrame(speechFrame);speechWave?.remove();speechWave=null;
+  if(!event.detail?.active||!event.detail?.name)return;
+  speechWave=document.createElement('span');speechWave.className='robot-speech-wave';speechWave.setAttribute('aria-hidden','true');document.body.append(speechWave);
+  const name=event.detail.name;
+  const follow=()=>{
+   const bot=window.solviEditor?.items?.find(o=>o.userData.editorKind==='robot'&&o.name===name);
+   if(!bot||!bot.visible){speechWave.style.display='none';speechFrame=requestAnimationFrame(follow);return;}
+   const p=bot.getWorldPosition(bot.position.clone());p.y+=1.8;p.project(world.camera);
+   speechWave.style.display=p.z>=-1&&p.z<=1?'':'none';
+   speechWave.style.left=((p.x+1)/2*innerWidth)+'px';speechWave.style.top=((1-p.y)/2*innerHeight)+'px';
+   speechFrame=requestAnimationFrame(follow);
+  };follow();
+ });
  const editor=new SceneEditor(world,toast);setupChatMentions();robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));

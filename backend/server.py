@@ -115,6 +115,8 @@ def init_db():
         ''')
         if 'owner_id' not in {r[1] for r in con.execute('PRAGMA table_info(rooms)').fetchall()}:
             con.execute('ALTER TABLE rooms ADD COLUMN owner_id TEXT')
+        if 'color' not in {r[1] for r in con.execute('PRAGMA table_info(users)').fetchall()}:
+            con.execute("ALTER TABLE users ADD COLUMN color TEXT NOT NULL DEFAULT '#69c5e5'")
         if 'intro' not in {r[1] for r in con.execute('PRAGMA table_info(users)').fetchall()}:
             con.execute("ALTER TABLE users ADD COLUMN intro TEXT NOT NULL DEFAULT ''")
         cols={r[1] for r in con.execute('PRAGMA table_info(messages)').fetchall()}
@@ -136,7 +138,7 @@ def fields(obj):
     return name, str(obj.get('email','')).strip()[:180], str(obj.get('bio','')).strip()[:500], str(obj.get('links','')).strip()[:600]
 
 def public_user(row):
-    return {k:row[k] for k in ('id','name','email','bio','links','avatar','intro','created')}
+    return {k:row[k] for k in ('id','name','email','bio','links','avatar','intro','color','created')}
 
 def actor():
     token=request.headers.get('Authorization','').removeprefix('Bearer ').strip()
@@ -170,7 +172,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.56',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.57',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -329,6 +331,8 @@ def onboard():
     obj=request.get_json(silent=True) or {}
     try:name,email,bio,links=fields(obj)
     except ValueError as err:return json_error(str(err))
+    color=str(obj.get('color','#69c5e5')).strip().lower()
+    if not re.fullmatch(r'#[0-9a-f]{6}',color):return json_error('Invalid profile colour')
     tab=str(obj.get('tab',''))
     if not re.fullmatch(r'[A-Za-z0-9_-]{8,90}',tab):return json_error('Invalid tab identifier')
     uid=str(obj.get('id',''))
@@ -341,12 +345,12 @@ def onboard():
             row=con.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone()
             if not row or not hmac.compare_digest(row['recovery_hash'],sha(recovery)):
                 return json_error('Invalid profile recovery key',403)
-            con.execute('UPDATE users SET name=?,email=?,bio=?,links=?,token_hash=?,tab_id=?,tab_until=?,updated=? WHERE id=?',
-                        (name,email,bio,links,sha(auth),tab,time.time()+65,stamp,uid))
+            con.execute('UPDATE users SET name=?,email=?,bio=?,links=?,color=?,token_hash=?,tab_id=?,tab_until=?,updated=? WHERE id=?',
+                        (name,email,bio,links,color,sha(auth),tab,time.time()+65,stamp,uid))
         else:
             uid=str(uuid.uuid4());recovery_new=new_token()
-            con.execute('INSERT INTO users (id,name,email,bio,links,recovery_hash,token_hash,tab_id,tab_until,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
-                        (uid,name,email,bio,links,sha(recovery_new),sha(auth),tab,time.time()+65,stamp,stamp))
+            con.execute('INSERT INTO users (id,name,email,bio,links,color,recovery_hash,token_hash,tab_id,tab_until,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                        (uid,name,email,bio,links,color,sha(recovery_new),sha(auth),tab,time.time()+65,stamp,stamp))
         row=con.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone()
     return jsonify(user=public_user(row),token=auth,recovery=recovery_new)
 
@@ -378,12 +382,14 @@ def profile():
     try:name,email,bio,links=fields(obj)
     except ValueError as err:return json_error(str(err))
     avatar=obj.get('avatar','')
+    color=str(obj.get('color',user['color'])).strip()
+    if not re.fullmatch(r'#[0-9a-fA-F]{6}',color):return json_error('Invalid profile colour')
     with db() as con:
         if avatar:
             m=con.execute('SELECT id,mime FROM media WHERE id=? AND user_id=?',(avatar,user['id'])).fetchone()
             if not m or not m['mime'].startswith('image/'):return json_error('Choose an uploaded image as avatar')
         else:avatar=user['avatar']
-        con.execute('UPDATE users SET name=?,email=?,bio=?,links=?,avatar=?,updated=? WHERE id=?', (name,email,bio,links,avatar,now(),user['id']))
+        con.execute('UPDATE users SET name=?,email=?,bio=?,links=?,avatar=?,color=?,updated=? WHERE id=?', (name,email,bio,links,avatar,color.lower(),now(),user['id']))
         row=con.execute('SELECT * FROM users WHERE id=?',(user['id'],)).fetchone()
     return jsonify(user=public_user(row))
 
@@ -567,7 +573,7 @@ def messages():
     room_id=selected_room(request.args.get('room','main'))
     if not room_id:return json_error('Unknown room',404)
     with db() as con:
-        rows=con.execute("SELECT messages.*, COALESCE(NULLIF(messages.speaker_override, ''), users.name) AS speaker, users.avatar AS avatar FROM messages JOIN users ON users.id=messages.user_id WHERE messages.room_id=? ORDER BY messages.created DESC LIMIT 80", (room_id,)).fetchall()
+        rows=con.execute("SELECT messages.*, COALESCE(NULLIF(messages.speaker_override, ''), users.name) AS speaker, users.avatar AS avatar, users.color AS speaker_color FROM messages JOIN users ON users.id=messages.user_id WHERE messages.room_id=? ORDER BY messages.created DESC LIMIT 80", (room_id,)).fetchall()
     items=[dict(r) for r in reversed(rows)]
     with db() as con:
         sc=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
@@ -904,6 +910,11 @@ def plan_robot_command(text,robot,objects):
     words=re.sub(r'^\s*CC\s*:\s*','',text,flags=re.I).casefold()
     if re.search(r'\b(stop|halt|freeze)\b',words):
         return {'kind':'stop'},'Stopping.'
+    # Bounded random patrol. Always stoppable; no unchecked animation or object pushing.
+    if re.search(r'\b(?:do|try|perform|make|take|choose)\s+(?:something\s+)?random\b|\b(?:random|surprise)\s+(?:action|move|walk|cycle)s?\b',words):
+        count_match=re.search(r'\b(?:repeat|cycle|loop)\s*(\d{1,2})\s*times?\b|\b(\d{1,2})\s*times?\b',words)
+        count=max(1,min(10,int(next((v for v in count_match.groups() if v),'1')))) if count_match else (10 if re.search(r'\buntil\s+(?:i|you)\s+(?:say|ask|tell)\s+stop\b',words) else 1)
+        return {'kind':'random_action','repeat':count,'target_name':f'{count} safe random patrol step(s)'},f"I'll try {count} short, collision-checked random movement step(s). Say stop to interrupt."
     noun=re.search(r'\b(sofa|couch|chair)\b',words)
     travel=bool(re.search(r'\b(find|look for|locate|go to|walk to|approach|sit on|sit in|sit down)\b',words))
     if noun and travel:
@@ -946,13 +957,22 @@ def plan_robot_command(text,robot,objects):
     if has_turn or has_walk or has_jump:
         # Preserve the older walk-around loop for explicit exploration requests.
         if has_walk and re.search(r'\b(around|about|wander|roam|explore)\b',words) and not has_turn:
-            return {'kind':'wander','target_name':'a short walk'},'I’ll walk a short loop around my starting position.'
+            cycles=re.search(r'\b(?:repeat|cycle|loop)\s*(\d{1,2})\s*times?\b',words)
+            count=max(1,min(10,int(cycles.group(1)))) if cycles else 1
+            return {'kind':'wander','repeat':count,'target_name':'a short walk'},f'I’ll take {count} short, collision-checked wandering step(s).'
         # The unspecified direction for 'turn and walk' is a disclosed left turn.
         direction='right' if re.search(r'\b(right|clockwise)\b',words) else 'left'
         angle_match=re.search(r'\b(\d{1,3})(?:\s*°|\s*(?:degrees?|deg))\b',words)
         angle= max(15,min(180,int(angle_match.group(1)))) if angle_match else (180 if 'turn around' in words else 90)
         distance_match=re.search(r'\b(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b',words)
-        distance=round(max(.5,min(6.0,float(distance_match.group(1)))),1) if distance_match else 3.0
+        distance=round(float(distance_match.group(1)),1) if distance_match else 3.0
+        if not .5<=distance<=600:
+            return None,'Requested distance must be between 0.5 m and 600 m.'
+        repeat_match=re.search(r'\b(?:repeat|cycle|loop)\s*(\d{1,2})\s*times?\b|\b(\d{1,2})\s*times?\b',words)
+        repeat=max(1,min(10,int(next((x for x in repeat_match.groups() if x),1)))) if repeat_match else 1
+        return_home=bool(re.search(r'\b(?:and|then)\s*(?:come|walk|go|roll|drive)?\s*back\b|\bback to (?:me|start|where you started)\b',words))
+        if repeat*distance*(2 if return_home else 1)>600:
+            return None,'That route exceeds the 600 m total travel safety limit; request a shorter sequence.'
         metres=f'{distance:g} m'
         if has_turn and has_walk:
             return {'kind':'turn_walk','direction':direction,'degrees':angle,'distance':distance,
@@ -962,8 +982,9 @@ def plan_robot_command(text,robot,objects):
             return {'kind':'turn','direction':direction,'degrees':angle,
                     'target_name':f'{direction} {angle}°'},f'I’ll turn {direction} {angle}°.'
         if has_walk:
-            return {'kind':'walk_forward','distance':distance,'target_name':f'{metres} forward'},(
-                f'I’ll move forward {metres}.')
+            return {'kind':'walk_forward','distance':distance,'repeat':repeat,'return_to_start':return_home,
+                    'target_name':f'{metres} forward'+(' and back' if return_home else '')},(
+                f'I’ll move forward {metres}'+(f' and return, {repeat} cycle(s).' if return_home else '.'))
         return {'kind':'jump','target_name':'a jump'},'I’ll jump once.'
     if re.search(r'\b(walk|wander|roam|explore)\b',words) and re.search(r'\b(around|about|explore)\b',words):
         return {'kind':'wander'},'I’ll walk a short loop around my starting position.'
@@ -1369,13 +1390,15 @@ def robot_task_result():
       'not-found':f'I scanned six directions with SAM but could not identify {target}.',
       'no-mesh':f'SAM detected {target}, but I could not map the detected pixels onto a reachable 3D scene object.',
       'vision-unavailable':f'I could not complete visual search for {target}; the vision service or camera failed.',
-      'arrived':f'I arrived at the destination for {target}.',
+      'arrived':f'I completed the requested route for {target}.',
       'sitting':f'I reached {target} and played my Sit animation.',
       'procedural-sitting':f'I reached {target} and am using an approximate seated pose (no Sit clip available).',
       'stopped':'I stopped.',
       'failed':f'I could not finish the task involving {target}.',
       'blocked':f'I cannot reach {target} without crossing an occupied or blocked area. I stopped without moving an obstacle.'}
     answer=replies[state]
+    if state=='arrived' and task['kind']=='random_action':
+        answer='I finished my random movement sequence without pushing objects. What would you like me to try next?'
     aid=str(uuid.uuid4());ts=now()
     with db() as con:
         con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
@@ -1680,7 +1703,7 @@ def set_scene():
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
         if o['kind']=='model' and not model_asset_exists(o.get('model')):return json_error('Unknown scene model')
         if o['kind']=='robot':
-            if 'turnSpeed' in o and (not isinstance(o['turnSpeed'],(float,int)) or isinstance(o['turnSpeed'],bool) or not math.isfinite(o['turnSpeed']) or not .25<=o['turnSpeed']<=4):return json_error('Invalid robot turn speed')
+            if 'turnSpeed' in o and (not isinstance(o['turnSpeed'],(float,int)) or isinstance(o['turnSpeed'],bool) or not math.isfinite(o['turnSpeed']) or not 0<=o['turnSpeed']<=10):return json_error('Invalid robot turn speed')
             brain=o.get('brain',{})
             if not isinstance(brain,dict) or any((k in ('initiative','initiativeVision') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision') and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
             if brain.get('portrait') and not re.fullmatch(r'[0-9a-f-]{36}',brain['portrait']):return json_error('Invalid portrait reference')
@@ -1731,9 +1754,9 @@ def patch_scene_object():
             return json_error('Invalid avatar reference')
         if obj.get('texture','none') not in ('none','checker','gradient','stripes','dots','custom'):return json_error('Unsupported texture preset')
         if not isinstance(obj.get('color'),(str,type(None))) or len(obj.get('color') or '')>24:return json_error('Invalid color')
-        if 'speed' in obj and (not isinstance(obj['speed'],(float,int)) or not math.isfinite(obj['speed']) or not .35<=obj['speed']<=3):return json_error('Invalid robot speed')
-        if 'strafeSpeed' in obj and (not isinstance(obj['strafeSpeed'],(float,int)) or not math.isfinite(obj['strafeSpeed']) or not .5<=obj['strafeSpeed']<=4):return json_error('Invalid strafe speed')
-        if 'turnSpeed' in obj and (not isinstance(obj['turnSpeed'],(float,int)) or isinstance(obj['turnSpeed'],bool) or not math.isfinite(obj['turnSpeed']) or not .25<=obj['turnSpeed']<=4):return json_error('Invalid turn speed')
+        if 'speed' in obj and (not isinstance(obj['speed'],(float,int)) or not math.isfinite(obj['speed']) or not 0<=obj['speed']<=10):return json_error('Invalid robot speed')
+        if 'strafeSpeed' in obj and (not isinstance(obj['strafeSpeed'],(float,int)) or not math.isfinite(obj['strafeSpeed']) or not 0<=obj['strafeSpeed']<=10):return json_error('Invalid strafe speed')
+        if 'turnSpeed' in obj and (not isinstance(obj['turnSpeed'],(float,int)) or isinstance(obj['turnSpeed'],bool) or not math.isfinite(obj['turnSpeed']) or not 0<=obj['turnSpeed']<=10):return json_error('Invalid turn speed')
         if 'brain' in obj:
             if obj['kind']!='robot' or not isinstance(obj['brain'],dict):return json_error('Invalid robot brain')
             limits={'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8}

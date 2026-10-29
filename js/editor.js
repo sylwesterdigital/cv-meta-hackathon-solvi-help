@@ -385,7 +385,7 @@ export class SceneEditor{
   duplicate.userData.textureName=entry.texture||'none';
   if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')duplicate.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.map=makeTexture(entry.texture);mesh.material.needsUpdate=true;}});
   if(entry.kind==='model'){duplicate.userData.modelUrl=entry.model;hydrateSceneModel(duplicate);}
-  if(entry.kind==='light')setLight(duplicate,entry.light||{});duplicate.userData.robotSpeed=entry.speed||1;duplicate.userData.robotStrafeSpeed=entry.strafeSpeed||1.8;duplicate.userData.robotTurnSpeed=entry.turnSpeed||1;duplicate.userData.robotBrain=structuredClone(entry.brain||{});duplicate.userData.physics=physicsOptions(entry.physics);duplicate.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;duplicate.userData.avatarUrl=source.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;this.items.push(duplicate);this.world.scene.add(duplicate);this.physics.sync(duplicate);this.select(duplicate);if(entry.kind==='robot')hydrateRobot(duplicate);this.recordEdit(null,this.snapshot(duplicate));this.queueSave(duplicate);this.toast('Duplicated above original');
+  if(entry.kind==='light')setLight(duplicate,entry.light||{});duplicate.userData.robotSpeed=entry.speed??1.8;duplicate.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;duplicate.userData.robotTurnSpeed=entry.turnSpeed??4;duplicate.userData.robotBrain=structuredClone(entry.brain||{});duplicate.userData.physics=physicsOptions(entry.physics);duplicate.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;duplicate.userData.avatarUrl=source.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;this.items.push(duplicate);this.world.scene.add(duplicate);this.physics.sync(duplicate);this.select(duplicate);if(entry.kind==='robot')hydrateRobot(duplicate);this.recordEdit(null,this.snapshot(duplicate));this.queueSave(duplicate);this.toast('Duplicated above original');
  }
  add(kind,showGallery=true,lightType=undefined){const object=objectFor(kind);if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
  const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.raycaster.intersectObject(this.world.floor)?.[0]?.point;if(point){object.position.x=point.x;object.position.z=point.z;}
@@ -404,7 +404,7 @@ export class SceneEditor{
   byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;this.syncPhysicsSurface?.();byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
-  byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);for(const id of ['replaceModelFile','replaceModelGallery']){byId(id).hidden=obj.userData.editorKind!=='model';byId(id).disabled=!this.canEdit(obj); }if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed||1.8;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed||1.8).toFixed(1)+'×';const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed||1;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';this.syncRobotSpeed?.();}
+  byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);for(const id of ['replaceModelFile','replaceModelGallery']){byId(id).hidden=obj.userData.editorKind!=='model';byId(id).disabled=!this.canEdit(obj); }if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed??2.5;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed??2.5).toFixed(1)+'×';const factor=obj.userData.robotSpeed??1.8;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed??4;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';this.syncRobotSpeed?.();}
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
     const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);if(this.activateInspectorValue && !byId('inspectorValueSlider').hidden && byId('inspectorActiveRange') && document.activeElement?.id===`${name}-${i}`)this.activateInspectorValue(document.activeElement);
   });
@@ -451,8 +451,8 @@ export class SceneEditor{
   if(!skipConfirmation&&readDeleteConfirmation()&&!window.confirm(`Delete object "${this.selected.name}" from the shared scene?`))return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
  texture(name){if(!this.selected||this.selected.userData.editorKind==='robot')return;if(this.canEdit(this.selected))this.selected.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
-  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed||1.8):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed||1):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed||1):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined}));}
- apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.physics.clear();if(this.physics.enabled)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed||1;o.userData.robotStrafeSpeed=entry.strafeSpeed||1.8;o.userData.robotTurnSpeed=entry.turnSpeed||1;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;
+  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed??2.5):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed??1.8):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed??4):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined}));}
+ apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.physics.clear();if(this.physics.enabled)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
@@ -496,7 +496,7 @@ export class SceneEditor{
    obj.userData.textureName=newTexture;
   }
   const avatar=entry.avatar||DEFAULT_ROBOT_AVATAR;
-  if(entry.kind==='light')setLight(obj,entry.light||{});obj.userData.robotSpeed=entry.speed||1;obj.userData.robotStrafeSpeed=entry.strafeSpeed||1.8;obj.userData.robotTurnSpeed=entry.turnSpeed||1;obj.userData.robotBrain=structuredClone(entry.brain||{});obj.userData.physics=physicsOptions(entry.physics);this.physics.sync(obj);
+  if(entry.kind==='light')setLight(obj,entry.light||{});obj.userData.robotSpeed=entry.speed??1.8;obj.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;obj.userData.robotTurnSpeed=entry.turnSpeed??4;obj.userData.robotBrain=structuredClone(entry.brain||{});obj.userData.physics=physicsOptions(entry.physics);this.physics.sync(obj);
   if(entry.kind==='model'&&(isNew||obj.userData.modelUrl!==entry.model)){if(!isNew)invalidateSceneModel(obj);obj.userData.modelUrl=entry.model;hydrateSceneModel(obj);}
   if(entry.kind==='robot'&&(isNew||obj.userData.avatarUrl!==avatar)){
    obj.userData.avatarUrl=avatar;
@@ -624,7 +624,7 @@ export class SceneEditor{
     if(this.lightHelper&&!byId('propertiesPanel').hidden){this.lightHelper.visible=!this.world.renderer.xr.isPresenting;this.lightHelper.update?.();}
     if(this.lightHelper&&byId('propertiesPanel').hidden)this.clearLightHelper();
     const robot=this.robot(),canControl=this.controlMode==='robot'&&robot&&this.canEdit(robot);
-    const input=canControl?{...intent(this.robotKeys),s:robot.userData.robotSpeed||1,q:robot.userData.robotStrafeSpeed||1.8,u:robot.userData.robotTurnSpeed||1,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1,q:1.8,u:1,j:0};
+    const input=canControl?{...intent(this.robotKeys),s:robot.userData.robotSpeed??1.8,q:robot.userData.robotStrafeSpeed??2.5,u:robot.userData.robotTurnSpeed??4,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1.8,q:2.5,u:4,j:0};
     const now=performance.now();
     if(canControl){
       const motion=stepRobotMotion({x:robot.position.x,z:robot.position.z,yaw:robot.rotation.y,velocity:robot.userData.robotVelocity||0,steer:robot.userData.robotSteer||0,lateral:robot.userData.robotLateral||0},input,dt);
@@ -687,8 +687,8 @@ export class SceneEditor{
     if(packet.j&&!robot.userData.jumpVel)robotAction(robot,'jump');
     if(!packet.m){
       // Decelerate through the same motion integrator instead of stopping at once.
-      this.remoteInput.set(packet.id,{f:0,t:0,r:0,b:0,s:packet.s||1,q:packet.q||1.8,u:packet.u||1,received:performance.now()});
-    }else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,q:packet.q||1.8,u:packet.u||1,received:performance.now()});
+      this.remoteInput.set(packet.id,{f:0,t:0,r:0,b:0,s:packet.s??1.8,q:packet.q??2.5,u:packet.u??4,received:performance.now()});
+    }else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,q:packet.q??2.5,u:packet.u??4,received:performance.now()});
   }
   applyRobotMotion(state){this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});}
   // Same live editor geometry drives the minimap and route planner. Footprints
@@ -706,8 +706,19 @@ export class SceneEditor{
   routeRobot(robot,point){
     if(!robot||!point)return false;
     const obstacles=this.navigationObstacles(robot);
-    const waypoints=planRobotPath({x:robot.position.x,z:robot.position.z},point,obstacles);
-    if(!waypoints?.length){
+    // Short bounded A* windows prevent clipped 100m+ goals and missed obstacles.
+    const start={x:robot.position.x,z:robot.position.z};
+    const distance=Math.hypot(point.x-start.x,point.z-start.z);
+    if(distance>600){this.toast('Robot route exceeds 600 m safety limit');return false;}
+    const steps=Math.max(1,Math.ceil(distance/18));
+    const waypoints=[];let previous=start;
+    for(let i=1;i<=steps;i++){
+      const target={x:start.x+(point.x-start.x)*i/steps,z:start.z+(point.z-start.z)*i/steps};
+      const part=planRobotPath(previous,target,obstacles);
+      if(!part?.length||Math.hypot(part.at(-1).x-target.x,part.at(-1).z-target.z)>.12){waypoints.length=0;break;}
+      waypoints.push(...part);previous=target;
+    }
+    if(!waypoints.length){
       robot.userData.robotGoal=null;robot.userData.robotMode='idle';
       const mission=robot.userData.robotMission;robot.userData.robotMission=null;
       if(mission)window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked'}}));
@@ -723,13 +734,14 @@ export class SceneEditor{
     if(!command||command.room!==(window.solviRoom||'main'))return false;
     const robot=this.items.find(x=>x.userData.editorKind==='robot'&&x.userData.editorId===command.robot_id);
     if(!robot||!this.canEdit(robot)){this.toast('Robot command rejected: robot not editable or missing');return false;}
-    if(!['stop','wander','go_to','go_sit','walk_forward','turn','turn_walk','jump'].includes(command.kind))return false;
+    if(!['stop','wander','random_action','go_to','go_sit','walk_forward','turn','turn_walk','jump'].includes(command.kind))return false;
     interruptRobotMission(robot);
     if(command.kind==='stop'){robot.userData.robotMode='idle';this.queueSave(robot);this.toast(robot.name+' stopped');return true;}
-    if(command.kind==='wander'){
-      const angle=robot.rotation.y+Math.PI/3;
-      const point={x:robot.position.x+Math.sin(angle)*2,z:robot.position.z+Math.cos(angle)*2};
-      robot.userData.robotMission={kind:'wander',taskId:command.id,targetName:'short walk'};
+    if(command.kind==='wander'||command.kind==='random_action'){
+      const angle=robot.rotation.y+(command.kind==='random_action'?Math.random()*Math.PI*2:Math.PI/3);
+      const length=command.kind==='random_action'?1.5+Math.random()*2:2;
+      const point={x:robot.position.x+Math.sin(angle)*length,z:robot.position.z+Math.cos(angle)*length};
+      robot.userData.robotMission={kind:command.kind,taskId:command.id,targetName:command.target_name||'short walk',repeat:Math.max(1,Math.min(10,Number(command.repeat)||1)),leg:0};
       if(!this.routeRobot(robot,point))return false;this.toast(robot.name+' exploring a short distance');return true;
     }
     if(command.kind==='jump'){
@@ -739,8 +751,11 @@ export class SceneEditor{
     }
     if(command.kind==='walk_forward'){
       const distance=Number(command.distance);
-      if(!Number.isFinite(distance)||distance<.5||distance>6)return false;
-      robot.userData.robotMission={kind:'walk_forward',taskId:command.id,targetName:command.target_name||'short walk'};
+      if(!Number.isFinite(distance)||distance<.5||distance>600)return false;
+      robot.userData.robotMission={kind:'walk_forward',taskId:command.id,targetName:command.target_name||'walk',
+        repeat:Math.max(1,Math.min(10,Number(command.repeat)||1)),returnToStart:command.return_to_start===true,
+        origin:{x:robot.position.x,z:robot.position.z},leg:0,
+        endpoint:{x:robot.position.x+Math.sin(robot.rotation.y)*distance,z:robot.position.z+Math.cos(robot.rotation.y)*distance}};
       if(!this.routeRobot(robot,{x:robot.position.x+Math.sin(robot.rotation.y)*distance,
         z:robot.position.z+Math.cos(robot.rotation.y)*distance}))return false;
       this.toast(robot.name+' moving '+distance+' m');return true;
@@ -748,7 +763,7 @@ export class SceneEditor{
     if(command.kind==='turn'||command.kind==='turn_walk'){
       const degrees=Number(command.degrees),distance=Number(command.distance);
       if(!Number.isFinite(degrees)||degrees<15||degrees>180||!['left','right'].includes(command.direction)
-        ||(command.kind==='turn_walk'&&(!Number.isFinite(distance)||distance<.5||distance>6)))return false;
+        ||(command.kind==='turn_walk'&&(!Number.isFinite(distance)||distance<.5||distance>600)))return false;
       const signed=(command.direction==='right'?1:-1)*degrees*Math.PI/180;
       robot.userData.robotMission={kind:command.kind,phase:'turn',taskId:command.id,
         targetName:command.target_name||'turn',targetYaw:robot.rotation.y+signed,

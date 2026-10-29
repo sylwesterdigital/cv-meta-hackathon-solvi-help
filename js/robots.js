@@ -75,7 +75,7 @@ export function tickRobots(items,dt,onMove=()=>{}){
     const turning=robot.userData.robotMission;
     if(turning?.phase==='turn'&&['turn','turn_walk'].includes(turning.kind)){
       const delta=Math.atan2(Math.sin(turning.targetYaw-robot.rotation.y),Math.cos(turning.targetYaw-robot.rotation.y));
-      const step=Math.max(.35,Math.min(4,Number(robot.userData.robotTurnSpeed)||1))*2.2*Math.max(0,dt);
+      const step=Math.max(0,Math.min(10,Number(robot.userData.robotTurnSpeed??4)))*2.2*Math.max(0,dt);
       robot.rotation.y+=Math.sign(delta)*Math.min(Math.abs(delta),step);
       robot.userData.robotMode='idle';mode='idle';
       if(Math.abs(delta)<=step+.00001){
@@ -113,6 +113,28 @@ export function tickRobots(items,dt,onMove=()=>{}){
         robot.userData.robotGoal=null;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;
         const mission=robot.userData.robotMission;
         if(mission){
+          // Count a cycle only after both the outward and return legs arrive.
+          if(mission.kind==='walk_forward'&&mission.repeat>1&&!mission.returnToStart&&mission.leg+1<mission.repeat){
+            mission.leg++;const forward={x:robot.position.x+mission.endpoint.x-mission.origin.x,z:robot.position.z+mission.endpoint.z-mission.origin.z};
+            if(onMove.navigate?.(robot,forward)!==false){robot.userData.robotArrived=false;onMove(robot,false);}continue;
+          }
+          if(mission.kind==='walk_forward'&&mission.returnToStart&&mission.repeat>0){
+            const completed=Math.floor(mission.leg/2);
+            if(mission.leg%2===0){
+              mission.leg++;
+              if(onMove.navigate?.(robot,mission.origin)!==false){robot.userData.robotArrived=false;onMove(robot,false);}continue;
+            }else if(completed+1<mission.repeat){
+              mission.leg++;
+              if(onMove.navigate?.(robot,mission.endpoint)!==false){robot.userData.robotArrived=false;onMove(robot,false);}continue;
+            }
+          }
+          if(['wander','random_action'].includes(mission.kind)&&mission.leg+1<mission.repeat){
+            mission.leg++;
+            const angle=robot.rotation.y+(Math.random()-.5)*Math.PI*1.8;
+            const distance=1.5+Math.random()*2;
+            const point={x:robot.position.x+Math.sin(angle)*distance,z:robot.position.z+Math.cos(angle)*distance};
+            if(onMove.navigate?.(robot,point)!==false){robot.userData.robotArrived=false;onMove(robot,false);}continue;
+          }
           const clip=mission.kind==='go_sit'?sittingClip(robot.userData.robotAvailableActions):null;
           if(mission.kind==='go_sit'){
             robot.userData.robotSeated=true;
@@ -126,7 +148,7 @@ export function tickRobots(items,dt,onMove=()=>{}){
       }
       else{
         delta.normalize();const speed=mode==='run'?2.7:1.2;
-        const travel=Math.min(distance,speed*dt);const nx=robot.position.x+delta.x*travel,nz=robot.position.z+delta.z*travel;
+        const travel=Math.min(distance,speed*Math.max(0,Number(robot.userData.robotSpeed??1.8))*dt);const nx=robot.position.x+delta.x*travel,nz=robot.position.z+delta.z*travel;
         if(robot.userData.robotPathObstacles&&pathBlocked(nx,nz,robot.userData.robotPathObstacles,.25)){
           const blocked=robot.userData.robotMission;robot.userData.robotGoal=null;robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;robot.userData.robotMission=null;robot.userData.robotMode='idle';mode='idle';
           window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:blocked?.taskId,target:blocked?.targetName,status:'blocked'}}));
