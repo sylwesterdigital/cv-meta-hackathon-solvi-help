@@ -2,7 +2,7 @@
 // Only the selected viewport's cards are rendered; never touch the active world renderer.
 import * as THREE from 'three';
 let instance=null;
-export function renderModelThumbnail(scene,camera,width,height){
+export function renderModelThumbnail(scene,camera,width,height,{type='image/jpeg',quality=.80}={}){
  if(!instance){
   const canvas=document.createElement('canvas');
   const renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,preserveDrawingBuffer:true});
@@ -11,5 +11,5 @@ export function renderModelThumbnail(scene,camera,width,height){
  }
  const {canvas,renderer}=instance;
  renderer.setSize(width,height,false);renderer.clear();renderer.render(scene,camera);
- return canvas.toDataURL('image/jpeg',.80);
+ return canvas.toDataURL(type,quality);
 }

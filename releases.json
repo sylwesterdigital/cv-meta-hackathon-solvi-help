@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.54",
+  "currentVersion": "0.2.55",
   "releases": [
+    {
+      "version": "0.2.55",
+      "publishedAt": "2026-10-29T13:00:59Z",
+      "changes": [
+        "Fix blank white Settings roundel by using a dedicated light cog asset and removing an icon-inverting filter from its painted background across button modes.",
+        "Render crisp 416x544 WebP avatar portrait thumbnails with portrait camera framing, balanced lighting and a visible dark backdrop rather than stretching tiny landscape JPEGs.",
+        "Persist avatar thumbnails in browser CacheStorage with a memory fallback, avoiding repeated GLB downloads and GPU rendering when the avatar library is reopened or the page is revisited.",
+        "Limit first-load avatar preview decoding to two concurrent jobs, reuse the single existing WebGL gallery renderer, and dispose short-lived GLB preview geometries/materials/textures.",
+        "Show built-in avatar cards without waiting for the authenticated uploaded-avatar API, and add four new thumbnail/cache/UI regression tests."
+      ]
+    },
     {
       "version": "0.2.54",
       "publishedAt": "2026-10-29T12:36:39Z",
@@ -304,17 +315,6 @@
         "Dynamic bodies receive impulses; GLB/FBX objects get colliders after asset load",
         "Owner-authorized compact physics-state snapshots for multiplayer with smoothed remote motion",
         "Stable character controller avoids reloading GLB models during movement; world physics defaults Off"
-      ]
-    },
-    {
-      "version": "0.2.16",
-      "publishedAt": "2026-10-28T03:20:02Z",
-      "changes": [
-        "FIX: Rapier 0.21 browser bundle is now copied from dist/rapier.mjs (not removed rapier.es.js); physics dynamic import updated.",
-        "FIX: browser dependency checker accepts Rapier .mjs module; included vendor source layout regression tests.",
-        "Visible + 3D Model import button, Shift+A model entry and full-stage GLB/FBX drag-and-drop overlay with drop-location placement and size checks.",
-        "Robot strafe-speed control 0.5\u00d7\u20134\u00d7, independently of walking speed, synced as compact remote movement packets.",
-        "Experimental optional Rapier world physics with dynamic/static/kinematic bodies; per-object collider mode, friction, restitution. Off by default."
       ]
     }
   ]

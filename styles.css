@@ -1380,3 +1380,28 @@ html[data-no-blur='true'] body *,html[data-no-blur='true'] body *::before,html[d
 button[data-ui-icon]>.ui-button-label{display:block!important;white-space:nowrap!important;line-clamp:1!important;-webkit-line-clamp:1!important;overflow:hidden!important;text-overflow:ellipsis!important}
 html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:none!important}
 #sceneItems .scene-item-name>.ui-button-label{white-space:normal!important;display:-webkit-box!important;-webkit-line-clamp:2!important;line-clamp:2!important}
+
+/* v0.2.55: do not apply inverted-image filter to the cog's entire painted circle.
+   The inverted element background made the settings roundel a featureless white disc. */
+@media(min-width:751px){
+ html[data-button-labels='both'] body .topbar #toolNav #settingsButton::before,
+ html[data-button-labels='text'] body .topbar #toolNav #settingsButton::before{
+   filter:none!important;
+   background-image:url('./assets/ui-icons/config-light.svg')!important;
+   background-color:var(--ui-button)!important;
+   background-position:center!important;background-repeat:no-repeat!important;
+   background-size:18px 18px!important;
+   border:1px solid #5c7890!important;
+ }
+}
+/* The portrait render is now taller and sharper: never stretch a low-res landscape image into a portrait tile. */
+#avatarGalleryGrid .avatar-preview img{object-fit:cover!important;image-rendering:auto!important;}
+#avatarGalleryGrid .avatar-preview{background:linear-gradient(145deg,#1c3043,#0f1d31)!important;}
+/* Consistent cog artwork for mobile/icon-only too; never invert a white-on-dark roundel. */
+#toolNav #settingsButton[data-ui-icon='config']::before{
+ filter:none!important;
+ background-image:url('./assets/ui-icons/config-light.svg')!important;
+ background-position:center!important;
+ background-repeat:no-repeat!important;
+ background-size:18px 18px!important;
+}
