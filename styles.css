@@ -1563,3 +1563,6 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #chatFeed .chat-media-grid .chat-attachment:not(.chat-attachment-image){grid-column:1/-1}
 #chatFeed .chat-media-grid .chat-attachment:not(.chat-attachment-image) :is(audio,video){width:min(300px,100%)}
 @media(max-width:420px){#chatFeed .chat-media-grid{grid-template-columns:repeat(2,minmax(0,1fr));width:min(270px,100%)}}
+
+.media-object-controls{display:grid;gap:8px;margin:.55rem 0}.media-object-actions{display:flex;gap:8px}.media-object-controls label{display:grid;gap:4px;font-size:.92rem}
+.chat-composer.drag-attach{outline:2px dashed var(--ui-accent,#79cde5);outline-offset:4px}

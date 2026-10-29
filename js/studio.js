@@ -181,6 +181,17 @@ async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask 
  const body=new FormData();body.append('file',file,file.name);const response=await api.req('/api/media',{method:'POST',body});return response.media;}
 function scrollChatToLatest(){const feed=$('chatFeed');if(!feed)return;requestAnimationFrame(()=>{feed.scrollTop=feed.scrollHeight;requestAnimationFrame(()=>{if(feed.scrollHeight-feed.scrollTop-feed.clientHeight>2)feed.scrollTop=feed.scrollHeight;});});}
 function updatePending(){const p=$('pendingMedia');p.replaceChildren();for(const m of pending){const badge=document.createElement('button');badge.textContent=`${m.name} ×`;badge.title='Remove attachment';badge.onclick=()=>{pending=pending.filter(x=>x!==m);updatePending();};p.append(badge);}}
+async function chooseDroppedMediaAction(file,target){
+ const inChat=target?.closest?.('#chatPanel,.chat-composer,#chatFeed,#pendingMedia');
+ if(inChat)return {mode:'chat'};
+ if(!(file.type.startsWith('image/')||file.type.startsWith('video/')))return {mode:'chat'};
+ const kind=file.type.startsWith('video/')?'video screen':'picture frame';
+ const answer=String(window.prompt(`Drop “${file.name}”: type "chat" to attach it to Messages, or "scene white", "scene black", or "scene mirror" to add it to the 3D realm as a ${kind}.`,file.type.startsWith('video/')?'scene black':'scene white')||'').trim().toLowerCase();
+ if(!answer)return null;
+ if(answer==='chat')return {mode:'chat'};
+ if(answer.startsWith('scene')){const parts=answer.split(/\s+/);const backing=['white','black','mirror'].includes(parts[1])?parts[1]:'white';return {mode:'scene',backing};}
+ return {mode:'chat'};
+}
 async function attach(file){if(!file)return false;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');return true;}catch(e){toast(e.message);return false;}}
 async function reportRobotTask(command,status){
  if(!command?.id||status==='cancelled')return;
@@ -1050,6 +1061,23 @@ function bindUI(world){
  };
  $('sendChat').onclick=send;$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
  $('chatFile').onchange=e=>attach(e.target.files[0]);$('recordAudio').onclick=()=>startRecording(false);
+ const composer=$('chatComposer')||document.querySelector('.chat-composer');
+ const dragAttachOn=()=>composer?.classList.add('drag-attach'),dragAttachOff=()=>composer?.classList.remove('drag-attach');
+ composer?.addEventListener('dragenter',e=>{if([...e.dataTransfer?.items||[]].some(i=>i.kind==='file')){e.preventDefault();dragAttachOn();}});
+ composer?.addEventListener('dragover',e=>{if([...e.dataTransfer?.items||[]].some(i=>i.kind==='file')){e.preventDefault();e.dataTransfer.dropEffect='copy';dragAttachOn();}});
+ composer?.addEventListener('dragleave',e=>{if(!composer.contains(e.relatedTarget))dragAttachOff();});
+ composer?.addEventListener('drop',async e=>{dragAttachOff();const file=e.dataTransfer?.files?.[0];if(!file)return;e.preventDefault();await attach(file);});
+ window.solviHandleWorldFileDrop=async(file,detail={})=>{
+  try{const choice=await chooseDroppedMediaAction(file,detail.target);if(!choice)return false;
+   if(choice.mode==='chat')return await attach(file);
+   if(!file.type.startsWith('image/')&&!file.type.startsWith('video/'))return await attach(file);
+   const media=await uploadFile(file);
+   window.solviEditor?.lastPointer && (window.solviEditor.lastPointer={x:detail.x||innerWidth/2,y:detail.y||innerHeight/2});
+   window.solviEditor?.addSceneMedia(media,{backing:choice.backing||'white'});
+   toast((file.type.startsWith('video/')?'Video screen':'Picture frame')+' added to the realm');
+   return true;
+  }catch(error){toast(error.message);return false;}
+ };
  $('recordVideo').onclick=()=>startRecording(true);
  $('robotVision').onclick=async()=>{try{
    const robot=window.solviEditor?.selected;if(robot?.userData.editorKind!=='robot')throw Error('Select a robot before capturing its eyes.');

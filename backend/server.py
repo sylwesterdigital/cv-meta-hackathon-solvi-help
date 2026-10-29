@@ -180,7 +180,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.61',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.62',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -640,6 +640,68 @@ def get_media(mid):
     response.headers['X-Solvi-File-Size']=str(m['size'])
     response.headers['Content-Security-Policy']="default-src 'none'; sandbox" if m['mime']=='application/pdf' else "default-src 'none'"
     return response
+
+def ensure_hls_stream(media_row):
+    if not media_row or not str(media_row['mime']).startswith('video/'):
+        raise ValueError('Video upload required')
+    if not (shutil.which('ffmpeg') and shutil.which('ffprobe')):
+        raise RuntimeError('FFmpeg/FFprobe missing on backend')
+    root=STATE/'media'/f"hls-{media_row['id']}"
+    manifest=root/'index.m3u8'
+    if manifest.is_file():
+        return manifest
+    root.mkdir(parents=True,exist_ok=True)
+    src=str(media_row['path'])
+    playlist=str(manifest)
+    segment=str(root/'segment%03d.ts')
+    try:
+        subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',src,
+                        '-vf','scale=trunc(iw/2)*2:trunc(ih/2)*2',
+                        '-c:v','libx264','-preset','veryfast','-g','48','-sc_threshold','0',
+                        '-c:a','aac','-b:a','128k',
+                        '-f','hls','-hls_time','4','-hls_playlist_type','vod',
+                        '-hls_segment_filename',segment,playlist],check=True,timeout=150)
+    except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as exc:
+        shutil.rmtree(root,ignore_errors=True)
+        raise RuntimeError('HLS conversion failed: '+str(exc)) from exc
+    if not manifest.is_file():
+        shutil.rmtree(root,ignore_errors=True)
+        raise RuntimeError('HLS manifest was not created')
+    content=manifest.read_text(encoding='utf-8',errors='replace').splitlines()
+    manifest.write_text('\n'.join(line if line.startswith('#') or line.startswith('hls/') else 'hls/'+line for line in content)+'\n',encoding='utf-8')
+    return manifest
+
+@app.get('/api/media/<mid>/stream.m3u8')
+def get_media_hls(mid):
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:m=con.execute('SELECT * FROM media WHERE id=?',(mid,)).fetchone()
+    if not m:return json_error('Media missing',404)
+    if not str(m['mime']).startswith('video/'):return json_error('Video upload required',400)
+    try:manifest=ensure_hls_stream(m)
+    except ValueError as exc:return json_error(str(exc),400)
+    except RuntimeError as exc:return json_error(str(exc),503)
+    response=send_from_directory(manifest.parent,manifest.name,mimetype='application/vnd.apple.mpegurl',as_attachment=False)
+    response.headers['Cache-Control']='private, max-age=300'
+    return response
+
+@app.get('/api/media/<mid>/hls/<path:name>')
+def get_media_hls_segment(mid,name):
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    if '..' in name or name.startswith('/'):
+        return json_error('Invalid HLS asset',400)
+    with db() as con:m=con.execute('SELECT * FROM media WHERE id=?',(mid,)).fetchone()
+    if not m:return json_error('Media missing',404)
+    if not str(m['mime']).startswith('video/'):return json_error('Video upload required',400)
+    try:manifest=ensure_hls_stream(m)
+    except ValueError as exc:return json_error(str(exc),400)
+    except RuntimeError as exc:return json_error(str(exc),503)
+    root=manifest.parent
+    asset=root/name
+    if not asset.is_file():return json_error('HLS asset missing',404)
+    mime='video/mp2t' if asset.suffix=='.ts' else 'application/octet-stream'
+    return send_from_directory(root,asset.name,mimetype=mime,as_attachment=False)
 
 @app.post('/api/profile/intro')
 def intro():
@@ -1917,10 +1979,17 @@ def set_scene():
     if not room_id:return json_error('Unknown room',404)
     objects=data.get('objects',[]);revision=data.get('revision');policy=room_policy(room_id)
     if not isinstance(objects,list) or len(objects)>128 or not isinstance(revision,int):return json_error('Invalid scene')
-    allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'}
+    allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media'}
     for o in objects:
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
         if o['kind']=='model' and not model_asset_exists(o.get('model')):return json_error('Unknown scene model')
+        if o['kind']=='media':
+            media=o.get('media',{})
+            if not isinstance(media,dict) or not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id',''))) or not str(media.get('mime','')).startswith(('image/','video/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):
+                return json_error('Invalid media surface')
+            with db() as con:
+                row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone()
+            if not row or row['mime']!=media.get('mime'):return json_error('Missing uploaded media reference')
         if o['kind']=='robot':
             if 'turnSpeed' in o and (not isinstance(o['turnSpeed'],(float,int)) or isinstance(o['turnSpeed'],bool) or not math.isfinite(o['turnSpeed']) or not 0<=o['turnSpeed']<=10):return json_error('Invalid robot turn speed')
             brain=o.get('brain',{})
@@ -1961,12 +2030,17 @@ def patch_scene_object():
     if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',obj_id):return json_error('Invalid object id')
     if action not in ('upsert','remove'):return json_error('Invalid object action')
     if action=='upsert':
-        if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'}:return json_error('Unsupported object type')
+        if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','physics','model','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','physics','model','media','transformLocked') if key in obj}
         if 'transformLocked' in obj and not isinstance(obj['transformLocked'],bool):return json_error('Invalid transform lock')
         if len(str(obj.get('name','')))>100:return json_error('Object name too long')
         if obj['kind']=='model' and not model_asset_exists(obj.get('model')):return json_error('Unknown scene model')
+        if obj['kind']=='media':
+            media=obj.get('media',{})
+            if not isinstance(media,dict) or not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id',''))) or not str(media.get('mime','')).startswith(('image/','video/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):return json_error('Invalid media surface')
+            with db() as con:media_row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone()
+            if not media_row or media_row['mime']!=media.get('mime'):return json_error('Missing uploaded media reference')
         if obj['kind']!='model' and obj.get('model'):return json_error('Unexpected model reference')
         avatar=str(obj.get('avatar',''))
         if avatar and not (avatar=='./assets/solvi-character.glb' or (re.fullmatch(r'\./assets/avatars/[A-Za-z0-9_-]+\.glb',avatar) or re.fullmatch(r'/api/avatars/[0-9a-f]{32}\.glb',avatar))):
