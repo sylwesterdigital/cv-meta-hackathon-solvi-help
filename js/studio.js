@@ -33,7 +33,7 @@ let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
 let cachedMessages=[],chatSignature='',lastBubbleEntry=null;const chatMediaURLs=new Set();const runningRobotTasks=new Map();const localBrainTrace=[];const initialRoomLoads=new Set();
 let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};let sessionPrompt=false;
-let robotSpeech=null;let suppressRobotSpeech=false;
+let robotSpeech=null;let suppressRobotSpeech=false;let currentlySpeakingRobot='';
 const robotDebugAllowed=id=>robotDebugVisible(id,sessionStorage);
 const debugRobotSelected=()=>window.solviEditor?.selected?.userData.editorKind==='robot'?window.solviEditor.selected.userData.editorId:null;
 function syncRobotDebugUI(){
@@ -242,18 +242,13 @@ async function captureRobotObservation(robot,question,{proactive=false}={}){
  }
  return {media_ids:ids,views,panorama_media_id:panoramaMediaId,plan,target_phrase:target?.phrase||'',scanned_count:plan.length};
 }
-async function reactToRobotMessage(message,relayHops=0){
- if(!message?.id||!message.text||!online||!auth)return;
+async function reactOneRobot(message,targetRobotId,interruptedRobot=''){
+ if(!message?.id||!message.text||!online||!auth)return null;
  // Do not flood chat with a router diagnostic for messages no robot addresses.
- const response=await api.req('/api/robots/react',{method:'POST',body:JSON.stringify({room:activeRoom,text:message.text,message_id:message.id})});
+ const response=await api.req('/api/robots/react',{method:'POST',body:JSON.stringify({room:activeRoom,text:message.text,message_id:message.id,target_robot_id:targetRobotId,interrupted_robot:interruptedRobot})});
  const traceRobot=response.command?.robot_id||response.robot_id||'chat';
  if(response.triggered)for(const item of response.trace||[])emitBrainTrace(traceRobot,response.answer?.speaker||response.robot_name||'Robot',item.step.toUpperCase(),`${item.result} [${item.source}]`);
- if(response.answer){await bubble(response.answer);
-  if(relayHops<2&&response.answer.model==='muse-spark-1.3'&&/@[\w-]+/.test(response.answer.text||'')){
-   try{await reactToRobotMessage(response.answer,relayHops+1);}
-   catch(error){emitBrainTrace(response.robot_id||'chat',response.answer.speaker||'Robot','HANDOFF FAILED',error.message);}
-  }
- }
+ if(response.answer)await bubble(response.answer);
  if(response.needs_vision){
    const editor=window.solviEditor,robot=editor?.items?.find(o=>o.userData.editorId===response.robot_id&&o.userData.editorKind==='robot');
    if(!robot){const error=response.robot_name+' cannot capture a view because the robot is not loaded in this browser.';$('chatStatus').textContent=error;await bubble({role:'assistant',speaker:response.robot_name||'Robot',model:'camera-error',text:error,created:new Date().toISOString()});return;}
@@ -266,7 +261,7 @@ async function reactToRobotMessage(message,relayHops=0){
      emitBrainTrace(response.robot_id,robot.name,'VISION RESULT',`${answer.model||answer.answer?.model} · ${answer.answer?.text||'No text'} · estimated US$${Number(answer.usage?.estimated_usd||0).toFixed(6)}`);
      $('chatStatus').textContent=robot.name+' · camera observation shared'+(answer.usage?' · ~US$'+Number(answer.usage.estimated_usd||0).toFixed(5):'');
    }catch(error){$('chatStatus').textContent=robot.name+' vision failed: '+error.message;emitBrainTrace(response.robot_id,robot.name,'VISION ERROR',error.message);await bubble({role:'assistant',speaker:robot.name,model:'camera-error',text:'I could not capture or analyse my head-camera image: '+error.message,created:new Date().toISOString()});toast('Robot vision: '+error.message);}
-   return;
+   return response;
  }
  if(response.command){
    const command=response.command,editor=window.solviEditor;
@@ -274,7 +269,7 @@ async function reactToRobotMessage(message,relayHops=0){
    const previous=runningRobotTasks.get(command.robot_id);if(previous)previous.cancelled=true;
    const run={cancelled:false,command};runningRobotTasks.set(command.robot_id,run);
    if(command.kind==='vision_search'){
-     if(!robot||!editor.canEdit(robot)){emitBrainTrace(command.robot_id,robot?.name||'Robot','FAILED','Robot is missing or read-only');await reportRobotTask(command,'failed');return;}
+     if(!robot||!editor.canEdit(robot)){emitBrainTrace(command.robot_id,robot?.name||'Robot','FAILED','Robot is missing or read-only');await reportRobotTask(command,'failed');return response;}
      $('chatStatus').textContent=`${robot.name}: searching through head-camera frames…`;
      // Start the model calls after the chat response; do not freeze the composer.
      (async()=>{
@@ -302,10 +297,44 @@ async function reactToRobotMessage(message,relayHops=0){
  }else if(response.triggered){
    $('chatStatus').textContent=response.answer?`${response.answer.speaker} replied · ~US$${Number(response.usage?.estimated_usd||0).toFixed(5)}`:(response.note||'Robot observed the message');
  }
+ return response;
+}
+// All turns for a single conversation are serialized. Each message has an ordered
+// recipient list verified by the server, then optional bounded bot-to-bot handoffs.
+let robotTurnSerial=Promise.resolve();
+async function reactToRobotMessage(message,relayHops=0,interruptedRobot=''){
+ if(!message?.id||!message.text||!online||!auth)return;
+ const room=activeRoom;
+ const perform=async()=>{
+  const queue=[{message,depth:relayHops,interruptedRobot}],seen=new Set();let count=0;
+  while(queue.length&&count<10&&room===activeRoom){
+   const item=queue.shift();
+   const result=await api.req('/api/robots/queue',{method:'POST',body:JSON.stringify({room,message_id:item.message.id})});
+   for(const robot of result.targets||[]){
+    if(count>=10||room!==activeRoom)break;
+    const key=item.message.id+':'+robot.id;
+    if(seen.has(key))continue;
+    seen.add(key);
+    // Speech has its own sequential playback queue; a new character waits for
+    // the previous character's sentence before its response is displayed.
+    if(count)await robotSpeech?.waitUntilQuiet();
+    const response=await reactOneRobot(item.message,robot.id,item.interruptedRobot);
+    count++;
+    if(response?.answer?.model==='muse-spark-1.3'&&item.depth<2&&/@[\w-]+/.test(response.answer.text||'')){
+     queue.push({message:response.answer,depth:item.depth+1});
+    }
+   }
+  }
+ };
+ const next=robotTurnSerial.catch(()=>{}).then(perform);
+ robotTurnSerial=next.catch(()=>{});
+ return next;
 }
 async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.length)return;if(!me){show('profileBackdrop',true);return;}
  if(online&&!auth){needSignIn('Sign in before sending messages.');return;}
  const ids=pending.map(x=>x.id);
+ const interruptedRobot=currentlySpeakingRobot;
+ if(interruptedRobot)robotSpeech?.stop(); // A human can interrupt a spoken turn.
  if(!online){await bubble({role:'user',text,speaker:me.name,user_id:me.id,created:new Date().toISOString()});toast('Local demo only. AI requires backend and MODEL_API_KEY.');return;}
  const useAI=false; // Ordinary messages always go to shared chat; robots have their own AI route.
  $('sendChat').disabled=true;$('chatStatus').textContent='Model processing…';
@@ -314,7 +343,7 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
   $('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
   if(response.usage?.totals)$('metaUsageStatus').textContent=`Recorded ${response.usage.totals.requests} requests · ~US$${Number(response.usage.totals.usd).toFixed(4)} estimated`;
   if(response.message?.id && text){
-    try{await reactToRobotMessage(response.message);}
+    try{await reactToRobotMessage(response.message,0,interruptedRobot);}
     catch(error){$('chatStatus').textContent='Message delivered; robot reaction failed: '+error.message;}
   }
  }catch(e){playCue('error');$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
@@ -947,6 +976,7 @@ function bindUI(world){
  // A lightweight DOM waveform projected from the talking robot's head.
  let speechWave=null,speechFrame=0;
  window.addEventListener('solvi:robot-speaking',event=>{
+  currentlySpeakingRobot=event.detail?.active?String(event.detail.name||''):'';
   cancelAnimationFrame(speechFrame);speechWave?.remove();speechWave=null;
   if(!event.detail?.active||!event.detail?.name)return;
   speechWave=document.createElement('span');speechWave.className='robot-speech-wave';speechWave.setAttribute('aria-hidden','true');document.body.append(speechWave);

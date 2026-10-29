@@ -695,6 +695,41 @@ command,ack=plan_robot_command('@Elox find Grey Sofa 1 and sit on it',elox,sofas
 assert command['target_id']=='grey-sofa',(command,ack)
 no_match,_=plan_robot_command('@Elox find Grey Sofa 9 and sit',elox,sofas)
 assert no_match['kind']=='vision_search' and 'grey sofa 9' in no_match['target_phrase']
+# v0.2.61: all-robot and multi-handle turns are ordered and per-recipient idempotent.
+from server import robot_recipient_queue
+from unittest.mock import patch as _patch
+assert [o['name'] for o in robot_recipient_queue('@Elox @Jessica compare notes',[robot,elox])]==['Elox','Jessica']
+assert [o['name'] for o in robot_recipient_queue('@All hello',[robot,elox])]==['Jessica','Elox']
+assert [o['name'] for o in robot_recipient_queue('@All hello',[robot,elox],True,robot['id'])]==[]
+assert [o['name'] for o in robot_recipient_queue('@Jessica @Elox @Jessica hello',[robot,elox])]==['Jessica','Elox']
+mention_source=c.post('/api/message',headers=headers,json={
+    'room':'lab','text':'@Elox @Jessica tell us one useful thing each'}).get_json()['message']
+queue=c.post('/api/robots/queue',headers=headers,json={'room':'lab','message_id':mention_source['id']})
+assert queue.status_code==200,(queue.status_code,queue.data)
+assert [r['name'] for r in queue.get_json()['targets']]==['Elox','Jessica'],queue.data
+assert c.post('/api/robots/react',headers=headers,json={'room':'lab','message_id':mention_source['id'],
+    'text':mention_source['text'],'target_robot_id':'wrong-robot'}).status_code==403
+chat_attempts[data['user']['id']]=[]
+with _patch('server.active_model_key',return_value='test-key'),_patch('server.meta_request',return_value={
+    'id':'group-1','output_text':'I can help organise the room.','usage':{'input_tokens':2,'output_tokens':9}}):
+    one=c.post('/api/robots/react',headers=headers,json={'room':'lab','message_id':mention_source['id'],
+        'text':mention_source['text'],'target_robot_id':elox['id']})
+assert one.status_code==200 and one.get_json()['answer']['speaker']=='Elox',(one.status_code,one.data)
+queue_after=c.post('/api/robots/queue',headers=headers,json={'room':'lab','message_id':mention_source['id']})
+assert [r['name'] for r in queue_after.get_json()['targets']]==['Jessica'],queue_after.data
+assert c.post('/api/robots/react',headers=headers,json={'room':'lab','message_id':mention_source['id'],
+    'text':mention_source['text'],'target_robot_id':elox['id']}).get_json()['triggered'] is False
+with _patch('server.active_model_key',return_value='test-key'),_patch('server.meta_request',return_value={
+    'id':'group-2','output_text':'[PASS]','usage':{'input_tokens':2,'output_tokens':2}}):
+    two=c.post('/api/robots/react',headers=headers,json={'room':'lab','message_id':mention_source['id'],
+        'text':mention_source['text'],'target_robot_id':robot['id']})
+assert two.status_code==200 and two.get_json()['responded'] is False,(two.status_code,two.data)
+assert c.post('/api/robots/queue',headers=headers,json={
+    'room':'lab','message_id':mention_source['id']}).get_json()['targets']==[]
+all_source=c.post('/api/message',headers=headers,json={'room':'lab','text':'@All share your plans'}).get_json()['message']
+all_queue=c.post('/api/robots/queue',headers=headers,json={'room':'lab','message_id':all_source['id']}).get_json()
+assert all_queue['broadcast'] is True and {r['name'] for r in all_queue['targets']} >= {'Jessica','Elox'}
+print('PASS: ordered multi-mentions, @All, per-recipient deduplication, pass-on-silence and invalid-target blocking')
 # Each generated reply may relay once to a different robot; two hops maximum.
 chat_attempts[data['user']['id']]=[]
 source=c.post('/api/message',headers=headers,json={'room':'lab','text':'@Jessica talk to @Elox about the scene'}).get_json()['message']

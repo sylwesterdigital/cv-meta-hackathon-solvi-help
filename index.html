@@ -13,7 +13,7 @@
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <form id="elevenLabsKeyForm" class="solvi-key-form" autocomplete="off"></form><form id="metaApiKeyForm" class="solvi-key-form" autocomplete="off"></form><form id="adminPasswordForm" class="solvi-key-form" autocomplete="off"></form>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.60</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.61</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="realmGalleryButton" title="Browse realms as cards" aria-label="Browse realms" aria-haspopup="dialog">Realms</button><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="assetsButton" title="Browse uploaded 3D assets">Assets</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
@@ -118,7 +118,7 @@
 </aside>
   <section id="chatPanel" class="chat-panel" aria-label="Chat">
     <div class="panel-title drag-handle chat-drag"><div><strong id="roomChatTitle">Main realm · messages</strong><small id="backendLabel">Checking backend…</small></div><div><button type="button" id="robotCommandsButton" title="Robot commands and syntax" aria-expanded="false" aria-controls="robotCommandsCard">Commands</button><button type="button" id="floatChatButton" title="Return to overlay">Overlay</button></div></div>
-    <section id="robotCommandsCard" class="robot-commands-card" hidden aria-label="Robot instructions"><h3>Robot commands and syntax</h3><p>Address one robot by its own name: <code>@Paris</code>. Only that robot owns the mission.</p><pre>@Paris help
+    <section id="robotCommandsCard" class="robot-commands-card" hidden aria-label="Robot instructions"><h3>Robot commands and syntax</h3><p>Address one robot using <code>@Paris</code>, a named group such as <code>@Elox @Jessica</code>, or broadcast with <code>@All</code>. Mentions respond in order, up to six robots per message; robots may choose not to speak if they have nothing relevant to add.</p><pre>@Paris help
 @Paris list voices
 @Paris use a female voice
 @Paris you are female
@@ -128,7 +128,9 @@
 @Paris turn right 90 degrees then walk 2 meters
 @Paris explore 4 times
 @Paris stop
-@Elox how is your mission going?</pre><p>Move and sit use the saved room scene. Obstacles trigger limited safe replanning. There is no automatic object pickup, drink creation, or unrestricted model-controlled execution. Use Brains to set personality and identity; Properties → Voice to select installed or ElevenLabs voices. Voice and gender preferences are independent. Scene physics also requires World settings → Physics enabled.</p></section>
+@Elox how is your mission going?
+@Elox @Jessica compare your plans
+@All offer one helpful thought each</pre><p>Move and sit use the saved room scene. Obstacles trigger limited safe replanning. There is no automatic object pickup, drink creation, or unrestricted model-controlled execution. Use Brains to set personality and identity; Properties → Voice to select installed or ElevenLabs voices. Voice and gender preferences are independent. Scene physics also requires World settings → Physics enabled.</p></section>
     <div id="chatFeed" class="chat-feed" aria-live="polite" aria-relevant="additions text"></div>
     <div class="chat-composer" id="chatComposer"><div class="composer-window-head"><button type="button" id="composerMove" title="Drag message composer" aria-label="Drag message composer"></button><button type="button" id="webcamButton" class="ui-icon-utility" data-ui-icon="webcam" title="Open webcam and tracking" aria-label="Open webcam" aria-pressed="false"></button><button type="button" id="composerMinimize" aria-label="Minimize composer" title="Minimize composer"></button><button type="button" id="composerFloat" aria-label="Undock composer" title="Float or dock composer"></button></div>
       <div class="composer-line"><span id="composerName">Guest</span><select id="modelSelect" hidden aria-hidden="true" tabindex="-1"><option value="">World chat</option></select></div>

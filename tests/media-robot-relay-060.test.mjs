@@ -26,15 +26,15 @@ test('authenticated attachment controls and safe viewer are wired',()=>{
  assert.match(api,/X-Solvi-File-Name/);
  assert.match(api,/application\/pdf.*\.pdf/);
 });
-test('robot-robot @handoff is room verified, depth limited and deduplicated',()=>{
+test('robot-to-robot @handoff retains 2-hop bound and deduplicates per recipient',()=>{
  assert.match(api,/def robot_handle_mentions\(text,robots\):/);
- assert.match(api,/if from_robot:/);
- assert.match(api,/m\['model'\]!='muse-spark-1.3'/);
- assert.match(api,/int\(m\['relay_depth'\]\)>=2/);
- assert.match(api,/messages_relay_source/);
- assert.match(api,/source_message_id|relay_source,relay_depth/);
- assert.match(studio,/relayHops<2/);
- assert.match(studio,/reactToRobotMessage\(response\.answer,relayHops\+1\)/);
+ assert.match(api,/def robot_recipient_queue\(text,robots,from_robot=False,speaker_id=None\):/);
+ assert.match(api,/if from_robot and \(not speaker or m\['model'\]!='muse-spark-1\.3' or int\(m\['relay_depth'\]\)>=2\)/);
+ assert.match(api,/robot_reactions/);
+ assert.match(api,/PRIMARY KEY\(message_id,robot_id\)/);
+ assert.match(api,/relay_source,relay_depth/);
+ assert.match(studio,/robotTurnSerial/);
+ assert.match(studio,/reactOneRobot\(item\.message,robot\.id,item\.interruptedRobot\)/);
  assert.match(api,/Address at most one other robot per answer/);
 });
 test('furniture colour and number are strict navigation objectives',()=>{

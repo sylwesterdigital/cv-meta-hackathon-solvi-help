@@ -12,6 +12,7 @@ export function mentionQuery(text,cursor){
 export function mentionCandidates(names,query=''){
  const seen=new Map(),search=String(query).trim().toLocaleLowerCase();
  const available=[];
+ if('all'.includes(search))available.push({name:'All',kind:'broadcast'});
  for(const source of names||[]){const name=String(source?.name||'').trim();const key=name.toLocaleLowerCase();
   if(!name||!key.includes(search))continue;
   const kind=source.kind==='robot'?'robot':'user';

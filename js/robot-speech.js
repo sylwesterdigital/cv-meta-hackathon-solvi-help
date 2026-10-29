@@ -27,7 +27,7 @@ export const distanceVolume=(distance,base=.75)=>Math.max(0,Math.min(1,base/(1+M
 export class RobotSpeech{
  constructor(world,api,room,notify=()=>{}){
   this.world=world;this.api=api;this.room=room;this.notify=notify;
-  this.seen=new Set();this.jobs=[];this.playing=false;this.active=null;this.audio=null;this.context=null;
+  this.seen=new Set();this.jobs=[];this.playing=false;this.active=null;this.audio=null;this.context=null;this.idleWaiters=new Set();
   const prime=()=>{const Ctx=window.AudioContext||window.webkitAudioContext;if(Ctx&&!this.context){try{this.context=new Ctx();}catch{}}this.context?.resume().catch(()=>{});};
   document.addEventListener('pointerdown',prime,{passive:true});document.addEventListener('keydown',prime);
   window.addEventListener('pagehide',()=>this.stop());
@@ -63,6 +63,14 @@ export class RobotSpeech{
  report(job,status,message,provider=job.settings.provider){
   window.dispatchEvent(new CustomEvent('solvi:robot-voice-status',{detail:{robotId:job.robotId,status,provider,message}}));
  }
+ waitUntilQuiet(timeoutMs=18000){
+  if(!this.playing||!this.enabled())return Promise.resolve();
+  return new Promise(resolve=>{
+   const done=()=>{clearTimeout(timer);this.idleWaiters.delete(done);resolve();};
+   const timer=setTimeout(done,timeoutMs);
+   this.idleWaiters.add(done);
+  });
+ }
  stop(){this.jobs=[];this.active?.pause?.();this.active?.dispatchEvent?.(new Event('ended'));if(this.active?.src?.startsWith('blob:'))URL.revokeObjectURL(this.active.src);this.active=null;
   window.speechSynthesis?.cancel?.();window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:false}}));}
  async consume(){
@@ -79,7 +87,7 @@ export class RobotSpeech{
      this.notify('Robot voice: '+error.message);
    }finally{window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:false,name:robot.name}}));}
   }
-  this.playing=false;
+  this.playing=false;for(const done of [...this.idleWaiters])done();
  }
  async play(job,robot){
   const settings=job.settings;

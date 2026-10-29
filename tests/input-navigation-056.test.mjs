@@ -20,7 +20,8 @@ test('mentions preserve existing text and names with spaces',()=>{
 });
 test('mentions de-duplicate users, rank robots first, and reject punctuation',()=>{
  const entries=mentionCandidates([{name:'Jessica',kind:'user'},{name:'jessica',kind:'robot'},{name:'Tata',kind:'user'},{name:'Paris',kind:'robot'}],'');
- assert.equal(entries.length,3);
+ assert.equal(entries.length,4);
+ assert.ok(entries.some(item=>item.name==='All'&&item.kind==='broadcast'));
  assert.equal(entries[0].kind,'robot');
  assert.equal(mentionQuery('hi @Joe.',8),null);
  assert.equal(mentionQuery('hello there',11),null);

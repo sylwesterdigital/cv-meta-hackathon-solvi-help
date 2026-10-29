@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.60",
+  "currentVersion": "0.2.61",
   "releases": [
+    {
+      "version": "0.2.61",
+      "publishedAt": "2026-10-29T16:33:49Z",
+      "changes": [
+        "Show chat images as compact thumbnails, automatically grouped into a responsive grid for multi-image messages; full-size click-through previews and attachment Save remain available.",
+        "Add @All to robot @mention suggestions and verify the broadcast against robots present in the same realm, capped at six recipients in scene order.",
+        "Route multiple explicitly addressed @robots sequentially in the written order, with per-message/per-robot persistent deduplication instead of dropping all but the first recipient.",
+        "Queue conversational handoffs breadth-first with a strict 2-hop model-to-model relay depth and a total turn cap, never allowing model messages to directly command another robot\u2019s movement.",
+        "Wait for ongoing robot speech before presenting the next robot turn; allow user-initiated voice interruption and provide that context to the interrupted robot for a natural, bounded response.",
+        "Allow an individual robot to decline an irrelevant group response via [PASS], guided by recent chat, its own identity and mission context to avoid repetitive chatter.",
+        "Expand test coverage for mention order, @All limits, per-robot delivery and deduplication, optional silence, compact image previews, and turn taking."
+      ]
+    },
     {
       "version": "0.2.60",
       "publishedAt": "2026-10-29T16:01:04Z",
@@ -314,17 +327,6 @@
         "Make smartphone layout world-first: collapsed world tools, accessible More navigation and permanently visible CC/chat send controls with 44px touch targets.",
         "Clarify CC microphone on/off states and delivery to room chat as CC: transcript; guard missing publisher and queue Whisper segments without silently dropping while busy.",
         "Add regression tests for device modes, font input safety, contrast, icons and captions; retain robot Brains, Meta AI, multiplayer, and the unchanged release watcher contract."
-      ]
-    },
-    {
-      "version": "0.2.23",
-      "publishedAt": "2026-10-28T05:57:58Z",
-      "changes": [
-        "Replace missing-object hardcoded dead end with four real head-camera SAM searches and raycast matches to scene geometry.",
-        "Log observable robot address, intent, Muse task plan, screenshot request, Meta usage, segmentation results, navigation and completion.",
-        "Add chat verbose robot trace, persisted task-completion replies and Brains trace with exact last JPEG shown.",
-        "Make robot identity collapsible; widen and resize Brains, enlarge images and diagnostics, and explain scenario AI explicitly.",
-        "Use real Sit clips when available and labelled approximate procedural seating fallback; preserve Ubuntu release watcher compatibility."
       ]
     }
   ]

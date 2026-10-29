@@ -1549,3 +1549,17 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 .chat-media-viewer-content img{display:block;max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in}
 .chat-media-viewer-content iframe{display:block;width:100%;height:100%;border:0;background:white;border-radius:6px}
 .chat-media-viewer-content a{color:#b5e8ff}
+
+/* v0.2.61: compact chat thumbnails; mixed media keeps its own controls. */
+#chatFeed .chat-media-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px!important;width:min(320px,100%);max-width:100%;align-items:start}
+#chatFeed .chat-media-grid .chat-attachment-image{min-width:0;max-width:none;width:100%;padding:2px;gap:2px;overflow:hidden!important}
+#chatFeed .chat-media-grid .chat-image-open{display:block;width:100%;aspect-ratio:1;overflow:hidden;border-radius:5px}
+#chatFeed .chat-media-grid .chat-image-open img{height:100%;width:100%;max-height:none;object-fit:cover}
+#chatFeed .chat-bubble > .chat-attachment-image{width:min(190px,100%)}
+#chatFeed .chat-bubble > .chat-attachment-image .chat-image-open{max-width:100%;max-height:150px;overflow:hidden}
+#chatFeed .chat-bubble > .chat-attachment-image .chat-image-open img{max-height:150px;object-fit:cover}
+#chatFeed .chat-media-grid .chat-attachment-title{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;font-size:10px}
+#chatFeed .chat-media-grid .chat-attachment-save{font-size:10px}
+#chatFeed .chat-media-grid .chat-attachment:not(.chat-attachment-image){grid-column:1/-1}
+#chatFeed .chat-media-grid .chat-attachment:not(.chat-attachment-image) :is(audio,video){width:min(300px,100%)}
+@media(max-width:420px){#chatFeed .chat-media-grid{grid-template-columns:repeat(2,minmax(0,1fr));width:min(270px,100%)}}
