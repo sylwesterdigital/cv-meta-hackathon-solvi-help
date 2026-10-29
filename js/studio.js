@@ -272,6 +272,8 @@ async function reactOneRobot(message,targetRobotId,interruptedRobot=''){
  const response=await api.req('/api/robots/react',{method:'POST',body:JSON.stringify({room:activeRoom,text:message.text,message_id:message.id,target_robot_id:targetRobotId,interrupted_robot:interruptedRobot})});
  const traceRobot=response.command?.robot_id||response.robot_id||'chat';
  if(response.triggered)for(const item of response.trace||[])emitBrainTrace(traceRobot,response.answer?.speaker||response.robot_name||'Robot',item.step.toUpperCase(),`${item.result} [${item.source}]`);
+ if(response.decision)emitBrainTrace(traceRobot,response.answer?.speaker||response.robot_name||'Robot','ROUTER / PARSER DECISION',response.decision);
+ if(response.inference)emitBrainTrace(traceRobot,response.answer?.speaker||response.robot_name||'Robot','EXACT MODEL I/O (text; image bytes omitted)',response.inference);
  if(response.answer)await bubble(response.answer);
  if(response.needs_vision){
    const editor=window.solviEditor,robot=editor?.items?.find(o=>o.userData.editorId===response.robot_id&&o.userData.editorKind==='robot');
@@ -287,6 +289,7 @@ async function reactOneRobot(message,targetRobotId,interruptedRobot=''){
        emitBrainTrace(response.robot_id,robot.name,'MUSE VISION',`Sending ${scan.media_ids.length} real JPEG frame(s), with labelled camera directions and the current conversation.`);
      }
      const answer=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify(payload)});
+     if(answer.inference)emitBrainTrace(response.robot_id,robot.name,'VISION MODEL I/O (text + frame references)',answer.inference);
      if(answer.answer)await bubble(answer.answer);
      emitBrainTrace(response.robot_id,robot.name,'VISION RESULT',`${answer.model||answer.answer?.model} · ${answer.answer?.text||'No text'} · estimated US$${Number(answer.usage?.estimated_usd||0).toFixed(6)}`);
      $('chatStatus').textContent=robot.name+' · camera observation shared'+(answer.usage?' · ~US$'+Number(answer.usage.estimated_usd||0).toFixed(5):'');
@@ -1023,7 +1026,7 @@ function bindUI(world){
  const editor=new SceneEditor(world,toast);setupChatMentions();robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
- window.addEventListener('solvi:robot-route',event=>{const d=event.detail||{};if(robotDebugAllowed(d.robotId))emitBrainTrace(d.robotId,d.name||'Robot',d.status==='planned'?'ROUTE ACCEPTED':'ROUTE BLOCKED',`${d.waypoints||0} computed A* waypoints · ${d.obstacles||0} obstacle footprints · destination ${d.target||'unknown'}. Green line = actual planner output; cyan = measured movement. No waypoints means no mission was started.`);});
+ window.addEventListener('solvi:robot-route',event=>{const d=event.detail||{};if(robotDebugAllowed(d.robotId))emitBrainTrace(d.robotId,d.name||'Robot',d.status==='planned'?'ROUTE ACCEPTED':'ROUTE BLOCKED',`${d.waypoints||0} computed A* waypoints · ${d.obstacles||0} obstacle footprints · planned length ${Number(d.plannedMeters||0).toFixed(2)} m · start ${JSON.stringify(d.start)} · destination ${d.target||'unknown'} ${JSON.stringify(d.destination)} · task ${d.taskId||'?'}. Green is the planner route; cyan is observed movement.`);if(robotDebugAllowed(d.robotId)&&d.plan)emitBrainTrace(d.robotId,d.name||'Robot','PLANNER ACTUAL GEOMETRY',d.plan);});
  window.addEventListener('solvi:robot-recovery',event=>{
    const d=event.detail||{};const bot=editor.items.find(o=>o.userData.editorId===d.robotId);
    emitBrainTrace(d.robotId,d.name,'AUTONOMOUS REPLAN',`Attempt ${d.attempt}/3: ${d.reason}. Refreshing physical scene footprints and routing around obstacles.`);
@@ -1033,13 +1036,15 @@ function bindUI(world){
  window.addEventListener('solvi:robot-task-update',e=>{
    const d=e.detail||{};
    $('chatStatus').textContent=`${d.robot} · ${d.status} · ${d.target}`;
-   emitBrainTrace(d.robotId,d.robot,'MOVEMENT COMPLETE',`${d.status} at ${d.target}`);
+   emitBrainTrace(d.robotId,d.robot,'MOVEMENT COMPLETE',d.routeTelemetry||`${d.status} at ${d.target}`);
    if(d.taskId){const run=runningRobotTasks.get(d.robotId);if(run&&!run.cancelled&&run.command.id===d.taskId){runningRobotTasks.delete(d.robotId);reportRobotTask(run.command,d.status);}}
  });
  window.addEventListener('solvi:brain-trace',e=>{
    const d=e.detail||{};if(!robotDebugAllowed(d.robotId))return;
+   const verbose=/MODEL I\/O|PLANNER ACTUAL GEOMETRY/.test(d.step||'');
+   const display=verbose?`[Saved ${String(d.detail||'').length} characters to Brains → Inference & decision log. Use Copy full log / Download JSON.]`:d.detail;
    const entry={id:random(),room:activeRoom,robotId:d.robotId,role:'assistant',speaker:(d.robotName||'Robot')+' · brain trace',model:'local-debug',
-     text:`[${d.at}] ${d.step}\n${d.detail}`,created:new Date().toISOString(),isBrainTrace:true};
+     text:`[${d.at}] ${d.step}\n${display}`,created:new Date().toISOString(),isBrainTrace:true};
    localBrainTrace.push(entry);if(localBrainTrace.length>100)localBrainTrace.shift();bubble(entry);
  });
  window.addEventListener('solvi:show-brain-chat',()=>{
@@ -1147,6 +1152,7 @@ function bindUI(world){
      const observed=await api.req('/api/robots/perception/complete',{method:'POST',body:form});
      if(observed.observed){
        emitBrainTrace(robot.userData.editorId,robot.name,'PRIVATE CAMERA OBSERVATION',`${observed.observation} · yaw ${yaw}° · model usage ~US$${Number(observed.usage?.estimated_usd||0).toFixed(6)}`);
+       if(observed.inference)emitBrainTrace(robot.userData.editorId,robot.name,'PERCEPTION MODEL I/O (text + frame reference)',observed.inference);
        robot.userData.lastCameraObservation={text:observed.observation,at:observed.observed_at};
      }
    }catch(error){

@@ -180,7 +180,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.68',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.69',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1445,7 +1445,12 @@ def robot_perception_complete():
               'Camera observation: '+observation,stamp))
         con.execute('DELETE FROM robot_memories WHERE room_id=? AND robot_id=? AND id NOT IN (SELECT id FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 30)',
               (room_id,robot_id,room_id,robot_id))
-    return jsonify(observed=True,robot_id=robot_id,observed_at=stamp,observation=observation,usage=usage)
+    return jsonify(observed=True,robot_id=robot_id,observed_at=stamp,observation=observation,usage=usage,
+      inference={'operation':'robot-perception','model':'muse-spark-1.3','store':False,
+        'request':{'text':instruction,'images':[{'camera':'head','mime':'image/jpeg','bytes':len(jpeg)}]},
+        'response':{'id':str(response.get('id','')),'text':observation,
+          'input_tokens':usage.get('input_tokens'),'output_tokens':usage.get('output_tokens'),
+          'estimated_usd':usage.get('estimated_usd')}})
 
 
 def is_robot_visual_question(text):
@@ -1653,7 +1658,15 @@ def robot_vision_reply():
     publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
     return jsonify(answer={'id':aid,'role':'assistant','speaker':str(robot['name'])[:100],
       'model':model,'text':answer,'media':json.dumps(([panorama_id] if panorama_id else [])+raw_ids),'created':ts,'avatar':portrait},
-      observed=not use_chat_attachments,usage=usage,request={'model':model,'image_bytes':sum(p.stat().st_size for p in paths),'images':len(paths),'views':views,'prompt':(original['text'][:400] if original else question[:400] if manual else 'proactive scene scan'),
+      observed=not use_chat_attachments,usage=usage,
+      inference={'operation':'robot-visual-chat','model':model,'store':False,
+        'request':{'text':prompt if 'prompt' in locals() else question,
+          'frames':[{'label':view,'mime':media_rows[i]['mime'] if use_chat_attachments else 'image/jpeg',
+                     'bytes':path.stat().st_size} for i,(path,view) in enumerate(zip(paths,views))]},
+        'response':{'id':str(response.get('id','')) if 'response' in locals() and isinstance(response,dict) else '',
+          'text':answer,'input_tokens':usage.get('input_tokens') if usage else 0,
+          'output_tokens':usage.get('output_tokens') if usage else 0}},
+      request={'model':model,'image_bytes':sum(p.stat().st_size for p in paths),'images':len(paths),'views':views,'prompt':(original['text'][:400] if original else question[:400] if manual else 'proactive scene scan'),
       'sends':'saved user chat images (not robot-eye observations)' if use_chat_attachments else 'overlapping direction-labelled JPEG source images for Muse; panorama is a human-facing preview only','store':False})
 
 @app.post('/api/robots/queue')
@@ -1762,6 +1775,11 @@ def robot_react():
                      (str(mid),user['id'],'image/jpeg','image/png','image/webp')).fetchone() for mid in attached[:3])
         source='attachment' if attachment_source else 'camera'
         return jsonify(triggered=True,needs_vision=True,implicit_vision=bool(natural_vision and not is_robot_visual_question(text)),vision_source=source,robot_id=robot['id'],robot_name=robot['name'],
+           decision={'router':'robot visual-context routing','addressed_robot':robot['name'],
+             'human_text':text,'visual_source':source,'has_uploaded_image':has_image,
+             'natural_stale_visual_trigger':natural_vision,'explicit_visual_question':is_robot_visual_question(text),
+             'last_camera_age_seconds':last_visual['age_seconds'] if last_visual else None,
+             'executable_movement':False},
            note='Stored chat image analysis requested.' if attachment_source else 'Real robot-eye capture required; scene index alone is not vision.',
            trace=[{'step':'intent','result':'Analyse the referenced chat attachment' if attachment_source else 'Capture live head-camera JPEG before asking Muse Spark',
                    'source':'verified chat attachment' if attachment_source else 'grounded visual-question router'}])
@@ -1772,7 +1790,7 @@ def robot_react():
                {'step':'target','result':command.get('target_name',command.get('target_phrase','')) if command else 'none','source':source}]
         if command and not may_edit(user['id'],robot,room_policy(room_id)):
             return json_error('Room policy does not allow you to command this robot',403)
-        plan_usage=None
+        plan_usage=None;plan_inference=None
         if command and active_model_key() and command['kind'] not in ('turn','turn_walk','walk_forward','jump'):
             # Muse drafts a user-facing plan in the robot's voice. It is never executable;
             # the allowlisted command from plan_robot_command is the only motion authority.
@@ -1787,7 +1805,13 @@ def robot_react():
                     {'role':'developer','content':[{'type':'input_text','text':instruction}]},
                     {'role':'user','content':[{'type':'input_text','text':plan_prompt}]}]})
                 plan_usage=record_usage(user['id'],'muse-spark-1.3','robot-task-plan',plan_response)
-                spoken_plan=meta_output_text(plan_response).strip().replace('\n',' ')[:230]
+                raw_plan_output=meta_output_text(plan_response).strip()
+                spoken_plan=raw_plan_output.replace('\n',' ')[:230]
+                plan_inference={'operation':'robot-task-plan','model':'muse-spark-1.3','store':False,
+                  'request':{'developer':instruction,'user':plan_prompt},
+                  'response':{'id':str(plan_response.get('id','')),'text':raw_plan_output,
+                              'input_tokens':plan_usage.get('input_tokens'),'output_tokens':plan_usage.get('output_tokens'),
+                              'estimated_usd':plan_usage.get('estimated_usd')}}
                 if spoken_plan:
                     ack+='\n\nMy plan: '+spoken_plan
                     trace.append({'step':'muse-plan','result':spoken_plan,'source':'muse-spark-1.3; user-visible plan only, not executable; '+str(plan_response.get('id',''))})
@@ -1814,6 +1838,10 @@ def robot_react():
                     if time.time()-info['created']>900:ROBOT_TASKS.pop(tid,None)
             audit_event('robot-command',room=room_id,robot_id=robot['id'],kind=command['kind'])
         return jsonify(triggered=True,responded=True,command=command,
+                       decision={'router':'explicit rule parser','addressed_robot':robot['name'],
+                                 'human_text':text,'parsed_command':command,'scene_source':source,
+                                 'executable':bool(command),'model_plan_executes':False},
+                       inference=plan_inference,
                        answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'scene-command',
                                'text':ack,'media':'[]','created':ts,'avatar':str(brain.get('portrait',''))},
                        trace=trace,usage=plan_usage,task_id=command['id'] if command else None,
@@ -1867,8 +1895,13 @@ def robot_react():
     except Exception as exc:
         with db() as con:con.execute('DELETE FROM robot_reactions WHERE message_id=? AND robot_id=?',(message_id,robot['id']))
         return json_error(str(exc),502)
+    inference={'operation':'robot-reply','model':'muse-spark-1.3','store':False,
+        'request':{'developer':instruction,'user':prompt},
+        'response':{'id':str(response.get('id','')),'text':answer,
+                    'input_tokens':usage.get('input_tokens'),'output_tokens':usage.get('output_tokens'),
+                    'estimated_usd':usage.get('estimated_usd')}}
     if answer.strip().upper() in ('[PASS]','PASS','[SILENCE]'):
-        return jsonify(triggered=True,responded=False,robot_id=robot['id'],robot_name=robot['name'],note='Robot listened and had nothing relevant to add',usage=usage)
+        return jsonify(triggered=True,responded=False,robot_id=robot['id'],robot_name=robot['name'],note='Robot listened and had nothing relevant to add',usage=usage,inference=inference)
     aid=str(uuid.uuid4());ts=now()
     with db() as con:
         con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override,relay_source,relay_depth) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
@@ -1883,7 +1916,7 @@ def robot_react():
               {'step':'intent','result':'Conversational reply, no physical motion requested','source':'command parser'},
               {'step':'muse request','result':'muse-spark-1.3 · saved identity + room objects + robot pose + UTC time + recent chat + memory · store=false','source':'Meta Responses API'},
               {'step':'muse response','result':str(response.get('id','unknown'))+' · '+str(usage.get('input_tokens',0))+' input, '+str(usage.get('output_tokens',0))+' output tokens · estimated US$'+str(usage.get('estimated_usd',0)),'source':'Meta API usage'}],
-       answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'muse-spark-1.3','text':answer,'media':'[]','created':ts,'avatar':str(brain.get('portrait',''))},usage=usage)
+       answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'muse-spark-1.3','text':answer,'media':'[]','created':ts,'avatar':str(brain.get('portrait',''))},usage=usage,inference=inference)
 
 @app.post('/api/robots/task-result')
 def robot_task_result():

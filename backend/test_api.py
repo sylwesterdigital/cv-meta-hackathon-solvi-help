@@ -759,6 +759,8 @@ with _patch('server.active_model_key',return_value='test-key'),_patch('server.me
     one=c.post('/api/robots/react',headers=headers,json={'room':'lab','message_id':mention_source['id'],
         'text':mention_source['text'],'target_robot_id':elox['id']})
 assert one.status_code==200 and one.get_json().get('answer',{}).get('speaker')=='Elox' and not one.get_json().get('needs_vision'),(one.status_code,one.data)
+assert one.get_json()['inference']['request']['developer'].startswith('You are roleplaying a fictional robot'),one.data
+assert one.get_json()['inference']['response']['text']=='I can help organise the room.',one.data
 queue_after=c.post('/api/robots/queue',headers=headers,json={'room':'lab','message_id':mention_source['id']})
 assert [r['name'] for r in queue_after.get_json()['targets']]==['Jessica'],queue_after.data
 assert c.post('/api/robots/react',headers=headers,json={'room':'lab','message_id':mention_source['id'],
@@ -805,6 +807,7 @@ assert _motion_response.status_code==200,(_motion_response.status_code,_motion_r
 _motion_json=_motion_response.get_json()
 assert _motion_json.get('command',{}).get('kind')=='walk_forward' and _motion_json['command']['distance']==10,_motion_json
 assert _motion_json['command']['robot_id']==elox['id'] and _motion_json.get('answer',{}).get('model')=='scene-command',_motion_json
+assert _motion_json['decision']['executable'] is True and _motion_json['decision']['model_plan_executes'] is False,_motion_json
 print('PASS: natural language walking dispatches a real scene command without a camera or Meta model')
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-elox-060'}}).status_code==200
 print('PASS: attachments, exact furniture matching, verified 2-hop robot-robot @handles and deduplication')

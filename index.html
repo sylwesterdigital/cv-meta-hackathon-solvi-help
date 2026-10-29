@@ -13,7 +13,7 @@
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <form id="elevenLabsKeyForm" class="solvi-key-form" autocomplete="off"></form><form id="metaApiKeyForm" class="solvi-key-form" autocomplete="off"></form><form id="adminPasswordForm" class="solvi-key-form" autocomplete="off"></form>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.68</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.69</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="realmGalleryButton" title="Browse realms as cards" aria-label="Browse realms" aria-haspopup="dialog">Realms</button><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="assetsButton" title="Browse uploaded 3D assets">Assets</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
@@ -287,11 +287,13 @@
       <div id="brainsEyePlaceholder" class="brains-eye-placeholder">No screenshot yet. Press <strong>Capture eyes</strong> to see exactly what Jessica sees.</div>
       <div id="brainsEyeGallery" class="brains-frame-gallery" aria-label="Captured and transmitted head-camera frames"></div>
       <div class="brain-actions brain-primary-actions"><button type="button" id="captureBrainsHemisphere">Scan 180°</button><button type="button" id="captureBrainsPanorama">Scan 360°</button><button type="button" id="captureBrainsEye" class="primary">Capture eyes</button><button type="button" id="saveRobotChatPortrait" title="Capture this robot’s 3D face for its chat avatar">Save chat portrait</button><button type="button" id="describeBrainsEye">Describe frame · Muse Spark</button><button type="button" id="showBrainChat" title="Enable debug for this robot and open chat">Debug this robot · path overlay in chat</button></div>
+      <details id="brainsManualVisionDetails" class="brains-section"><summary>Advanced · manual prompts and SAM analysis</summary><div class="brains-section-body">
       <label class="field-label">Question for Muse Spark (scene understanding)<textarea id="brainsVisionQuestion" rows="2" maxlength="1000">What objects can you see, where are they located, and what would be a useful next action for this robot?</textarea></label>
       <div class="brain-actions"><button type="button" id="analyzeBrainsEye">Find object · SAM 3.1</button></div>
       <label class="field-label">Object to find (one noun phrase, e.g. robot, red cube)<input id="brainsPrompt" value="robot" maxlength="120"></label>
       <p class="small-note">Each action sends the captured JPEG frame and its displayed prompt to Meta through the backend. Separate requests incur separate usage charges. SAM boxes are outlined on the captured image; mask overlays are not yet supported.</p>
       <pre id="brainsVisionResult" class="brain-results brain-vision-output">Capture an eye view, then describe the scene or find a specific object.</pre>
+      </div></details>
       </section>
       <details id="brainsIdentityDetails" class="brains-section"><summary>Identity / personality · expand to edit</summary><div class="brains-section-body">
       <label class="field-label">Robot gender (self-description, not inferred from name)<select id="brainsGender"><option value="unspecified">Unspecified</option><option value="female">Female</option><option value="male">Male</option><option value="nonbinary">Nonbinary / other</option></select></label>
@@ -306,7 +308,7 @@
       <label class="field-label">Scenario / next learning goal<textarea id="brainsScenario" rows="2" maxlength="500"></textarea></label>
       <div class="brain-actions"><button id="suggestBrainsScenario" type="button">Generate editable proposal using Muse Spark</button></div>
       <pre id="brainsScenarioResult" class="brain-results" aria-live="polite">No AI scenario request made.</pre></div></details>
-      <details class="brains-section" id="brainsTraceDetails"><summary>Technical event history · expand for raw details</summary><pre id="brainsTaskTrace" class="brain-results brain-task-trace">No task run in this browser yet.</pre></details>
+      <details class="brains-section" id="brainsTraceDetails" open><summary>Inference &amp; decision log · exact text prompts, routing, movement</summary><div class="brains-audit-toolbar"><button id="brainsCopyLog" type="button">Copy full log</button><button id="brainsDownloadLog" type="button">Download JSON</button><span class="small-note">This browser session · text prompts and outputs; no credentials, raw image bytes or hidden model reasoning</span></div><pre id="brainsTaskTrace" class="brain-results brain-task-trace">No task run in this browser yet.</pre></details>
       <div class="drawer-label">Experience / memory</div><pre id="brainsMemory" class="brain-results">Experiences appear after conversation.</pre>
     </div>
   </aside>

@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.68",
+  "currentVersion": "0.2.69",
   "releases": [
+    {
+      "version": "0.2.69",
+      "publishedAt": "2026-10-29T23:51:43Z",
+      "changes": [
+        "Provide a compact Brains diagnostics console with Copy full log and Download JSON of every captured router/decision/model-I-O/route event in the current browser session.",
+        "Return the exact text sent in developer and user prompts plus model response text, usage, and response ID to the authorized requesting client, without credentials or raw base64 image bytes.",
+        "Log the deterministic movement parser decision, scene target and coordinates, planned route geometry/length, and actual measured robot route completion telemetry.",
+        "Require route endpoint proximity for actual arrival reporting; a chat plan or exhausted waypoint list is not independently proof of mission success.",
+        "Keep robot eye-camera request evidence as labelled frame metadata and text prompts, and reduce Brains panel paddings, camera display height, and excessive window width."
+      ]
+    },
     {
       "version": "0.2.68",
       "publishedAt": "2026-10-29T23:27:07Z",
@@ -312,17 +323,6 @@
         "Remove orphaned minimized Objects and World tools panels from the upper-left corner; reopen World tools from an explicit navigation control.",
         "Keep object list accessible through World tools and preserve normal interactions with actual chat bubbles and the composer.",
         "Remove obsolete top-level Export chat and Admin buttons; keep intentional actions in Settings only, with no corner artifacts."
-      ]
-    },
-    {
-      "version": "0.2.33",
-      "publishedAt": "2026-10-28T18:16:46Z",
-      "changes": [
-        "Fix camera profile photography with preview, reliable image capture, immediate round avatar update and explicit failures.",
-        "Record video-only webcam intros up to 15 seconds and convert the entire duration to a persistent animated GIF on the server.",
-        "Add Log out with server token revocation, WebSocket disconnection and browser session cleanup.",
-        "Add a top-right draggable, zoomable and minimizable live top-down minimap of robots, objects and camera.",
-        "Restore independent scene orbit and touch orbit with robot selected without forcing pointer lock; remove duplicate quick model import."
       ]
     }
   ]

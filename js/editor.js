@@ -11,6 +11,7 @@ import {ScenePhysics} from './scene-physics.js';
 import {planRobotPath,pathBlocked} from './robot-pathfinding.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
 import {robotDebugVisible} from './robot-debug.js';
+import {plannedRouteLength,newMovementTelemetry,sampleMovementTelemetry,missionMovementEvidence,shouldRejectClaimedArrival} from './robot-telemetry.js';
 import {physicsOptions} from './physics-options.js';
 import {isTransformLocked,mayTransform} from './transform-lock.js';
 import {OrbitGesture,recoverStaleOrbitPointers} from './orbit-gesture.js';
@@ -97,7 +98,11 @@ export class SceneEditor{
   this.transform.addEventListener('objectChange',()=>{if(!this.canTransform(this.selected))return;if(this.transform.mode==='scale'&&this.selected?.userData.editorKind!=='robot'&&performance.now()-(this.lastScaleColliderSync||0)>180){this.physics.sync(this.selected);this.lastScaleColliderSync=performance.now();}this.updateInspector();this.queueSave(this.selected);});
   window.addEventListener('solvi:robot-model-ready',e=>{if(this.selected?.userData.editorId===e.detail.id)this.updateInspector();});
   this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);this.assetGallery=setupAssetGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
-  window.addEventListener('solvi:robot-task-update',event=>{const status=event.detail?.status,id=event.detail?.robotId;if(id&&['arrived','blocked','sitting','procedural-sitting','coffee-visit'].includes(status)){finishRobotPathDebug(this.world,id);const robot=this.items.find(o=>o.userData.editorId===id);if(robot?.userData?.robotDebugRoute)robot.userData.robotDebugRoute.finished=true;this.updateRobotDebugStatus?.();}});
+  window.addEventListener('solvi:robot-task-update',event=>{const detail=event.detail||{},id=detail.robotId;const robot=this.items.find(o=>o.userData.editorId===id);
+    if(robot){const audit=missionMovementEvidence(robot.userData.robotTelemetry,robot,robot.userData.robotDebugRoute,detail.status);
+      if(audit){detail.routeTelemetry=audit;if(shouldRejectClaimedArrival(audit,detail.status))detail.status='failed';}
+      robot.userData.robotTelemetry=null;}
+    if(id&&['arrived','failed','blocked','sitting','procedural-sitting','coffee-visit'].includes(detail.status)){finishRobotPathDebug(this.world,id);if(robot?.userData?.robotDebugRoute)robot.userData.robotDebugRoute.finished=true;this.updateRobotDebugStatus?.();}});
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
@@ -697,7 +702,9 @@ export class SceneEditor{
       }
     },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),retarget:robot=>this.retargetRobot(robot)}));
     this.physics.tick(dt);
-    for(const item of this.items){if(item.userData.editorKind==='robot'&&item.userData.robotMission&&this.robotPathDebugVisible(item))trackRobotPathDebug(this.world,item);}
+    for(const item of this.items){if(item.userData.editorKind!=='robot')continue;
+      if(item.userData.robotTelemetry&&item.userData.robotMission)sampleMovementTelemetry(item.userData.robotTelemetry,item);
+      if(item.userData.robotMission&&this.robotPathDebugVisible(item))trackRobotPathDebug(this.world,item);}
   }
   applyRobotInput(packet){
     const robot=this.items.find(o=>o.userData.editorId===packet.id&&o.userData.editorKind==='robot');
@@ -752,7 +759,8 @@ export class SceneEditor{
       robot.userData.robotDebugRoute={start,waypoints:[],obstacles,destination:{x:point.x,z:point.z},blocked:true};
       if(typeof this.robotPathDebugVisible==='function'&&this.robotPathDebugVisible(robot))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
       this.updateRobotDebugStatus?.();
-      window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'blocked',target:robot.userData.robotMission?.targetName||'',obstacles:obstacles.length,waypoints:0}}));
+      window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'blocked',target:robot.userData.robotMission?.targetName||'',obstacles:obstacles.length,waypoints:0,start,destination:{x:point.x,z:point.z},
+      taskId:robot.userData.robotMission?.taskId||'',plan:{waypoints:[],obstacles}}}));
       if(preserveMission)return false;
       robot.userData.robotGoal=null;robot.userData.robotMode='idle';
       const mission=robot.userData.robotMission;robot.userData.robotMission=null;
@@ -764,10 +772,21 @@ export class SceneEditor{
     if(!preserveMission)robot.userData.robotRecoveryAttempts=0;
     robot.userData.robotRouteDestination={x:point.x,z:point.z};
     robot.userData.robotDebugRoute={start,waypoints,obstacles,destination:{x:point.x,z:point.z},blocked:false};
+    // Initialize this mission's telemetry. Route decisions and AI plans are not movement proof.
+    if(typeof newMovementTelemetry==='function'){
+      const taskId=robot.userData.robotMission?.taskId||'';
+      if(!robot.userData.robotTelemetry||robot.userData.robotTelemetry.taskId!==taskId)robot.userData.robotTelemetry=newMovementTelemetry(robot,taskId);
+      const telemetry=robot.userData.robotTelemetry;telemetry.routeSegments++;
+      if(preserveMission)telemetry.replans++;
+      telemetry.plannedMeters+=plannedRouteLength(start,waypoints);
+    }
     if((typeof this.robotPathDebugVisible==='function'?this.robotPathDebugVisible(robot):false))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
     else if(typeof clearRobotPathDebug==='function')clearRobotPathDebug(this.world,robot.userData.editorId);
     this.updateRobotDebugStatus?.();
-    window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'planned',target:robot.userData.robotMission?.targetName||'',obstacles:obstacles.length,waypoints:waypoints.length}}));
+    window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'planned',target:robot.userData.robotMission?.targetName||'',obstacles:obstacles.length,waypoints:waypoints.length,
+      start,destination:{x:point.x,z:point.z},taskId:robot.userData.robotMission?.taskId||'',
+      plannedMeters:typeof plannedRouteLength==='function'?plannedRouteLength(start,waypoints):0,
+      plan:{waypoints:waypoints.map(p=>({x:p.x,z:p.z})),obstacles:obstacles.map(o=>({minX:o.minX,maxX:o.maxX,minZ:o.minZ,maxZ:o.maxZ}))}}}));
     setRobotDestination(robot,waypoints[0]);return true;
   }
   // Commands are issued by the authenticated chat endpoint and resolved against

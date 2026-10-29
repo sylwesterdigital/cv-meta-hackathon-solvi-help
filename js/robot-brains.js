@@ -7,6 +7,9 @@ const $=id=>document.getElementById(id);
 const fields={personality:'brainsPersonality',history:'brainsHistory',beliefs:'brainsBeliefs',triggers:'brainsTriggers',scenario:'brainsScenario'};
 let activeRobot=null,frame=null,frameURL=null;
 const latestFrames=new Map(),frameHistory=new Map(),taskTraces=new Map();
+export function robotTraceEntries(id){return (taskTraces.get(id)||[]).map(e=>({...e}));}
+export function robotTraceText(id){return robotTraceEntries(id).map(e=>`[${e.at}] ${e.step}: ${e.detail}`).join('\n\n');}
+export function robotTraceExport(id,name='Robot'){return JSON.stringify({schema:'solvi-robot-diagnostics-v1',version:'0.2.69',robot:{id,name},exportedAt:new Date().toISOString(),scope:'this browser tab only; last 1500 events per robot',events:robotTraceEntries(id)},null,2);}
 function rememberFrame(id,blob,label){
  const rec={blob,label,boxes:[],usage:null};latestFrames.set(id,rec);
  const history=frameHistory.get(id)||[];history.push(rec);if(history.length>10)history.shift();frameHistory.set(id,history);
@@ -18,8 +21,8 @@ export function rememberRobotObservationFrame(robotId,blob,label){
  window.dispatchEvent(new CustomEvent('solvi:brain-gallery',{detail:{robotId}}));
 }
 export function emitBrainTrace(robotId,robotName,step,detail=''){
- const entry={at:new Date().toLocaleTimeString(),robotId,robotName,step,detail:String(detail).slice(0,1800)};
- const records=taskTraces.get(robotId)||[];records.push(entry);if(records.length>85)records.shift();taskTraces.set(robotId,records);
+ const entry={at:new Date().toLocaleTimeString(),robotId,robotName,step,detail:typeof detail==='string'?detail.slice(0,22000):JSON.stringify(detail,null,2).slice(0,22000)};
+ const records=taskTraces.get(robotId)||[];records.push(entry);if(records.length>1500)records.shift();taskTraces.set(robotId,records);
  window.dispatchEvent(new CustomEvent('solvi:brain-trace',{detail:entry}));return entry;
 }
 // Head-camera observations are pixel evidence, not 3D locations until raycasting
@@ -98,8 +101,8 @@ function showFrame(blob,label='Robot head camera · local JPEG',boxes=[]){
   $('brainsEyeMeta').textContent=label+` · ${blob.size} JPEG bytes. This is the exact frame selected for this operation. Check chat Brain trace to confirm a Meta request was actually sent.`;
 }
 function renderTaskTrace(){
- const rows=taskTraces.get(activeRobot?.userData.editorId)||[];
- $('brainsTaskTrace').textContent=rows.length?rows.map(e=>`[${e.at}] ${e.step}: ${e.detail}`).join('\n\n'):'No task run in this browser yet.';
+ const id=activeRobot?.userData.editorId;
+ $('brainsTaskTrace').textContent=id&&robotTraceEntries(id).length?robotTraceText(id):'No task run in this browser yet.';
  $('brainsTaskTrace').scrollTop=$('brainsTaskTrace').scrollHeight;
 }
 function clearBoxes(){const canvas=$('brainsEyeOverlay');canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);}
@@ -123,6 +126,8 @@ export function initRobotBrains(world,api,getRoom,toast){
  $('brainsEyeLightbox').addEventListener('click',e=>{if(e.target===$('brainsEyeLightbox'))$('brainsEyeLightbox').hidden=true;});
  document.addEventListener('keydown',e=>{if(e.key==='Escape')$('brainsEyeLightbox').hidden=true;});
  $('showBrainChat').onclick=()=>window.dispatchEvent(new CustomEvent('solvi:show-brain-chat'));
+ $('brainsCopyLog').onclick=async()=>{if(!activeRobot)return;const button=$('brainsCopyLog');try{await navigator.clipboard.writeText(robotTraceText(activeRobot.userData.editorId)||'No events');button.textContent='Copied';setTimeout(()=>button.textContent='Copy full log',1600);}catch(error){toast('Clipboard unavailable: '+error.message);}};
+ $('brainsDownloadLog').onclick=()=>{if(!activeRobot)return;const id=activeRobot.userData.editorId;const content=robotTraceExport(id,activeRobot.name);const blob=new Blob([content],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='solvi-'+activeRobot.name.toLowerCase().replace(/[^a-z0-9_-]/g,'-')+'-inference-log.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);};
  async function refreshMemory(){
    if(!api.online||!api.auth()||!activeRobot)return;
    try{const data=await api.req('/api/robots/memory?room='+encodeURIComponent(getRoom())+'&id='+encodeURIComponent(activeRobot.userData.editorId));
@@ -161,7 +166,7 @@ export function initRobotBrains(world,api,getRoom,toast){
    const previous=latestFrames.get(robot.userData.editorId);
    if(previous)showFrame(previous.blob,previous.label,previous.boxes);
    renderFrameGallery();$('brainsIdentityDetails').open=false;renderTaskTrace();
-   panel.hidden=false;refreshMemory();
+   $('brainsTraceDetails').open=true;panel.hidden=false;refreshMemory();
  }
  window.addEventListener('solvi:open-brains',open);
  window.addEventListener('solvi:brain-trace',event=>{
