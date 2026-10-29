@@ -33,5 +33,5 @@ test('scene orbit stays independent from robot follow and is available at canvas
  assert.match(world,/this\.setCameraFollowMode\('free'\)/);
  assert.match(world,/this\.controls\.mouseButtons=\{LEFT:THREE\.MOUSE\.ROTATE/);
  assert.match(editor,/canvas\.addEventListener\('pointerdown',e=>\{/);
- assert.match(editor,/this\.world\.controls\.enabled=this\.world\.cameraOrbitGesture/);
+ assert.match(editor,/this\.world\.controls\.enabled=startedOrbit/);
 });

@@ -33,7 +33,7 @@ export class SolviWorld {
     this.renderer.xr.setReferenceSpaceType('local-floor');
     root.append(this.renderer.domElement);
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);
-    this.controls.enableDamping=false;this.controls.target.set(0,1,0);
+    this.controls.enableDamping=false;this.controls.autoRotate=false;this.controls.target.set(0,1,0);
     this.cameraOrbitGesture=null;this.editorGizmoPointer=false;
     this.cameraVelocity=new THREE.Vector3();
     this.cameraFollowMode=['free','chase','orbit'].includes(localStorage.getItem('solvi-camera-follow'))?localStorage.getItem('solvi-camera-follow'):'free';
@@ -58,8 +58,8 @@ export class SolviWorld {
     // Orbit is an independent scene-navigation action, even with a robot selected.
     // Do not enter pointer-lock on an Orbit button; pointer-lock blocks orbit gestures.
     fly.title='Orbit the scene: drag to rotate, right-drag to pan, wheel to zoom';
-    fly.onclick=event=>{if(event.altKey){this.renderer.domElement.requestPointerLock()?.catch(()=>{});return;}if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.setCameraFollowMode('free');this.cameraOrbitGesture=null;this.editorGizmoPointer=false;this.controls.enabled=true;this.controls.update();fly.textContent='Orbit scene';};
-    document.addEventListener('pointerlockchange',()=>{const locked=document.pointerLockElement===this.renderer.domElement;fly.textContent=locked?'Fly · Esc':'Orbit scene';this.controls.enabled=!locked;});
+    fly.onclick=event=>{if(event.altKey){this.renderer.domElement.requestPointerLock()?.catch(()=>{});return;}if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.setCameraFollowMode('free');this.cameraOrbitGesture=null;this.editorGizmoPointer=false;this.controls.enabled=false;this.controls.update();fly.textContent='Orbit scene';};
+    document.addEventListener('pointerlockchange',()=>{const locked=document.pointerLockElement===this.renderer.domElement;fly.textContent=locked?'Fly · Esc':'Orbit scene';this.cameraOrbitGesture=null;this.controls.enabled=false;});
     const followButton=document.getElementById('cameraFollowButton');
     if(followButton)followButton.addEventListener('click',()=>this.setCameraFollowMode(nextCameraMode(this.cameraFollowMode)));
     const chaseSlider=document.getElementById('chaseDistanceSlider');
@@ -73,6 +73,13 @@ export class SolviWorld {
       if(this.cameraFollowMode==='chase')this.setChaseDistance(zoomChaseDistance(this.followChaseDistance,delta));
       else this.setOrbitDistance(zoomChaseDistance(this.followOrbitDistance,delta));
     },{capture:true,passive:false});
+    // Idle orbit must be disabled to prevent a stale Three.js drag rotating on hover.
+    // Momentarily allow free-camera wheel dolly, whose handler runs synchronously.
+    this.renderer.domElement.addEventListener('wheel',()=>{
+      if(this.cameraOrbitGesture!==null||this.editorDragging||this.editorGizmoPointer||this.renderer.xr.isPresenting||document.pointerLockElement===this.renderer.domElement)return;
+      this.controls.enabled=true;
+      queueMicrotask(()=>{if(this.cameraOrbitGesture!==true)this.controls.enabled=false;});
+    },{capture:true,passive:true});
     this.refreshFollowButton();
     document.addEventListener('mousemove',event=>{if(document.pointerLockElement!==this.renderer.domElement)return;
        const euler=new THREE.Euler().setFromQuaternion(this.camera.quaternion,'YXZ');euler.y-=event.movementX*.002;euler.x=Math.max(-1.53,Math.min(1.53,euler.x-event.movementY*.002));this.camera.quaternion.setFromEuler(euler);
@@ -197,10 +204,12 @@ export class SolviWorld {
        this.keys.add(e.code);if(e.code.startsWith('Arrow')||e.code.startsWith('Page'))e.preventDefault();this.pending=null;
       }});
     window.addEventListener('keyup',e=>this.keys.delete(e.code));
-    window.addEventListener('blur',()=>{this.keys.clear();this.cameraOrbitGesture=null;this.editorGizmoPointer=false;});
+    window.addEventListener('blur',()=>{this.keys.clear();this.cameraOrbitGesture=null;this.editorGizmoPointer=false;this.controls.enabled=false;});
     let dragX=0,dragY=0;
     this.renderer.domElement.addEventListener('pointerdown',e=>{dragX=e.clientX;dragY=e.clientY;});
     this.renderer.domElement.addEventListener('pointerup',e=>{
+      // Let OrbitControls receive pointerup even when the editor selected a mesh.
+      if(e.solviObjectPicked)return;
       if(Math.hypot(e.clientX-dragX,e.clientY-dragY)>5||this.renderer.xr.isPresenting)return;
       this.mouse.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
       this.raycaster.setFromCamera(this.mouse,this.camera);
@@ -712,9 +721,8 @@ export class SolviWorld {
     this.skyClock+=dt*this.environment.skySpeed;
     if(this.skyDome?.visible){this.skyDome.position.copy(this.camera.position);this.skyDome.material.uniforms.uTime.value=this.skyClock;}
     this.extentCheck+=dt;if(this.extentCheck>3){this.extentCheck=0;this.updateWorldExtent();}
-    const axis=this.robotEditor?.transform?.axis;
     // Never give OrbitControls ownership of a TransformControls gesture.
-    const cameraAllowed=this.cameraOrbitGesture===null?!axis:this.cameraOrbitGesture;
+    const cameraAllowed=this.cameraOrbitGesture===true; // Only the pointerdown-claimed camera gesture can rotate.
     this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.editorGizmoPointer&&cameraAllowed&&document.pointerLockElement!==this.renderer.domElement;
     this.navigateCamera(dt);
     if(!this.renderer.xr.isPresenting)this.controls.update();

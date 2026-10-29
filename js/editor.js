@@ -9,6 +9,7 @@ import {ScenePhysics} from './scene-physics.js';
 import {planRobotPath,pathBlocked} from './robot-pathfinding.js';
 import {physicsOptions} from './physics-options.js';
 import {isTransformLocked,mayTransform} from './transform-lock.js';
+import {OrbitGesture,recoverStaleOrbitPointers} from './orbit-gesture.js';
 
 const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'];
 const byId=id=>document.getElementById(id);
@@ -81,7 +82,7 @@ export class SceneEditor{
   this.transform.addEventListener('dragging-changed',e=>{
    world.editorDragging=Boolean(e.value);
    if(e.value){world.editorGizmoPointer=true;world.controls.enabled=false;}
-   else{world.editorGizmoPointer=false;world.cameraOrbitGesture=null;}
+   else{world.editorGizmoPointer=false;world.cameraOrbitGesture=null;world.controls.enabled=false;}
   });
   this.transform.addEventListener('mouseDown',()=>{this.broadcastEdit(true);this.transformBefore=this.snapshot(this.selected);world.editorDragging=true;world.editorGizmoPointer=true;world.controls.enabled=false;});
   this.transform.addEventListener('mouseUp',()=>{this.broadcastEdit(false);world.editorDragging=false;this.physics.sync(this.selected);this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
@@ -251,17 +252,44 @@ export class SceneEditor{
   byId('saveScene').onclick=()=>this.save();byId('reloadScene').onclick=()=>this.load();
  }
  events(){
-  const canvas=this.world.renderer.domElement;let startX,startY;this.lastPointer={x:innerWidth/2,y:innerHeight/2};window.addEventListener('pointermove',e=>{if(!document.pointerLockElement)this.lastPointer={x:e.clientX,y:e.clientY};},{passive:true});
+  const canvas=this.world.renderer.domElement;let startX,startY;
+  const orbitGesture=new OrbitGesture();
+  this.lastPointer={x:innerWidth/2,y:innerHeight/2};window.addEventListener('pointermove',e=>{if(!document.pointerLockElement)this.lastPointer={x:e.clientX,y:e.clientY};},{passive:true});
   canvas.addEventListener('pointerdown',e=>{
    startX=e.clientX;startY=e.clientY;
-   this.world.cameraOrbitGesture=!this.transform.dragging&&!this.transform.axis;
-   this.world.editorGizmoPointer=!this.world.cameraOrbitGesture;
-   // OrbitControls must be enabled at pointerdown, before its own target listener runs.
-   // The animation loop can otherwise leave it disabled after hovering a transform gizmo.
-   this.world.controls.enabled=this.world.cameraOrbitGesture&&!this.world.renderer.xr.isPresenting&&document.pointerLockElement!==canvas;
+   // The first press owns the gesture. Moving over a gizmo cannot steal a camera drag,
+   // and touching empty space cannot turn an in-progress transform into an orbit.
+   const canOrbit=!this.transform.dragging&&!this.transform.axis&&!this.world.editorDragging&&!this.world.editorGizmoPointer;
+   const startedOrbit=orbitGesture.press(e.pointerId,canOrbit);
+   this.world.cameraOrbitGesture=startedOrbit;
+   this.world.editorGizmoPointer=!startedOrbit;
+   // Capture phase: OrbitControls sees the correct enabled state at pointerdown.
+   this.world.controls.enabled=startedOrbit&&!this.world.renderer.xr.isPresenting&&document.pointerLockElement!==canvas;
   },true);
-  const endGesture=()=>{queueMicrotask(()=>{if(!this.transform.dragging){this.world.cameraOrbitGesture=null;this.world.editorGizmoPointer=false;}});};
-  window.addEventListener('pointerup',endGesture,true);window.addEventListener('pointercancel',endGesture,true);
+  const finishGesture=(event,force=false)=>{
+   // Browser/pen drivers can deliver a mouse release with another pointer ID.
+   if(!force&&event.pointerType!=='touch'&&event.buttons===0&&!orbitGesture.has(event.pointerId))force=true;
+   if(force)orbitGesture.cancel();else orbitGesture.release(event.pointerId);
+   this.world.cameraOrbitGesture=orbitGesture.pointers.size?orbitGesture.orbiting:null;
+   this.world.controls.enabled=orbitGesture.orbiting&&!this.world.editorDragging&&!this.world.renderer.xr.isPresenting&&document.pointerLockElement!==canvas;
+   if(!orbitGesture.pointers.size){
+    // Never re-enable orbit on idle hover, including the release frame.
+    queueMicrotask(()=>{
+     recoverStaleOrbitPointers(this.world.controls,orbitGesture.pointers);
+     if(!this.transform.dragging)this.world.editorGizmoPointer=false;
+    });
+   }
+  };
+  window.addEventListener('pointerup',e=>finishGesture(e),true);
+  window.addEventListener('pointercancel',e=>finishGesture(e),true);
+  canvas.addEventListener('lostpointercapture',e=>{
+   if(orbitGesture.has(e.pointerId))finishGesture(e);
+  });
+  canvas.addEventListener('pointermove',e=>{
+   if(orbitGesture.orphanedMove(e))finishGesture(e,true);
+  },true);
+  window.addEventListener('blur',()=>finishGesture(null,true));
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)finishGesture(null,true);});
   // 1/front, 3/right, 7/top; Ctrl/Meta reverses; 2/4/6/8 orbit steps.
   window.addEventListener('keydown',e=>{
    if(e.target?.closest?.('input,textarea,select,[contenteditable]')||e.altKey||this.world.renderer.xr.isPresenting)return;
@@ -280,7 +308,7 @@ export class SceneEditor{
    this.raycaster.setFromCamera(this.pointer,this.world.camera);
    const hits=this.raycaster.intersectObjects(this.items,true);
    if(hits.length){let node=hits[0].object;while(node.parent&&!this.items.includes(node))node=node.parent;
-    if(this.items.includes(node)){this.select(node);e.stopImmediatePropagation();}}
+    if(this.items.includes(node)){this.select(node);e.solviObjectPicked=true;}}
    else if(this.selected?.userData.editorKind==='robot'&&this.selected?.userData.robotMode!=='idle'){
     const ground=this.raycaster.intersectObject(this.world.floor)[0];if(ground){setRobotDestination(this.selected,ground.point);this.queueSave(this.selected);}}
   },true);

@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.49",
+  "currentVersion": "0.2.50",
   "releases": [
+    {
+      "version": "0.2.50",
+      "publishedAt": "2026-10-29T02:12:51Z",
+      "changes": [
+        "Prevent idle mouse movement from rotating the scene by enabling OrbitControls only while an accepted mouse, pen, or touch gesture is pressed; preserve explicit wheel zoom.",
+        "Keep the transform gizmo and camera orbit mutually exclusive for the duration of a gesture; allow pointerup to reach OrbitControls after picking an object, without triggering floor navigation.",
+        "Stop orbit immediately on pointerup, pointercancel, pointer capture loss, browser blur, hidden tab, or a missed mouse release; recover stale Three.js OrbitControls pointer state.",
+        "Add pointer lifecycle regression tests for gizmo capture, multi-touch, mouse/pen release, lost focus, wheel zoom and stale pointer recovery."
+      ]
+    },
     {
       "version": "0.2.49",
       "publishedAt": "2026-10-29T01:52:21Z",
@@ -296,18 +306,6 @@
       "changes": [
         "Fix swapped left/right robot steering by calibrating signed keyboard intent across local and networked movement.",
         "Retains speed-dependent turning, smooth acceleration, reverse walk animation without rotating the avatar, and camera lock while robot is selected."
-      ]
-    },
-    {
-      "version": "0.2.11",
-      "publishedAt": "2026-10-28T00:04:22Z",
-      "changes": [
-        "Arrow-left steers avatar facing left, arrow-right steers facing right while moving; heading remains forward-oriented in reverse.",
-        "Arrow-down progressively brakes and moves backward with the SAME walk clip played with reverse time, without a 180-degree turn.",
-        "Smooth acceleration/deceleration for robot throttle, steering and desktop camera translations.",
-        "Numpad perspectives 1/3/7 and incremental views preserve exact camera distance from selected object; use +/- to zoom.",
-        "Consistent button typography and 30px square close, minimize, and expand controls with accessible focus states.",
-        "Retains object-specific multiplayer changes, avatar library, room-based WebSocket, shared Whisper.cpp and existing watcher workflow."
       ]
     }
   ]

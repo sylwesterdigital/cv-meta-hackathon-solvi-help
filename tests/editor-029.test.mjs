@@ -30,7 +30,7 @@ test('camera uses active object pivot, no continuous spinning and no conflicting
  const w=read('js/world.js');
  assert.match(w,/enableDamping=false/);
  assert.match(w,/focusCameraOn\(object\)/);
- assert.match(w,/cameraOrbitGesture===null\?!axis:this.cameraOrbitGesture/);
+ assert.match(w,/const cameraAllowed=this.cameraOrbitGesture===true/);
  assert.match(w,/this\.camera\.position\.add\(delta\);this\.controls\.target\.add\(delta\)/);
  assert.doesNotMatch(w,/keys\.has\('KeyW'\)|keys\.has\('KeyA'\)|keys\.has\('KeyD'\)/);
  assert.match(w,/if\(key===7\)/);assert.match(w,/if\(key===1\)/);assert.match(w,/if\(key===3\)/);
@@ -38,7 +38,7 @@ test('camera uses active object pivot, no continuous spinning and no conflicting
 test('gizmo events exclude camera; editor supports undo/redo and selected object camera views',()=>{
  const e=read('js/editor.js');
  assert.match(e,/world\.editorGizmoPointer=true;world\.controls\.enabled=false/);
- assert.match(e,/cameraOrbitGesture=!this\.transform\.dragging&&!this\.transform\.axis/);
+ assert.match(e,/orbitGesture\.press\(e\.pointerId,canOrbit\)/);
  assert.match(e,/e\.metaKey\|\|e\.ctrlKey/);
  assert.match(e,/e\.code==='KeyZ'/);
  assert.match(e,/duplicateElevation\(height\)/);
