@@ -9,7 +9,7 @@ import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneMode
 import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,toggleSceneMediaPlayback,setSceneMediaMuted,sceneMediaMuted,sceneMediaPlaying} from './scene-media.js';
 import {ScenePhysics} from './scene-physics.js';
 import {planRobotPath,pathBlocked} from './robot-pathfinding.js';
-import {updateRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
+import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
 import {robotDebugVisible} from './robot-debug.js';
 import {physicsOptions} from './physics-options.js';
 import {isTransformLocked,mayTransform} from './transform-lock.js';
@@ -697,6 +697,7 @@ export class SceneEditor{
       }
     },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),retarget:robot=>this.retargetRobot(robot)}));
     this.physics.tick(dt);
+    for(const item of this.items){if(item.userData.editorKind==='robot'&&item.userData.robotMission&&this.robotPathDebugVisible(item))trackRobotPathDebug(this.world,item);}
   }
   applyRobotInput(packet){
     const robot=this.items.find(o=>o.userData.editorId===packet.id&&o.userData.editorKind==='robot');
@@ -719,7 +720,7 @@ export class SceneEditor{
   // Same live editor geometry drives the minimap and route planner. Footprints
   // are kept clear of robots and furniture; navigation never pushes objects.
   robotPathDebugVisible(robot){return robotDebugVisible(robot?.userData?.editorId,sessionStorage);}
-  updateRobotDebugStatus(){const label=byId('robotPathDebugStatus'),robot=this.robot();if(!label)return;label.hidden=!robot||!this.robotPathDebugVisible(robot);if(label.hidden)return;const route=robot.userData.robotDebugRoute;label.textContent=!route?'Route debug ready — start a robot walking mission to see its actual planned path.':route.blocked?'No valid route — red attempted destination and obstacle footprints.':route.finished?'Previous route shown briefly after the mission ended.':'Green: A* waypoints · red: obstacles · orange: destination · blue: heading guide (not camera evidence).';}
+  updateRobotDebugStatus(){const label=byId('robotPathDebugStatus'),robot=this.robot();if(!label)return;label.hidden=!robot||!this.robotPathDebugVisible(robot);if(label.hidden)return;const route=robot.userData.robotDebugRoute;label.textContent=!route?'Route debug ready — start a robot walking mission to see its actual planned path.':route.blocked?'No valid route — red attempted destination and obstacle footprints.':route.finished?'Previous route shown briefly after the mission ended.':'Green: A* planned route · cyan: actual travelled trail · red: obstacles · orange: destination; blue shows direction, not camera evidence.';}
   syncRobotPathDebug(){for(const robot of this.items.filter(o=>o.userData.editorKind==='robot')){const route=robot.userData.robotDebugRoute;if(this.robotPathDebugVisible(robot)&&route&&!route.finished)updateRobotPathDebug(this.world,robot,route);else if(!this.robotPathDebugVisible(robot))clearRobotPathDebug(this.world,robot.userData.editorId);}this.updateRobotDebugStatus();}
   navigationObstacles(robot){
     this.world.scene.updateMatrixWorld(true);
@@ -751,6 +752,7 @@ export class SceneEditor{
       robot.userData.robotDebugRoute={start,waypoints:[],obstacles,destination:{x:point.x,z:point.z},blocked:true};
       if(typeof this.robotPathDebugVisible==='function'&&this.robotPathDebugVisible(robot))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
       this.updateRobotDebugStatus?.();
+      window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'blocked',target:robot.userData.robotMission?.targetName||'',obstacles:obstacles.length,waypoints:0}}));
       if(preserveMission)return false;
       robot.userData.robotGoal=null;robot.userData.robotMode='idle';
       const mission=robot.userData.robotMission;robot.userData.robotMission=null;
@@ -765,6 +767,7 @@ export class SceneEditor{
     if((typeof this.robotPathDebugVisible==='function'?this.robotPathDebugVisible(robot):false))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
     else if(typeof clearRobotPathDebug==='function')clearRobotPathDebug(this.world,robot.userData.editorId);
     this.updateRobotDebugStatus?.();
+    window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'planned',target:robot.userData.robotMission?.targetName||'',obstacles:obstacles.length,waypoints:waypoints.length}}));
     setRobotDestination(robot,waypoints[0]);return true;
   }
   // Commands are issued by the authenticated chat endpoint and resolved against

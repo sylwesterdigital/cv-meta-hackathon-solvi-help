@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.67",
+  "currentVersion": "0.2.68",
   "releases": [
+    {
+      "version": "0.2.68",
+      "publishedAt": "2026-10-29T23:27:07Z",
+      "changes": [
+        "Recognise natural relative movement commands such as \"go further 10 meters\" and \"continue another 5 m\" as executable, permission-checked walk-forward missions instead of conversational plans.",
+        "Resolve misspelled named scene destinations only when a unique near-exact object match exists, with exact colour and number matching; ambiguous names require clarification.",
+        "Render real computed A* floor paths as legible wide ribbons and show the measured robot travel trail in cyan, so Debug can distinguish planned waypoints from actual motion.",
+        "Emit authentic route-accepted or route-blocked debug events with waypoint and obstacle counts, and never imply a chat-only statement proves movement.",
+        "Preserve existing visual autonomy, chat-to-scene media and task ownership; add dedicated regression coverage for real command routing and path telemetry."
+      ]
+    },
     {
       "version": "0.2.67",
       "publishedAt": "2026-10-29T23:17:57Z",
@@ -312,18 +323,6 @@
         "Add Log out with server token revocation, WebSocket disconnection and browser session cleanup.",
         "Add a top-right draggable, zoomable and minimizable live top-down minimap of robots, objects and camera.",
         "Restore independent scene orbit and touch orbit with robot selected without forcing pointer lock; remove duplicate quick model import."
-      ]
-    },
-    {
-      "version": "0.2.32",
-      "publishedAt": "2026-10-28T17:54:13Z",
-      "changes": [
-        "Keep Objects and World Tools minimized titles on one line; place minimize beside close and remove duplicate window-control glyphs.",
-        "Hide bulk checkboxes and delete commands behind Bulk; keep search and type filter compact and preserve ownership checks.",
-        "Use single-row X/Y/Z number inputs with one reset per transform; keep one contextual slider, and share one slider across robot movement, strafe and turning.",
-        "Make chat composer undock and drag by its header, with remembered position; add video and robot-view attachment icons.",
-        "Post robot-eye screenshots in shared chat as robot-authored images, with optional Muse visual description and usage.",
-        "Use room geometry, robot pose, time, objectives and memories to ground Jessica conversations; recognize unique short nicknames and offer opt-in rate-limited proactive questions."
       ]
     }
   ]

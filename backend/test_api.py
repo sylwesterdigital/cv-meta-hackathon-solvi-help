@@ -795,6 +795,17 @@ with _patch('server.active_model_key',return_value='test-key'),_patch('server.me
 assert third_reply.status_code==200,(third_reply.status_code,third_reply.data)
 third=third_reply.get_json()['answer']
 assert c.post('/api/robots/react',headers=headers,json={'room':'lab','text':third['text'],'message_id':third['id']}).get_json()['triggered'] is False
+# v0.2.68: a natural forward-distance request must return a task command,
+# not merely a robot-authored sentence promising motion.
+_motion_message=c.post('/api/message',headers=headers,json={
+    'room':'lab','text':'@Elox go further 10 meters'}).get_json()['message']
+_motion_response=c.post('/api/robots/react',headers=headers,json={
+    'room':'lab','message_id':_motion_message['id'],'text':_motion_message['text'],'target_robot_id':elox['id']})
+assert _motion_response.status_code==200,(_motion_response.status_code,_motion_response.data)
+_motion_json=_motion_response.get_json()
+assert _motion_json.get('command',{}).get('kind')=='walk_forward' and _motion_json['command']['distance']==10,_motion_json
+assert _motion_json['command']['robot_id']==elox['id'] and _motion_json.get('answer',{}).get('model')=='scene-command',_motion_json
+print('PASS: natural language walking dispatches a real scene command without a camera or Meta model')
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-elox-060'}}).status_code==200
 print('PASS: attachments, exact furniture matching, verified 2-hop robot-robot @handles and deduplication')
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-0220'}}).status_code==200
@@ -851,3 +862,15 @@ from server import _spoken_language
 assert _spoken_language('Paris, masz bardzo dziwny głos','en')=='pl'
 assert _spoken_language('I can see a chair','auto')=='en'
 print('PASS: Polish speech text takes precedence over stale English voice settings')
+
+# v0.2.68: natural physical imperatives are parsed into real robot commands.
+from server import plan_robot_command as _plan_motion
+_b={'id':'bot', 'name':'Elox','position':[0,0,0]}
+for _words,_dist in [('@Elox go further 10 meters',10),('@Elox continue another 5 m',5),('@Elox move ahead 2m',2),('@Elox keep going 3m',3)]:
+    _cmd,_ack=_plan_motion(_words,_b,[])
+    assert _cmd and _cmd['kind']=='walk_forward' and _cmd['distance']==_dist,(_words,_cmd,_ack)
+_furniture=[{'id':'red-sphere', 'kind':'sphere','name':'Red Sphere','position':[2,0,3]},
+            {'id':'blue-sphere','kind':'sphere','name':'Blue Sphere','position':[-2,0,3]}]
+_typo,_ack=_plan_motion('@Elox go to the Red Pshere now',_b,_furniture)
+assert _typo and _typo['kind']=='go_to' and _typo['target_id']=='red-sphere',(_typo,_ack)
+print('PASS: natural move-forward commands, safe typo target resolution, and physical task dispatch')

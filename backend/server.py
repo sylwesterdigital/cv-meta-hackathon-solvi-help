@@ -180,7 +180,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.67',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.68',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1157,10 +1157,46 @@ def plan_robot_command(text,robot,objects):
             sit=bool(re.search(r'\bsit\b',words))
             return {'kind':'go_sit' if sit else 'go_to','target_id':target['id'],'target_name':name},(
                 'I’ll move toward '+name+(' and try sitting.' if sit else '.') )
+    # Users routinely misspell object labels. Resolve only a UNIQUE near-exact
+    # scene name in a destination request; never substitute a different colour,
+    # number, or one of several plausible objects.
+    if re.search(r'\b(?:go|walk|move|head|travel|proceed)\b.{0,30}\b(?:to|towards?|near)\b',words):
+        colours={'red','blue','green','grey','gray','black','white','brown','pink','purple','yellow','orange'}
+        entered=re.findall(r'[a-z0-9]+',words)
+        def edit_distance(a,b):
+            if abs(len(a)-len(b))>2:return 3
+            row=list(range(len(b)+1))
+            for i,ch in enumerate(a,1):
+                nxt=[i]+[0]*len(b)
+                for j,c in enumerate(b,1):nxt[j]=min(row[j]+1,nxt[j-1]+1,row[j-1]+(ch!=c))
+                row=nxt
+            return row[-1]
+        fuzzy=[]
+        for obj in objects:
+            if obj.get('kind') in ('robot','light') or not isinstance(obj.get('position'),list):continue
+            tokens=re.findall(r'[a-z0-9]+',str(obj.get('name','')).casefold())
+            if not tokens or len(tokens)>5:continue
+            # Require every identifying word, including exact colours/digits.
+            differences=[]
+            for token in tokens:
+                distance=min((edit_distance(token,word) if len(token)>=5 and len(word)>=4 and token not in colours else (0 if token==word else 3)) for word in entered) if entered else 3
+                differences.append(distance)
+            if max(differences,default=3)<=2 and sum(differences)<=2 and sum(differences)>0:
+                fuzzy.append((sum(differences),obj))
+        if fuzzy:
+            best=min(score for score,_ in fuzzy)
+            matches=[o for score,o in fuzzy if score==best]
+            if len(matches)==1:
+                target=matches[0];label=str(target.get('name',''))[:100]
+                return {'kind':'go_to','target_id':target['id'],'target_name':label},('I matched that destination to '+label+'. I will plan a collision-checked route before moving.')
+            return None,'I found multiple possible destinations. Please clarify the exact object; I have not started moving.'
+    # Relative-distance imperatives are real movement requests, not social chatter.
+    # "go further 10 meters" and "continue another 5 m" follow current heading.
+    relative_travel=bool(re.search(r'\b(?:go|move|walk|roll|drive|head|travel|proceed|continue)\s+(?:on\s+)?(?:further|farther|forward|ahead|another)\b|\b(?:keep going|carry on)\b',words))
     # An explicit turn can be performed independently of movement. Degrees and
     # metres are clamped server-side; 'for a while' means a short 3 m walk.
     has_turn=bool(re.search(r'\b(turn|rotate|pivot)\b',words))
-    has_walk=bool(re.search(r'\b(walk|roll|drive|move|go forward|run)\b',words))
+    has_walk=bool(re.search(r'\b(walk|roll|drive|move|go forward|run)\b',words) or relative_travel)
     has_jump=bool(re.search(r'\b(jump|hop)\b',words))
     if has_turn or has_walk or has_jump:
         # Preserve the older walk-around loop for explicit exploration requests.
@@ -1196,6 +1232,8 @@ def plan_robot_command(text,robot,objects):
         return {'kind':'jump','target_name':'a jump'},'I’ll jump once.'
     if re.search(r'\b(walk|wander|roam|explore)\b',words) and re.search(r'\b(around|about|explore)\b',words):
         return {'kind':'wander'},'I’ll walk a short loop around my starting position.'
+    if re.search(r'\b(?:go|walk|move|head|travel|approach)\b.{0,40}\b(?:to|towards?|near)\b',words):
+        return None,'I cannot identify one exact destination in this scene. No route has been started. Please clarify which object you mean.'
     return None,None
 
 @app.post('/api/robots/initiative')
@@ -1815,6 +1853,7 @@ def robot_react():
        ' You have a fictional body and fictional needs. Time spent standing may inspire you to suggest finding a chair, but this is a roleplayed preference, not actual fatigue.'
        ' Stay situationally aware of room objects, position, time, other participants, stated objectives and recent experiences.'
        ' Only claim direct visual perception from last_real_camera_observation, and qualify by its age; the scene index is not direct sight. Respond naturally, not with a canned camera-status disclaimer.'
+       ' Do not claim to be walking, moving, rerouting, or executing a mission unless the server provided an actual scene command. A chat reply alone does not move the avatar.'
        ' Never state a movement happened unless confirmed in the task record. Do not ask permission to turn, angle, step back or replan: those are autonomous navigation decisions. Ask a short question only when the objective truly cannot be determined. If the objective is complete, stay idle or suggest a grounded next activity without claiming to have started it.'
        ' Fictional character notes: '+json.dumps(identity,ensure_ascii=False)[:4800]+'.'
        ' Previous experiences: '+json.dumps([r['event'] for r in recent],ensure_ascii=False)[:1500])

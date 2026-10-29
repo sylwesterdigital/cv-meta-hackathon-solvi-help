@@ -22,7 +22,7 @@ test('robot debug routes are rendered as world overlays when per-robot debug is 
 
 test('navigation overlay symbols are explicitly imported by the editor',()=>{
  const editor=read('js/editor.js');
- assert.match(editor,/import\s*\{updateRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug\}\s*from\s*['"]\.\/robot-path-visuals\.js['"]/);
+ assert.match(editor,/import\s*\{updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug\}\s*from\s*['"]\.\/robot-path-visuals\.js['"]/);
  assert.match(editor,/import\s*\{robotDebugVisible\}\s*from\s*['"]\.\/robot-debug\.js['"]/);
 });
 

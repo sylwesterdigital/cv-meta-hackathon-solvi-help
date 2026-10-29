@@ -1023,6 +1023,7 @@ function bindUI(world){
  const editor=new SceneEditor(world,toast);setupChatMentions();robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
+ window.addEventListener('solvi:robot-route',event=>{const d=event.detail||{};if(robotDebugAllowed(d.robotId))emitBrainTrace(d.robotId,d.name||'Robot',d.status==='planned'?'ROUTE ACCEPTED':'ROUTE BLOCKED',`${d.waypoints||0} computed A* waypoints · ${d.obstacles||0} obstacle footprints · destination ${d.target||'unknown'}. Green line = actual planner output; cyan = measured movement. No waypoints means no mission was started.`);});
  window.addEventListener('solvi:robot-recovery',event=>{
    const d=event.detail||{};const bot=editor.items.find(o=>o.userData.editorId===d.robotId);
    emitBrainTrace(d.robotId,d.name,'AUTONOMOUS REPLAN',`Attempt ${d.attempt}/3: ${d.reason}. Refreshing physical scene footprints and routing around obstacles.`);
