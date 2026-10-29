@@ -8,7 +8,7 @@ test('webcam control belongs to message drag header and is not duplicated in nav
  assert.equal((html.match(/id="webcamButton"/g)||[]).length,1);
  const header=html.match(/<div class="composer-window-head">([\s\S]*?)<\/div>/)?.[1];
  assert.ok(header?.includes('id="webcamButton"'));
- assert.ok(header.includes('data-ui-icon="camera"'));
+ assert.ok(header.includes('data-ui-icon="webcam"'));
  assert.match(header,/aria-pressed="false"/);
  assert.match(header,/aria-label="Open webcam"/);
  assert.ok(header.indexOf('id="composerMove"')<header.indexOf('id="webcamButton"'));

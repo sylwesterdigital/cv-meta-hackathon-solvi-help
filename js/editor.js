@@ -107,19 +107,26 @@ export class SceneEditor{
   byId('replaceModelInput').onchange=async e=>{const file=e.target.files?.[0],model=this.selected;e.target.value='';if(file&&model?.userData.editorKind==='model'&&this.canEdit(model))await this.assetGallery.upload(file,{replace:model});};
   // Canvas-only listeners miss drags over HUD layers; use the whole document.
   const overlay=byId('sceneDropOverlay');
+  let modelDragCancelled=false,dragWatchdog=0,cancelResetTimer=0;
+  const stopModelDrag=()=>{overlay.hidden=true;clearTimeout(dragWatchdog);};
+  const refreshModelDrag=()=>{clearTimeout(dragWatchdog);dragWatchdog=setTimeout(stopModelDrag,1100);};
+  byId('cancelModelDrop').onclick=()=>{modelDragCancelled=true;stopModelDrag();clearTimeout(cancelResetTimer);cancelResetTimer=setTimeout(()=>{modelDragCancelled=false;},1800);};
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!overlay.hidden){byId('cancelModelDrop').click();}});
+  window.addEventListener('blur',stopModelDrag);
+  window.addEventListener('focus',stopModelDrag);
   const modelDragging=e=>[...e.dataTransfer?.items||[]].some(i=>i.kind==='file');
-  document.addEventListener('dragenter',e=>{if(modelDragging(e))overlay.hidden=false;});
-  document.addEventListener('dragover',e=>{if(modelDragging(e)){e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';overlay.hidden=false;}});
-  document.addEventListener('dragleave',e=>{if(!e.relatedTarget&&!document.elementFromPoint(e.clientX,e.clientY))overlay.hidden=true;});
+  document.addEventListener('dragenter',e=>{if(modelDragging(e)){if(e.dataTransfer?.types?.includes('Files')&&!modelDragCancelled)overlay.hidden=false;refreshModelDrag();}});
+  document.addEventListener('dragover',e=>{if(modelDragging(e)){e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect=modelDragCancelled?'none':'copy';if(!modelDragCancelled)overlay.hidden=false;refreshModelDrag();}});
+  document.addEventListener('dragleave',e=>{if(!e.relatedTarget||e.clientX<=0||e.clientY<=0||e.clientX>=innerWidth-1||e.clientY>=innerHeight-1){stopModelDrag();modelDragCancelled=false;}});
   document.addEventListener('drop',async e=>{
-    overlay.hidden=true;
-    const files=[...e.dataTransfer?.files||[]];if(!files.length)return;
+    stopModelDrag();const wasCancelled=modelDragCancelled;modelDragCancelled=false;
+    const files=[...e.dataTransfer?.files||[]];if(wasCancelled){e.preventDefault();return;}if(!files.length)return;
     if(e.target?.closest?.('.chat-composer,.avatar-gallery,.profile-modal'))return;
     e.preventDefault();e.stopPropagation();const file=files.find(f=>/\.(glb|fbx)$/i.test(f.name));
     if(!file)return this.toast('Only .glb and .fbx files can be dropped into the world');
     this.lastPointer={x:e.clientX,y:e.clientY};await this.importModel(file);
   });
-  window.addEventListener('dragend',()=>overlay.hidden=true);
+  window.addEventListener('dragend',()=>{modelDragCancelled=false;stopModelDrag();});
 
   const toolsPanel=byId('editorToolbox'),toolsLauncher=byId('toolsToggleButton');
   const showTools=visible=>{

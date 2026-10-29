@@ -11,7 +11,7 @@ test('mobile show/hide chat, navigation, media tools and floating mode',()=>{
 });
 test('dev log shows local date and time, auto-closes and checks new release versions',()=>{
  const js=read('js/devlog.js');
- for(const token of ['hour:', 'minute:', 'setTimeout(close,3000)','fetch(\'/releases.json?poll=\'','location.reload()'])assert.ok(js.includes(token),token);
+ for(const token of ['hour:', 'minute:', 'shouldDisplayDevLog','fetch(\'/releases.json?poll=\'','location.reload()'])assert.ok(js.includes(token),token);
 });
 test('401/409 prompts for login; preserves recovery details and prevents sending',()=>{
  const js=read('js/studio.js');

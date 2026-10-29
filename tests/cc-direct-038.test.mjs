@@ -18,7 +18,7 @@ function mockElement(id){
 test('CC is a visible direct composer action immediately before Send, not hidden as a media tool',()=>{
  const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const css=fs.readFileSync(new URL('../styles.css',import.meta.url),'utf8');
- const actions=html.match(/<div class="composer-actions">([\s\S]*?)<\/div>\s*<label class="robot-debug-toggle"/)[1];
+ const actions=html.slice(html.indexOf('<div class="composer-actions">'),html.indexOf('<small id="chatStatus"'));
  const cc=actions.match(/<button[^>]*id="captionsButton"[^>]*>/);
  assert.ok(cc);assert.match(cc[0],/cc-direct-toggle/);assert.doesNotMatch(cc[0],/media-tool/);
  assert.ok(actions.indexOf('id="captionsButton"')<actions.indexOf('id="sendChat"'));

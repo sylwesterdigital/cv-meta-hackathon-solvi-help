@@ -24,7 +24,7 @@ test('Unlabelled furniture triggers real eight-view SAM vision and 3D-raycast na
 });
 test('Verbose debug is opt-in and explicit task results persist as robot chat',()=>{
  const ui=file('index.html'),studio=file('js/studio.js'),server=file('backend/server.py');
- assert.match(ui,/id="verboseRobotDebug"/);
+ assert.match(ui,/id="debugSelectedRobot"/);assert.match(ui,/id="debugAllRobots"/);
  assert.match(studio,/solvi:brain-trace/);
  assert.match(studio,/localBrainTrace.push/);
  assert.match(studio,/reportRobotTask\(/);

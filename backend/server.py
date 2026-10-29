@@ -168,7 +168,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.52',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.53',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1640,7 +1640,7 @@ def set_scene():
                 with db() as con:portrait=con.execute('SELECT mime FROM media WHERE id=?',(brain['portrait'],)).fetchone()
                 if not portrait or portrait['mime'] not in ('image/jpeg','image/png','image/webp'):return json_error('Chat portrait must reference an uploaded image')
         if 'transformLocked' in o and not isinstance(o['transformLocked'],bool):return json_error('Invalid transform lock')
-        if not all(isinstance(o.get(n),list) and len(o[n])==3 and all(isinstance(x,(int,float)) and abs(x)<1000 for x in o[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
+        if not all(isinstance(o.get(n),list) and len(o[n])==3 and all(isinstance(x,(int,float)) and abs(x)<1000000 for x in o[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
     with db() as con:
         old=con.execute('SELECT revision FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['revision']
         if old!=revision:return jsonify(error='Scene changed on another client; reload before saving',revision=old),409
@@ -1672,7 +1672,7 @@ def patch_scene_object():
     if action not in ('upsert','remove'):return json_error('Invalid object action')
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'}:return json_error('Unsupported object type')
-        if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
+        if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
         obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','physics','model','transformLocked') if key in obj}
         if 'transformLocked' in obj and not isinstance(obj['transformLocked'],bool):return json_error('Invalid transform lock')
         if len(str(obj.get('name','')))>100:return json_error('Object name too long')
@@ -1858,7 +1858,7 @@ def websocket(ws):
                 position=msg.get('position');rotation=msg.get('rotation');mode=msg.get('mode','idle')
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
                 if mode not in ('idle','walk','run','wave'):continue
-                if not all(isinstance(v,list) and len(v)==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000 for x in v) for v in (position,rotation)):continue
+                if not all(isinstance(v,list) and len(v)==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in v) for v in (position,rotation)):continue
                 with db() as con:
                     itemrow=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
                     objects=json.loads(itemrow['payload']) if itemrow else []

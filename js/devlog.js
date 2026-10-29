@@ -1,9 +1,10 @@
+import {SEEN_RELEASE_KEY,shouldDisplayDevLog,markDevLogRead} from './devlog-visibility.js';
 const byId = id => document.getElementById(id);
 export async function initDevLog(){
-  const backdrop=byId('devBackdrop'); let autoClose=0;
+  const backdrop=byId('devBackdrop'); let autoClose=0;let viewedVersion='';
   function open(){clearTimeout(autoClose);backdrop.hidden=false;backdrop.classList.add('open');}
-  function close(){clearTimeout(autoClose);backdrop.hidden=true;backdrop.classList.remove('open');}
-  byId('devLogButton').addEventListener('click',open); autoClose=setTimeout(close,3000);
+  function close(){clearTimeout(autoClose);backdrop.hidden=true;backdrop.classList.remove('open');markDevLogRead(viewedVersion,localStorage);}
+  byId('devLogButton').addEventListener('click',open);byId('devLogNavButton').addEventListener('click',open);backdrop.hidden=true;backdrop.classList.remove('open');
   byId('closeLog').addEventListener('click',close);
   byId('continueButton').addEventListener('click',close);
   document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&!backdrop.hidden)close();});
@@ -11,7 +12,7 @@ export async function initDevLog(){
     const response=await fetch('./releases.json',{cache:'no-store'});
     if(!response.ok)throw new Error('HTTP '+response.status);
     const data=await response.json();
-    byId('version').textContent='v'+data.currentVersion;
+    byId('version').textContent='v'+data.currentVersion;viewedVersion=data.currentVersion; if(shouldDisplayDevLog(viewedVersion,localStorage))open();
     const entries=byId('logEntries'); entries.replaceChildren();
     for(const release of data.releases || []){
       const section=document.createElement('article');section.className='release';

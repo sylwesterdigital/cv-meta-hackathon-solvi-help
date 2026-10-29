@@ -43,7 +43,7 @@ test('world tools, message and chat mode placement, avatar actions and rename in
  for(const id of ['worldSettingsButton','worldSettingsDrawer','worldObjectsPolicy','worldRobotsPolicy','objectNameInput','robotActionSelect','chatModeButton','messagesToggleButton','exportChatSettingsJson','openAdminSettings'])
    assert.ok(html.includes(`id="${id}"`),id);
  assert.ok(html.indexOf('id="messagesToggleButton"')<html.indexOf('id="settingsButton"'));
- assert.ok(html.includes('id="mobileMenuButton"')); // Accessible, collapsible mobile navigation
+ assert.ok(html.includes('id="realmGalleryButton"')); // Accessible, collapsible mobile navigation
  assert.match(css,/#chatModeButton\.bottom-chat-mode/);
  assert.match(studio,/solvi-window-/);
  assert.match(studio,/window\.solviSaveWindow/);

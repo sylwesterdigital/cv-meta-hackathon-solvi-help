@@ -27,7 +27,7 @@ test('SVG icons are bound to semantic controls and exact scene items retain name
 });
 test('Settings exposes all three UI modes, scale, fonts, named themes, CC status, mobile More',()=>{
  const html=file('index.html');
- for(const str of ['id="uiScale"','id="uiFontTheme"','id="uiCustomFont"','id="themePresetGallery"','id="ccSettingsStatus"','id="mobileMenuButton"','value="both"','value="text"','value="icon"'])assert.ok(html.includes(str),str);
+ for(const str of ['id="uiScale"','id="uiFontTheme"','id="uiCustomFont"','id="themePresetGallery"','id="ccSettingsStatus"','id="realmGalleryButton"','value="both"','value="text"','value="icon"'])assert.ok(html.includes(str),str);
  const css=file('styles.css');assert.match(css,/data-button-labels='icon'/);assert.match(css,/\.theme-swatches button\.theme-swatch\{background:var\(--swatch-color\)!important/);
  const cc=file('js/voice-captions.js'),studio=file('js/studio.js');
  assert.match(cc,/window\.solviPublishCaption\(text\)/);assert.match(studio,/const caption='CC: '\+text/);

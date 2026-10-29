@@ -24,7 +24,7 @@ test('world tool launcher replaces orphaned minimized panels and is visible in c
  assert.ok(html.includes('id="toolsToggleButton"'));
  assert.ok(html.includes('id="editorToolbox" class="editor-toolbox" hidden'));
  assert.ok(html.includes('id="scenePanel" class="scene-panel" hidden'));
- assert.ok(css.includes('#toolNav>:not(#toolsToggleButton):not(#webcamButton):not(#minimapButton)'));
+ assert.ok(css.includes(':not(#realmGalleryButton):not(#devLogNavButton):not(#webcamButton)'));
  assert.match(editor,/toolsLauncher\.onclick=\(\)=>showTools\(toolsPanel\.hidden\)/);
  assert.match(editor,/byId\('minimizeScenePanel'\)\.onclick=\(\)=>\{/);
  assert.match(css,/#editorToolbox\.minimized,#scenePanel\.minimized\{display:none!important\}/);

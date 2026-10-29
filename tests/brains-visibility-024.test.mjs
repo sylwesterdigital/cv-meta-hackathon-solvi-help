@@ -17,9 +17,10 @@ test('robot-eye image leads Brains panel, with full-size viewing and normal-flow
 });
 test('debug chat is initially active and receives actual robot operations, request and response metadata',()=>{
  const html=read('index.html'),studio=read('js/studio.js'),brains=read('js/robot-brains.js'),api=read('backend/server.py');
- assert.match(html,/id="verboseRobotDebug" checked/);
+ assert.match(html,/id="debugSelectedRobot"/);
+ assert.match(html,/id="debugAllRobots"/);
  assert.match(html,/id="showBrainChat"/);
- assert.match(studio,/sessionStorage\.getItem\('solvi-brain-debug'\)!=='0'/);
+ assert.match(studio,/robotDebugAllowed/);
  assert.match(studio,/window\.addEventListener\('solvi:brain-trace'/);
  assert.match(studio,/window\.addEventListener\('solvi:show-brain-chat'/);
  assert.match(studio,/for\(const item of response\.trace\|\|\[\]\)emitBrainTrace/);
