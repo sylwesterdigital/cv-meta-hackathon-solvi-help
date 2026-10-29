@@ -12,30 +12,38 @@ export function attachmentName(name,kind='file'){
  const sanitized=String(name||'').replace(/[\x00-\x1f\x7f<>]/g,'').trim().slice(0,120);
  return sanitized||({image:'Image',audio:'Audio recording',video:'Video',pdf:'PDF document',text:'Text file'}[kind]||'Attachment');
 }
-export function renderChatAttachment(slot,{url,mime,name,blob},openViewer){
+export function renderChatAttachment(slot,{id,url,mime,name,blob},openViewer,actions={}){
  const kind=attachmentKind(mime),label=attachmentName(name,kind);
  slot.className='chat-attachment chat-attachment-'+kind;
  slot.replaceChildren();
  const title=document.createElement('small');title.className='chat-attachment-title';title.textContent=label;
  const download=document.createElement('a');download.href=url;download.download=label;download.textContent='Save';download.className='chat-attachment-save';download.setAttribute('aria-label','Save '+label);
+ const menuButton=document.createElement('button');menuButton.type='button';menuButton.className='chat-attachment-more';menuButton.textContent='⋮';menuButton.setAttribute('aria-label','More actions for '+label);
+ const menu=document.createElement('div');menu.className='chat-attachment-menu';menu.hidden=true;
+ const toggleMenu=event=>{event?.stopPropagation?.();menu.hidden=!menu.hidden;};
+ menuButton.onclick=toggleMenu;
+ const menuSave=document.createElement('a');menuSave.href=url;menuSave.download=label;menuSave.textContent='Save';menuSave.className='chat-attachment-menu-item';menu.append(menuSave);
+ if((kind==='image'||kind==='video')&&typeof actions.addToScene==='function'){const add=document.createElement('button');add.type='button';add.textContent='Add to scene';add.className='chat-attachment-menu-item';add.onclick=event=>{event.stopPropagation();menu.hidden=true;actions.addToScene({id,url,mime,name:label,blob,kind});};menu.append(add);}
+ slot.addEventListener('pointerdown',event=>{if(!slot.contains(event.target))menu.hidden=true;});
+ document.addEventListener('pointerdown',event=>{if(slot.isConnected&&!slot.contains(event.target))menu.hidden=true;});
  if(kind==='image'){
   const button=document.createElement('button');button.type='button';button.className='chat-image-open';button.setAttribute('aria-label','Enlarge image '+label);
   const img=document.createElement('img');img.src=url;img.alt=label;img.loading='lazy';img.decoding='async';button.append(img);
-  button.onclick=()=>openViewer({kind,url,label});slot.append(button,title,download);
+  button.onclick=()=>openViewer({kind,url,label});slot.append(button,menuButton,menu,title,download);
  }else if(kind==='audio'||kind==='video'){
   const media=document.createElement(kind);media.src=url;media.controls=true;media.preload='metadata';
   if(kind==='video')media.playsInline=true;
-  media.setAttribute('aria-label',label);slot.append(title,media,download);
+  media.setAttribute('aria-label',label);slot.append(menuButton,menu,title,media,download);
  }else if(kind==='pdf'){
   const button=document.createElement('button');button.type='button';button.textContent='Read PDF';button.className='chat-read-file';button.onclick=()=>openViewer({kind,url,label});
-  slot.append(title,button,download);
+  slot.append(menuButton,menu,title,button,download);
  }else if(kind==='text'){
   const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Read text';
   const pre=document.createElement('pre');pre.textContent='Loading text…';details.append(summary,pre);
   // Text is never interpreted as HTML, JavaScript, Markdown or a command.
   details.addEventListener('toggle',()=>{if(details.open&&pre.textContent==='Loading text…')blob.text().then(text=>{pre.textContent=text.slice(0,100000);}).catch(()=>{pre.textContent='Unable to read text';});});
-  slot.append(title,details,download);
- }else{slot.append(title,download);}
+  slot.append(menuButton,menu,title,details,download);
+ }else{slot.append(menuButton,menu,title,download);}
 }
 export function ensureChatMediaViewer(){
  let overlay=document.getElementById('chatMediaViewer');

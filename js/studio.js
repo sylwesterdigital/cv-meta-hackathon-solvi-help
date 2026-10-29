@@ -89,7 +89,7 @@ const api={
     throw Error(data.error||`${res.status} ${res.statusText}`);}
   return data;
  },
- async mediaBlobInfo(id){if(!auth)throw Error('Sign in to view media');const res=await fetch(`/api/media/${encodeURIComponent(id)}`,{headers:{Authorization:'Bearer '+auth.token,'X-Solvi-Tab':tab}});if([401,409].includes(res.status))needSignIn('Media session expired');if(!res.ok)throw Error('Media unavailable');const blob=await res.blob();return {url:URL.createObjectURL(blob),mime:blob.type,name:decodeURIComponent(res.headers.get('X-Solvi-File-Name')||''),blob};},
+ async mediaBlobInfo(id){if(!auth)throw Error('Sign in to view media');const res=await fetch(`/api/media/${encodeURIComponent(id)}`,{headers:{Authorization:'Bearer '+auth.token,'X-Solvi-Tab':tab}});if([401,409].includes(res.status))needSignIn('Media session expired');if(!res.ok)throw Error('Media unavailable');const blob=await res.blob();return {id,url:URL.createObjectURL(blob),mime:blob.type,name:decodeURIComponent(res.headers.get('X-Solvi-File-Name')||''),blob};},
  async mediaBlob(id){return (await this.mediaBlobInfo(id)).url;}
 };
 window.solviAPI=api;
@@ -167,7 +167,7 @@ async function bubble(entry){
   if(online&&auth){api.mediaBlobInfo(id).then(info=>{
     if(!slot.isConnected){URL.revokeObjectURL(info.url);return;}
     chatMediaURLs.add(info.url);
-    renderChatAttachment(slot,info,detail=>ensureChatMediaViewer().showFile(detail));
+    renderChatAttachment(slot,info,detail=>ensureChatMediaViewer().showFile(detail),{addToScene:addChatMediaToScene});
     scrollChatToLatest();
   }).catch(()=>{slot.textContent='Attachment unavailable';});}
  }
@@ -182,6 +182,19 @@ async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask 
  const body=new FormData();body.append('file',file,file.name);const response=await api.req('/api/media',{method:'POST',body});return response.media;}
 function scrollChatToLatest(){const feed=$('chatFeed');if(!feed)return;requestAnimationFrame(()=>{feed.scrollTop=feed.scrollHeight;requestAnimationFrame(()=>{if(feed.scrollHeight-feed.scrollTop-feed.clientHeight>2)feed.scrollTop=feed.scrollHeight;});});}
 function updatePending(){const p=$('pendingMedia');p.replaceChildren();for(const m of pending){const badge=document.createElement('button');badge.textContent=`${m.name} ×`;badge.title='Remove attachment';badge.onclick=()=>{pending=pending.filter(x=>x!==m);updatePending();};p.append(badge);}}
+async function inspectMediaDimensions(source,mime=''){
+ try{if(String(mime).startsWith('image/')){const bitmap=await createImageBitmap(source);const info={width:bitmap.width,height:bitmap.height};bitmap.close?.();return info;}
+  if(String(mime).startsWith('video/')){const url=URL.createObjectURL(source);const video=document.createElement('video');video.preload='metadata';video.muted=true;video.playsInline=true;const meta=await new Promise((resolve,reject)=>{video.onloadedmetadata=()=>resolve({width:video.videoWidth,height:video.videoHeight});video.onerror=()=>reject(new Error('Video metadata unavailable'));video.src=url;});URL.revokeObjectURL(url);return meta;}
+ }catch{}
+ return {width:null,height:null};
+}
+async function addChatMediaToScene(info,{backing='white'}={}){
+ const editor=window.solviEditor;if(!editor)throw Error('The scene editor is not ready');
+ const dims=await inspectMediaDimensions(info.blob,info.mime);
+ editor.addSceneMedia({id:info.id,mime:info.mime,name:info.name,width:dims.width,height:dims.height},{backing,width:dims.width,height:dims.height,source:'chat'});
+ toast((String(info.mime).startsWith('video/')?'Video screen':'Picture frame')+' added to the realm');
+ return true;
+}
 async function attach(file){if(!file)return false;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');return true;}catch(e){toast(e.message);return false;}}
 async function postDroppedMediaToChat(file){
  if(!me)throw Error('Sign in before posting an attachment');
@@ -1072,9 +1085,10 @@ function bindUI(world){
    if(choice.mode==='chat')return await postDroppedMediaToChat(file);
    if(!file.type.startsWith('image/')&&!file.type.startsWith('video/'))return await attach(file);
    const media=await uploadFile(file);
+   const dims=await inspectMediaDimensions(file,file.type);
    const editor=window.solviEditor;if(!editor)throw Error('The scene editor is not ready');
    editor.lastPointer={x:Number.isFinite(detail.x)?detail.x:innerWidth/2,y:Number.isFinite(detail.y)?detail.y:innerHeight/2};
-   editor.addSceneMedia(media,{backing:choice.backing||'white'});
+   editor.addSceneMedia({...media,width:dims.width,height:dims.height},{backing:choice.backing||'white',width:dims.width,height:dims.height});
    toast((file.type.startsWith('video/')?'Video screen':'Picture frame')+' added to the realm');
    return true;
   }catch(error){toast(error.message);return false;}

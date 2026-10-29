@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.64",
+  "currentVersion": "0.2.65",
   "releases": [
+    {
+      "version": "0.2.65",
+      "publishedAt": "2026-10-29T22:53:09Z",
+      "changes": [
+        "Add an Add to scene action to image and video attachments in chat, available from the attachment overflow menu.",
+        "Preserve uploaded media aspect ratio using real image/video dimensions so picture frames and screens are no longer squeezed into an incorrect ratio.",
+        "Render per-robot navigation debug overlays on the floor, including planned routes, obstacle outlines and a target visibility sector when robot debug is enabled.",
+        "Keep world-drop media uploads and scene-media persistence aligned with stored width/height metadata."
+      ]
+    },
     {
       "version": "0.2.64",
       "publishedAt": "2026-10-29T18:57:44Z",
@@ -311,18 +321,6 @@
       "publishedAt": "2026-10-28T17:26:39Z",
       "changes": [
         "Reissue the v0.2.30 Chat, CC, Objects and Webcam release under a newer semantic version so the existing deployment watcher accepts it; application functionality is unchanged."
-      ]
-    },
-    {
-      "version": "0.2.30",
-      "publishedAt": "2026-10-28T17:13:34Z",
-      "changes": [
-        "Dock or freely drag and minimize the chat composer; anchor the overlay feed at the bottom with scroll-to-latest visibility checks and a readable vertical attachment menu.",
-        "Allow searching, filtering and bulk selecting/deleting scene objects by room permissions with confirmations and room-persisted object removal.",
-        "Bound browser speech-recognition retries, automatically fall back to configured Ubuntu Whisper when available, and reliably publish CC: transcripts or show specific errors.",
-        "Move opt-in webcam preview into a dedicated panel with independent Face, Hands and Voice waves toggles, and local camera-based gesture emoji responses.",
-        "Attach and send a selected robots actual head-camera JPEG directly in room chat through the existing authenticated media backend.",
-        "Widen World tools to 176px and keep labels on a single line; preserve small-screen layouts and avoid hidden controls showing through icon/button CSS overrides; add regression tests."
       ]
     }
   ]

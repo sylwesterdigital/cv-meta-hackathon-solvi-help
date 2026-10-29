@@ -9,7 +9,7 @@ test('scene media surfaces are wired through frontend editor and backend validat
   const studio = read('js/studio.js');
   const sceneMedia = read('js/scene-media.js');
   const backend = read('backend/server.py');
-  assert.match(editor, /addSceneMedia\(media,\{backing='white'\}\=\{\}\)/);
+  assert.match(editor, /addSceneMedia\(media,\{backing='white',width=null,height=null\}\=\{\}\)/);
   assert.match(editor, /kind==='media'/);
   assert.match(editor, /mediaObjectControls/);
   assert.match(studio, /solviHandleWorldFileDrop/);

@@ -39,9 +39,21 @@ function disposeAsset(mesh){
   activeMediaObjects.delete(mesh);
 }
 function applyAspect(mesh,width,height){
-  const ratio=Math.max(.45,Math.min(2.4,(Number(width)||16)/(Number(height)||9)));
-  mesh.scale.set(ratio>=1?Math.min(2.8,ratio):Math.max(.68,ratio),ratio>=1?1:Math.min(2.2,1/Math.max(ratio,.001)),1);
-  mesh.userData.mediaAspect=ratio;
+  const w=Number(width),h=Number(height);
+  if(!Number.isFinite(w)||!Number.isFinite(h)||w<=0||h<=0)return;
+  // Size the geometry from actual source pixels, not the user's editable transform.
+  // Normalise by the longest edge; never clamp the aspect ratio itself.
+  if(mesh.userData.mediaWidth!==w||mesh.userData.mediaHeight!==h){
+    const factor=2.8/Math.max(w,h);
+    const previous=mesh.geometry;
+    mesh.geometry=new THREE.BoxGeometry(w*factor,h*factor,.06);
+    previous?.dispose?.();
+    window.solviEditor?.physics?.sync?.(mesh);
+  }
+  mesh.userData.mediaAspect=w/h;
+  mesh.userData.mediaWidth=w;
+  mesh.userData.mediaHeight=h;
+  if(mesh.userData.media){mesh.userData.media.width=w;mesh.userData.media.height=h;}
 }
 function mediaUrl(mid){return `/api/media/${encodeURIComponent(mid)}`;}
 function hlsUrl(mid){return `/api/media/${encodeURIComponent(mid)}/stream.m3u8`;}
@@ -53,13 +65,13 @@ function playbackUrl(media){
 }
 
 export function makeSceneMedia(){
-  const geometry=new THREE.BoxGeometry(1.6,.9,.06);
+  const geometry=new THREE.BoxGeometry(1,1,.06);
   const mesh=new THREE.Mesh(geometry,[frameMaterial(),frameMaterial(),frameMaterial(),frameMaterial(),frontMaterial(),backMaterial('white')]);
   mesh.castShadow=true;mesh.receiveShadow=true;
   mesh.name='Media surface';
   mesh.userData.editorKind='media';
   mesh.userData.editorId=crypto.randomUUID();
-  mesh.userData.media={id:'',mime:'',name:'',backing:'white',stream:'direct'};
+  mesh.userData.media={id:'',mime:'',name:'',backing:'white',stream:'direct',width:null,height:null};
   mesh.position.set(0,1.2,0);
   return mesh;
 }
@@ -74,6 +86,7 @@ export function hydrateSceneMedia(mesh,world){
   front.transparent=false;
   const kind=sceneMediaKind(media.mime);
   if(!media.id||kind==='file')return;
+  if(media.width&&media.height)applyAspect(mesh,media.width,media.height);
   if(kind==='image'){
     const id=media.id;
     window.solviAPI?.mediaBlobInfo(id).then(info=>{
@@ -91,6 +104,7 @@ export function hydrateSceneMedia(mesh,world){
     }).catch(error=>console.warn('Media image load failed',media.id,error));
     return;
   }
+  if(kind==='video'&&media.width&&media.height)applyAspect(mesh,media.width,media.height);
   const video=document.createElement('video');
   video.crossOrigin='anonymous';video.preload='metadata';video.playsInline=true;video.loop=true;video.muted=true;
   const mediaId=media.id;window.solviAPI?.mediaBlobInfo(mediaId).then(info=>{
