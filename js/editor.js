@@ -203,7 +203,7 @@ export class SceneEditor{
    const text=number.getAttribute('aria-label')||number.closest('label')?.textContent?.trim()||number.id;
    byId('inspectorSliderLabel').textContent=text;
    const field=number.id.match(/^(position|rotation|scale)-[012]$/)?.[1];
-   const limits=field==='rotation'?[-180,180,'0.5']:field==='scale'?[0.05,10,'0.05']:field==='position'?[-25,25,'0.05']:
+   const limits=field==='rotation'?[-180,180,'0.5']:field==='scale'?[0.05,10,'0.05']:field==='position'?[-Math.max(25,this.world.environment?.floorSize/2||25),Math.max(25,this.world.environment?.floorSize/2||25),'0.05']:
       [Number(number.min||0),Number(number.max||100),number.step||'any'];
    if(!limits.every((n,i)=>i===2||Number.isFinite(n))||limits[0]>=limits[1])return;
    range.min=String(limits[0]);range.max=String(limits[1]);range.step=limits[2];

@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.46",
+  "currentVersion": "0.2.48",
   "releases": [
+    {
+      "version": "0.2.48",
+      "publishedAt": "2026-10-29T01:35:03Z",
+      "changes": [
+        "Add persistent per-room appearance controls: enable/disable fog and grid, fog color/near/far, floor size/color, grid color, background color.",
+        "Add six sky types: solid, procedural gradient, sunset clouds, animated rainbow, stars and nebula, with adjustable colors, animation speed, intensity and star density.",
+        "Expand scene camera far clip, orbit range, inspector position slider, XR teleport region and ground movement to support very large rooms and imported objects.",
+        "Synchronize appearance across users by room-specific authenticated SQLite endpoints and live WebSocket events; preview locally and save explicitly.",
+        "Add frontend and backend regression coverage for validation, layout, room isolation, camera extents and effect modes."
+      ]
+    },
     {
       "version": "0.2.46",
       "publishedAt": "2026-10-28T23:27:29Z",
@@ -297,19 +308,6 @@
         "Duplicated objects receive next available numeric copy suffix and appear above the source.",
         "Robot arrows control signed forward/reverse velocity and bicycle steering dependent on motion speed. Down brakes before reversing; no instant 180 turn.",
         "Camera arrows do not conflict with robot arrow controls; backward clip plays reversed fallback; prediction remains lightweight."
-      ]
-    },
-    {
-      "version": "0.2.9",
-      "publishedAt": "2026-10-27T23:25:59Z",
-      "changes": [
-        "Camera orbit no longer spins on pointer hover; locks during gizmo gestures, no damping drift, selected-object orbit pivot and arrow-key camera translation.",
-        "Blender-style numeric perspectives: 1 front, 3 side, 7 top, Ctrl reverse, 2/4/6/8 incremental orbit, 0 home, 9 opposite, 5 refocus.",
-        "Undo/redo via Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z or Ctrl+Y; 120 object command history; shared object-specific updates.",
-        "Shift+D clones above original bounding volume rather than overlapping existing geometry.",
-        "Objects window draggable at its title; CSS no longer pins its top-left coordinates.",
-        "Avatar gallery previews fill each card with image and bottom-left gradient-backed name/metadata.",
-        "No WASD/QE camera movement conflicts with Blender editor shortcuts."
       ]
     }
   ]

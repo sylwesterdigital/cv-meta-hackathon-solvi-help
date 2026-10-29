@@ -37,9 +37,9 @@ test('Properties contain one collapsible Transform, real eye scans and icon-only
  assert.match(read('backend/server.py'),/blocked.*without crossing an occupied or blocked area/);
 });
 
-test('180-degree spoken request captures seven genuine directional views; 360 keeps eight',()=>{
- assert.deepEqual(observationPlan('Jessica, look around 180 degrees').map(p=>p.yaw),[-90,-60,-30,0,30,60,90]);
- assert.equal(observationPlan('Paris, look around 360 degrees').length,8);
+test('180-degree spoken request captures three distinct directions; 360 uses six with overlap',()=>{
+ assert.deepEqual(observationPlan('Jessica, look around 180 degrees').map(p=>p.yaw),[-60,0,60]);
+ assert.equal(observationPlan('Paris, look around 360 degrees').length,6);
  const brains=read('js/robot-brains.js'),api=read('backend/server.py'),map=read('js/minimap.js');
  assert.match(brains,/manual:true,question:/);
  assert.match(brains,/api\.req\('\/api\/robots\/vision-reply'/);

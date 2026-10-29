@@ -177,13 +177,17 @@ export async function captureRobotView(world,robot,options={}){
   camera.rotation.x=THREE.MathUtils.degToRad(Math.max(-70,Math.min(70,Number(options.pitchDegrees)||0))); // negative tilt points downward
   const rt=new THREE.WebGLRenderTarget(512,512),renderer=world.renderer,old=renderer.getRenderTarget();
   const previousXR=renderer.xr.enabled,oldVisible=robot.visible;
+  const oldSkyPosition=world.skyDome?.position.clone();
   const pixels=new Uint8Array(512*512*4);
   try{
-    robot.visible=false;camera.updateMatrixWorld(true);world.scene.updateMatrixWorld(true);
+    robot.visible=false;camera.updateMatrixWorld(true);
+    // The sky dome follows the active render camera, including robot-eye offscreen views.
+    if(world.skyDome?.visible)world.skyDome.position.copy(camera.getWorldPosition(new THREE.Vector3()));
+    world.scene.updateMatrixWorld(true);
     if(typeof options.onPose==='function')options.onPose({position:camera.getWorldPosition(new THREE.Vector3()).clone(),quaternion:camera.getWorldQuaternion(new THREE.Quaternion()).clone(),fov:camera.fov,width:512,height:512});
     renderer.xr.enabled=false;renderer.setRenderTarget(rt);renderer.render(world.scene,camera);
     renderer.readRenderTargetPixels(rt,0,0,512,512,pixels);
-  }finally{renderer.setRenderTarget(old);renderer.xr.enabled=previousXR;robot.visible=oldVisible;robot.remove(camera);rt.dispose();}
+  }finally{if(oldSkyPosition)world.skyDome.position.copy(oldSkyPosition);renderer.setRenderTarget(old);renderer.xr.enabled=previousXR;robot.visible=oldVisible;robot.remove(camera);rt.dispose();}
   const canvas=document.createElement('canvas');canvas.width=canvas.height=512;
   const ctx=canvas.getContext('2d'),frame=ctx.createImageData(512,512);
   for(let y=0;y<512;y++)frame.data.set(pixels.subarray((511-y)*2048,(512-y)*2048),y*2048);

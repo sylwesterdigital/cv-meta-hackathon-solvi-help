@@ -11,7 +11,7 @@
 <body>
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.46</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.48</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><button type="button" id="mobileMenuButton" aria-expanded="false" aria-controls="toolNav" title="Show more world tools">More</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
@@ -198,7 +198,28 @@
       <p class="small-note">Room permissions apply to everyone in this realm. Open editing is the default.</p>
       <label class="field-label">Objects<select id="worldObjectsPolicy"><option value="open">Anyone can modify</option><option value="owned">Only the owner</option></select></label>
       <label class="field-label">Robots / avatars<select id="worldRobotsPolicy"><option value="open">Anyone can control or modify</option><option value="owned">Only the owner</option></select></label>
-      <label class="field-label">Physics engine<select id="worldPhysicsEnabled"><option value="0">Off (default)</option><option value="1">On · Rapier (experimental)</option></select></label><button type="button" id="saveWorldSettings" class="primary">Save world settings</button>
+      <label class="field-label">Physics engine<select id="worldPhysicsEnabled"><option value="0">Off (default)</option><option value="1">On · Rapier (experimental)</option></select></label>
+      <details id="worldEnvironmentFolder" class="world-environment-folder" open><summary>Scene appearance & sky</summary>
+        <div class="world-env-toggles"><label><input type="checkbox" id="envFogEnabled" checked> Fog</label><label><input type="checkbox" id="envGridEnabled" checked> Grid</label></div>
+        <div class="world-env-fields">
+          <label>Floor size <input id="envFloorSize" type="number" min="40" max="20000" step="10" value="70"></label>
+          <label>Floor color <input id="envFloorColor" type="color" value="#344758"></label>
+          <label>Grid color <input id="envGridColor" type="color" value="#455a6a"></label>
+          <label>Fog color <input id="envFogColor" type="color" value="#101b2c"></label>
+          <label>Fog near <input id="envFogNear" type="number" min="0" max="100000" value="12"></label>
+          <label>Fog far <input id="envFogFar" type="number" min="1" max="150000" value="130"></label>
+          <label>Background <input id="envBackgroundColor" type="color" value="#101b2c"></label>
+          <label>Sky effect <select id="envSkyType"><option value="solid">Solid color</option><option value="gradient">Gradient</option><option value="sunset">Cloudy sunset</option><option value="rainbow">Animated rainbow</option><option value="stars">Starfield</option><option value="nebula">Nebula & stars</option></select></label>
+          <label>Sky top <input id="envSkyTop" type="color" value="#10315e"></label>
+          <label>Horizon <input id="envSkyHorizon" type="color" value="#7ea2bd"></label>
+          <label>Animation speed <input id="envSkySpeed" type="range" min="0" max="5" step="0.1" value="0.4"></label>
+          <label>Effect intensity <input id="envSkyIntensity" type="range" min="0" max="2" step="0.05" value="0.75"></label>
+          <label>Star density <input id="envStarDensity" type="range" min="0" max="2" step="0.05" value="0.65"></label>
+          <label>View distance <input id="envViewDistance" type="number" min="200" max="100000" step="100" value="1500"></label>
+        </div>
+        <div class="world-environment-actions"><button id="previewWorldEnvironment" type="button">Preview</button><button id="resetWorldEnvironment" type="button">Reset</button></div>
+      </details>
+      <button type="button" id="saveWorldSettings" class="primary">Save world settings</button>
       <small id="worldSettingsStatus" class="small-note" aria-live="polite"></small>
     </aside></div>
   <div id="avatarGalleryBackdrop" class="backdrop avatar-gallery-backdrop" hidden>

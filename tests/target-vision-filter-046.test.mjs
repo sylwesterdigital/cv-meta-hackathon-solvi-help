@@ -20,7 +20,7 @@ test('prefilter keeps only head-camera directions pointing toward a nearby chair
  const selected=pickTargetViews(views,poses,[candidate],3);
  assert(selected.length>0&&selected.length<=3);
  assert(selected.some(v=>v.view.yaw===0));
- assert(selected.every(v=>[0,45,315].includes(v.view.yaw)));
+ assert(selected.every(v=>[0,60,300].includes(v.view.yaw)));
  assert(frameTargetScore(pose(180),candidate)<0);
 });
 test('target scan discards irrelevant frames before uploads and Muse; all-negative returns qualified answer',()=>{

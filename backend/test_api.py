@@ -106,6 +106,26 @@ assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'
 assert c.get('/api/room/settings?room=lab',headers=headers).get_json()['policy']['physics']==1
 assert c.get('/api/room/settings?room=main',headers=headers).get_json()['policy']['physics']==0
 assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'owned','robots':'open','physics':4}).status_code==400
+# Room-scoped sky, fog and ground settings survive a reload without changing policy schema.
+assert c.get('/api/room/environment',headers=headers).status_code==200
+assert c.get('/api/room/environment?room=lab',headers=headers).get_json()['environment']['floorSize']==70
+appearance={'fogEnabled':False,'gridEnabled':False,'floorSize':2400,
+            'fogColor':'#8899aa','fogNear':35,'fogFar':9000,
+            'backgroundColor':'#223344','skyType':'nebula','skyTop':'#123456',
+            'skyHorizon':'#778899','skySpeed':1.2,'skyIntensity':1.5,
+            'starDensity':0.9,'viewDistance':20000}
+r=c.put('/api/room/environment',headers=headers,json={'room':'lab','environment':appearance})
+assert r.status_code==200,(r.status_code,r.data)
+saved=c.get('/api/room/environment?room=lab',headers=headers).get_json()['environment']
+assert saved['floorSize']==2400 and saved['skyType']=='nebula' and saved['fogEnabled'] is False
+assert saved['skySpeed']==1.2 and saved['viewDistance']==20000
+assert c.get('/api/room/environment?room=main',headers=headers).get_json()['environment']['floorSize']==70
+for bad in [{'skyType':'external-url'},{'fogColor':'not-a-color'},{'fogFar':10,'fogNear':20},
+            {'floorSize':99999999},{'gridEnabled':'false'},{'starDensity':float('nan')},
+            {'invalidSetting':1}]:
+    assert c.put('/api/room/environment',headers=headers,json={'room':'lab','environment':bad}).status_code==400,bad
+assert c.get('/api/room/environment?room=unknown',headers=headers).status_code==404
+print('PASS: room-specific fog/grid/floor/sky appearance, persistence, validation and isolation')
 # Another user cannot modify an owned object, but can once objects are opened.
 second=c.post('/api/onboard',json={'name':'Second editor','tab':'other-tab-123'},headers={'Origin':origin})
 assert second.status_code==200
@@ -371,8 +391,8 @@ assert visual['command']['kind']=='vision_search' and visual['command']['target_
 assert visual['trace'][1]['result']=='vision_search'
 assert visual['command']['id']
 failed=c.post('/api/robots/task-result',headers=headers,json={'room':'lab','task_id':visual['command']['id'],'status':'not-found'})
-assert failed.status_code==200 and 'scanned eight directions' in failed.get_json()['answer']['text'], (failed.status_code, failed.data)
-print('PASS: eight-direction SAM search failure reports its actual scan coverage')
+assert failed.status_code==200 and 'scanned six directions' in failed.get_json()['answer']['text'], (failed.status_code, failed.data)
+print('PASS: six-direction SAM search failure reports its actual scan coverage')
 assert c.get('/api/robots/memory?room=lab&id=testrobot-0220',headers=headers).status_code==200
 # Muse supplies character-language plans only, with the deterministic motion command unchanged.
 spoken_ai=c.post('/api/message',headers=headers,json={'room':'lab','text':'@Jessica stop'}).get_json()['message']
@@ -504,6 +524,36 @@ with patch('server.active_model_key',return_value='test-key'),patch('server.meta
 assert manual_scan.status_code==200,(manual_scan.status_code,manual_scan.data)
 assert 'chair' in manual_scan.get_json()['answer']['text']
 assert manual_mock.call_count==1
+# A real stitched preview is shared with humans but must NOT be uploaded
+# as a fourth Muse input; only original direction-labelled source frames count.
+photo3=c.post('/api/media',headers=headers,data={'file':(_BytesIO(jpeg),'scan3.jpg','image/jpeg')})
+assert photo3.status_code==200,(photo3.status_code,photo3.data)
+photo3_id=photo3.get_json()['media']['id']
+pano_preview=c.post('/api/media',headers=headers,data={'file':(_BytesIO(jpeg),'stitched-panorama.jpg','image/jpeg')})
+assert pano_preview.status_code==200,(pano_preview.status_code,pano_preview.data)
+panorama_id=pano_preview.get_json()['media']['id']
+with patch('server.active_model_key',return_value='test-key'),patch('server.meta_request',return_value={
+    'id':'resp-stitched-scan','output_text':'I can see three distinct directions.',
+    'usage':{'input_tokens':100,'output_tokens':11}}) as panorama_mock:
+    chat_attempts[data['user']['id']]=[]
+    stitched_scan=c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
+        'robot_id':'testrobot-0220','manual':True,'question':'Describe the surroundings',
+        'media_ids':[photo_id,photo2_id,photo3_id],
+        'views':['heading 0°','heading 60°','heading 120°'],
+        'panorama_media_id':panorama_id})
+assert stitched_scan.status_code==200,(stitched_scan.status_code,stitched_scan.data)
+assert json.loads(stitched_scan.get_json()['answer']['media'])==[panorama_id,photo_id,photo2_id,photo3_id]
+assert stitched_scan.get_json()['request']['images']==3
+assert panorama_mock.call_count==1
+content=panorama_mock.call_args.args[2]['input'][0]['content']
+assert sum(x['type']=='input_image' for x in content)==3
+print('PASS: stitched preview appears first in chat while Muse receives only three source images')
+# Preview references must belong to the current user, and cannot be confused
+# with Muse's original direction-labelled image batch.
+assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
+    'robot_id':'testrobot-0220','manual':True,'question':'Describe the room',
+    'media_ids':[photo_id,photo2_id],'views':['heading 0°','heading 60°'],
+    'panorama_media_id':'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'}).status_code==400
 assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab',
     'robot_id':'testrobot-0220','manual':True,'question':'Replay',
     'media_ids':[photo_id,photo2_id],'views':['heading -90°','heading 0°']}).status_code==409
@@ -516,17 +566,17 @@ print('PASS: explicit Brains 180/360 vision scan uses one guarded Muse request')
 none_msg=c.post('/api/message',headers=headers,json={'room':'lab','text':'Jessica look around and find a chair'}).get_json()['message']
 with patch('server.active_model_key',return_value='test-key'), patch('server.meta_request',side_effect=AssertionError('No Muse call for zero matched frames')) as unused_muse:
     no_evidence=c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':none_msg['id'],
-      'robot_id':'testrobot-0220','media_ids':[],'views':[],'target_phrase':'chair','scanned_count':8})
+      'robot_id':'testrobot-0220','media_ids':[],'views':[],'target_phrase':'chair','scanned_count':6})
 assert no_evidence.status_code==200,(no_evidence.status_code,no_evidence.data)
 assert no_evidence.get_json()['answer']['media']=='[]'
 assert 'could not verify chair' in no_evidence.get_json()['answer']['text']
 assert no_evidence.get_json()['request']['images']==0 and no_evidence.get_json()['usage'] is None
 assert unused_muse.call_count==0
 assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':none_msg['id'],
-      'robot_id':'testrobot-0220','media_ids':[],'views':[],'target_phrase':'chair','scanned_count':8}).status_code==409
+      'robot_id':'testrobot-0220','media_ids':[],'views':[],'target_phrase':'chair','scanned_count':6}).status_code==409
 no_evidence_other=c.post('/api/message',headers=headers,json={'room':'lab','text':'Jessica what do you see'}).get_json()['message']
 assert c.post('/api/robots/vision-reply',headers=headers,json={'room':'lab','message_id':no_evidence_other['id'],
-      'robot_id':'testrobot-0220','media_ids':[],'views':[],'target_phrase':'chair','scanned_count':8}).status_code==400
+      'robot_id':'testrobot-0220','media_ids':[],'views':[],'target_phrase':'chair','scanned_count':6}).status_code==400
 print('PASS: target scan drops irrelevant images, returns qualified no-match and spends zero Muse tokens')
 print('PASS: 360 head-camera batching, real JPEGs, one Muse call, and nonce-protected proactive observation')
 # The saved portrait is represented as a room-scoped media ID rather than a user avatar.

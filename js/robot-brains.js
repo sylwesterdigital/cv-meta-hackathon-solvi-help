@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {captureRobotView,captureRobotPortrait,robotHeadCameraPose} from './robots.js';
 import {observationPlan,scanSummary} from './robot-observation.js';
+import {stitchRobotPanorama,panoramaMode} from './robot-panorama.js';
 import {observationTarget,matchesObservationTarget,pickTargetViews} from './target-view-filter.js';
 const $=id=>document.getElementById(id);
 const fields={personality:'brainsPersonality',history:'brainsHistory',beliefs:'brainsBeliefs',triggers:'brainsTriggers',scenario:'brainsScenario'};
@@ -90,6 +91,7 @@ const dollars=usage=>'US$'+Number(usage?.estimated_usd||0).toFixed(6)+' estimate
 function showFrame(blob,label='Robot head camera · local JPEG',boxes=[]){
   frame=blob;if(frameURL)URL.revokeObjectURL(frameURL);frameURL=URL.createObjectURL(blob);
   $('brainsEyeImage').onload=()=>{const image=$('brainsEyeImage'),canvas=$('brainsEyeOverlay');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;clearBoxes();if(boxes.length)showBoxes(boxes);};
+  $('brainsEyeStage').classList.toggle('panorama',label.startsWith('Stitched '));
   const preview=$('brainsEyeImage');preview.src=frameURL;preview.hidden=false;$('brainsEyeStage').hidden=false;$('brainsEyePlaceholder').hidden=true;
   $('brainsEyeLarge').src=frameURL;$('brainsLightboxCaption').textContent=label+' · '+blob.size+' JPEG bytes';
   $('expandBrainsEye').disabled=false;
@@ -134,7 +136,7 @@ export function initRobotBrains(world,api,getRoom,toast){
    if(!activeRobot)return;
    const history=frameHistory.get(activeRobot.userData.editorId)||[];
    for(const rec of history){
-     const button=document.createElement('button');button.type='button';button.className='brains-frame-card';
+     const button=document.createElement('button');button.type='button';button.className='brains-frame-card'+(rec.label.startsWith('Stitched ')?' panorama-frame-card':'');
      const image=document.createElement('img');image.alt='Robot-eye camera frame';const url=URL.createObjectURL(rec.blob);galleryUrls.push(url);image.src=url;
      const summary=document.createElement('span');summary.textContent=rec.label+` · ${rec.blob.size} B`+(rec.usage?` · ~US$${Number(rec.usage.estimated_usd||0).toFixed(6)}`:'');
      button.append(image,summary);button.onclick=()=>showFrame(rec.blob,rec.label,rec.boxes);
@@ -297,7 +299,7 @@ export function initRobotBrains(world,api,getRoom,toast){
  async function sweepRobotEyes(degrees=360){
    if(!activeRobot)return;
    const button=$(degrees===180?'captureBrainsHemisphere':'captureBrainsPanorama');button.disabled=true;
-   const directions=degrees===180?[-90,-60,-30,0,30,60,90].map(yaw=>({yaw,pitch:0,label:`${yaw}°`})) : observationPlan('look around');
+   const directions=observationPlan(degrees===180?'180 degrees':'look around');
    const question=$('brainsVisionQuestion').value.trim();
    const target=observationTarget(question);
    emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,`${degrees} SCAN`,scanSummary(directions));
@@ -317,8 +319,15 @@ export function initRobotBrains(world,api,getRoom,toast){
          if(!(detected.result?.boxes||[]).length)continue;
        }
        rememberFrame(activeRobot.userData.editorId,image,`${degrees}° · `+view.label);
-       frames.push({blob:image,label:view.label});
+       frames.push({blob:image,label:view.label,yaw:view.yaw,pitch:view.pitch});
        if(target&&frames.length>=3)break;
+     }
+     let panorama=null;
+     if(!target&&panoramaMode(frames)===degrees){
+       panorama=await stitchRobotPanorama(frames);
+       const label=`Stitched ${degrees}° horizontal panorama · ${frames.length} real head-camera frames`;
+       rememberFrame(activeRobot.userData.editorId,panorama,label);
+       emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,'PANORAMA',`${degrees}° cylindrical mosaic; ${frames.length} original JPEG views retained for Muse.`);
      }
      renderFrameGallery();const last=latestFrames.get(activeRobot.userData.editorId);
      if(frames.length)showFrame(last.blob,last.label);
@@ -335,7 +344,10 @@ export function initRobotBrains(world,api,getRoom,toast){
        mediaIds.push(uploaded.media.id);
      }
      emitBrainTrace(robotId,activeRobot.name,'MUSE SCAN',`${degrees}° · ${mediaIds.length} actual JPEGs uploaded · one model request`);
-     const result=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:window.solviRoom||'main',robot_id:robotId,media_ids:mediaIds,views:frames.map(v=>v.label),manual:true,question:question||'Describe the objects and furniture you can actually see.',target_phrase:target?.phrase||''})});
+     let panoramaMediaId='';
+     if(panorama){const body=new FormData();body.append('file',new File([panorama],`robot-panorama-${degrees}.jpg`,{type:'image/jpeg'}));
+       const uploaded=await api.req('/api/media',{method:'POST',body});panoramaMediaId=uploaded.media?.id||'';}
+     const result=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:window.solviRoom||'main',robot_id:robotId,media_ids:mediaIds,panorama_media_id:panoramaMediaId,views:frames.map(v=>v.label),manual:true,question:question||'Describe the objects and furniture you can actually see.',target_phrase:target?.phrase||''})});
      $('brainsVisionResult').textContent=result.answer?.text||'No visual description was returned.';
      emitBrainTrace(robotId,activeRobot.name,'MUSE SCAN RESULT',`${result.answer?.text||'(empty)'} · ${result.usage?.estimated_usd||0} estimated USD`);
    }catch(error){$('brainsVisionResult').textContent=`${degrees}° scan failed: `+error.message;}

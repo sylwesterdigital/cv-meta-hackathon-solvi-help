@@ -11,7 +11,7 @@ test('Visual questions route through a camera capture before Muse Spark',()=>{
  assert.match(js,/\/api\/robots\/vision-reply/);
  assert.match(server,/@app\.post\('\/api\/robots\/vision-reply'\)/);
  assert.match(server,/'type':'input_image','image_url':'data:image\/jpeg;base64,'/);
- assert.match(server,/json\.dumps\(raw_ids\)/);
+ assert.match(server,/json\.dumps\(\(\[panorama_id\] if panorama_id else \[\]\)\+raw_ids\)/);
 });
 test('Robot and human portraits use front-facing rendered JPEG and a saved image',()=>{
  const robots=read('js/robots.js'),brains=read('js/robot-brains.js'),html=read('index.html');

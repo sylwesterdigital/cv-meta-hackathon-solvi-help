@@ -9,6 +9,7 @@ import {teleportOffset,validTeleport} from './xr-navigation.js';
 import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
 import {XRHandModelFactory} from 'three/addons/webxr/XRHandModelFactory.js';
 import {readPreferences} from './preferences.js';
+import {ENVIRONMENT_DEFAULTS,normalizeEnvironment,environmentViewLimit,createSkyDome,skyModeIndex} from './scene-environment.js';
 import {nextCameraMode,followAnchor,localOrbitOffset,cameraFromLocalOffset,chaseOffset,clampChaseDistance,zoomChaseDistance,smoothFactor} from './camera-follow.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -17,8 +18,8 @@ export class SolviWorld {
   constructor(root, onState=()=>{}) {
     this.onState=onState;
     this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#101b2c');
-    this.scene.fog=new THREE.FogExp2('#101b2c',.028);
-    this.camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.05,150);
+    this.environment={...ENVIRONMENT_DEFAULTS};this.skyClock=0;this.extentCheck=0;this.sceneExtent=0;
+    this.camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.05,1500);
     this.camera.position.set(5,3.7,7.5);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
     this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
@@ -42,7 +43,7 @@ export class SolviWorld {
     this.controls.touches={ONE:THREE.TOUCH.ROTATE,TWO:THREE.TOUCH.DOLLY_PAN};
     this.controls.enablePan=true;
     this.controls.minPolarAngle=.02;this.controls.maxPolarAngle=Math.PI-.02;
-    this.controls.minDistance=.35;this.controls.maxDistance=125;
+    this.controls.minDistance=.35;this.controls.maxDistance=1500;
     this.controls.update();
     this.localHeadRotation=[0,0,0];this.localBody={};this.localVoiceLevel=0;this.localVoiceBands=[0,0,0];
     this.clock=new THREE.Clock();
@@ -88,7 +89,8 @@ export class SolviWorld {
     this.scene.add(sunlight);
     const ground=new THREE.Mesh(new THREE.PlaneGeometry(70,70),new THREE.MeshStandardMaterial({color:'#344758',roughness:.97}));
     ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;ground.name='floor';this.scene.add(ground);this.floor=ground;
-    const grid=new THREE.GridHelper(70,70,'#455a6a','#3b5061');grid.position.y=.007;this.scene.add(grid);
+    this.grid=new THREE.GridHelper(70,70,'#455a6a','#3b5061');this.grid.position.y=.007;this.scene.add(this.grid);
+    this.skyDome=createSkyDome(THREE);this.scene.add(this.skyDome);this.applyEnvironment(this.environment);
     const boxGeo=new THREE.BoxGeometry(1,1,1);
     const palette=['#d1b29b','#638c9c','#8c89af','#8c9b83','#b78e78'];
     this.obstacles=[];
@@ -102,6 +104,61 @@ export class SolviWorld {
     }
     // The world begins empty: only the ground plane and grid are visible.
     this.remoteFaceSource=null;this.remoteFaceLoading=null;
+  }
+  applyEnvironment(input={}){
+    const previous=this.environment||ENVIRONMENT_DEFAULTS;
+    const cfg=normalizeEnvironment(input);this.environment=cfg;
+    this.scene.background=new THREE.Color(cfg.backgroundColor);
+    this.scene.fog=cfg.fogEnabled?new THREE.Fog(cfg.fogColor,cfg.fogNear,cfg.fogFar):null;
+    const previousSize=previous.floorSize;
+    if(this.floor){
+      if(previousSize!==cfg.floorSize||this.floor.geometry.parameters.width!==cfg.floorSize){
+        const old=this.floor.geometry;this.floor.geometry=new THREE.PlaneGeometry(cfg.floorSize,cfg.floorSize);old.dispose();
+      }
+      this.floor.material.color.set(cfg.floorColor);
+    }
+    if(this.grid){
+      if(previousSize!==cfg.floorSize||previous.gridColor!==cfg.gridColor){
+        const old=this.grid;this.scene.remove(old);old.geometry.dispose();
+        if(Array.isArray(old.material))old.material.forEach(m=>m.dispose());else old.material.dispose();
+        // A fixed division ceiling keeps giant worlds from producing thousands of lines.
+        const divisions=Math.min(200,Math.max(20,Math.round(cfg.floorSize/2)));
+        this.grid=new THREE.GridHelper(cfg.floorSize,divisions,cfg.gridColor,cfg.gridColor);
+        this.grid.position.y=.007;this.scene.add(this.grid);
+      }
+      this.grid.visible=cfg.gridEnabled;
+    }
+    if(this.skyDome){
+      this.skyDome.visible=cfg.skyType!=='solid';
+      const u=this.skyDome.material.uniforms;
+      u.uTop.value.set(cfg.skyTop);u.uHorizon.value.set(cfg.skyHorizon);
+      u.uIntensity.value=cfg.skyIntensity;u.uDensity.value=cfg.starDensity;u.uMode.value=skyModeIndex(cfg.skyType);
+    }
+    this.refreshWorldViewDistance();
+    return cfg;
+  }
+  refreshWorldViewDistance(){
+    if(!this.camera||!this.controls)return;
+    const max=environmentViewLimit(this.environment,this.sceneExtent);
+    this.camera.far=max;this.camera.updateProjectionMatrix();
+    this.controls.maxDistance=Math.max(150,this.environment.floorSize*.85,max*.8);
+    if(this.skyDome)this.skyDome.scale.setScalar(max*.94);
+  }
+  updateWorldExtent(){
+    // Include oversized furniture and user-imported models outside the ground footprint.
+    const items=this.robotEditor?.items||[];
+    let max=0;
+    const bounds=new THREE.Box3();
+    for(const object of items){
+      if(!object?.visible)continue;
+      bounds.setFromObject(object);
+      if(bounds.isEmpty())continue;
+      const x=Math.max(Math.abs(bounds.min.x),Math.abs(bounds.max.x));
+      const y=Math.max(Math.abs(bounds.min.y),Math.abs(bounds.max.y));
+      const z=Math.max(Math.abs(bounds.min.z),Math.abs(bounds.max.z));
+      max=Math.max(max,Math.hypot(x,y,z));
+    }
+    if(Math.abs(max-this.sceneExtent)>5){this.sceneExtent=max;this.refreshWorldViewDistance();}
   }
   async loadAvatar(url='./assets/solvi-character.glb'){
     const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');
@@ -187,8 +244,9 @@ export class SolviWorld {
       else{d.normalize();vx=d.x;vz=d.z;speed=this.desiredSpeed;}
     }else if(this.roam){this.idleTimer-=dt;if(this.idleTimer<=0)this.pickRoamTarget();}
     if(speed){
-      this.character.position.x=clamp(this.character.position.x+vx*speed*dt,-16,16);
-      this.character.position.z=clamp(this.character.position.z+vz*speed*dt,-16,16);
+      const worldLimit=Math.max(16,this.environment.floorSize/2-.4);
+      this.character.position.x=clamp(this.character.position.x+vx*speed*dt,-worldLimit,worldLimit);
+      this.character.position.z=clamp(this.character.position.z+vz*speed*dt,-worldLimit,worldLimit);
       const heading=Math.atan2(vx,vz);let diff=((heading-this.character.rotation.y+Math.PI*3)%(2*Math.PI))-Math.PI;
       this.character.rotation.y+=diff*Math.min(1,dt*8);
     }
@@ -431,7 +489,7 @@ export class SolviWorld {
     this.raycaster.setFromXRController(controller);
     const menu=this.raycaster.intersectObjects(this.xrButtons,false)[0]?.object;
     const floor=this.raycaster.intersectObject(this.floor,false)[0];
-    return {menu,floor:floor&&validTeleport(floor.point.x,floor.point.z)?floor:null};
+    return {menu,floor:floor&&validTeleport(floor.point.x,floor.point.z,Math.max(16,this.environment.floorSize/2-1))?floor:null};
   }
   teleportTo(landing){
     const session=this.renderer.xr.getSession();
@@ -439,7 +497,7 @@ export class SolviWorld {
     if(!session||!reference||typeof XRRigidTransform==='undefined')return;
     const head=this.renderer.xr.getCamera();
     const current=head.getWorldPosition(new THREE.Vector3());
-    if(!validTeleport(landing.x,landing.z))return;
+    if(!validTeleport(landing.x,landing.z,Math.max(16,this.environment.floorSize/2-1)))return;
     const offset=teleportOffset(current,landing);
     try{
       this.renderer.xr.setReferenceSpace(reference.getOffsetReferenceSpace(new XRRigidTransform(offset)));
@@ -576,7 +634,7 @@ export class SolviWorld {
     const center=new THREE.Vector3();
     if(bounds.isEmpty())center.copy(selected.position);else bounds.getCenter(center);
     const size=bounds.isEmpty()?1:bounds.getSize(new THREE.Vector3()).length();
-    const minDistance=Math.max(.2,size*.2),maxDistance=120;
+    const minDistance=Math.max(.2,size*.2),maxDistance=this.controls.maxDistance;
     const vector=this.camera.position.clone().sub(center);
     if(vector.lengthSq()<.0001)vector.set(0,.3,1);
     const currentDistance=vector.length();
@@ -651,6 +709,9 @@ export class SolviWorld {
   }
   frame(){
     const dt=Math.min(.05,this.clock.getDelta());
+    this.skyClock+=dt*this.environment.skySpeed;
+    if(this.skyDome?.visible){this.skyDome.position.copy(this.camera.position);this.skyDome.material.uniforms.uTime.value=this.skyClock;}
+    this.extentCheck+=dt;if(this.extentCheck>3){this.extentCheck=0;this.updateWorldExtent();}
     const axis=this.robotEditor?.transform?.axis;
     // Never give OrbitControls ownership of a TransformControls gesture.
     const cameraAllowed=this.cameraOrbitGesture===null?!axis:this.cameraOrbitGesture;
@@ -666,6 +727,7 @@ export class SolviWorld {
       const facingYaw=Math.atan2(gaze.x,gaze.z);
       this.onPose({x:position.x,y:position.y,z:position.z,yaw:facingYaw,face:this.localFace||{},headRotation:this.localHeadRotation||[0,0,0],body:this.localBody||{},voiceLevel:this.localVoiceLevel||0,voiceBands:this.localVoiceBands||[0,0,0]});
     }
+    if(this.skyDome?.visible)this.skyDome.position.copy(this.camera.position);
     this.renderer.render(this.scene,this.camera);
   }
 }

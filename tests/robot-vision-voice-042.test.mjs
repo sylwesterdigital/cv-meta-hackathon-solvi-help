@@ -4,11 +4,11 @@ import {readFileSync} from 'node:fs';
 import {observationPlan,scanSummary} from '../js/robot-observation.js';
 import {spokenLanguage,robotVoiceConfig} from '../js/robot-speech.js';
 const load=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
-test('eight bounded real camera directions for an explicit 360 panorama',()=>{
+test('six real overlapping camera directions for an explicit 360 panorama',()=>{
  const plan=observationPlan('Paris, look around and find a chair');
- assert.equal(plan.length,8);
- assert.deepEqual(plan.map(p=>p.yaw),[0,45,90,135,180,225,270,315]);
- assert.match(scanSummary(plan),/8 real JPEG camera views/);
+ assert.equal(plan.length,6);
+ assert.deepEqual(plan.map(p=>p.yaw),[0,60,120,180,240,300]);
+ assert.match(scanSummary(plan),/6 real JPEG camera views/);
 });
 test('down and up commands use genuine camera pitch, not a fabricated reply',()=>{
  assert.deepEqual(observationPlan('Paris, please tilt down and take a look').map(p=>p.pitch),[-38]);

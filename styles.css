@@ -1149,3 +1149,24 @@ html[data-button-labels='icon'] #propertiesPanel #objectInspector .transform-mod
 #settingsDrawer .settings-section label.toggle-line input[type=checkbox]{box-sizing:border-box!important;width:16px!important;height:16px!important;min-width:16px!important;min-height:16px!important;max-height:16px!important;margin:0!important;flex:0 0 16px!important}
 #settingsDrawer .settings-section[open]>summary{padding:6px 9px!important;margin-bottom:3px!important}
 #settingsDrawer .settings-section[open]>:not(summary){margin-top:2px!important;margin-bottom:3px!important}
+
+/* Real stitched head-camera panoramas retain their wide, intrinsic aspect ratio. */
+#robotBrainsPanel #brainsEyeStage.panorama #brainsEyeImage{aspect-ratio:auto!important;object-fit:contain!important}
+#robotBrainsPanel .brains-frame-card.panorama-frame-card{flex-basis:220px;min-width:220px}
+#robotBrainsPanel .brains-frame-card.panorama-frame-card img{aspect-ratio:3/1;object-fit:contain}
+#brainsEyeLightbox #brainsEyeLarge{aspect-ratio:auto;max-width:94vw}
+
+/* Compact, responsive shared environment controls. */
+#worldSettingsDrawer .drawer{width:min(460px,100vw)!important;gap:6px!important}
+#worldSettingsDrawer .world-environment-folder{border:1px solid color-mix(in srgb,var(--ui-fg) 24%,transparent);border-radius:9px;padding:5px 9px;min-width:0}
+#worldSettingsDrawer .world-environment-folder>summary{cursor:pointer;font-weight:700;padding:5px 0}
+#worldSettingsDrawer .world-env-toggles{display:flex;gap:18px;padding:4px 0}
+#worldSettingsDrawer .world-env-toggles label{display:flex;align-items:center;gap:5px}
+#worldSettingsDrawer .world-env-toggles input{width:17px;height:17px;margin:0}
+#worldSettingsDrawer .world-env-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px}
+#worldSettingsDrawer .world-env-fields label{min-width:0;display:flex;flex-direction:column;gap:3px;font-size:12px;line-height:1.25}
+#worldSettingsDrawer .world-env-fields input:not([type=color]),#worldSettingsDrawer .world-env-fields select{box-sizing:border-box;min-width:0;max-width:100%;width:100%;margin:0;min-height:29px!important;padding:4px 5px}
+#worldSettingsDrawer .world-env-fields input[type=color]{box-sizing:border-box;display:block;width:100%;height:31px;min-height:31px;padding:1px 2px}
+#worldSettingsDrawer .world-env-fields input[type=range]{padding:0;accent-color:var(--solvi-accent)}
+#worldSettingsDrawer .world-environment-actions{display:flex;gap:7px;justify-content:flex-end;margin-top:8px}
+@media(max-width:440px){#worldSettingsDrawer .drawer{width:100vw!important;padding:10px 12px!important}}

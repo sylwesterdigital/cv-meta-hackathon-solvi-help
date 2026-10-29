@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
 import {captureRobotView,captureRobotPortrait,robotHeadCameraPose} from './robots.js';
+import {stitchRobotPanorama,panoramaMode} from './robot-panorama.js';
 import {initRobotBrains,runRobotVisualSearch,emitBrainTrace,rememberRobotObservationFrame} from './robot-brains.js';
 import {observationPlan,scanSummary} from './robot-observation.js';
 import {observationTarget,matchesObservationTarget,pickTargetViews} from './target-view-filter.js';
 import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,uiScalePercent,safeFontName,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
 import {playCue,primeAudio} from './audio-cues.js';
 import {RobotSpeech} from './robot-speech.js';
+import {ENVIRONMENT_DEFAULTS,normalizeEnvironment} from './scene-environment.js';
 
 const $=id=>document.getElementById(id);
 const random=()=>crypto.randomUUID();
@@ -153,7 +155,7 @@ async function reportRobotTask(command,status){
 // from camera/frustum geometry; when no indexed target is visible, use SAM to
 // filter the actual JPEGs. Empty scans never masquerade as observed objects.
 async function captureRobotObservation(robot,question,{proactive=false}={}){
- const plan=observationPlan(question,proactive),ids=[],views=[];
+ const plan=observationPlan(question,proactive),ids=[],views=[],panoFrames=[];
  const target=observationTarget(question);
  const editor=window.solviEditor;
  emitBrainTrace(robot.userData.editorId,robot.name,'SCAN PLAN',scanSummary(plan));
@@ -185,12 +187,21 @@ async function captureRobotObservation(robot,question,{proactive=false}={}){
   }
   rememberRobotObservationFrame(robot.userData.editorId,photo,'Target '+(target?.phrase||'room')+' · '+view.label);
   const upload=await uploadFile(new File([photo],`robot-eye-${view.yaw}-${view.pitch}-${Date.now()}.jpg`,{type:'image/jpeg'}));
-  ids.push(upload.id);views.push(view.label);
+  ids.push(upload.id);views.push(view.label);if(!target&&!proactive)panoFrames.push({blob:photo,yaw:view.yaw,pitch:view.pitch,label:view.label});
   emitBrainTrace(robot.userData.editorId,robot.name,'FRAME SELECTED',`${view.label}: ${photo.size} JPEG bytes`);
   if(target&&ids.length>=3)break;
  }
  if(target)emitBrainTrace(robot.userData.editorId,robot.name,'SCAN FILTER',`${ids.length} of ${plan.length} directions retained for ${target.phrase}.`);
- return {media_ids:ids,views,plan,target_phrase:target?.phrase||'',scanned_count:plan.length};
+ let panoramaMediaId='';const panoramaDegrees=panoramaMode(panoFrames);
+ if(panoramaDegrees){
+  const panorama=await stitchRobotPanorama(panoFrames);
+  const label=`Stitched ${panoramaDegrees}° horizontal panorama · ${panoFrames.length} original camera frames`;
+  rememberRobotObservationFrame(robot.userData.editorId,panorama,label);
+  const upload=await uploadFile(new File([panorama],`robot-panorama-${panoramaDegrees}-${Date.now()}.jpg`,{type:'image/jpeg'}));
+  panoramaMediaId=upload.id;
+  emitBrainTrace(robot.userData.editorId,robot.name,'PANORAMA',`${panoramaDegrees}° stitched JPEG sent as chat preview; Muse receives ${ids.length} detailed source views.`);
+ }
+ return {media_ids:ids,views,panorama_media_id:panoramaMediaId,plan,target_phrase:target?.phrase||'',scanned_count:plan.length};
 }
 async function reactToRobotMessage(message){
  if(!message?.id||!message.text||!online||!auth)return;
@@ -206,7 +217,7 @@ async function reactToRobotMessage(message){
      emitBrainTrace(response.robot_id,robot.name,'EYES REQUEST','Capturing a real head-camera observation for the chat question.');
      const scan=await captureRobotObservation(robot,message.text);
      emitBrainTrace(response.robot_id,robot.name,'MUSE VISION',`Sending ${scan.media_ids.length} JPEG(s), labelled camera directions, saved identity, question and goals. No fabricated visual evidence.`);
-     const answer=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:response.robot_id,message_id:message.id,media_ids:scan.media_ids,views:scan.views,target_phrase:scan.target_phrase,scanned_count:scan.scanned_count})});
+     const answer=await api.req('/api/robots/vision-reply',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:response.robot_id,message_id:message.id,media_ids:scan.media_ids,panorama_media_id:scan.panorama_media_id,views:scan.views,target_phrase:scan.target_phrase,scanned_count:scan.scanned_count})});
      if(answer.answer)await bubble(answer.answer);
      emitBrainTrace(response.robot_id,robot.name,'VISION RESULT',`${answer.model||answer.answer?.model} · ${answer.answer?.text||'No text'} · estimated US$${Number(answer.usage?.estimated_usd||0).toFixed(6)}`);
      $('chatStatus').textContent=robot.name+' · camera observation shared'+(answer.usage?' · ~US$'+Number(answer.usage.estimated_usd||0).toFixed(5):'');
@@ -431,6 +442,39 @@ async function configureRooms(){
    window.dispatchEvent(new CustomEvent('solvi:room-changed',{detail:{room:activeRoom}}));
  };
 }
+const envFieldIds={fogEnabled:'envFogEnabled',gridEnabled:'envGridEnabled',fogColor:'envFogColor',
+ gridColor:'envGridColor',floorSize:'envFloorSize',floorColor:'envFloorColor',fogNear:'envFogNear',fogFar:'envFogFar',
+ backgroundColor:'envBackgroundColor',skyType:'envSkyType',skyTop:'envSkyTop',skyHorizon:'envSkyHorizon',
+ skySpeed:'envSkySpeed',skyIntensity:'envSkyIntensity',starDensity:'envStarDensity',viewDistance:'envViewDistance'};
+let savedRoomEnvironment={...ENVIRONMENT_DEFAULTS};
+function fillEnvironmentFields(settings){
+ const values=normalizeEnvironment(settings);
+ for(const [key,id] of Object.entries(envFieldIds)){
+  const element=$(id);if(!element)continue;
+  if(element.type==='checkbox')element.checked=values[key];else element.value=String(values[key]);
+ }
+}
+function readEnvironmentFields(){
+ const input={};for(const [key,id] of Object.entries(envFieldIds)){
+  const element=$(id);if(!element)continue;
+  input[key]=element.type==='checkbox'?element.checked:element.type==='number'||element.type==='range'?Number(element.value):element.value;
+ }
+ return normalizeEnvironment(input);
+}
+function useRoomEnvironment(value){
+ savedRoomEnvironment=normalizeEnvironment(value);
+ fillEnvironmentFields(savedRoomEnvironment);
+ window.solviEditor?.world?.applyEnvironment(savedRoomEnvironment);
+}
+async function loadRoomEnvironment(){
+ const requestedRoom=activeRoom;
+ // Avoid leaking the previous room's appearance into a newly selected room.
+ useRoomEnvironment(ENVIRONMENT_DEFAULTS);
+ if(!online||!auth)return;
+ try{const data=await api.req('/api/room/environment?room='+encodeURIComponent(requestedRoom));
+  if(requestedRoom===activeRoom)useRoomEnvironment(data.environment);
+ }catch(error){if(requestedRoom===activeRoom)$('worldSettingsStatus').textContent=error.message;}
+}
 async function loadWorldSettings(){
   const requestedRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};
   if(online&&auth){try{const data=await api.req('/api/room/settings?room='+encodeURIComponent(requestedRoom));if(requestedRoom!==activeRoom)return;window.solviRoomPolicy=data.policy;}catch(error){toast(error.message);}}
@@ -438,22 +482,32 @@ async function loadWorldSettings(){
   $('worldPhysicsEnabled').value=String(window.solviRoomPolicy.physics||0);
   window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics)).catch(e=>toast('Physics unavailable: '+e.message));
   window.solviEditor?.refreshList();
+  await loadRoomEnvironment();
 }
 function setupWorldSettings(){
+  fillEnvironmentFields(ENVIRONMENT_DEFAULTS);
   $('worldSettingsButton').onclick=()=>{loadWorldSettings();$('worldSettingsDrawer').hidden=false;};
-  $('closeWorldSettings').onclick=()=>$('worldSettingsDrawer').hidden=true;
-  $('worldSettingsDrawer').onpointerdown=e=>{if(e.target===$('worldSettingsDrawer'))$('worldSettingsDrawer').hidden=true;};
+  $('closeWorldSettings').onclick=()=>{window.solviEditor?.world?.applyEnvironment(savedRoomEnvironment);fillEnvironmentFields(savedRoomEnvironment);$('worldSettingsDrawer').hidden=true;};
+  $('worldSettingsDrawer').onpointerdown=e=>{if(e.target===$('worldSettingsDrawer'))$('closeWorldSettings').click();};
+  $('previewWorldEnvironment').onclick=()=>{window.solviEditor?.world?.applyEnvironment(readEnvironmentFields());$('worldSettingsStatus').textContent='Preview only · Save to share with the room';};
+  $('resetWorldEnvironment').onclick=()=>{fillEnvironmentFields(ENVIRONMENT_DEFAULTS);window.solviEditor?.world?.applyEnvironment(ENVIRONMENT_DEFAULTS);$('worldSettingsStatus').textContent='Defaults previewed · Save to apply';};
+  const envInputIds=new Set(Object.values(envFieldIds));
+  $('worldSettingsDrawer').addEventListener('input',e=>{if(envInputIds.has(e.target?.id))window.solviEditor?.world?.applyEnvironment(readEnvironmentFields());});
   $('saveWorldSettings').onclick=async()=>{
     const data={room:activeRoom,objects:$('worldObjectsPolicy').value,robots:$('worldRobotsPolicy').value,physics:Number($('worldPhysicsEnabled').value)};
     try{if(online&&auth){const response=await api.req('/api/room/settings',{method:'PUT',body:JSON.stringify(data)});window.solviRoomPolicy=response.policy;}
       else window.solviRoomPolicy={objects:data.objects,robots:data.robots,physics:data.physics};
-      $('worldSettingsStatus').textContent='World settings saved.';await window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics));window.solviEditor?.refreshList();
+      const env=readEnvironmentFields();
+      if(online&&auth){const result=await api.req('/api/room/environment',{method:'PUT',body:JSON.stringify({room:activeRoom,environment:env})});useRoomEnvironment(result.environment);}
+      else useRoomEnvironment(env);
+      $('worldSettingsStatus').textContent='Room appearance & policies saved.';await window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics));window.solviEditor?.refreshList();
     }catch(e){$('worldSettingsStatus').textContent=e.message;}
   };
   window.addEventListener('solvi:world-policy',e=>{window.solviRoomPolicy=e.detail.policy;
     $('worldPhysicsEnabled').value=String(e.detail.policy.physics||0);window.solviEditor?.physics.setEnabled(Boolean(e.detail.policy.physics)).catch(err=>toast('Physics unavailable: '+err.message));
     for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=e.detail.policy[key]||'open';
     window.solviEditor?.refreshList();});
+  window.addEventListener('solvi:room-environment',e=>{if(e.detail.room===activeRoom)useRoomEnvironment(e.detail.environment);});
 }
 
 function configureDragging(){

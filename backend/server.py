@@ -107,6 +107,7 @@ def init_db():
         INSERT OR IGNORE INTO scene VALUES(1,0,'[]');
         CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, title TEXT NOT NULL, created TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS room_policies (room_id TEXT PRIMARY KEY, objects TEXT NOT NULL DEFAULT 'open', robots TEXT NOT NULL DEFAULT 'open');
+        CREATE TABLE IF NOT EXISTS room_environments (room_id TEXT PRIMARY KEY, payload TEXT NOT NULL DEFAULT '{}');
         CREATE TABLE IF NOT EXISTS room_scenes (room_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL DEFAULT '[]');
         INSERT OR IGNORE INTO rooms VALUES('main','Main realm','2026-10-27T00:00:00Z');
         INSERT OR IGNORE INTO room_scenes VALUES('main',0,'[]');
@@ -167,7 +168,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.46',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.48',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -442,6 +443,74 @@ def put_room_settings():
         con.execute('INSERT INTO room_policies(room_id,objects,robots,physics) VALUES(?,?,?,?) ON CONFLICT(room_id) DO UPDATE SET objects=excluded.objects,robots=excluded.robots,physics=excluded.physics',(room_id,objects,robots,physics))
     publish({'type':'room-policy','room':room_id,'policy':{'objects':objects,'robots':robots,'physics':physics},'by':user['id']},room_id=room_id)
     return jsonify(room=room_id,policy={'objects':objects,'robots':robots,'physics':physics})
+
+# Appearance belongs to the room, not a client or an object's owner.
+# Separate table preserves the existing policy response contract and legacy databases.
+ENV_DEFAULTS = {
+    'fogEnabled': True, 'fogColor':'#101b2c', 'fogNear':12, 'fogFar':130,
+    'gridEnabled': True, 'gridColor':'#455a6a', 'floorSize':70, 'floorColor':'#344758',
+    'backgroundColor':'#101b2c', 'skyType':'solid', 'skyTop':'#10315e',
+    'skyHorizon':'#7ea2bd', 'skySpeed':0.4, 'skyIntensity':0.75,
+    'starDensity':0.65, 'viewDistance':1500
+}
+ENV_RANGE = {'fogNear':(0,100000),'fogFar':(1,150000),'floorSize':(40,20000),
+             'skySpeed':(0,5),'skyIntensity':(0,2),'starDensity':(0,2),
+             'viewDistance':(200,100000)}
+ENV_COLOR_KEYS = ('fogColor','gridColor','floorColor','backgroundColor','skyTop','skyHorizon')
+ENV_SKY_TYPES = ('solid','gradient','sunset','rainbow','stars','nebula')
+
+def normalize_environment(value):
+    if not isinstance(value,dict):raise ValueError('Environment must be an object')
+    if any(key not in ENV_DEFAULTS for key in value):raise ValueError('Unknown environment setting')
+    cfg=ENV_DEFAULTS.copy()
+    for key in ('fogEnabled','gridEnabled'):
+        if key in value:
+            if not isinstance(value[key],bool):raise ValueError('Invalid '+key)
+            cfg[key]=value[key]
+    for key in ENV_COLOR_KEYS:
+        if key in value:
+            if not isinstance(value[key],str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',value[key]):raise ValueError('Invalid '+key)
+            cfg[key]=value[key].lower()
+    if 'skyType' in value:
+        if value['skyType'] not in ENV_SKY_TYPES:raise ValueError('Invalid sky effect')
+        cfg['skyType']=value['skyType']
+    for key,(low,high) in ENV_RANGE.items():
+        if key in value:
+            v=value[key]
+            if isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or v<low or v>high:raise ValueError('Invalid '+key)
+            cfg[key]=v
+    if cfg['fogFar']<=cfg['fogNear']:raise ValueError('Fog far must exceed fog near')
+    return cfg
+
+def room_environment(room_id):
+    with db() as con:
+        row=con.execute('SELECT payload FROM room_environments WHERE room_id=?',(room_id,)).fetchone()
+    if row:
+        try:return normalize_environment(json.loads(row['payload']))
+        except (ValueError,TypeError,json.JSONDecodeError):pass
+    return ENV_DEFAULTS.copy()
+
+@app.get('/api/room/environment')
+def get_room_environment():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    rid=selected_room(request.args.get('room','main'))
+    if not rid:return json_error('Unknown room',404)
+    return jsonify(room=rid,environment=room_environment(rid))
+
+@app.put('/api/room/environment')
+def put_room_environment():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    rid=selected_room(data.get('room','main'))
+    if not rid:return json_error('Unknown room',404)
+    try:cfg=normalize_environment(data.get('environment'))
+    except (ValueError,TypeError) as error:return json_error(str(error))
+    with db() as con:
+        con.execute('INSERT INTO room_environments(room_id,payload) VALUES(?,?) ON CONFLICT(room_id) DO UPDATE SET payload=excluded.payload',(rid,json.dumps(cfg,separators=(',',':'))))
+    publish({'type':'room-environment','room':rid,'environment':cfg,'by':user['id']},room_id=rid)
+    return jsonify(room=rid,environment=cfg)
 
 @app.get('/api/messages')
 def messages():
@@ -981,6 +1050,8 @@ def robot_vision_reply():
     raw_ids=data.get('media_ids')
     if raw_ids is None:raw_ids=[data.get('media_id','')]
     if not isinstance(raw_ids,list) or not 0<=len(raw_ids)<=8 or any(not isinstance(x,str) or not re.fullmatch(r'[a-fA-F0-9-]{8,80}',x) for x in raw_ids) or len(set(raw_ids))!=len(raw_ids):return json_error('Supply one to eight distinct uploaded JPEGs',400)
+    panorama_id=str(data.get('panorama_media_id') or '')
+    if panorama_id and (panorama_id in raw_ids or not re.fullmatch(r'[a-fA-F0-9-]{8,80}',panorama_id)):return json_error('Invalid stitched panorama media reference',400)
     views=data.get('views',['forward'] if data.get('media_ids') is None else [])
     if not isinstance(views,list) or len(views)!=len(raw_ids) or any(not isinstance(v,str) or len(v)>70 for v in views):return json_error('Every image requires a camera-direction label',400)
     with db() as con:
@@ -988,6 +1059,7 @@ def robot_vision_reply():
                     (message_id,room_id,user['id'],'user')).fetchone() if not proactive else None
         scene=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
         media_rows=[con.execute('SELECT * FROM media WHERE id=? AND user_id=?',(mid,user['id'])).fetchone() for mid in raw_ids]
+        panorama_media=con.execute('SELECT * FROM media WHERE id=? AND user_id=?',(panorama_id,user['id'])).fetchone() if panorama_id else None
         history=con.execute('SELECT text FROM messages WHERE room_id=? ORDER BY created DESC LIMIT 6',(room_id,)).fetchall()
         memories=con.execute('SELECT event FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 5',(room_id,ident)).fetchall()
     if not (proactive or manual) and (not original or not is_robot_visual_question(original['text'])):return json_error('Saved visual question required',403)
@@ -1009,6 +1081,11 @@ def robot_vision_reply():
         path=Path(media['path'])
         if not path.is_file() or not (256<=path.stat().st_size<=1800000) or path.read_bytes()[:2]!=b'\xff\xd8':return json_error('Invalid robot-eye JPEG',400)
         paths.append(path)
+    if panorama_id:
+        if not panorama_media or panorama_media['mime']!='image/jpeg':return json_error('Owned stitched panorama JPEG required',400)
+        stitched_path=Path(panorama_media['path'])
+        if not stitched_path.is_file() or not 256<=stitched_path.stat().st_size<=1800000 or stitched_path.read_bytes()[:2]!=b'\xff\xd8':return json_error('Invalid stitched panorama JPEG',400)
+        if len(paths)<3 or target_phrase or proactive:return json_error('Panorama preview requires a full non-target camera sweep',400)
     objects=json.loads(scene['payload']) if scene else []
     robots=[o for o in objects if o.get('kind')=='robot']
     robot=next((o for o in robots if o.get('id')==ident),None)
@@ -1056,7 +1133,7 @@ def robot_vision_reply():
                 if target_phrase else
                 'ROOM OVERVIEW: Summarize the main useful visual facts in at most three short sentences. '
                 'Do not narrate each frame individually or repeatedly list empty directions. '
-                'A 180/360 sweep consists of labelled separate photographs, not a stitched panorama. '
+                'The labelled source photos overlap slightly; a stitched horizontal preview is for human inspection only and is NOT an extra Muse input. '
             )
             prompt=('Roleplay '+str(robot.get('name','Robot'))[:70]+' in a multiuser 3D world. '
                 'These are genuine robot head-camera JPEGs with their labelled directions. '
@@ -1085,14 +1162,14 @@ def robot_vision_reply():
     aid=str(uuid.uuid4());ts=now()
     with db() as con:
         con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
-                (aid,user['id'],'assistant',model,answer,json.dumps(raw_ids),ts,room_id,str(robot['name'])[:100]))
+                (aid,user['id'],'assistant',model,answer,json.dumps(([panorama_id] if panorama_id else [])+raw_ids),ts,room_id,str(robot['name'])[:100]))
         con.execute('INSERT INTO robot_memories VALUES(?,?,?,?,?)',
                 (str(uuid.uuid4()),room_id,ident,'Scanned '+str(len(paths))+' camera directions in response to: '+(original['text'][:200] if original else question[:200] if manual else 'proactive surroundings and goals'),ts))
     publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
     return jsonify(answer={'id':aid,'role':'assistant','speaker':str(robot['name'])[:100],
-      'model':model,'text':answer,'media':json.dumps(raw_ids),'created':ts,'avatar':portrait},
+      'model':model,'text':answer,'media':json.dumps(([panorama_id] if panorama_id else [])+raw_ids),'created':ts,'avatar':portrait},
       observed=True,usage=usage,request={'model':model,'image_bytes':sum(p.stat().st_size for p in paths),'images':len(paths),'views':views,'prompt':(original['text'][:400] if original else question[:400] if manual else 'proactive scene scan'),
-      'sends':'target-filtered robot head JPEGs with direction labels + question + identity and room context','store':False})
+      'sends':'overlapping direction-labelled JPEG source images for Muse; panorama is a human-facing preview only','store':False})
 
 @app.post('/api/robots/react')
 def robot_react():
@@ -1241,7 +1318,7 @@ def robot_task_result():
         task['done']=True
     name=task['robot_name'];target=task['target'] or 'the destination'
     replies={
-      'not-found':f'I scanned eight directions with SAM but could not identify {target}.',
+      'not-found':f'I scanned six directions with SAM but could not identify {target}.',
       'no-mesh':f'SAM detected {target}, but I could not map the detected pixels onto a reachable 3D scene object.',
       'vision-unavailable':f'I could not complete visual search for {target}; the vision service or camera failed.',
       'arrived':f'I arrived at the destination for {target}.',
