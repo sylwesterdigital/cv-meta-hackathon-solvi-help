@@ -151,6 +151,8 @@ export function initRobotBrains(world,api,getRoom,toast){
    $('brainsHeading').textContent=robot.name+' · Brains';$('brainsEyeTitle').textContent=robot.name+' · eye-camera observation';$('brainsLightboxTitle').textContent=robot.name+' · 512 × 512 eye capture';
    const brain=cleanBrain(robot.userData.robotBrain);
    for(const [key,id] of Object.entries(fields)){$(id).value=brain[key];$(id).disabled=!window.solviEditor.canEdit(robot);}
+   $('brainsGender').value=['female','male','nonbinary'].includes(robot.userData.robotBrain?.gender)?robot.userData.robotBrain.gender:'unspecified';
+   $('brainsGender').disabled=!window.solviEditor.canEdit(robot);
    $('brainsInitiative').checked=Boolean(robot.userData.robotBrain?.initiative);
    $('brainsInitiativeVision').checked=Boolean(robot.userData.robotBrain?.initiativeVision);
    $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);$('brainsInitiativeVision').disabled=!window.solviEditor.canEdit(robot);
@@ -177,7 +179,7 @@ export function initRobotBrains(world,api,getRoom,toast){
  $('saveRobotBrains').onclick=()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot)){toast('Robot is read-only');return;}
    const before=window.solviEditor.snapshot(activeRobot);
-   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),initiative:$('brainsInitiative').checked,initiativeVision:$('brainsInitiativeVision').checked};
+   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),gender:$('brainsGender').value,initiative:$('brainsInitiative').checked,initiativeVision:$('brainsInitiativeVision').checked};
    window.solviEditor.recordEdit(before,window.solviEditor.snapshot(activeRobot));
    window.solviEditor.queueSave(activeRobot);
    toast(activeRobot.name+' identity saved');
@@ -185,7 +187,7 @@ export function initRobotBrains(world,api,getRoom,toast){
  // Voice is configured in Properties for the currently selected robot (not the Brains window).
  const selectedVoiceRobot=()=>window.solviEditor?.robot();
  const editableVoiceRobot=()=>{const robot=selectedVoiceRobot();return robot&&window.solviEditor.canEdit(robot)?robot:null;};
- const voiceIds=['brainsVoiceProvider','brainsVoiceId','brainsElevenVoiceList','loadElevenVoices','brainsVoiceLang','brainsVoiceName','brainsVoiceRate','brainsVoicePitch','testRobotVoice','saveRobotVoice'];
+ const voiceIds=['brainsVoiceProvider','brainsVoiceId','brainsElevenVoiceList','loadElevenVoices','brainsVoiceLang','brainsVoiceName','brainsVoiceGender','brainsVoiceRate','brainsVoicePitch','testRobotVoice','saveRobotVoice'];
  let elevenVoiceCache=[],elevenCacheKey='';
  function populateDeviceVoices(selected=''){
    const list=$('brainsVoiceName'),language=$('brainsVoiceLang').value;
@@ -220,6 +222,7 @@ export function initRobotBrains(world,api,getRoom,toast){
  function syncVoiceInspector(robot=selectedVoiceRobot()){
    const brain=robot?.userData?.robotBrain||{},canEdit=!!robot&&window.solviEditor.canEdit(robot);
    for(const [field,id,fallback] of [['voiceProvider','brainsVoiceProvider','local'],['voiceId','brainsVoiceId',''],['voiceLang','brainsVoiceLang','auto'],['voiceRate','brainsVoiceRate','1'],['voicePitch','brainsVoicePitch','1']])$(id).value=String(brain[field]??fallback);
+   $('brainsVoiceGender').value=['female','male','neutral'].includes(brain.voiceGender)?brain.voiceGender:'auto';
    populateDeviceVoices(brain.voiceName||'');
    const list=$('brainsElevenVoiceList');list.replaceChildren(new Option('Browse account voices',''));
    if(brain.voiceId)list.add(new Option('Saved voice · '+brain.voiceId,brain.voiceId));
@@ -259,12 +262,12 @@ export function initRobotBrains(world,api,getRoom,toast){
  $('testRobotVoice').onclick=()=>{
    const robot=editableVoiceRobot();if(!robot)return;
    $('robotVoiceStatus').textContent='Preparing voice sample…';
-   window.dispatchEvent(new CustomEvent('solvi:test-robot-voice',{detail:{robotId:robot.userData.editorId,name:robot.name,config:{voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value,voiceLang:$('brainsVoiceLang').value,voiceName:$('brainsVoiceName').value,voiceRate:$('brainsVoiceRate').value,voicePitch:$('brainsVoicePitch').value}}}));
+   window.dispatchEvent(new CustomEvent('solvi:test-robot-voice',{detail:{robotId:robot.userData.editorId,name:robot.name,config:{voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value,voiceLang:$('brainsVoiceLang').value,voiceName:$('brainsVoiceName').value,voiceRate:$('brainsVoiceRate').value,voicePitch:$('brainsVoicePitch').value,voiceGender:$('brainsVoiceGender').value}}}));
  };
  $('saveRobotVoice').onclick=()=>{
    const robot=editableVoiceRobot();if(!robot){toast('Robot is read-only');return;}
    const before=window.solviEditor.snapshot(robot);
-   robot.userData.robotBrain={...(robot.userData.robotBrain||{}),voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value.trim(),voiceName:$('brainsVoiceName').value,voiceLang:$('brainsVoiceLang').value,voiceRate:String(Math.max(.6,Math.min(1.6,Number($('brainsVoiceRate').value)||1))),voicePitch:String(Math.max(.5,Math.min(1.7,Number($('brainsVoicePitch').value)||1)))};
+   robot.userData.robotBrain={...(robot.userData.robotBrain||{}),voiceProvider:$('brainsVoiceProvider').value,voiceId:$('brainsVoiceId').value.trim(),voiceName:$('brainsVoiceName').value,voiceGender:$('brainsVoiceGender').value,voiceLang:$('brainsVoiceLang').value,voiceRate:String(Math.max(.6,Math.min(1.6,Number($('brainsVoiceRate').value)||1))),voicePitch:String(Math.max(.5,Math.min(1.7,Number($('brainsVoicePitch').value)||1)))};
    window.solviEditor.recordEdit(before,window.solviEditor.snapshot(robot));window.solviEditor.queueSave(robot);
    $('robotVoiceStatus').textContent=robot.name+' voice saved to room scene.';
    toast(robot.name+' voice saved');

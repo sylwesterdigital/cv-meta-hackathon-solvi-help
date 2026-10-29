@@ -1,6 +1,14 @@
 {
-  "currentVersion": "0.2.57",
+  "currentVersion": "0.2.59",
   "releases": [
+    {
+      "version": "0.2.59",
+      "publishedAt": "2026-10-29T15:28:10Z",
+      "changes": [
+        "Fix backend integration regression: update mocked robot speech synthesizer to accept the gender argument introduced in v0.2.58, and test profile fallback, explicit voice gender, and preview overrides.",
+        "Carry forward v0.2.58 physics, chat alignment, voice management, mission ownership and bounded robot navigation enhancements without changing their behavior."
+      ]
+    },
     {
       "version": "0.2.57",
       "publishedAt": "2026-10-29T14:19:00Z",
@@ -316,15 +324,6 @@
         "Execute permission-checked, deterministic scene commands to approach named objects, walk short distances, stop and attempt real Sit animation clips.",
         "Use saved scene labels and coordinates for robot navigation; missing targets/clips report limitations without claiming autonomous perception.",
         "Preserve the existing macOS watcher, Ubuntu backend, avatar assets and previously released controls."
-      ]
-    },
-    {
-      "version": "0.2.21",
-      "publishedAt": "2026-10-28T05:15:57Z",
-      "changes": [
-        "Fix SQLite chat history failure caused by a misquoted NULLIF empty-string literal in the messages query.",
-        "Add backend integration regression coverage for ordinary speaker names and persisted AI robot speaker overrides.",
-        "Preserve all v0.2.20 controls, camera modes, Robot Brains and Meta AI features without modifying the deployment watcher."
       ]
     }
   ]

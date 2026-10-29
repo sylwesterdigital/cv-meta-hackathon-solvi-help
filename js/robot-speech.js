@@ -17,6 +17,7 @@ export const robotVoiceConfig=brain=>({
  provider:['local','elevenlabs','mute'].includes(brain?.voiceProvider)?brain.voiceProvider:'local',
  voiceId:/^[A-Za-z0-9_-]{0,80}$/.test(brain?.voiceId||'')?brain?.voiceId||'':'',
  voiceName:String(brain?.voiceName||'').slice(0,100),
+ gender:['female','male','neutral'].includes(brain?.voiceGender)?brain.voiceGender:['female','male'].includes(brain?.gender)?brain.gender:'auto',
  lang:['auto','en','pl','de','es','fr'].includes(brain?.voiceLang)?brain.voiceLang:'auto',
  rate:Math.max(.6,Math.min(1.6,Number(brain?.voiceRate)||1)),
  pitch:Math.max(.5,Math.min(1.7,Number(brain?.voicePitch)||1))
@@ -91,7 +92,7 @@ export class RobotSpeech{
   const voiceKey=sessionStorage.getItem('solvi-elevenlabs-key');if(voiceKey&&settings.provider==='elevenlabs')headers['X-Solvi-Voice-Key']=voiceKey;
   if(auth&&this.api.online){
    try{
-    const response=await fetch('/api/robots/speech',{method:'POST',headers,cache:'no-store',body:JSON.stringify({room:job.room,robot_id:job.robotId,message_id:job.entry.id||'',test:!!job.test,provider:settings.provider,voice_id:settings.voiceId,rate:settings.rate,pitch:settings.pitch,lang:settings.lang})});
+    const response=await fetch('/api/robots/speech',{method:'POST',headers,cache:'no-store',body:JSON.stringify({room:job.room,robot_id:job.robotId,message_id:job.entry.id||'',test:!!job.test,provider:settings.provider,voice_id:settings.voiceId,rate:settings.rate,pitch:settings.pitch,lang:settings.lang,gender:settings.gender})});
     if(!response.ok){const error=await response.json().catch(()=>({}));throw Error(error.error||`TTS HTTP ${response.status}`);}
     const blob=await response.blob();if(blob.size<100)throw Error('Empty speech audio');
     // Generation and playback both have to succeed to report cloud voice as working.

@@ -8,12 +8,13 @@ export class ScenePhysics{
   this.editor=editor;this.enabled=false;this.runtime=null;this.world=null;this.bodies=new Map();
   this.colliders=new Map();this.settings=new Map();this.characters=new Map();this.characterController=null;
   this.accumulator=0;this.lastBroadcast=new Map();this.lastSave=new Map();this.lastActivity=new Map();
-  this.remoteTargets=new Map();this.localSequence=new Map();this.remoteSequence=new Map();this.loading=null;
+  this.remoteTargets=new Map();this.localSequence=new Map();this.remoteSequence=new Map();this.loading=null;this.generation=0;
  }
  async setEnabled(enabled){
-  if(!enabled){this.enabled=false;this.clear();return;}
+  if(!enabled){this.generation++;this.enabled=false;this.clear();return;}
   if(this.enabled&&this.world)return;
-  if(this.loading)return this.loading;
+  if(this.loading)return this.loading.then(()=>this.enabled?undefined:this.setEnabled(true));
+  const generation=++this.generation;
   this.loading=(async()=>{
    try{
     if(!this.runtime){const module=await import('../vendor/rapier/rapier.mjs');
@@ -21,6 +22,7 @@ export class ScenePhysics{
      if(typeof this.runtime.init==='function')await this.runtime.init();
      else if(typeof module.default==='function')await module.default();
     }
+    if(generation!==this.generation)return;
     this.clear();const R=this.runtime;this.world=new R.World({x:0,y:-9.81,z:0});
     this.world.createCollider(R.ColliderDesc.cuboid(100,.12,100).setTranslation(0,-.12,0));
     this.characterController=this.world.createCharacterController(.012);
@@ -31,7 +33,7 @@ export class ScenePhysics{
     this.characterController.setApplyImpulsesToDynamicBodies(true);
     this.enabled=true;
     for(const object of this.editor.items)this.sync(object);
-   }catch(error){this.enabled=false;this.clear();throw error;}
+   }catch(error){if(generation===this.generation){this.enabled=false;this.clear();}throw error;}
    finally{this.loading=null;}
   })();return this.loading;
  }
@@ -122,7 +124,7 @@ export class ScenePhysics{
    if(!isRobot){
     if(type==='remote-dynamic'){
      this.remoteTargets.set(id,{position:{x:object.position.x,y:object.position.y,z:object.position.z},rotation:object.quaternion.toArray(),received:performance.now()});
-    }else{existing.setTranslation(object.position,true);existing.setRotation(object.quaternion,true);}
+    }else if(type==='kinematic'||type==='static'){existing.setTranslation(object.position,true);existing.setRotation(object.quaternion,true);} // Owner-controlled dynamic bodies must integrate gravity between scene updates.
    }
    return;
   }
@@ -144,6 +146,7 @@ export class ScenePhysics{
    collider=this.world.createCollider(this.colliderShape(object).setFriction(opts.friction).setRestitution(opts.restitution),body);
   }
   this.bodies.set(id,body);this.colliders.set(id,collider);this.settings.set(id,signature);
+  if(type==='dynamic')body.wakeUp();
   if(isRobot){
    this.characters.set(id,{verticalSpeed:0,grounded:object.position.y<=.08,previousJump:false});
    object.userData.physicsCharacterActive=true;

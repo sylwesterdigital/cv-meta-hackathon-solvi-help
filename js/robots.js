@@ -54,6 +54,7 @@ export function interruptRobotMission(robot){
   robot.userData.robotMission=null;
   robot.userData.robotGoal=null;
   robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;
+  robot.userData.robotRouteDestination=null;robot.userData.robotRecoveryAttempts=0;
   robot.userData.robotSeated=false;
   robot.userData.robotSitPose=null;
 }
@@ -109,11 +110,16 @@ export function tickRobots(items,dt,onMove=()=>{}){
       const distance=delta.length();
       if(distance<.07){
         if(robot.userData.robotWaypoints?.length){const point=robot.userData.robotWaypoints.shift();setRobotDestination(robot,point);onMove(robot,false);continue;}
-        robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;
+        if(onMove.retarget?.(robot)){onMove(robot,false);continue;}
+        robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;robot.userData.robotRecoveryAttempts=0;
         robot.userData.robotGoal=null;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;
         const mission=robot.userData.robotMission;
         if(mission){
           // Count a cycle only after both the outward and return legs arrive.
+          if(mission.kind==='coffee_visit'&&mission.leg===0){
+            mission.leg=1;
+            if(onMove.navigate?.(robot,mission.origin)!==false){robot.userData.robotArrived=false;onMove(robot,false);}continue;
+          }
           if(mission.kind==='walk_forward'&&mission.repeat>1&&!mission.returnToStart&&mission.leg+1<mission.repeat){
             mission.leg++;const forward={x:robot.position.x+mission.endpoint.x-mission.origin.x,z:robot.position.z+mission.endpoint.z-mission.origin.z};
             if(onMove.navigate?.(robot,forward)!==false){robot.userData.robotArrived=false;onMove(robot,false);}continue;
@@ -143,21 +149,20 @@ export function tickRobots(items,dt,onMove=()=>{}){
           }
           robot.userData.robotMission=null;
           window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName||'',
-            status:mission.kind==='go_sit'?(clip?'sitting':'procedural-sitting'):'arrived'}}));
+            status:mission.kind==='go_sit'?(clip?'sitting':'procedural-sitting'):mission.kind==='coffee_visit'?'coffee-visit':'arrived'}}));
         }
       }
       else{
         delta.normalize();const speed=mode==='run'?2.7:1.2;
         const travel=Math.min(distance,speed*Math.max(0,Number(robot.userData.robotSpeed??1.8))*dt);const nx=robot.position.x+delta.x*travel,nz=robot.position.z+delta.z*travel;
-        if(robot.userData.robotPathObstacles&&pathBlocked(nx,nz,robot.userData.robotPathObstacles,.25)){
-          const blocked=robot.userData.robotMission;robot.userData.robotGoal=null;robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;robot.userData.robotMission=null;robot.userData.robotMode='idle';mode='idle';
-          window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:blocked?.taskId,target:blocked?.targetName,status:'blocked'}}));
-          continue;
-        }
-        // Occupied robot footprints move during execution; never push them.
+        const staticBlock=robot.userData.robotPathObstacles&&pathBlocked(nx,nz,robot.userData.robotPathObstacles,.25);
+        // Occupied robot footprints are dynamic. Replan with a refreshed scene index.
         const neighbour=items.some(other=>other!==robot&&other.userData.editorKind==='robot'&&Math.hypot(other.position.x-nx,other.position.z-nz)<.66);
-        if(neighbour){const mission=robot.userData.robotMission;robot.userData.robotGoal=null;robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;robot.userData.robotMission=null;robot.userData.robotMode='idle';mode='idle';
-          window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission?.taskId,target:mission?.targetName,status:'blocked'}}));continue;}
+        if(staticBlock||neighbour){
+          if(onMove.recover?.(robot,staticBlock?'scene obstacle':'occupied by robot')){onMove(robot,false);continue;}
+          const mission=robot.userData.robotMission;robot.userData.robotGoal=null;robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;robot.userData.robotMission=null;robot.userData.robotMode='idle';mode='idle';
+          window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission?.taskId,target:mission?.targetName,status:'blocked'}}));continue;
+        }
         robot.position.addScaledVector(delta,travel);
         const angle=Math.atan2(delta.x,delta.z);robot.rotation.y+=Math.atan2(Math.sin(angle-robot.rotation.y),Math.cos(angle-robot.rotation.y))*clamp(dt*6,0,1);
       }

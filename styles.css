@@ -1506,3 +1506,25 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #propertiesPanel .robot-brain-row #openRobotBrains{margin:0!important;min-width:31px!important;min-height:31px!important;max-height:31px!important;padding:4px 7px!important}
 #profilePhotoBadge::before{display:none!important;content:none!important}
 #profilePhotoBadge img,#profilePhotoBadge video{display:block!important;width:100%!important;height:100%!important;object-fit:cover!important;border-radius:50%!important}
+
+/* v0.2.58 — conventional chat sides: self on right, all peers/robots on left. */
+#chatFeed .chat-row.mine{align-self:flex-end!important;margin-left:auto!important;margin-right:0!important;flex-direction:row!important;justify-content:flex-end!important}
+#chatFeed .chat-row.theirs{align-self:flex-start!important;margin-left:0!important;margin-right:auto!important;flex-direction:row!important;justify-content:flex-start!important}
+#chatFeed .chat-row.mine .chat-avatar{order:2!important}
+#chatFeed .chat-row.mine .chat-bubble{order:1!important;border-radius:16px 16px 4px 16px!important}
+#chatFeed .chat-row.theirs .chat-avatar{order:1!important}
+#chatFeed .chat-row.theirs .chat-bubble{order:2!important;border-radius:16px 16px 16px 4px!important}
+#chatFeed .chat-row.mine .chat-meta{flex-direction:row!important;text-align:left!important}
+#chatFeed .chat-row.theirs .chat-meta{flex-direction:row-reverse!important;text-align:right!important}
+#chatFeed .chat-row .chat-bubble{position:relative!important;min-width:0;overflow:visible}
+#chatFeed .chat-row .chat-bubble::before{content:'';display:block;position:absolute;bottom:5px;width:9px;height:12px;background:inherit;pointer-events:none}
+#chatFeed .chat-row.mine .chat-bubble::before{right:-7px;clip-path:polygon(0 0,0 100%,100% 100%)}
+#chatFeed .chat-row.theirs .chat-bubble::before{left:-7px;clip-path:polygon(100% 0,100% 100%,0 100%)}
+#chatFeed .chat-row .chat-bubble::after{display:none!important}
+
+/* Robot commands reference: compact and keyboard accessible. */
+#robotCommandsCard{flex:0 1 auto;overflow:auto;max-height:37svh;padding:12px 15px;background:var(--ui-bg,#102638);border-bottom:1px solid var(--ui-border,#536b83);font-size:12px;line-height:1.5}
+#robotCommandsCard h3{font-size:13px;margin:0 0 7px}
+#robotCommandsCard p{margin:5px 0}
+#robotCommandsCard pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;line-height:1.6;margin:9px 0}
+#robotCommandsButton{margin-right:4px}

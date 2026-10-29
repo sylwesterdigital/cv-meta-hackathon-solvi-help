@@ -13,7 +13,7 @@
   <main id="viewport" aria-label="Solvi 3D world"></main>
   <form id="elevenLabsKeyForm" class="solvi-key-form" autocomplete="off"></form><form id="metaApiKeyForm" class="solvi-key-form" autocomplete="off"></form><form id="adminPasswordForm" class="solvi-key-form" autocomplete="off"></form>
   <header class="topbar">
-    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.57</small></div>
+    <div class="wordmark" aria-label="SOLVI.help">SOLVI<span>.help</span><small id="version">v0.2.59</small></div>
     <nav aria-label="Navigation" id="toolNav">
       <button type="button" id="chatButton">Chat</button><select id="roomSelect" aria-label="Active realm"><option value="main">Main realm</option></select><button type="button" id="realmGalleryButton" title="Browse realms as cards" aria-label="Browse realms" aria-haspopup="dialog">Realms</button><button type="button" id="createRoom" title="Create a separate realm">Realm</button><button type="button" id="addObjectButton">Add</button><button type="button" id="avatarsButton">Avatars</button><button type="button" id="assetsButton" title="Browse uploaded 3D assets">Assets</button><button type="button" id="objectsButton">Objects</button><button type="button" id="devLogButton">Dev log</button>
       <button type="button" id="xrButton" hidden title="Open in a WebXR headset browser">VR</button>
@@ -88,7 +88,7 @@
         <div class="physics-top-row"><label>Physics<select id="objectPhysicsMode"><option value="off">No physics</option><option value="dynamic">Dynamic</option><option value="static">Static</option><option value="kinematic">Kinematic</option></select></label><label>Collider<select id="objectCollider" aria-label="Collision shape"><option value="box">Box / default</option><option value="trimesh">Trimesh</option></select></label></div>
         <div class="physics-adjust-row"><select id="objectSurfaceProperty" aria-label="Physics property"><option value="friction">Friction</option><option value="restitution">Bounciness</option></select><input id="objectSurfaceValue" type="number" step="0.05" min="0" max="2" aria-label="Physics property value"><input id="objectRestitution" type="number" min="0" max="1" step="0.05" value="0.2" hidden><input id="objectFriction" type="number" min="0" max="2" step="0.05" value="0.7" hidden></div>
         <input id="objectSurfaceRange" type="range" min="0" max="2" step="0.05" value="0.7" aria-label="Adjust selected physics property">
-      </section><small id="colliderHint" class="small-note" hidden>Detailed surface collision is available for static objects.</small><small id="colliderRuntimeStatus" class="small-note" role="status" aria-live="polite" hidden></small><section id="lightControls" class="light-controls" hidden>
+      </section><small id="physicsRuntimeStatus" class="small-note" role="status" aria-live="polite" hidden></small><small id="colliderHint" class="small-note" hidden>Detailed surface collision is available for static objects.</small><small id="colliderRuntimeStatus" class="small-note" role="status" aria-live="polite" hidden></small><section id="lightControls" class="light-controls" hidden>
         <label>Type<select id="lightType"><option value="point">Point</option><option value="spot">Spot</option><option value="directional">Directional</option><option value="ambient">Ambient</option><option value="hemisphere">Hemisphere</option></select></label>
         <label>Intensity<input type="number" id="lightIntensity" min="0" max="50" step="0.1" value="2"></label>
         <label id="lightRangeRow">Range<input type="number" id="lightRange" min="0" max="100" step="0.5" value="10"></label>
@@ -104,6 +104,7 @@
       <div class="brain-voice-config" role="group" aria-label="Voice selection for selected robot">
       <label class="field-label">Spoken voice<select id="brainsVoiceProvider"><option value="local">Local synthetic (spatial on Ubuntu)</option><option value="elevenlabs">ElevenLabs (spatial cloud audio)</option><option value="mute">Silent</option></select></label>
       <label class="field-label">Language<select id="brainsVoiceLang"><option value="auto">Auto (match spoken text)</option><option value="en">English</option><option value="pl">Polski</option><option value="de">Deutsch</option><option value="es">Español</option><option value="fr">Français</option></select></label>
+      <label class="field-label">Voice presentation<select id="brainsVoiceGender"><option value="auto">Automatic / unspecified</option><option value="female">Feminine</option><option value="male">Masculine</option><option value="neutral">Neutral</option></select></label>
       <label id="robotLocalVoicesRow" class="field-label">Installed device voices (choose for local speech)<select id="brainsVoiceName"><option value="">Default installed voice</option></select></label>
       <label id="robotCloudVoicesRow" class="field-label">ElevenLabs voice<select id="brainsElevenVoiceList" aria-label="Choose ElevenLabs voice"><option value="">Load voices from your account</option></select></label>
       <button id="loadElevenVoices" type="button">Browse account voices</button>
@@ -116,7 +117,18 @@
     </div>
 </aside>
   <section id="chatPanel" class="chat-panel" aria-label="Chat">
-    <div class="panel-title drag-handle chat-drag"><div><strong id="roomChatTitle">Main realm · messages</strong><small id="backendLabel">Checking backend…</small></div><div><button type="button" id="floatChatButton" title="Return to overlay">Overlay</button></div></div>
+    <div class="panel-title drag-handle chat-drag"><div><strong id="roomChatTitle">Main realm · messages</strong><small id="backendLabel">Checking backend…</small></div><div><button type="button" id="robotCommandsButton" title="Robot commands and syntax" aria-expanded="false" aria-controls="robotCommandsCard">Commands</button><button type="button" id="floatChatButton" title="Return to overlay">Overlay</button></div></div>
+    <section id="robotCommandsCard" class="robot-commands-card" hidden aria-label="Robot instructions"><h3>Robot commands and syntax</h3><p>Address one robot by its own name: <code>@Paris</code>. Only that robot owns the mission.</p><pre>@Paris help
+@Paris list voices
+@Paris use a female voice
+@Paris you are female
+@Paris find the grey sofa and sit
+@Paris go to Jessica
+@Paris walk 4 meters and return 3 times
+@Paris turn right 90 degrees then walk 2 meters
+@Paris explore 4 times
+@Paris stop
+@Elox how is your mission going?</pre><p>Move and sit use the saved room scene. Obstacles trigger limited safe replanning. There is no automatic object pickup, drink creation, or unrestricted model-controlled execution. Use Brains to set personality and identity; Properties → Voice to select installed or ElevenLabs voices. Voice and gender preferences are independent. Scene physics also requires World settings → Physics enabled.</p></section>
     <div id="chatFeed" class="chat-feed" aria-live="polite" aria-relevant="additions text"></div>
     <div class="chat-composer" id="chatComposer"><div class="composer-window-head"><button type="button" id="composerMove" title="Drag message composer" aria-label="Drag message composer"></button><button type="button" id="webcamButton" class="ui-icon-utility" data-ui-icon="webcam" title="Open webcam and tracking" aria-label="Open webcam" aria-pressed="false"></button><button type="button" id="composerMinimize" aria-label="Minimize composer" title="Minimize composer"></button><button type="button" id="composerFloat" aria-label="Undock composer" title="Float or dock composer"></button></div>
       <div class="composer-line"><span id="composerName">Guest</span><select id="modelSelect" hidden aria-hidden="true" tabindex="-1"><option value="">World chat</option></select></div>
@@ -267,6 +279,7 @@
       <pre id="brainsVisionResult" class="brain-results brain-vision-output">Capture an eye view, then describe the scene or find a specific object.</pre>
       </section>
       <details id="brainsIdentityDetails" class="brains-section"><summary>Identity / personality · expand to edit</summary><div class="brains-section-body">
+      <label class="field-label">Robot gender (self-description, not inferred from name)<select id="brainsGender"><option value="unspecified">Unspecified</option><option value="female">Female</option><option value="male">Male</option><option value="nonbinary">Nonbinary / other</option></select></label>
       <label class="field-label">Character / personality<textarea id="brainsPersonality" rows="3" maxlength="1000" placeholder="Curious, playful, methodical…"></textarea></label>
       <label class="field-label">Fictional life history<textarea id="brainsHistory" rows="3" maxlength="2000" placeholder="Where this character came from and important memories…"></textarea></label>
       <label class="field-label">Beliefs and motivations<textarea id="brainsBeliefs" rows="2" maxlength="1000"></textarea></label>

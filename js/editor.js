@@ -429,7 +429,17 @@ export class SceneEditor{
   if(obj===this.selected){this.syncTransformLockControls(obj);if(!locked&&obj.userData.editorKind!=='robot')this.transform.attach(obj);}
   this.queueSave(obj);this.refreshList();this.toast(locked?'Transform locked · '+obj.name:'Transform unlocked · '+obj.name);
  }
- updateColliderOption(){const mode=byId('objectPhysicsMode').value;const selector=byId('objectCollider');selector.disabled=mode!=='static';if(mode!=='static')selector.value='box';byId('colliderHint').hidden=mode!=='static';const status=byId('colliderRuntimeStatus');status.hidden=mode!=='static'||selector.value!=='trimesh';status.textContent=this.selected?.userData.colliderStatus||(this.selected?.userData.editorKind==='model'&&!this.selected?.userData.modelReady?'Waiting for imported model geometry':'Physics must be enabled for collider creation');}
+ updateColliderOption(){const mode=byId('objectPhysicsMode').value;const selector=byId('objectCollider');selector.disabled=mode!=='static';if(mode!=='static')selector.value='box';byId('colliderHint').hidden=mode!=='static';const status=byId('colliderRuntimeStatus');status.hidden=mode!=='static'||selector.value!=='trimesh';status.textContent=this.selected?.userData.colliderStatus||(this.selected?.userData.editorKind==='model'&&!this.selected?.userData.modelReady?'Waiting for imported model geometry':'Physics must be enabled for collider creation');
+  const runtime=byId('physicsRuntimeStatus');runtime.hidden=mode==='off';
+  if(mode!=='off'){
+    const editorObject=this.selected,id=editorObject?.userData.editorId;
+    runtime.textContent=!window.solviRoomPolicy?.physics?'Room physics OFF. Enable Physics in World settings to activate gravity and collisions.':
+      !this.physics.enabled||!this.physics.world?'Rapier physics is starting. If this persists, check the browser console and vendor assets.':
+      !this.physics.bodies.has(id)?'Physics body not ready. Check the model geometry and scene loading.':
+      mode==='dynamic'&&!this.physics.owns(editorObject)?'Dynamic physics simulated by the object owner; this browser displays updates.':
+      mode==='dynamic'?'Dynamic body active — gravity, box collider and bouncing enabled. Lift object above the ground to test.':
+      mode==='static'?'Static collision body active. Trimesh is supported for static surfaces.':'Kinematic collision body active.';
+  }}
  refreshRobotActions(obj){const select=byId('robotActionSelect');select.querySelectorAll('optgroup[data-real-actions]').forEach(n=>n.remove());
   const clips=obj.userData.robotAvailableActions||[];if(clips.length){const group=document.createElement('optgroup');group.label='Model animations';group.dataset.realActions='1';for(const name of clips.slice(0,120))group.append(new Option(name,'clip:'+name));select.append(group);}
   select.value=[...select.options].some(o=>o.value===obj.userData.robotMode)?obj.userData.robotMode:'idle';
@@ -452,11 +462,11 @@ export class SceneEditor{
  texture(name){if(!this.selected||this.selected.userData.editorKind==='robot')return;if(this.canEdit(this.selected))this.selected.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
   serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed??2.5):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed??1.8):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed??4):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined}));}
- apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.physics.clear();if(this.physics.enabled)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;
+ apply(data){this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;const restorePhysics=this.physics.enabled;this.physics.clear();byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
-   this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);this.physics.sync(o);}this.refreshList();}
+   this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);this.physics.sync(o);}this.refreshList();if(restorePhysics)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));}
  disposeObject(obj){
   if(obj.userData.editorKind==='model'){invalidateSceneModel(obj);return;}
   obj.traverse(x=>{x.geometry?.dispose();if(x.material?.map)x.material.map.dispose();x.material?.dispose?.();});
@@ -670,7 +680,7 @@ export class SceneEditor{
       if(arrived||o.userData.robotMission&&now-(o.userData.lastMissionSave||0)>900){
         o.userData.lastMissionSave=now;this.queueSave(o);
       }
-    },{navigate:(robot,target)=>this.routeRobot(robot,target)}));
+    },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),retarget:robot=>this.retargetRobot(robot)}));
     this.physics.tick(dt);
   }
   applyRobotInput(packet){
@@ -704,6 +714,7 @@ export class SceneEditor{
     }).filter(Boolean);
   }
   routeRobot(robot,point){
+    const {preserveMission=false,quiet=false}=arguments[2]||{};
     if(!robot||!point)return false;
     const obstacles=this.navigationObstacles(robot);
     // Short bounded A* windows prevent clipped 100m+ goals and missed obstacles.
@@ -719,6 +730,7 @@ export class SceneEditor{
       waypoints.push(...part);previous=target;
     }
     if(!waypoints.length){
+      if(preserveMission)return false;
       robot.userData.robotGoal=null;robot.userData.robotMode='idle';
       const mission=robot.userData.robotMission;robot.userData.robotMission=null;
       if(mission)window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked'}}));
@@ -726,15 +738,63 @@ export class SceneEditor{
     }
     robot.userData.robotWaypoints=waypoints.slice(1);
     robot.userData.robotPathObstacles=obstacles;
+    if(!preserveMission)robot.userData.robotRecoveryAttempts=0;
+    robot.userData.robotRouteDestination={x:point.x,z:point.z};
     setRobotDestination(robot,waypoints[0]);return true;
   }
   // Commands are issued by the authenticated chat endpoint and resolved against
   // the same room scene. The client still checks editable state and targets.
+  retargetRobot(robot){
+    const mission=robot.userData.robotMission;
+    if(!mission||mission.kind!=='go_to'||!this.canEdit(robot))return false;
+    const target=this.items.find(o=>o.userData.editorId===mission.targetId&&o.userData.editorKind==='robot');
+    if(!target)return false;
+    const dx=robot.position.x-target.position.x,dz=robot.position.z-target.position.z;
+    const distance=Math.hypot(dx,dz);
+    if(distance<=1.85)return false;
+    const reroutes=Number(mission.retargets||0);
+    if(reroutes>=4){
+      robot.userData.robotMission=null;robot.userData.robotGoal=null;robot.userData.robotMode='idle';
+      window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked'}}));return true;
+    }
+    mission.retargets=reroutes+1;
+    const next={x:target.position.x+dx/distance*1.5,z:target.position.z+dz/distance*1.5};
+    if(this.routeRobot(robot,next,{preserveMission:true}))return true;
+    robot.userData.robotMission=null;robot.userData.robotGoal=null;robot.userData.robotMode='idle';
+    window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked'}}));return true;
+  }
+  recoverRobot(robot,reason){
+    if(!this.canEdit(robot)||!robot.userData.robotMission)return false;
+    const attempts=Number(robot.userData.robotRecoveryAttempts||0);
+    if(attempts>=3)return false;
+    robot.userData.robotRecoveryAttempts=attempts+1;
+    const destination=robot.userData.robotRouteDestination;
+    if(!destination)return false;
+    window.dispatchEvent(new CustomEvent('solvi:robot-recovery',{detail:{robotId:robot.userData.editorId,name:robot.name,reason,attempt:attempts+1}}));
+    // Re-read every visible object, including independently moving robots.
+    if(this.routeRobot(robot,destination,{preserveMission:true,quiet:true}))return true;
+    // A blocked narrow passage may require a short reverse step first. Both legs
+    // must be verified by A* before movement starts; never back into obstacles.
+    const obstacles=this.navigationObstacles(robot);
+    const current={x:robot.position.x,z:robot.position.z};
+    const dx=destination.x-current.x,dz=destination.z-current.z;
+    const length=Math.hypot(dx,dz)||1;
+    for(const side of [0.8,-0.8,1.4,-1.4]){
+      const candidate={x:current.x-dx/length*.48-dz/length*side,z:current.z-dz/length*.48+dx/length*side};
+      if(pathBlocked(candidate.x,candidate.z,obstacles,.30))continue;
+      const first=planRobotPath(current,candidate,obstacles),second=planRobotPath(candidate,destination,obstacles);
+      if(!first?.length||!second?.length||Math.hypot(first.at(-1).x-candidate.x,first.at(-1).z-candidate.z)>.12||Math.hypot(second.at(-1).x-destination.x,second.at(-1).z-destination.z)>.12)continue;
+      robot.userData.robotWaypoints=[...first.slice(1),...second];
+      robot.userData.robotPathObstacles=obstacles;
+      setRobotDestination(robot,first[0]);return true;
+    }
+    return false;
+  }
   receiveRobotCommand(command){
     if(!command||command.room!==(window.solviRoom||'main'))return false;
     const robot=this.items.find(x=>x.userData.editorKind==='robot'&&x.userData.editorId===command.robot_id);
     if(!robot||!this.canEdit(robot)){this.toast('Robot command rejected: robot not editable or missing');return false;}
-    if(!['stop','wander','random_action','go_to','go_sit','walk_forward','turn','turn_walk','jump'].includes(command.kind))return false;
+    if(!['stop','wander','random_action','go_to','go_sit','coffee_visit','walk_forward','turn','turn_walk','jump'].includes(command.kind))return false;
     interruptRobotMission(robot);
     if(command.kind==='stop'){robot.userData.robotMode='idle';this.queueSave(robot);this.toast(robot.name+' stopped');return true;}
     if(command.kind==='wander'||command.kind==='random_action'){
@@ -771,7 +831,7 @@ export class SceneEditor{
       robot.userData.robotMode='idle';robot.userData.robotGoal=null;
       this.toast(robot.name+' turning '+command.direction+' '+degrees+'°');return true;
     }
-    const target=this.items.find(x=>x.userData.editorId===command.target_id && !['robot','light'].includes(x.userData.editorKind));
+    const target=this.items.find(x=>x.userData.editorId===command.target_id && x!==robot && x.userData.editorKind!=='light');
     if(!target){this.toast('Robot target no longer exists in this room');return false;}
     this.world.scene.updateMatrixWorld(true);
     const bounds=new THREE.Box3().setFromObject(target);
@@ -781,8 +841,10 @@ export class SceneEditor{
     const dx=robot.position.x-center.x,dz=robot.position.z-center.z;
     const dist=Math.hypot(dx,dz),radius=Math.max(.65,Math.min(4,Math.max(size.x,size.z)*.5+.60));
     const ux=dist>.1?dx/dist:Math.sin(robot.rotation.y),uz=dist>.1?dz/dist:Math.cos(robot.rotation.y);
-    const point={x:center.x+ux*radius,z:center.z+uz*radius};
-    robot.userData.robotMission={kind:command.kind,taskId:command.id,targetName:target.name,targetId:target.userData.editorId};
+    const approach=target.userData.editorKind==='robot'?Math.max(radius,1.2):radius;
+    const point={x:center.x+ux*approach,z:center.z+uz*approach};
+    robot.userData.robotMission={kind:command.kind,taskId:command.id,targetName:target.name,targetId:target.userData.editorId,
+      origin:{x:robot.position.x,z:robot.position.z},leg:0,lastTargetCheck:0};
     if(!this.routeRobot(robot,point))return false;
     this.toast(robot.name+' → '+target.name+' (obstacle-aware route)');
     return true;

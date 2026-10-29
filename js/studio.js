@@ -500,7 +500,7 @@ function applyWorldPolicy(policy){
  window.solviRoomPolicy={objects:policy.objects||'open',robots:policy.robots||'open',physics:Number(policy.physics)||0};
  for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=window.solviRoomPolicy[key];
  $('worldPhysicsEnabled').value=String(window.solviRoomPolicy.physics);
- window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics)).catch(e=>toast('Physics unavailable: '+e.message));
+ window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics)).then(()=>window.solviEditor?.updateInspector()).catch(e=>toast('Physics unavailable: '+e.message));
  window.solviEditor?.refreshList();
 }
 function autosaveWorldStatus(){
@@ -924,6 +924,8 @@ function setupRobotVoiceSettings(){
  window.addEventListener('solvi:session-lost',()=>robotSpeech?.stop());
 }
 function bindUI(world){
+ const commandsButton=$('robotCommandsButton'),commandsCard=$('robotCommandsCard');
+ commandsButton.onclick=()=>{commandsCard.hidden=!commandsCard.hidden;commandsButton.setAttribute('aria-expanded',String(!commandsCard.hidden));};
  // A lightweight DOM waveform projected from the talking robot's head.
  let speechWave=null,speechFrame=0;
  window.addEventListener('solvi:robot-speaking',event=>{
@@ -943,6 +945,12 @@ function bindUI(world){
  const editor=new SceneEditor(world,toast);setupChatMentions();robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
+ window.addEventListener('solvi:robot-recovery',event=>{
+   const d=event.detail||{};const bot=editor.items.find(o=>o.userData.editorId===d.robotId);
+   emitBrainTrace(d.robotId,d.name,'AUTONOMOUS REPLAN',`Attempt ${d.attempt}/3: ${d.reason}. Refreshing physical scene footprints and routing around obstacles.`);
+   if(!bot?.userData.robotBrain?.initiativeVision||world.renderer.xr.isPresenting)return;
+   captureRobotView(world,bot).then(blob=>{if(blob?.size)rememberRobotObservationFrame(d.robotId,blob,`Recovery visual reckoning ${d.attempt}/3 · local`);}).catch(()=>{});
+ });
  window.addEventListener('solvi:robot-task-update',e=>{
    const d=e.detail||{};
    $('chatStatus').textContent=`${d.robot} · ${d.status} · ${d.target}`;

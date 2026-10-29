@@ -280,8 +280,9 @@ from unittest.mock import patch as speech_patch
 robot['brain']={**brain,'voiceProvider':'local','voiceLang':'en','voicePitch':'0.85','voiceRate':'1.15'}
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot}).status_code==200
 speech_calls=[]
-def mock_speech(provider, text, voice, lang, rate, pitch, key):
-    speech_calls.append({'provider':provider,'rate':rate,'pitch':pitch,'text':text})
+def mock_speech(provider, text, voice, lang, rate, pitch, key, gender='auto'):
+    # Keep the mock in sync with the production speech synthesizer's gender argument.
+    speech_calls.append({'provider':provider,'rate':rate,'pitch':pitch,'text':text,'gender':gender})
     return ((b'RIFF'+b'\x00'*500,'audio/wav'),None,200)
 with speech_patch('server._robot_speech_audio',side_effect=mock_speech):
     ok=c.post('/api/robots/speech',headers=headers,json={'room':'lab','robot_id':robot['id'],
@@ -295,6 +296,31 @@ with speech_patch('server._robot_speech_audio',side_effect=mock_speech):
     assert preview.status_code==200,(preview.status_code,preview.data)
     assert preview.mimetype=='audio/wav'
     assert speech_calls[-1]['rate']==1.15 and speech_calls[-1]['pitch']==0.85,speech_calls[-1]
+    assert speech_calls[-1]['gender']=='auto',speech_calls[-1]
+    # Isolate the added preview calls from the normal per-user speech throttle;
+    # later ElevenLabs tests still exercise their own rate budget.
+    with speech_patch('server.SPEECH_TIMES', {}):
+        # Preview gender should not overwrite the saved profile.
+        preview_female=c.post('/api/robots/speech',headers=headers,json={
+            'room':'lab','robot_id':robot['id'],'test':True,'gender':'female'})
+        assert preview_female.status_code==200,(preview_female.status_code,preview_female.data)
+        assert speech_calls[-1]['gender']=='female',speech_calls[-1]
+        # Robot identity and voice presentation are independently persisted, and
+        # voice presentation wins when explicitly configured.
+        robot['brain']['gender']='female'
+        assert c.post('/api/scene/object',headers=headers,json={
+            'room':'lab','action':'upsert','object':robot}).status_code==200
+        from_identity=c.post('/api/robots/speech',headers=headers,json={
+            'room':'lab','robot_id':robot['id'],'test':True})
+        assert from_identity.status_code==200,(from_identity.status_code,from_identity.data)
+        assert speech_calls[-1]['gender']=='female',speech_calls[-1]
+        robot['brain']['voiceGender']='male'
+        assert c.post('/api/scene/object',headers=headers,json={
+            'room':'lab','action':'upsert','object':robot}).status_code==200
+        explicit_voice=c.post('/api/robots/speech',headers=headers,json={
+            'room':'lab','robot_id':robot['id'],'test':True})
+        assert explicit_voice.status_code==200,(explicit_voice.status_code,explicit_voice.data)
+        assert speech_calls[-1]['gender']=='male',speech_calls[-1]
     # Unprovided preview rate/pitch must use the saved robot settings. Explicit
     # preview overrides are independent, including one-axis-only overrides.
     for overrides,rate,pitch in (({'rate':1.25},1.25,.85),({'pitch':1.15},1.15,1.15),
