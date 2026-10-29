@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.50",
+  "currentVersion": "0.2.51",
   "releases": [
+    {
+      "version": "0.2.51",
+      "publishedAt": "2026-10-29T03:07:57Z",
+      "changes": [
+        "Add a shared Assets gallery after Avatars in World tools, browsing existing uploaded GLB/FBX models with searchable 3D previews and a new upload option.",
+        "Add Upload model and Assets swap actions directly in the Properties object-actions row for selected 3D models; preserve object identity, pose, scale and physics settings when replacing geometry.",
+        "Preflight replacement model loading, handle missing assets without deleting the previous model, and invalidate/rebuild Rapier collision shapes after replacement and scale edits.",
+        "Compute accurate scaled model collider bounds in local rigid-body axes so rotated objects no longer get inflated world-axis colliders.",
+        "Add tests for uploaded-asset validation, replacement persistence, collider scale and rotation geometry, and compact mobile/tablet/desktop Assets and Properties layouts."
+      ]
+    },
     {
       "version": "0.2.50",
       "publishedAt": "2026-10-29T02:12:51Z",
@@ -298,14 +309,6 @@
         "Persist draggable panel positions and floating chat size across page reloads.",
         "Move Face/Posture to World tools, chat mode control bottom-left, messages toggle beside Settings, export/admin under Settings.",
         "Rename selected objects, delete via scene list, correct overlapping avatar gallery cards."
-      ]
-    },
-    {
-      "version": "0.2.12",
-      "publishedAt": "2026-10-28T00:11:36Z",
-      "changes": [
-        "Fix swapped left/right robot steering by calibrating signed keyboard intent across local and networked movement.",
-        "Retains speed-dependent turning, smooth acceleration, reverse walk animation without rotating the avatar, and camera lock while robot is selected."
       ]
     }
   ]

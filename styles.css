@@ -1182,3 +1182,18 @@ html[data-button-labels='text'] #sceneItems .scene-item-row>button.scene-item-lo
 #sceneItems .scene-item-row>button.scene-item-lock[data-locked='true']{box-shadow:inset 0 0 0 2px var(--solvi-accent,#6bdbe6)!important;background:color-mix(in srgb,var(--solvi-accent,#6bdbe6) 28%,#102b3b)!important}
 #sceneItems .scene-item-row>button.scene-item-lock:disabled{opacity:.45;cursor:not-allowed}
 #sceneItems .scene-item-row{min-width:0!important;gap:4px!important}
+
+/* v0.2.51 — shared 3D asset library and per-object replacement. */
+#assetGalleryBackdrop{z-index:140!important}
+#assetGalleryBackdrop .asset-gallery{width:min(810px,96vw)!important;max-height:85svh!important;min-width:0}
+#assetGalleryBackdrop .asset-gallery-actions{display:flex;gap:6px;align-items:center;margin:4px 0 7px}
+#assetGalleryBackdrop #assetGallerySearch{min-width:0;flex:1;padding:7px;border-radius:7px;background:var(--ui-bg,#0f1929);color:var(--ui-fg,#fff);border:1px solid #4a6477}
+#assetGalleryBackdrop .avatar-gallery-grid{min-height:95px;grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+#assetGalleryBackdrop .asset-card{position:relative;display:flex!important;flex-direction:column!important;min-width:0!important;overflow:hidden;border-radius:9px;padding:4px!important;min-height:0!important;text-align:left;gap:4px}
+#assetGalleryBackdrop .asset-card .asset-preview{aspect-ratio:1.35;display:flex;justify-content:center;align-items:center;border-radius:6px;background:#091523;overflow:hidden;width:100%;color:#94aabf;font-size:11px}
+#assetGalleryBackdrop .asset-card .asset-preview :is(canvas,img){width:100%;height:100%;display:block;object-fit:contain}
+#assetGalleryBackdrop .asset-card strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#assetGalleryBackdrop .asset-card small{font-size:10px;opacity:.75}
+#propertiesPanel #objectInspector .object-actions{display:flex!important;gap:4px!important;flex-wrap:wrap;justify-content:flex-end!important}
+#propertiesPanel #objectInspector .object-actions :is(#replaceModelFile,#replaceModelGallery){height:27px!important;min-height:27px!important;padding:3px 5px!important;font-size:11px!important;width:auto!important;min-width:37px!important}
+@media(max-width:480px){#assetGalleryBackdrop .avatar-gallery-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

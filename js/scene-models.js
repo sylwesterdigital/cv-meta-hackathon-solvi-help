@@ -40,6 +40,6 @@ export function makeSceneModel(){
  fallback.userData.sceneModelPlaceholder=true;group.add(fallback);return group;
 }
 export function invalidateSceneModel(group){
- group.userData.modelTicket=(group.userData.modelTicket||0)+1;group.userData.modelReady=false;
+ group.userData.modelTicket=(group.userData.modelTicket||0)+1;group.userData.modelReady=false;window.solviEditor?.physics.remove(group.userData.editorId);
  for(const child of [...group.children]){group.remove(child);if(child.userData.sceneModelPlaceholder){child.geometry?.dispose();child.material?.dispose();}}
 }

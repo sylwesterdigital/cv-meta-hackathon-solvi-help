@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import {setupAvatarGallery} from './avatar-gallery.js';
+import {setupAssetGallery} from './asset-gallery.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
 import {EditHistory,duplicateElevation,nextDuplicateName} from './edit-history.js';
 import {makeRobot,hydrateRobot,robotAction,tickRobots,setRobotDestination,interruptRobotMission,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
 import {intent,active,packetFor,stepRobotMotion,signedAngle,makeRemoteCorrection,applyRemoteCorrection} from './robot-net.js';
-import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneModelRenderer} from './scene-models.js';
+import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneModelRenderer,isSceneModelURL,loadSceneAsset} from './scene-models.js';
 import {ScenePhysics} from './scene-physics.js';
 import {planRobotPath,pathBlocked} from './robot-pathfinding.js';
 import {physicsOptions} from './physics-options.js';
@@ -86,9 +87,9 @@ export class SceneEditor{
   });
   this.transform.addEventListener('mouseDown',()=>{this.broadcastEdit(true);this.transformBefore=this.snapshot(this.selected);world.editorDragging=true;world.editorGizmoPointer=true;world.controls.enabled=false;});
   this.transform.addEventListener('mouseUp',()=>{this.broadcastEdit(false);world.editorDragging=false;this.physics.sync(this.selected);this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
-  this.transform.addEventListener('objectChange',()=>{if(!this.canTransform(this.selected))return;this.updateInspector();this.queueSave(this.selected);});
+  this.transform.addEventListener('objectChange',()=>{if(!this.canTransform(this.selected))return;if(this.transform.mode==='scale'&&this.selected?.userData.editorKind!=='robot'&&performance.now()-(this.lastScaleColliderSync||0)>180){this.physics.sync(this.selected);this.lastScaleColliderSync=performance.now();}this.updateInspector();this.queueSave(this.selected);});
   window.addEventListener('solvi:robot-model-ready',e=>{if(this.selected?.userData.editorId===e.detail.id)this.updateInspector();});
-  this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
+  this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);this.assetGallery=setupAssetGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
@@ -98,9 +99,12 @@ export class SceneEditor{
   search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
    for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}menu.append(group);}
-  const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton'])toolbox.append(byId(id));
+  const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton','assetsButton'])toolbox.append(byId(id));
   byId('importModelButton').onclick=()=>byId('modelImportFile').click();byId('quickModelImport').onclick=()=>byId('modelImportFile').click();
   byId('modelImportFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(f)await this.importModel(f);e.target.value='';});
+  byId('replaceModelGallery').onclick=()=>{const model=this.selected;if(model?.userData.editorKind==='model'&&this.canEdit(model))this.assetGallery.open({replace:model});};
+  byId('replaceModelFile').onclick=()=>{if(this.selected?.userData.editorKind==='model'&&this.canEdit(this.selected))byId('replaceModelInput').click();};
+  byId('replaceModelInput').onchange=async e=>{const file=e.target.files?.[0],model=this.selected;e.target.value='';if(file&&model?.userData.editorKind==='model'&&this.canEdit(model))await this.assetGallery.upload(file,{replace:model});};
   // Canvas-only listeners miss drags over HUD layers; use the whole document.
   const overlay=byId('sceneDropOverlay');
   const modelDragging=e=>[...e.dataTransfer?.items||[]].some(i=>i.kind==='file');
@@ -361,7 +365,7 @@ export class SceneEditor{
   byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
-  byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);byId('sceneModelControls').hidden=obj.userData.editorKind!=='model';if(obj.userData.editorKind==='model')byId('sceneModelPath').textContent=obj.userData.modelUrl||'No model';if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed||1.8;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed||1.8).toFixed(1)+'×';const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed||1;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';this.syncRobotSpeed?.();}
+  byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);byId('sceneModelControls').hidden=obj.userData.editorKind!=='model';for(const id of ['replaceModelFile','replaceModelGallery']){byId(id).hidden=obj.userData.editorKind!=='model';byId(id).disabled=!this.canEdit(obj); }if(obj.userData.editorKind==='model')byId('sceneModelPath').textContent=obj.userData.modelUrl||'No model';if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed||1.8;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed||1.8).toFixed(1)+'×';const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed||1;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';this.syncRobotSpeed?.();}
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
     const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);if(this.activateInspectorValue && !byId('inspectorValueSlider').hidden && byId('inspectorActiveRange') && document.activeElement?.id===`${name}-${i}`)this.activateInspectorValue(document.activeElement);
   });
@@ -499,6 +503,29 @@ export class SceneEditor{
     hydrateSceneModel(obj);this.updateInspector();this.refreshList();this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);
     this.toast('3D model added · '+result.model.label);
    }catch(e){this.toast('Model import failed: '+e.message);}
+  }
+  async replaceSceneModel(obj,asset){
+   if(!obj||obj.userData.editorKind!=='model'||!this.items.includes(obj)||!this.canEdit(obj))return false;
+   if(!asset||!isSceneModelURL(asset.url))return false;
+   if(obj.userData.modelUrl===asset.url)return true;
+   try{await loadSceneAsset(asset.url);}catch(error){this.toast('Replacement not loaded: '+error.message);return false;}
+   if(!this.items.includes(obj)||!this.canEdit(obj))return false;
+   const oldUrl=obj.userData.modelUrl,before=this.snapshot(obj);
+   // Remove the previous collision immediately. New geometry is measured after GLB/FBX hydration.
+   this.physics.remove(obj.userData.editorId);
+   invalidateSceneModel(obj);
+   obj.userData.modelUrl=asset.url;
+   await hydrateSceneModel(obj);
+   if(!obj.userData.modelReady){
+    invalidateSceneModel(obj);obj.userData.modelUrl=oldUrl;
+    if(oldUrl)await hydrateSceneModel(obj);
+    this.toast('Model replacement failed; original retained.');return false;
+   }
+   if(!this.items.includes(obj))return false;
+   this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
+   if(this.selected===obj)this.updateInspector();this.refreshList();
+   this.toast('Model replaced · '+(asset.label||'3D asset'));
+   return true;
   }
   changeRobotAvatar(obj,url){
    if(!obj||obj.userData.editorKind!=='robot'||!this.canEdit(obj))return;

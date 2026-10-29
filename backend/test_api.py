@@ -179,12 +179,22 @@ model=r.get_json()['model'];asset=model['url']
 assert c.get(asset).status_code==200
 assert c.get('/api/scene/models/'+('0'*32)+'.glb').status_code==404
 assert c.get('/api/scene/models',headers=headers).get_json()['models'][0]['url']==asset
+# A second uploaded model can replace the first without changing object identity, pose or scale.
+second_upload=c.post('/api/scene/models',headers=headers,data={'model':(BytesIO(glb),'new-sofa.glb')},content_type='multipart/form-data')
+assert second_upload.status_code==201
+second_asset=second_upload.get_json()['model']['url']
+assert {asset,second_asset}.issubset({entry['url'] for entry in c.get('/api/scene/models',headers=headers).get_json()['models']})
 placed={'id':'modelitem-001','kind':'model','name':'Shared mesh','model':asset,
         'position':[1,0,1],'rotation':[0,0,0],'scale':[1,1,1]}
 r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':placed})
 assert r.status_code==200,(r.status_code,r.data)
 entry=next(o for o in c.get('/api/scene?room=lab',headers=headers).get_json()['objects'] if o['id']=='modelitem-001')
 assert entry['model']==asset and entry['position']==[1,0,1]
+placed['model']=second_asset
+placed['scale']=[2.5,1.3,4]
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':placed}).status_code==200
+swapped=next(o for o in c.get('/api/scene?room=lab',headers=headers).get_json()['objects'] if o['id']=='modelitem-001')
+assert swapped['model']==second_asset and swapped['scale']==[2.5,1.3,4] and swapped['position']==[1,0,1]
 placed['model']='/api/scene/models/'+('f'*32)+'.glb'
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':placed}).status_code==400
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'modelitem-001'}}).status_code==200

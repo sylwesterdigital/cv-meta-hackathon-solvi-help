@@ -83,11 +83,25 @@ export class ScenePhysics{
   const R=this.runtime;
   if(object.userData.editorKind==='sphere')return R.ColliderDesc.ball(Math.max(.055,.55*Math.max(Math.abs(object.scale.x),Math.abs(object.scale.y),Math.abs(object.scale.z))));
   object.updateWorldMatrix(true,true);
-  const bounds=new THREE.Box3().setFromObject(object);const size=bounds.getSize(new THREE.Vector3());
-  const center=bounds.getCenter(new THREE.Vector3());
-  // Box is conservative for rotated and irregular meshes; all scene assets remain collidable.
-  const offset=center.sub(object.getWorldPosition(new THREE.Vector3()));
-  const inverseWorldRotation=object.getWorldQuaternion(new THREE.Quaternion()).invert();offset.applyQuaternion(inverseWorldRotation);
+  // Compute bounds in unrotated rigid-body coordinates, including object scale and
+  // imported child transforms. World-axis AABBs inflate when an object is rotated.
+  const rootPosition=object.getWorldPosition(new THREE.Vector3());
+  const undoRotation=object.getWorldQuaternion(new THREE.Quaternion()).invert();
+  const bounds=new THREE.Box3().makeEmpty();
+  const corner=new THREE.Vector3(),local=new THREE.Box3();
+  object.traverse(node=>{
+   if(!node.isMesh||!node.geometry||node.userData.lightMarker)return;
+   const geometry=node.geometry;
+   if(!geometry.boundingBox)geometry.computeBoundingBox();
+   if(!geometry.boundingBox)return;
+   local.copy(geometry.boundingBox);
+   for(const x of [local.min.x,local.max.x])for(const y of [local.min.y,local.max.y])for(const z of [local.min.z,local.max.z]){
+    corner.set(x,y,z).applyMatrix4(node.matrixWorld).sub(rootPosition).applyQuaternion(undoRotation);
+    bounds.expandByPoint(corner);
+   }
+  });
+  if(bounds.isEmpty())bounds.setFromCenterAndSize(new THREE.Vector3(),new THREE.Vector3(.2,.2,.2));
+  const size=bounds.getSize(new THREE.Vector3()),offset=bounds.getCenter(new THREE.Vector3());
   return R.ColliderDesc.cuboid(Math.max(.025,size.x/2),Math.max(.025,size.y/2),Math.max(.025,size.z/2)).setTranslation(offset.x,offset.y,offset.z);
  }
  sync(object){
