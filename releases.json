@@ -1,6 +1,21 @@
 {
-  "currentVersion": "0.2.55",
+  "currentVersion": "0.2.56",
   "releases": [
+    {
+      "version": "0.2.56",
+      "publishedAt": "2026-10-29T13:37:10Z",
+      "changes": [
+        "Restore idle OrbitControls wheel and pinch zoom while using drag-only camera pointer capture; enable high-resolution two-finger trackpad panning without stealing gizmo movement.",
+        "Do not jump camera to selected objects; retain explicit numpad camera views and selected-object zoom.",
+        "Add Scene/Robot keyboard-control toggle and chooser of controllable robots to avoid trapping scene navigation after robot selection.",
+        "Compact object Position, Rotation and Scale into one accessible XYZ row per vector, with proportional scaling toggle and logarithmic 0.01x\u20131000x range.",
+        "Place Physics and Collider side by side; use a dark, unified friction/bounciness property selector with shared value input and slider.",
+        "Make Add Object a compact single-column list with fixed drag/search header and left-aligned icon/action rows.",
+        "Add room-user and robot @mention completion in the message composer, with keyboard navigation and full-name insertion.",
+        "Bring selected, newly opened and actively dragged windows to the front while leaving modal settings and galleries on top.",
+        "Add new regression tests for camera orbit, two-finger trackpad pan, transform scale, mentions, UI layout, menu and window focus."
+      ]
+    },
     {
       "version": "0.2.55",
       "publishedAt": "2026-10-29T13:00:59Z",
@@ -305,16 +320,6 @@
         "Bottom camera button cycles Free \u2192 Chase (smooth inertial trailing behind selected robot) \u2192 Orbit follow (camera tracks robot while preserving user-set orbit angle).",
         "The follow camera tracks selected moving robots without stealing arrow-key locomotion or moving the XR headset camera.",
         "OrbitControls drag updates the follow offset; numpad camera presets are respected; camera mode persists locally and sends no network traffic."
-      ]
-    },
-    {
-      "version": "0.2.17",
-      "publishedAt": "2026-10-28T03:40:49Z",
-      "changes": [
-        "Rapier kinematic capsule avatars with gravity, jump, steps, slopes, object and avatar collisions",
-        "Dynamic bodies receive impulses; GLB/FBX objects get colliders after asset load",
-        "Owner-authorized compact physics-state snapshots for multiplayer with smoothed remote motion",
-        "Stable character controller avoids reloading GLB models during movement; world physics defaults Off"
       ]
     }
   ]

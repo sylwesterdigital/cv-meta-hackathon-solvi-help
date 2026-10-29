@@ -21,7 +21,7 @@ test('free camera translates both camera and pivot with smoothed velocity',()=>{
  assert.match(w,/this\.cameraVelocity=new THREE\.Vector3\(\)/);
  assert.match(w,/this\.cameraVelocity\.lerp\(desired,1-Math\.exp\(-response\*dt\)\)/);
  assert.match(w,/this\.camera\.position\.add\(delta\);this\.controls\.target\.add\(delta\)/);
- assert.match(w,/if\(robot&&this\.robotEditor\.canEdit\(robot\)\)\{this\.cameraVelocity\.set\(0,0,0\);return;\}/);
+ assert.match(w,/if\(robot&&this\.robotEditor\.canEdit\(robot\)&&this\.robotEditor\.controlMode==='robot'\)\{this\.cameraVelocity\.set\(0,0,0\);return;\}/);
 });
 
 test('robot throttle and steering ease on release while retaining forward heading in reverse',()=>{

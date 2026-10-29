@@ -12,6 +12,7 @@ import {physicsOptions} from './physics-options.js';
 import {isTransformLocked,mayTransform} from './transform-lock.js';
 import {OrbitGesture,recoverStaleOrbitPointers} from './orbit-gesture.js';
 import {readPreferences} from './preferences.js';
+import {sliderToScale,scaleToSlider,linkedScale} from './transform-values.js';
 
 const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model'];
 const byId=id=>document.getElementById(id);
@@ -76,7 +77,7 @@ export function setLight(group,settings){
 function readDeleteConfirmation(){return readPreferences().deleteConfirm!==false;}
 export class SceneEditor{
  constructor(world,onToast){
-  this.world=world;this.toast=onToast;configureSceneModelRenderer(world.renderer);this.physics=new ScenePhysics(this);this.items=[];this.selected=null;this.revision=0;
+  this.world=world;this.toast=onToast;configureSceneModelRenderer(world.renderer);this.physics=new ScenePhysics(this);this.items=[];this.selected=null;this.revision=0;this.controlMode='scene';
   this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
   this.history=new EditHistory(120);this.transformBefore=null;
   this.transform=new TransformControls(world.camera,world.renderer.domElement);
@@ -85,7 +86,7 @@ export class SceneEditor{
   this.transform.addEventListener('dragging-changed',e=>{
    world.editorDragging=Boolean(e.value);
    if(e.value){world.editorGizmoPointer=true;world.controls.enabled=false;}
-   else{world.editorGizmoPointer=false;world.cameraOrbitGesture=null;world.controls.enabled=false;}
+   else{world.editorGizmoPointer=false;world.cameraOrbitGesture=null;world.controls.enabled=true;}
   });
   this.transform.addEventListener('mouseDown',()=>{this.broadcastEdit(true);this.transformBefore=this.snapshot(this.selected);world.editorDragging=true;world.editorGizmoPointer=true;world.controls.enabled=false;});
   this.transform.addEventListener('mouseUp',()=>{this.broadcastEdit(false);world.editorDragging=false;this.physics.sync(this.selected);this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
@@ -96,11 +97,11 @@ export class SceneEditor{
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
   const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
-  menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';menu.append(bar);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';menu.append(search);
+  menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';const head=document.createElement('div');head.className='add-fixed-head';head.append(bar);const content=document.createElement('div');content.className='add-scroll-content';menu.append(head,content);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';head.append(search);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
   search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
-   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}menu.append(group);}
+   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}content.append(group);}
   const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton','assetsButton'])toolbox.append(byId(id));
   byId('importModelButton').onclick=()=>byId('modelImportFile').click();byId('quickModelImport').onclick=()=>byId('modelImportFile').click();
   byId('modelImportFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(f)await this.importModel(f);e.target.value='';});
@@ -166,6 +167,13 @@ export class SceneEditor{
   byId('closeScenePanel').onclick=()=>byId('scenePanel').hidden=true;
   byId('closeProperties').onclick=()=>{byId('propertiesPanel').hidden=true;this.clearLightHelper();};
   for(const id of ['objectPhysicsMode','objectCollider','objectRestitution','objectFriction'])byId(id).addEventListener('change',()=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||['robot','light'].includes(obj.userData.editorKind))return;obj.userData.physics=physicsOptions({mode:byId('objectPhysicsMode').value,collider:byId('objectCollider').value,friction:byId('objectFriction').value,restitution:byId('objectRestitution').value});this.physics.sync(obj);this.queueSave(obj);this.updateColliderOption();});
+  const surfaceSelect=byId('objectSurfaceProperty'),surfaceValue=byId('objectSurfaceValue'),surfaceRange=byId('objectSurfaceRange');
+  const currentSurface=()=>byId(surfaceSelect.value==='restitution'?'objectRestitution':'objectFriction');
+  const syncSurface=()=>{const source=currentSurface();const max=surfaceSelect.value==='restitution'?1:2;surfaceValue.max=String(max);surfaceRange.max=String(max);surfaceValue.value=source.value;surfaceRange.value=source.value;surfaceRange.setAttribute('aria-label','Adjust '+surfaceSelect.selectedOptions[0].text);};
+  surfaceSelect.onchange=syncSurface;
+  const applySurface=value=>{const target=currentSurface();const n=Number(value);if(!Number.isFinite(n)||n<0||n>Number(surfaceValue.max))return;target.value=String(n);syncSurface();target.dispatchEvent(new Event('change',{bubbles:true}));};
+  surfaceValue.addEventListener('change',()=>applySurface(surfaceValue.value));surfaceRange.addEventListener('input',()=>applySurface(surfaceRange.value));
+  this.syncPhysicsSurface=syncSurface;
   const selector=byId('robotSpeedKind'),activeSpeed=byId('robotSpeedActive'),activeValue=byId('robotSpeedActiveValue');
   const syncRobotSpeed=()=>{const input=byId(selector.value);if(!input)return;
    activeSpeed.min=input.min;activeSpeed.max=input.max;activeSpeed.step=input.step;activeSpeed.value=input.value;
@@ -177,6 +185,28 @@ export class SceneEditor{
   this.syncRobotSpeed=syncRobotSpeed;
   const strafe=byId('robotStrafeSpeed');strafe.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotStrafeSpeed=Number(strafe.value);byId('robotStrafeLabel').textContent=Number(strafe.value).toFixed(1)+'×';this.queueSave(this.selected);};
   const turn=byId('robotTurnSpeed');turn.addEventListener('input',()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotTurnSpeed=Number(turn.value);byId('robotTurnLabel').textContent=Number(turn.value).toFixed(2)+'×';this.queueSave(this.selected);});
+  const modeButton=byId('controlModeButton'),robotSelect=byId('controlledRobotSelect');
+  this.syncControlSwitcher=()=>{
+   const robots=this.items.filter(o=>o.userData.editorKind==='robot'&&this.canEdit(o));
+   const current=robotSelect.value;
+   robotSelect.replaceChildren(...robots.map(o=>new Option(o.name,o.userData.editorId)));
+   const selectedId=this.selected?.userData.editorKind==='robot'?this.selected.userData.editorId:null;
+   if(this.controlMode==='robot'&&selectedId&&robots.some(o=>o.userData.editorId===selectedId))robotSelect.value=selectedId;
+   else if(robots.some(o=>o.userData.editorId===current))robotSelect.value=current;
+   else if(selectedId&&robots.some(o=>o.userData.editorId===selectedId))robotSelect.value=selectedId;
+   robotSelect.hidden=this.controlMode!=='robot'||robots.length===0;
+   modeButton.textContent=this.controlMode==='robot'?'Robot control':'Scene control';
+   modeButton.setAttribute('aria-pressed',String(this.controlMode==='robot'));
+   modeButton.title=this.controlMode==='robot'?'Switch arrows to scene navigation':'Switch arrows to selected robot';
+  };
+  modeButton.onclick=()=>{
+   this.controlMode=this.controlMode==='robot'?'scene':'robot';this.robotKeys.clear();this.world.keys.clear();
+   if(this.controlMode==='scene'){this.world.setCameraFollowMode('free');}
+   else{const id=robotSelect.value;const robot=this.items.find(o=>o.userData.editorId===id)||this.items.find(o=>o.userData.editorKind==='robot'&&this.canEdit(o));if(!robot){this.controlMode='scene';this.toast('No controllable robots in the room');}else this.select(robot);}
+   this.syncControlSwitcher();
+  };
+  robotSelect.onchange=()=>{const robot=this.items.find(o=>o.userData.editorId===robotSelect.value);if(robot&&this.canEdit(robot))this.select(robot);};
+  this.syncControlSwitcher();
   byId('openRobotBrains').onclick=()=>window.dispatchEvent(new Event('solvi:open-brains'));
   for(const [id,scan] of [['robotEyeFront','front'],['robotEye180','180'],['robotEye360','360']]){byId(id).onclick=()=>{if(!this.robot())return;window.dispatchEvent(new CustomEvent('solvi:robot-eyes-action',{detail:{robotId:this.robot().userData.editorId,scan}}));};}
   const speed=byId('robotSpeed');speed.addEventListener('pointerdown',()=>this.speedBefore=this.snapshot(this.selected));speed.addEventListener('change',()=>{this.recordEdit(this.speedBefore,this.snapshot(this.selected));this.speedBefore=null;});speed.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotSpeed=Number(speed.value);byId('robotSpeedLabel').textContent=Number(speed.value).toFixed(2)+'×';this.queueSave(this.selected);};
@@ -218,12 +248,12 @@ export class SceneEditor{
    const text=number.getAttribute('aria-label')||number.closest('label')?.textContent?.trim()||number.id;
    byId('inspectorSliderLabel').textContent=text;
    const field=number.id.match(/^(position|rotation|scale)-[012]$/)?.[1];
-   const limits=field==='rotation'?[-180,180,'0.5']:field==='scale'?[0.05,10,'0.05']:field==='position'?[-Math.max(25,this.world.environment?.floorSize/2||25),Math.max(25,this.world.environment?.floorSize/2||25),'0.05']:
+   const limits=field==='rotation'?[-180,180,'0.5']:field==='scale'?[0,1000,'1']:field==='position'?[-Math.max(25,this.world.environment?.floorSize/2||25),Math.max(25,this.world.environment?.floorSize/2||25),'0.05']:
       [Number(number.min||0),Number(number.max||100),number.step||'any'];
-   if(!limits.every((n,i)=>i===2||Number.isFinite(n))||limits[0]>=limits[1])return;
+   if(!field||!limits.every((n,i)=>i===2||Number.isFinite(n))||limits[0]>=limits[1])return;
    range.min=String(limits[0]);range.max=String(limits[1]);range.step=limits[2];
    range.setAttribute('aria-label',text+' slider');
-   range.value=String(Math.min(limits[1],Math.max(limits[0],Number(number.value)||0)));
+   range.value=String(field==='scale'?scaleToSlider(Number(number.value)):Math.min(limits[1],Math.max(limits[0],Number(number.value)||0)));
    byId('inspectorSliderValue').textContent=number.value;
    const anchor=number.closest('.transform-group') || group;anchor.insertAdjacentElement('afterend',context);context.hidden=false;
   };
@@ -237,13 +267,13 @@ export class SceneEditor{
   });
   range.addEventListener('input',()=>{
    if(!activeNumeric||activeNumeric.disabled)return;
-   activeNumeric.value=range.value;
-   byId('inspectorSliderValue').textContent=range.value;
+   const isScale=activeNumeric.id.startsWith('scale-');activeNumeric.value=isScale?String(Number(sliderToScale(Number(range.value)).toFixed(3))):range.value;
+   byId('inspectorSliderValue').textContent=activeNumeric.value;
    activeNumeric.dispatchEvent(new Event('change',{bubbles:true}));
   });
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
    const id=`${field}-${axis}`,number=byId(id);
-   number.addEventListener('input',()=>{if(activeNumeric===number){range.value=number.value;byId('inspectorSliderValue').textContent=number.value;}});
+   number.addEventListener('input',()=>{if(activeNumeric===number){range.value=number.id.startsWith('scale-')?String(scaleToSlider(Number(number.value))):number.value;byId('inspectorSliderValue').textContent=number.value;}});
 
   }
   for(const field of ['position','rotation','scale'])byId(field+'-reset').onclick=()=>{
@@ -255,7 +285,7 @@ export class SceneEditor{
   };
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
    const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canTransform(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v))return;const before=this.snapshot(this.selected);
-    const vec=this.selected[field];const name=['x','y','z'][axis];vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
+    const vec=this.selected[field];const name=['x','y','z'][axis];if(field==='scale'&&byId('scaleUniform').checked){const next=linkedScale(vec,[name],v);vec.set(next.x,next.y,next.z);}else vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
     this.physics.sync(this.selected);this.recordEdit(before,this.snapshot(this.selected));this.refreshList();this.queueSave(this.selected);};}
   byId('objectColor').addEventListener('focus',()=>this.colorBefore=this.snapshot(this.selected));byId('objectColor').addEventListener('change',()=>{this.recordEdit(this.colorBefore,this.snapshot(this.selected));this.colorBefore=null;});
   byId('objectColor').oninput=e=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||obj.userData.editorKind==='robot')return;obj.traverse(o=>{if(o.material?.color)o.material.color.set(e.target.value);});this.queueSave(obj);};
@@ -284,7 +314,7 @@ export class SceneEditor{
    if(!force&&event.pointerType!=='touch'&&event.buttons===0&&!orbitGesture.has(event.pointerId))force=true;
    if(force)orbitGesture.cancel();else orbitGesture.release(event.pointerId);
    this.world.cameraOrbitGesture=orbitGesture.pointers.size?orbitGesture.orbiting:null;
-   this.world.controls.enabled=orbitGesture.orbiting&&!this.world.editorDragging&&!this.world.renderer.xr.isPresenting&&document.pointerLockElement!==canvas;
+   this.world.controls.enabled=!this.world.editorDragging&&!this.world.renderer.xr.isPresenting&&document.pointerLockElement!==canvas;
    if(!orbitGesture.pointers.size){
     // Never re-enable orbit on idle hover, including the release frame.
     queueMicrotask(()=>{
@@ -334,8 +364,8 @@ export class SceneEditor{
    if(e.shiftKey&&e.code==='KeyA'){e.preventDefault();if(byId('addMenu').hidden){this.showAddMenu(this.lastPointer.x,this.lastPointer.y);byId('addSearch')?.focus();}else byId('addMenu').hidden=true;}
    else if(this.selected&&e.shiftKey&&e.code==='KeyD'){e.preventDefault();this.duplicate();}
    else if(this.selected&&e.code==='KeyX'){e.preventDefault();this.remove();}
-   else if(this.selected?.userData.editorKind==='robot'&&['ShiftLeft','ShiftRight'].includes(e.code)){this.robotKeys.add(e.code);}
-   else if(this.selected?.userData.editorKind==='robot'&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)){e.preventDefault();this.robotKeys.add(e.code);this.world.keys.delete(e.code);if(e.code==='Space'&&!e.repeat){robotAction(this.selected,'jump');/* Jump is synchronised through the compact robot-input event. */}else if(e.code!=='Space'){this.selected.userData.robotGoal=null;}}
+   else if(this.controlMode==='robot'&&this.selected?.userData.editorKind==='robot'&&['ShiftLeft','ShiftRight'].includes(e.code)){this.robotKeys.add(e.code);}
+   else if(this.controlMode==='robot'&&this.selected?.userData.editorKind==='robot'&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)){e.preventDefault();this.robotKeys.add(e.code);this.world.keys.delete(e.code);if(e.code==='Space'&&!e.repeat){robotAction(this.selected,'jump');/* Jump is synchronised through the compact robot-input event. */}else if(e.code!=='Space'){this.selected.userData.robotGoal=null;}}
    else if(this.selected&&['KeyG','KeyR','KeyS'].includes(e.code)){if(!this.canTransform(this.selected)){this.toast('Unlock this object to transform it');return;}this.transform.setMode({KeyG:'translate',KeyR:'rotate',KeyS:'scale'}[e.code]);}
    else if(this.selected&&['Delete','Backspace'].includes(e.key)){e.preventDefault();this.remove();}
   });
@@ -367,11 +397,11 @@ export class SceneEditor{
   else{this.transform.detach();if(!this.canEdit(obj))this.toast('Read-only object · owned by another user');}
   this.updateInspector();this.refreshList();
   window.dispatchEvent(new CustomEvent('solvi:properties-robot-selected',{detail:{robotId:obj?.userData.editorKind==='robot'?obj.userData.editorId:null}}));
-  if(obj)this.world.focusCameraOn(obj);
+  // Selection must never move the camera; numpad presets and zoom remain explicit.
   if(obj)this.broadcastEdit(true);}
  updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;byId('inspectorValueSlider').hidden=true;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
   this.syncTransformLockControls(obj);
-  byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
+  byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;this.syncPhysicsSurface?.();byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
   byId('objectAppearance').hidden=['robot','light','model'].includes(obj.userData.editorKind);for(const id of ['replaceModelFile','replaceModelGallery']){byId(id).hidden=obj.userData.editorKind!=='model';byId(id).disabled=!this.canEdit(obj); }if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed||1.8;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed||1.8).toFixed(1)+'×';const factor=obj.userData.robotSpeed||1;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed||1;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';this.syncRobotSpeed?.();}
@@ -405,7 +435,7 @@ export class SceneEditor{
   select.value=[...select.options].some(o=>o.value===obj.userData.robotMode)?obj.userData.robotMode:'idle';
  }
   visibleSceneItems(){const term=byId('sceneObjectSearch')?.value?.trim().toLocaleLowerCase()||'';const filter=byId('sceneObjectFilter')?.value||'all';return this.items.filter(o=>(filter==='all'||(filter==='robot')===(o.userData.editorKind==='robot'))&&(!term||(`${o.name} ${o.userData.editorKind}`).toLocaleLowerCase().includes(term)));}
- refreshList(){const list=byId('sceneItems');if(!list)return;list.replaceChildren();const visible=this.visibleSceneItems();const ids=new Set(this.items.map(o=>o.userData.editorId));for(const id of this.bulkChecked)if(!ids.has(id))this.bulkChecked.delete(id);
+ refreshList(){this.syncControlSwitcher?.();const list=byId('sceneItems');if(!list)return;list.replaceChildren();const visible=this.visibleSceneItems();const ids=new Set(this.items.map(o=>o.userData.editorId));for(const id of this.bulkChecked)if(!ids.has(id))this.bulkChecked.delete(id);
   for(const obj of visible){const row=document.createElement('div');row.className='scene-item-row';const check=document.createElement('input');check.type='checkbox';check.className='scene-row-check';check.title='Select '+obj.name;check.setAttribute('aria-label','Select '+obj.name);check.checked=this.bulkChecked.has(obj.userData.editorId);check.disabled=!this.canEdit(obj);check.onchange=()=>{if(check.checked)this.bulkChecked.add(obj.userData.editorId);else this.bulkChecked.delete(obj.userData.editorId);this.updateBulkControls();};
    const b=document.createElement('button');b.className='scene-item-name'+(obj===this.selected?' selected':'');b.textContent=`${obj.userData.editorKind} · ${obj.name}`;b.dataset.objectKind=obj.userData.editorKind;b.onclick=()=>this.select(obj);
    const lock=document.createElement('button');lock.type='button';lock.className='scene-item-lock';lock.dataset.uiIcon=isTransformLocked(obj)?'lock':'unlock';lock.dataset.locked=String(isTransformLocked(obj));lock.setAttribute('aria-pressed',String(isTransformLocked(obj)));lock.setAttribute('aria-label',(isTransformLocked(obj)?'Unlock ':'Lock ')+obj.name+' transforms');lock.title=(isTransformLocked(obj)?'Unlock':'Lock')+' transforms · '+obj.name;lock.disabled=!this.canEdit(obj);lock.onclick=()=>this.toggleTransformLock(obj);
@@ -593,7 +623,7 @@ export class SceneEditor{
     if(this.selected&&this.canEdit(this.selected)&&(this.world.editorDragging||this.robotKeys.size)&&clock-this.lastEditPing>2500){this.broadcastEdit(true);this.lastEditPing=clock;}
     if(this.lightHelper&&!byId('propertiesPanel').hidden){this.lightHelper.visible=!this.world.renderer.xr.isPresenting;this.lightHelper.update?.();}
     if(this.lightHelper&&byId('propertiesPanel').hidden)this.clearLightHelper();
-    const robot=this.robot(),canControl=robot&&this.canEdit(robot);
+    const robot=this.robot(),canControl=this.controlMode==='robot'&&robot&&this.canEdit(robot);
     const input=canControl?{...intent(this.robotKeys),s:robot.userData.robotSpeed||1,q:robot.userData.robotStrafeSpeed||1.8,u:robot.userData.robotTurnSpeed||1,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1,q:1.8,u:1,j:0};
     const now=performance.now();
     if(canControl){

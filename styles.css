@@ -1405,3 +1405,61 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
  background-repeat:no-repeat!important;
  background-size:18px 18px!important;
 }
+
+/* v0.2.56 — compact editing, scene/robot controls, stable orbit, @mention and window focus */
+#controlSwitcher.control-switcher{position:fixed;z-index:65;bottom:calc(56px + env(safe-area-inset-bottom));left:10px;display:flex;align-items:center;gap:4px;max-width:min(360px,calc(100vw - 20px));pointer-events:auto}
+#controlSwitcher #controlModeButton{min-height:30px!important;height:30px!important;max-height:30px!important;padding:3px 8px!important;white-space:nowrap!important;background:var(--ui-panel,#102536)!important;color:var(--ui-fg,#fff)!important;border:1px solid var(--ui-border,#607789)!important;border-radius:7px!important;font-size:11px!important}
+#controlSwitcher #controlModeButton[aria-pressed='true']{border-color:var(--solvi-accent)!important;background:color-mix(in srgb,var(--solvi-accent) 18%,var(--ui-panel))!important}
+#controlSwitcher #controlledRobotSelect{min-width:0!important;width:150px!important;max-width:calc(100vw - 140px)!important;min-height:30px!important;height:30px!important;font-size:11px!important;border:1px solid var(--ui-border)!important;background:var(--ui-panel)!important;color:var(--ui-fg)!important;padding:2px!important;border-radius:7px!important}
+/* A one-line transform vector per property: label + three numbers + reset. */
+#propertiesPanel #propertyGrid.property-grid{display:flex!important;flex-direction:column!important;gap:4px!important;max-width:100%!important}
+#propertiesPanel #propertyGrid .transform-group{display:grid!important;grid-template-columns:69px minmax(0,1fr)!important;align-items:center!important;gap:4px!important;margin:0!important;padding:2px 0!important;border:0!important;min-width:0!important}
+#propertiesPanel #propertyGrid .transform-label{font:700 11px/1.2 system-ui,sans-serif!important;white-space:nowrap!important;color:var(--ui-fg)!important}
+#propertiesPanel #propertyGrid .transform-axis-row{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr)) 27px!important;gap:3px!important;align-items:center!important;min-width:0!important;width:100%!important}
+#propertiesPanel #propertyGrid .axis-value{display:block!important;font-size:0!important;min-width:0!important;margin:0!important}
+#propertiesPanel #propertyGrid .axis-value input[type=number]{min-height:28px!important;height:28px!important;max-height:28px!important;min-width:0!important;width:100%!important;padding:2px!important;font-size:12px!important;text-align:center!important;border-radius:6px!important}
+#propertiesPanel #propertyGrid .transform-reset{height:28px!important;width:27px!important;min-width:27px!important;max-width:27px!important;min-height:28px!important;max-height:28px!important;padding:4px!important}
+#propertiesPanel #robotTransformDetails>summary{font-size:11px!important;padding:3px 0!important}
+#propertiesPanel #robotTransformDetails .scale-link{display:flex!important;align-items:center!important;gap:5px!important;justify-content:flex-end!important;margin:1px 2px!important;font-size:11px!important;font-weight:600!important}
+#propertiesPanel #robotTransformDetails .scale-link input{width:14px!important;height:14px!important;min-height:14px!important;margin:0!important}
+/* Physics and collider share one line, surface values share a selector + range. */
+#propertiesPanel #physicsObjectControls{display:flex!important;flex-direction:column!important;gap:4px!important;max-width:100%!important;margin:5px 0!important}
+#propertiesPanel #physicsObjectControls[hidden]{display:none!important}
+#propertiesPanel #physicsObjectControls .physics-top-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:4px!important;min-width:0!important}
+#propertiesPanel #physicsObjectControls .physics-top-row label{min-width:0!important;font-size:11px!important;margin:0!important;display:flex!important;align-items:center!important;gap:4px!important}
+#propertiesPanel #physicsObjectControls .physics-top-row select{min-width:0!important;width:100%!important;flex:1 1 auto!important;height:29px!important;min-height:29px!important;padding:2px 5px!important;font-size:11px!important}
+#propertiesPanel #physicsObjectControls .physics-adjust-row{display:grid!important;grid-template-columns:minmax(0,1fr) 66px!important;gap:5px!important;min-width:0!important}
+#propertiesPanel #physicsObjectControls .physics-adjust-row select,#propertiesPanel #physicsObjectControls #objectSurfaceValue{box-sizing:border-box!important;min-width:0!important;width:100%!important;height:29px!important;min-height:29px!important;padding:3px 6px!important;border:1px solid var(--ui-border,#54677a)!important;border-radius:6px!important;background:var(--ui-bg,#0d1929)!important;color:var(--ui-fg,#f3f7ff)!important;font-size:11px!important}
+#propertiesPanel #physicsObjectControls #objectSurfaceRange{width:100%!important;min-width:0!important;margin:0!important}
+#propertiesPanel #physicsObjectControls input[hidden]{display:none!important}
+/* The Add palette has a fixed search, one compact vertical stack and left-aligned actions. */
+#addMenu.add-menu{display:flex!important;flex-direction:column!important;gap:0!important;padding:4px!important;max-height:min(72svh,580px)!important;overflow:hidden!important;width:min(285px,calc(100vw - 14px))!important}
+#addMenu.add-menu[hidden]{display:none!important}
+#addMenu .add-fixed-head{position:relative;z-index:2;flex:0 0 auto;display:flex;flex-direction:column;gap:2px;padding:4px;background:var(--ui-panel,#0e2233)}
+#addMenu .add-fixed-head .add-drag{min-height:23px!important;padding:3px 5px!important}
+#addMenu .add-fixed-head .add-search{height:34px!important;min-height:34px!important;margin:0!important;padding:4px 7px!important}
+#addMenu .add-scroll-content{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 3px}
+#addMenu .add-scroll-content .add-group{display:flex!important;flex-direction:column!important;gap:1px!important;margin:0!important}
+#addMenu .add-scroll-content .add-group strong{font-size:10px!important;padding:5px 5px 1px!important;margin:0!important}
+#addMenu .add-scroll-content .add-group button{box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;text-align:left!important;min-height:29px!important;height:29px!important;max-height:29px!important;margin:0!important;padding:3px 7px!important;gap:8px!important;font-size:11px!important;white-space:nowrap!important}
+#addMenu .add-scroll-content .add-group button[hidden]{display:none!important}
+#addMenu .add-scroll-content .add-group button::before{flex:0 0 17px!important;width:17px!important;height:17px!important}
+/* Bring the focused draggable surface in front; preserve modal backdrops. */
+:is(#scenePanel,#propertiesPanel,#addMenu,#editorToolbox,#robotBrainsPanel,#diagnosticsPanel){z-index:var(--solvi-window-z,28)!important}
+#chatPanel.windowed{z-index:var(--solvi-window-z,220)!important}
+#chatPanel:not(.windowed){z-index:12!important}
+/* Name completion near the composer, never a generic dropdown in scene controls. */
+#chatComposer{position:relative!important}
+#chatMentions.chat-mentions{position:absolute;z-index:1000;left:8px;right:8px;bottom:calc(100% - 47px);max-height:190px;overflow:auto;padding:4px;display:flex;flex-direction:column;gap:2px;border:1px solid var(--ui-border,#617589);background:var(--ui-panel,#102536);border-radius:7px;box-shadow:0 8px 20px #0008;pointer-events:auto}
+#chatMentions.chat-mentions[hidden]{display:none!important}
+#chatMentions .chat-mention-option{text-align:left!important;justify-content:flex-start!important;padding:5px 8px!important;min-height:29px!important;font-size:12px!important;border:0!important;background:transparent!important;color:var(--ui-fg,#fff)!important}
+#chatMentions .chat-mention-option.active,#chatMentions .chat-mention-option:hover{background:color-mix(in srgb,var(--solvi-accent) 25%,transparent)!important}
+#chatMentions .chat-mention-option[data-kind='robot']::after{content:'Robot';font-size:10px;margin-left:auto;opacity:.7}
+@media(max-width:500px){#controlSwitcher{bottom:calc(52px + env(safe-area-inset-bottom));left:6px}#propertiesPanel #propertyGrid .transform-group{grid-template-columns:58px minmax(0,1fr)!important}}
+/* Narrow-screen polishing: never split Physics/Collider or overlap bottom controls. */
+#propertiesPanel #physicsObjectControls .physics-top-row label{white-space:nowrap!important;overflow:hidden!important}
+#propertiesPanel #physicsObjectControls .physics-top-row select{flex:1 1 0!important;width:0!important;min-width:0!important;text-overflow:ellipsis!important}
+#controlSwitcher.control-switcher{bottom:calc(95px + env(safe-area-inset-bottom))!important}
+/* Modal layers remain above every moveable editor window. */
+.drawer-shell{z-index:680!important}
+:is(#realmGalleryBackdrop,#avatarGalleryBackdrop,#assetGalleryBackdrop,#profileBackdrop,#adminBackdrop,#settingsBackdrop,#worldSettingsBackdrop){z-index:690!important}

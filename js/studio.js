@@ -1,4 +1,5 @@
 import {makeRealmCards,captureRealmPreview} from './realm-gallery.js';
+import {mentionQuery,mentionCandidates,insertMention} from './chat-mentions.js';
 import {ROBOT_DEBUG_ALL_KEY,robotDebugVisible,setRobotDebug,readDebugSelection} from './robot-debug.js';
 import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
@@ -604,6 +605,18 @@ function setupWorldSettings(){
 }
 
 function configureDragging(){
+ let windowZ=210;
+ const toFront=panel=>{
+  if(!panel||panel.hidden)return;
+  // Rebase occasionally; z-index never grows without bound during long sessions.
+  if(windowZ>6000){windowZ=210;for(const id of ['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel'])document.getElementById(id)?.style.removeProperty('--solvi-window-z');}
+  panel.style.setProperty('--solvi-window-z',String(++windowZ));
+ };
+ window.solviBringWindowToFront=toFront;
+ document.addEventListener('pointerdown',event=>{
+  const panel=event.target.closest?.('#scenePanel,#propertiesPanel,#addMenu,#chatPanel.windowed,#editorToolbox,#robotBrainsPanel,#diagnosticsPanel');
+  if(panel)toFront(panel);
+ },true);
  const panelIds=['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel'];
  const save=(id,panel)=>{
    const rect=panel.getBoundingClientRect();
@@ -627,7 +640,7 @@ function configureDragging(){
   handle.addEventListener('pointerdown',event=>{
     if(event.target.closest('button,input,select'))return;
     if(id==='chatPanel'&&!panel.classList.contains('windowed'))return;
-    const rect=panel.getBoundingClientRect();delta={x:event.clientX-rect.left,y:event.clientY-rect.top};
+    toFront(panel);const rect=panel.getBoundingClientRect();delta={x:event.clientX-rect.left,y:event.clientY-rect.top};
     if(id==='scenePanel'||id==='propertiesPanel')panel.style.bottom='auto';
     handle.setPointerCapture(event.pointerId);event.preventDefault();
   });
@@ -639,6 +652,8 @@ function configureDragging(){
   });
   const release=()=>{if(delta)save(id,panel);delta=null;};handle.addEventListener('pointerup',release);handle.addEventListener('pointercancel',release);
   panel.addEventListener('click',event=>{if(event.target.closest('#toolboxMinimize,#minimizeScenePanel,#closeScenePanel,#closeProperties'))requestAnimationFrame(()=>save(id,panel));});
+  const opened=new MutationObserver(()=>{if(!panel.hidden&&(id!=='chatPanel'||panel.classList.contains('windowed')))toFront(panel);});
+  opened.observe(panel,{attributes:true,attributeFilter:['hidden']});
  }
 }
 function setupNewRoom(){
@@ -853,6 +868,40 @@ function setupChatPresentation(){
   const resize=()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,118)+'px';};
   input.addEventListener('input',resize);resize();
 }
+function setupChatMentions(){
+ const input=$('chatInput'),box=$('chatMentions');let entries=[],active=0;
+ const allNames=()=>[
+  ...(me?.name?[{name:me.name,kind:'user'}]:[]),
+  ...[...(window.solviRoomSocket?.peers?.values?.()||[])].map(p=>({name:p.name,kind:'user'})),
+  ...cachedMessages.filter(m=>m.role!=='assistant'&&m.speaker).map(m=>({name:m.speaker,kind:'user'})),
+  ...(window.solviEditor?.items||[]).filter(o=>o.userData.editorKind==='robot').map(o=>({name:o.name,kind:'robot'}))
+ ];
+ const hide=()=>{box.hidden=true;entries=[];};
+ const select=index=>{if(!entries[index])return;const query=mentionQuery(input.value,input.selectionStart);if(!query)return hide();
+  const result=insertMention(input.value,query,entries[index].name);input.value=result.text;input.setSelectionRange(result.cursor,result.cursor);
+  hide();input.focus();input.dispatchEvent(new Event('input',{bubbles:true}));};
+ const render=()=>{
+  const query=mentionQuery(input.value,input.selectionStart);
+  if(!query){hide();return;}
+  entries=mentionCandidates(allNames(),query.query);active=0;
+  box.replaceChildren();
+  if(!entries.length){hide();return;}
+  entries.slice(0,8).forEach((item,index)=>{const b=document.createElement('button');b.type='button';b.className='chat-mention-option';b.setAttribute('role','option');b.dataset.kind=item.kind;b.textContent=item.name;
+    b.addEventListener('pointerdown',e=>e.preventDefault());b.onclick=()=>select(index);box.append(b);});
+  box.hidden=false;box.querySelector('button')?.classList.add('active');
+ };
+ const highlight=()=>{[...box.children].forEach((button,i)=>button.classList.toggle('active',i===active));};
+ input.addEventListener('input',render);
+ input.addEventListener('click',render);
+ input.addEventListener('keydown',e=>{
+  if(box.hidden)return;
+  if(e.key==='Escape'){e.preventDefault();hide();return;}
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();active=(active+(e.key==='ArrowDown'?1:-1)+Math.min(entries.length,8))%Math.min(entries.length,8);highlight();return;}
+  if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();e.stopImmediatePropagation();select(active);}
+ },true);
+ document.addEventListener('pointerdown',e=>{if(!e.target.closest?.('#chatMentions,#chatInput'))hide();});
+ window.addEventListener('solvi:room-changed',hide);
+}
 function setupRobotVoiceSettings(){
  const enabled=$('robotSpeechEnabled'),volume=$('robotVoiceVolume'),input=$('elevenLabsKey'),status=$('voiceKeyStatus');
  enabled.checked=localStorage.getItem('solvi-robot-speech')!=='0';
@@ -868,7 +917,7 @@ function setupRobotVoiceSettings(){
  window.addEventListener('solvi:session-lost',()=>robotSpeech?.stop());
 }
 function bindUI(world){
- const editor=new SceneEditor(world,toast);robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
+ const editor=new SceneEditor(world,toast);setupChatMentions();robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
  window.addEventListener('solvi:robot-task-update',e=>{

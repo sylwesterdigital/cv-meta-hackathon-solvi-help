@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {isTrackpadPan,trackpadPanDelta} from './trackpad-navigation.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
@@ -73,13 +74,25 @@ export class SolviWorld {
       if(this.cameraFollowMode==='chase')this.setChaseDistance(zoomChaseDistance(this.followChaseDistance,delta));
       else this.setOrbitDistance(zoomChaseDistance(this.followOrbitDistance,delta));
     },{capture:true,passive:false});
-    // Idle orbit must be disabled to prevent a stale Three.js drag rotating on hover.
-    // Momentarily allow free-camera wheel dolly, whose handler runs synchronously.
-    this.renderer.domElement.addEventListener('wheel',()=>{
-      if(this.cameraOrbitGesture!==null||this.editorDragging||this.editorGizmoPointer||this.renderer.xr.isPresenting||document.pointerLockElement===this.renderer.domElement)return;
-      this.controls.enabled=true;
-      queueMicrotask(()=>{if(this.cameraOrbitGesture!==true)this.controls.enabled=false;});
-    },{capture:true,passive:true});
+    // A released pointer is not a camera drag. Keep OrbitControls enabled while idle
+    // so trackpad two-finger scroll and Ctrl+wheel pinch zoom reach its wheel handler.
+    // The editor clears stale _pointers on release and blocks transform gestures.
+    this.controls.enabled=true;
+    // macOS trackpad: two-finger scroll pans; pinch sends Ctrl+wheel and
+    // reaches OrbitControls' native dolly. A physical mouse wheel still zooms.
+    this.renderer.domElement.addEventListener('wheel',event=>{
+      if(this.cameraFollowMode!=='free'||!isTrackpadPan(event)||this.editorDragging||this.editorGizmoPointer||this.renderer.xr.isPresenting||document.pointerLockElement===this.renderer.domElement)return;
+      event.preventDefault();event.stopImmediatePropagation();
+      const distance=Math.max(.35,this.camera.position.distanceTo(this.controls.target));
+      const size=this.renderer.domElement.getBoundingClientRect();
+      const pan=trackpadPanDelta(event.deltaX,event.deltaY,distance,this.camera.fov,Math.max(1,size.height));
+      const direction=this.camera.getWorldDirection(new THREE.Vector3());
+      const right=new THREE.Vector3().crossVectors(direction,new THREE.Vector3(0,1,0)).normalize();
+      if(right.lengthSq()<.001)right.set(1,0,0);
+      const up=new THREE.Vector3().crossVectors(right,direction).normalize();
+      const translate=right.multiplyScalar(pan.x).addScaledVector(up,pan.y);
+      this.camera.position.add(translate);this.controls.target.add(translate);this.controls.update();
+    },{capture:true,passive:false});
     this.refreshFollowButton();
     document.addEventListener('mousemove',event=>{if(document.pointerLockElement!==this.renderer.domElement)return;
        const euler=new THREE.Euler().setFromQuaternion(this.camera.quaternion,'YXZ');euler.y-=event.movementX*.002;euler.x=Math.max(-1.53,Math.min(1.53,euler.x-event.movementY*.002));this.camera.quaternion.setFromEuler(euler);
@@ -697,7 +710,7 @@ export class SolviWorld {
     if(this.renderer.xr.isPresenting||this.editorDragging||this.editorGizmoPointer){this.cameraVelocity.set(0,0,0);return;}
     const robot=this.robotEditor?.robot();
     if(this.cameraFollowMode!=='free'&&robot){this.cameraVelocity.set(0,0,0);return;}
-    if(robot&&this.robotEditor.canEdit(robot)){this.cameraVelocity.set(0,0,0);return;}
+    if(robot&&this.robotEditor.canEdit(robot)&&this.robotEditor.controlMode==='robot'){this.cameraVelocity.set(0,0,0);return;}
     const f=Number(this.keys.has('ArrowUp'))-Number(this.keys.has('ArrowDown'));
     const side=Number(this.keys.has('ArrowRight'))-Number(this.keys.has('ArrowLeft'));
     const vertical=Number(this.keys.has('PageUp'))-Number(this.keys.has('PageDown'));
@@ -722,7 +735,7 @@ export class SolviWorld {
     if(this.skyDome?.visible){this.skyDome.position.copy(this.camera.position);this.skyDome.material.uniforms.uTime.value=this.skyClock;}
     this.extentCheck+=dt;if(this.extentCheck>3){this.extentCheck=0;this.updateWorldExtent();}
     // Never give OrbitControls ownership of a TransformControls gesture.
-    const cameraAllowed=this.cameraOrbitGesture===true; // Only the pointerdown-claimed camera gesture can rotate.
+    const cameraAllowed=this.cameraOrbitGesture!==false; // Idle wheel gestures and active camera drags; no transform drags.
     this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.editorGizmoPointer&&cameraAllowed&&document.pointerLockElement!==this.renderer.domElement;
     this.navigateCamera(dt);
     if(!this.renderer.xr.isPresenting)this.controls.update();

@@ -30,7 +30,7 @@ test('camera uses active object pivot, no continuous spinning and no conflicting
  const w=read('js/world.js');
  assert.match(w,/enableDamping=false/);
  assert.match(w,/focusCameraOn\(object\)/);
- assert.match(w,/const cameraAllowed=this.cameraOrbitGesture===true/);
+ assert.match(w,/const cameraAllowed=this.cameraOrbitGesture!==false/);
  assert.match(w,/this\.camera\.position\.add\(delta\);this\.controls\.target\.add\(delta\)/);
  assert.doesNotMatch(w,/keys\.has\('KeyW'\)|keys\.has\('KeyA'\)|keys\.has\('KeyD'\)/);
  assert.match(w,/if\(key===7\)/);assert.match(w,/if\(key===1\)/);assert.match(w,/if\(key===3\)/);

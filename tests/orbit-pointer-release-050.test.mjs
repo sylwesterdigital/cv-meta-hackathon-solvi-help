@@ -64,9 +64,9 @@ test('release lifecycle disables camera immediately and wheel dolly remains usab
  assert.doesNotMatch(editor,/stopImmediatePropagation\(\)/);
  assert.match(world,/if\(e\.solviObjectPicked\)return/);
  assert.match(editor,/recoverStaleOrbitPointers\(this\.world\.controls,orbitGesture\.pointers\)/);
- assert.match(world,/const cameraAllowed=this\.cameraOrbitGesture===true/);
+ assert.match(world,/const cameraAllowed=this\.cameraOrbitGesture!==false/);
  assert.doesNotMatch(world,/cameraOrbitGesture===null\?!axis:this\.cameraOrbitGesture/);
- assert.match(world,/queueMicrotask\(\(\)=>\{if\(this\.cameraOrbitGesture!==true\)this\.controls\.enabled=false;\}\)/);
+ assert.match(world,/this\.controls\.enabled=true;\/\/.*|this\.controls\.enabled=true;/);
  assert.match(world,/enableDamping=false/);
  assert.match(world,/autoRotate=false/);
 });
