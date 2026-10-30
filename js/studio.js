@@ -801,10 +801,10 @@ function configureDragging(){
  };
  window.solviBringWindowToFront=toFront;
  document.addEventListener('pointerdown',event=>{
-  const panel=event.target.closest?.('#scenePanel,#propertiesPanel,#addMenu,#chatPanel.windowed,#editorToolbox,#robotBrainsPanel,#diagnosticsPanel');
+  const panel=event.target.closest?.('#scenePanel,#propertiesPanel,#wallPanel,#addMenu,#chatPanel.windowed,#editorToolbox,#robotBrainsPanel,#diagnosticsPanel');
   if(panel)toFront(panel);
  },true);
- const panelIds=['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel'];
+ const panelIds=['scenePanel','propertiesPanel','wallPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel'];
  const save=(id,panel)=>{
    const rect=panel.getBoundingClientRect();
    const data={left:rect.left,top:rect.top,minimized:panel.classList.contains('minimized'),windowed:panel.classList.contains('windowed')};
@@ -828,7 +828,7 @@ function configureDragging(){
     if(event.target.closest('button,input,select'))return;
     if(id==='chatPanel'&&!panel.classList.contains('windowed'))return;
     toFront(panel);const rect=panel.getBoundingClientRect();delta={x:event.clientX-rect.left,y:event.clientY-rect.top};
-    if(id==='scenePanel'||id==='propertiesPanel')panel.style.bottom='auto';
+    if(id==='scenePanel'||id==='propertiesPanel'||id==='wallPanel')panel.style.bottom='auto';
     handle.setPointerCapture(event.pointerId);event.preventDefault();
   });
   handle.addEventListener('pointermove',event=>{if(!delta)return;

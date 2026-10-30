@@ -6,9 +6,10 @@ export function sanitiseWall(raw={}){
  const points=sampled.filter(p=>Array.isArray(p)&&p.length===2&&p.every(n=>Number.isFinite(Number(n))&&Math.abs(Number(n))<=500)).map(p=>[+Number(p[0]).toFixed(3),+Number(p[1]).toFixed(3)]);
  const unique=[];for(const p of points)if(!unique.length||Math.hypot(unique.at(-1)[0]-p[0],unique.at(-1)[1]-p[1])>.05)unique.push(p);
  const num=(name,f,a,b)=>Number.isFinite(Number(raw[name]))?clamp(Number(raw[name]),a,b):f;
- const texture=presets.includes(raw.texture)?raw.texture:'plaster';
+ const texture=[...presets,'custom'].includes(raw.texture)?raw.texture:'plaster';
+ const textureMediaId=typeof raw.textureMediaId==='string'&&/^[0-9a-f-]{36}$/i.test(raw.textureMediaId)?raw.textureMediaId:'';
  const color=typeof raw.color==='string'&&/^#[0-9a-fA-F]{6}$/.test(raw.color)?raw.color:'#c6d1dc';
- return {points:unique,width:num('width',.16,.05,1.5),height:num('height',2.8,.3,10),texture,color,opacity:num('opacity',texture==='glass'?.4:1,.08,1),smooth:raw.smooth!==false};
+ return {points:unique,width:num('width',.16,.05,1.5),height:num('height',2.8,.3,10),texture,textureMediaId,color,opacity:num('opacity',texture==='glass'?.4:1,.08,1),smooth:raw.smooth!==false};
 }
 export function simplifyWallPoints(points,tolerance=.13){
  if(points.length<3)return points.slice();const sqTol=tolerance*tolerance;
@@ -17,3 +18,36 @@ export function simplifyWallPoints(points,tolerance=.13){
 }
 export function wallSegments(settings){const s=sanitiseWall(settings),segments=[];for(let i=1;i<s.points.length;i++){const a=s.points[i-1],b=s.points[i],dx=b[0]-a[0],dz=b[1]-a[1],length=Math.hypot(dx,dz);if(length<.05)continue;segments.push({x:(a[0]+b[0])/2,z:(a[1]+b[1])/2,length,yaw:Math.atan2(-dz,dx)});}return segments;}
 export function wallWorldToLocal(points){const origin=points[0]||{x:0,z:0};return {origin,points:points.map(p=>[+(p.x-origin.x).toFixed(3),+(p.z-origin.z).toFixed(3)])};}
+
+// Shared floor constraints: angle quantisation is relative to the previous fixed node.
+export function snapWallPoint(point,anchor=null,{grid=true,step=.5,angle=45}={}){
+ const increment=Number(step)>0?Number(step):.5;
+ let x=point.x,z=point.z;
+ if(grid){x=Math.round(x/increment)*increment;z=Math.round(z/increment)*increment;}
+ if(anchor && angle>0){
+  const dx=x-anchor.x,dz=z-anchor.z,len=Math.hypot(dx,dz);
+  if(len>1e-4){const unit=Number(angle)*Math.PI/180,dir=Math.round(Math.atan2(dz,dx)/unit)*unit;
+   const distance=grid?Math.max(increment,Math.round(len/increment)*increment):len;
+   x=anchor.x+Math.cos(dir)*distance;z=anchor.z+Math.sin(dir)*distance;
+  }
+ }
+ return {x:+x.toFixed(4),z:+z.toFixed(4)};
+}
+// Chaikin corner-cutting gives visibly curved freehand geometry, not merely fewer nodes.
+export function smoothWallPoints(points,tolerance=.18){
+ if(points.length<3)return points.slice();
+ const base=simplifyWallPoints(points,Math.max(.04,tolerance));
+ if(base.length<3)return base;
+ let result=base;
+ for(let iteration=0;iteration<2;iteration++){
+  const next=[result[0]];
+  for(let i=1;i<result.length;i++){
+   const a=result[i-1],b=result[i];
+   next.push([a[0]*.75+b[0]*.25,a[1]*.75+b[1]*.25]);
+   next.push([a[0]*.25+b[0]*.75,a[1]*.25+b[1]*.75]);
+  }
+  next.push(result.at(-1));result=next;
+ }
+ if(result.length>80)result=Array.from({length:80},(_,i)=>result[Math.round(i*(result.length-1)/79)]);
+ return result;
+}

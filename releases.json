@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.80",
+  "currentVersion": "0.2.81",
   "releases": [
+    {
+      "version": "0.2.81",
+      "publishedAt": "2026-10-30T13:17:03Z",
+      "changes": [
+        "Correct Office Walls edit lifecycle: live in-place geometry, Save commits original-vs-current state, Cancel restores original without a duplicate wall mesh.",
+        "Add a floor pointer cursor, live cyan wireframe wall volume and segment path that tracks the pointer before the next click, including multiline previews.",
+        "Default grid snapping with selectable 0.25\u20132.0 m steps; snap single/multi wall segments to 15/30/45/90-degree increments or free angles.",
+        "Compact draggable wall controls using numeric width/height/opacity fields and one context-sensitive slider, responsive on mobile.",
+        "Freehand smoothing button and adjustable smoothing strength using curve-preserving corner rounding, plus optional automatic freehand smoothing on create.",
+        "Allow PNG/JPEG/WebP wall texture upload via authenticated scene media, persist image metadata across reloads and include/remap referenced images in realm archives.",
+        "Add regression tests for wall snapping, freehand smoothing, editor in-place updates, cancellation, server validation and custom-image persistence."
+      ]
+    },
     {
       "version": "0.2.80",
       "publishedAt": "2026-10-30T12:51:58Z",
@@ -325,17 +338,6 @@
         "Prevent Move/Rotate/Scale gizmos, G/R/S hotkeys, XYZ value editing and transform resets while locked, preserving selection, other object settings and robot missions.",
         "Save per-object transform locks in shared scenes, propagate them through object WebSocket patches and local room snapshots, and validate lock fields on the Flask backend.",
         "Provide new lock/unlock SVGs and regression coverage for the editor controls, API persistence and mobile/desktop row layout."
-      ]
-    },
-    {
-      "version": "0.2.48",
-      "publishedAt": "2026-10-29T01:35:03Z",
-      "changes": [
-        "Add persistent per-room appearance controls: enable/disable fog and grid, fog color/near/far, floor size/color, grid color, background color.",
-        "Add six sky types: solid, procedural gradient, sunset clouds, animated rainbow, stars and nebula, with adjustable colors, animation speed, intensity and star density.",
-        "Expand scene camera far clip, orbit range, inspector position slider, XR teleport region and ground movement to support very large rooms and imported objects.",
-        "Synchronize appearance across users by room-specific authenticated SQLite endpoints and live WebSocket events; preview locally and save explicitly.",
-        "Add frontend and backend regression coverage for validation, layout, room isolation, camera extents and effect modes."
       ]
     }
   ]

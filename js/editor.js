@@ -9,7 +9,7 @@ import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneMode
 import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,toggleSceneMediaPlayback,setSceneMediaMuted,setSceneMediaLoop,setSceneMediaSpatial,syncSceneMediaGroup,sceneMediaMuted,sceneMediaPlaying,sceneMediaKind,showSceneMediaCaptions} from './scene-media.js';
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive} from './primitive-properties.js';
-import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,wallWorldToLocal} from './office-walls.js';
+import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal} from './office-walls.js';
 import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
 import {robotPathVisible} from './robot-debug.js';
@@ -100,7 +100,7 @@ export class SceneEditor{
   this.transform.addEventListener('mouseUp',()=>{this.broadcastEdit(false);world.editorDragging=false;this.physics.sync(this.selected);this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
   this.transform.addEventListener('objectChange',()=>{if(!this.canTransform(this.selected))return;if(this.transform.mode==='scale'&&this.selected?.userData.editorKind!=='robot'&&performance.now()-(this.lastScaleColliderSync||0)>180){this.physics.sync(this.selected);this.lastScaleColliderSync=performance.now();}this.updateInspector();this.queueSave(this.selected);});
   window.addEventListener('solvi:robot-model-ready',e=>{if(this.selected?.userData.editorId===e.detail.id)this.updateInspector();});
-  this.wallDrawing=null;this.wallPreview=null;this.wallEditTarget=null;
+  this.wallDrawing=null;this.wallPreview=null;this.wallEditTarget=null;this.wallEditOriginal=null;this.wallTextureMediaId="";
   this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);this.assetGallery=setupAssetGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
   window.addEventListener('solvi:robot-task-update',event=>{const detail=event.detail||{},id=detail.robotId;const robot=this.items.find(o=>o.userData.editorId===id);
     if(robot){const audit=missionMovementEvidence(robot.userData.robotTelemetry,robot,robot.userData.robotDebugRoute,detail.status);
@@ -332,40 +332,94 @@ export class SceneEditor{
   byId('saveScene').onclick=()=>this.save();byId('reloadScene').onclick=()=>this.load();
  }
  setupWallControls(){
-  const field=id=>byId(id),panel=field('wallPanel');
-  if(!panel)return;
-  const rerender=()=>{
-   if(!panel.hidden){if(this.wallDrawing)this.drawWallPreview();else if(this.wallEditTarget){const obj=this.wallEditTarget;if(this.canEdit(obj)){if(this.wallPreview){this.world.scene.remove(this.wallPreview);this.disposeObject(this.wallPreview);this.wallPreview=null;}const preview=makeOfficeWall(this.readWallOptions(obj.userData.wall?.points));preview.position.copy(obj.position);preview.rotation.copy(obj.rotation);preview.scale.copy(obj.scale);preview.userData.editorId='wall-preview';preview.userData.wallPreview=true;this.wallPreview=preview;this.world.scene.add(preview);}}}
+  const field=id=>byId(id),panel=field('wallPanel');if(!panel)return;
+  const ranges={wallWidth:[.05,1.5,.01,'m'],wallHeight:[.3,10,.1,'m'],wallOpacity:[.08,1,.02,'']};
+  let active='wallHeight';
+  const setActive=id=>{active=id;const input=field(id),slider=field('wallValueSlider'),[min,max,step,unit]=ranges[id];
+   slider.min=min;slider.max=max;slider.step=step;slider.value=input.value;
+   field('wallSliderLabel').textContent=id.slice(4)+' · '+Number(input.value).toFixed(2)+(unit?' '+unit:'');
   };
-  for(const key of ['wallWidth','wallHeight','wallOpacity']){
-   field(key).addEventListener('input',()=>{field(key+'Value').textContent=Number(field(key).value).toFixed(2);rerender();});
+  const rerender=()=>{
+   if(panel.hidden)return;
+   if(this.wallDrawing){this.drawWallPreview();return;}
+   const obj=this.wallEditTarget;
+   if(obj&&this.canEdit(obj)){
+    // In-place geometry update: never spawn a second wall while editing.
+    rebuildOfficeWall(obj,this.readWallOptions(obj.userData.wall?.points));
+   }
+  };
+  for(const id of Object.keys(ranges)){
+   const input=field(id);
+   input.addEventListener('focus',()=>setActive(id));
+   input.addEventListener('input',()=>{setActive(id);if(input.value!==''&&Number.isFinite(input.valueAsNumber))rerender();});
+   input.addEventListener('change',()=>{const [min,max]=ranges[id];input.value=Math.min(max,Math.max(min,Number(input.value)||min));setActive(id);rerender();});
   }
+  field('wallValueSlider').addEventListener('input',e=>{field(active).value=e.target.value;setActive(active);rerender();});
   for(const id of ['wallTexture','wallColor','wallSmooth','wallPhysics'])field(id).addEventListener('change',rerender);
+  for(const id of ['wallSnap','wallGridStep','wallAngleStep'])field(id).addEventListener('change',()=>this.drawWallPreview());
+  field('wallTexture').addEventListener('change',()=>{if(field('wallTexture').value==='custom'&&!this.wallTextureMediaId)field('wallUploadButton').click();});
+  field('wallUploadButton').onclick=()=>field('wallTextureUpload').click();
+  field('wallTextureUpload').onchange=async event=>{
+   const file=event.target.files?.[0];event.target.value='';if(!file)return;
+   if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>5_000_000)return this.toast('Upload a PNG, JPEG or WebP image below 5 MB');
+   const button=field('wallUploadButton');button.disabled=true;
+   try{
+    const body=new FormData();body.append('file',file,file.name);
+    const result=await window.solviAPI.req('/api/media',{method:'POST',body});
+    this.wallTextureMediaId=result.media.id;field('wallTexture').value='custom';rerender();
+   }catch(error){this.toast(error.message||'Texture upload failed');}finally{button.disabled=false;}
+  };
+  field('wallSmoothNow').onclick=()=>{
+   const tolerance=Number(field('wallSmoothStrength').value);
+   if(this.wallDrawing){
+    const draft=this.wallDrawing;if(draft.points.length<3)return;
+    draft.points=smoothWallPoints(draft.points.map(p=>[p.x,p.z]),tolerance).map(([x,z])=>({x,z}));
+    draft.cursor=null;this.drawWallPreview();
+   }else if(this.wallEditTarget&&this.canEdit(this.wallEditTarget)){
+    const obj=this.wallEditTarget,wall=obj.userData.wall;
+    rebuildOfficeWall(obj,{...wall,points:smoothWallPoints(wall.points,tolerance)});
+    // Keep edited points as the input for other property changes.
+    rerender();
+   }
+  };
   field('wallConfirm').onclick=()=>this.confirmWall();
   field('wallFinish').onclick=()=>this.finishWallStroke();
-  field('wallUndo').onclick=()=>{if(!this.wallDrawing)return;this.wallDrawing.points.pop();this.drawWallPreview();};
+  field('wallUndo').onclick=()=>{if(!this.wallDrawing)return;const draft=this.wallDrawing;draft.finished=false;draft.points.pop();this.drawWallPreview();};
   field('wallCancel').onclick=()=>this.endWallDrawing();
   field('wallClose').onclick=()=>this.endWallDrawing();
-  field('wallDrawMode').onchange=()=>{if(this.wallDrawing){this.wallDrawing.mode=field('wallDrawMode').value;this.wallDrawing.points=[];this.drawWallPreview();}};
+  field('wallDrawMode').onchange=()=>{if(this.wallDrawing){this.wallDrawing.mode=field('wallDrawMode').value;this.wallDrawing.points=[];this.wallDrawing.cursor=null;this.wallDrawing.finished=false;this.drawWallPreview();}};
+  this.wallSetActiveSlider=setActive;
  }
- readWallOptions(points=[]){return sanitiseWall({points,width:byId('wallWidth').value,height:byId('wallHeight').value,opacity:byId('wallOpacity').value,texture:byId('wallTexture').value,color:byId('wallColor').value,smooth:byId('wallSmooth').checked});}
+ readWallOptions(points=[]){return sanitiseWall({points,width:byId('wallWidth').value,height:byId('wallHeight').value,opacity:byId('wallOpacity').value,texture:byId('wallTexture').value==='custom'&&!this.wallTextureMediaId?'plaster':byId('wallTexture').value,textureMediaId:this.wallTextureMediaId,color:byId('wallColor').value,smooth:byId('wallSmooth').checked});}
  openWallPanel(wall=null){
+  if(wall&&wall===this.wallEditTarget&&!byId('wallPanel').hidden)return;
+  if(this.wallEditTarget&&this.wallEditTarget!==wall)this.endWallDrawing();
   const panel=byId('wallPanel');panel.hidden=false;this.wallEditTarget=wall;
   const config=sanitiseWall(wall?.userData?.wall||{});
-  for(const key of ['width','height','opacity']){const capital=key[0].toUpperCase()+key.slice(1),input=byId('wall'+capital);input.value=config[key];byId('wall'+capital+'Value').textContent=Number(config[key]).toFixed(2);}
+  this.wallTextureMediaId=config.textureMediaId||'';
+  this.wallEditOriginal=wall?{object:wall,before:this.snapshot(wall),wall:structuredClone(wall.userData.wall),physics:structuredClone(wall.userData.physics)}:null;
+  for(const [key,id] of [['width','wallWidth'],['height','wallHeight'],['opacity','wallOpacity']])byId(id).value=config[key];
   byId('wallTexture').value=config.texture;byId('wallColor').value=config.color;byId('wallSmooth').checked=config.smooth;
   byId('wallPhysics').value=wall?.userData?.physics?.mode||'static';byId('wallDrawMode').disabled=!!wall;
-  byId('wallStatus').textContent=wall?'Editing this wall — changes can be confirmed in the same panel.':'Click the floor to begin. Single: 2 clicks. Multi: click points, then Finish. Freehand: drag.';
   byId('wallFinish').hidden=!!wall;byId('wallUndo').hidden=!!wall;
+  byId('wallSmoothNow').disabled=!wall&&!this.wallDrawing?.points?.length;
   byId('wallConfirm').disabled=!wall;byId('wallConfirm').textContent=wall?'Save wall':'Create wall';
+  byId('wallStatus').textContent=wall?'Editing selected wall':'Move pointer over floor to begin';
+  this.wallSetActiveSlider?.('wallHeight');
  }
  startWallDrawing(){
-  this.endWallDrawing();byId('addMenu').hidden=true;this.wallDrawing={points:[],mode:'single',drawing:false,finished:false};
+  this.endWallDrawing();byId('addMenu').hidden=true;
+  this.wallDrawing={points:[],cursor:null,mode:'single',drawing:false,finished:false};
   this.openWallPanel();this.wallDrawing.mode=byId('wallDrawMode').value;
   this.world.controls.enabled=false;this.transform.detach();
  }
  endWallDrawing(){
-  this.wallDrawing=null;this.wallEditTarget=null;
+  const original=this.wallEditOriginal;
+  if(original&&original.object&&this.items.includes(original.object)){
+   rebuildOfficeWall(original.object,original.wall);
+   original.object.userData.physics=original.physics;
+  }
+  this.wallDrawing=null;this.wallEditTarget=null;this.wallEditOriginal=null;this.wallTextureMediaId='';
   if(this.wallPreview){this.world.scene.remove(this.wallPreview);this.disposeObject(this.wallPreview);this.wallPreview=null;}
   if(byId('wallPanel'))byId('wallPanel').hidden=true;
   this.world.controls.enabled=true;
@@ -379,39 +433,73 @@ export class SceneEditor{
  }
  wallPointer(event){
   if(!this.wallDrawing||!this.world.renderer.domElement.contains(event.target))return false;
-  const draft=this.wallDrawing,point=this.groundPoint(event);if(!point)return true;
+  const draft=this.wallDrawing,raw=this.groundPoint(event);if(!raw)return true;
+  const anchor=draft.points.at(-1);
+  const config={grid:byId('wallSnap').checked,step:Number(byId('wallGridStep').value),angle:draft.mode==='freehand'?0:Number(byId('wallAngleStep').value)};
+  const point=snapWallPoint(raw,anchor,config);
   if(event.type==='pointerdown'){
-    if(draft.finished)return true;
-    if(draft.mode==='freehand'){draft.points=[point];draft.drawing=true;}
-    else{if(!draft.points.length||Math.hypot(point.x-draft.points.at(-1).x,point.z-draft.points.at(-1).z)>.07)draft.points.push(point);if(draft.mode==='single'&&draft.points.length>=2)draft.finished=true;}
-    this.drawWallPreview();
-  }else if(event.type==='pointermove'&&draft.drawing){
-    if(!draft.points.length||Math.hypot(point.x-draft.points.at(-1).x,point.z-draft.points.at(-1).z)>.13){if(draft.points.length<150)draft.points.push(point);this.drawWallPreview();}
-  }else if(event.type==='pointerup'&&draft.drawing){draft.drawing=false;draft.finished=true;this.drawWallPreview();}
+   if(draft.finished)return true;
+   if(draft.mode==='freehand'){draft.points=[point];draft.drawing=true;}
+   else if(!anchor||Math.hypot(point.x-anchor.x,point.z-anchor.z)>.05){draft.points.push(point);if(draft.mode==='single'&&draft.points.length>=2)draft.finished=true;}
+   draft.cursor=point;this.drawWallPreview();
+  }else if(event.type==='pointermove'){
+   draft.cursor=point;
+   if(draft.mode==='freehand'&&draft.drawing&&(!anchor||Math.hypot(point.x-anchor.x,point.z-anchor.z)>.09)&&draft.points.length<150)draft.points.push(point);
+   this.drawWallPreview();
+  }else if(event.type==='pointerup'&&draft.drawing){draft.drawing=false;draft.finished=true;draft.cursor=point;this.drawWallPreview();}
   return true;
  }
  drawWallPreview(){
   const draft=this.wallDrawing;if(!draft)return;
   if(this.wallPreview){this.world.scene.remove(this.wallPreview);this.disposeObject(this.wallPreview);this.wallPreview=null;}
-  if(!draft.points.length)return;
-  const local=wallWorldToLocal(draft.points);const options=this.readWallOptions(local.points);options.opacity=Math.min(options.opacity,.50);
-  const preview=makeOfficeWall(options);preview.position.set(local.origin.x,0,local.origin.z);
-  for(const child of preview.children){child.material.wireframe=true;child.material.transparent=true;child.material.opacity=.68;child.material.color.set('#67dbff');}
+  const preview=new THREE.Group();preview.name='Wall draft · not saved';preview.userData.wallPreview=true;
+  const stroke=draft.points.slice();
+  if(draft.cursor&&!draft.finished&&draft.mode!=='freehand'&&stroke.length){
+   const last=stroke.at(-1);if(Math.hypot(draft.cursor.x-last.x,draft.cursor.z-last.z)>.05)stroke.push(draft.cursor);
+  }
+  if(stroke.length>=2){
+   const local=wallWorldToLocal(stroke);const options=this.readWallOptions(local.points);
+   // A wireframe only. Never build opaque or duplicate saved wall geometry.
+   options.texture='plaster';options.textureMediaId='';
+   const ghost=makeOfficeWall(options);ghost.position.set(local.origin.x,0,local.origin.z);
+   for(const child of ghost.children){child.material?.map?.dispose();child.material?.dispose();child.material=new THREE.MeshBasicMaterial({color:'#55ecf8',transparent:true,opacity:.67,wireframe:true,depthTest:false});child.renderOrder=950;}
+   preview.add(ghost);
+   const path=new THREE.BufferGeometry().setFromPoints(stroke.map(p=>new THREE.Vector3(p.x,.055,p.z)));
+   const line=new THREE.Line(path,new THREE.LineBasicMaterial({color:'#ffffff',depthTest:false}));line.renderOrder=952;preview.add(line);
+  }
+  if(draft.cursor){
+   const marker=new THREE.Mesh(new THREE.RingGeometry(.13,.20,28),new THREE.MeshBasicMaterial({color:'#7df7ff',transparent:true,opacity:1,side:THREE.DoubleSide,depthTest:false}));
+   marker.rotation.x=-Math.PI/2;marker.position.set(draft.cursor.x,.08,draft.cursor.z);marker.renderOrder=960;preview.add(marker);
+   const cross=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-.29,0,0),new THREE.Vector3(.29,0,0),new THREE.Vector3(0,0,-.29),new THREE.Vector3(0,0,.29)]);
+   const lines=new THREE.LineSegments(cross,new THREE.LineBasicMaterial({color:'#7df7ff',depthTest:false}));lines.position.copy(marker.position);lines.renderOrder=961;preview.add(lines);
+  }
   this.wallPreview=preview;this.world.scene.add(preview);
   byId('wallConfirm').disabled=draft.points.length<2;
-  byId('wallStatus').textContent=`${draft.points.length} nodes · ${draft.finished?'Ready to create':'Drawing — Finish or double-click when complete'}`;
+  byId('wallSmoothNow').disabled=draft.points.length<3;
+  byId('wallStatus').textContent=draft.points.length?`${draft.points.length} points${draft.finished?' · ready':''}`:'Click floor to start';
  }
  finishWallStroke(){if(!this.wallDrawing)return;this.wallDrawing.finished=this.wallDrawing.points.length>1;this.drawWallPreview();}
  confirmWall(){
   const target=this.wallEditTarget;
-  if(target){if(!this.canEdit(target))return this.toast('Owner only');const before=this.snapshot(target);const options=this.readWallOptions(target.userData.wall?.points);rebuildOfficeWall(target,options);target.userData.physics=physicsOptions({mode:byId('wallPhysics').value});this.physics.sync(target);this.recordEdit(before,this.snapshot(target));this.queueSave(target);this.endWallDrawing();return;}
+  if(target){
+   if(!this.canEdit(target))return this.toast('Owner only');
+   const before=this.wallEditOriginal?.before||this.snapshot(target);
+   rebuildOfficeWall(target,this.readWallOptions(target.userData.wall?.points));
+   target.userData.physics=physicsOptions({mode:byId('wallPhysics').value});this.physics.sync(target);
+   this.wallEditOriginal=null;this.recordEdit(before,this.snapshot(target));this.queueSave(target);
+   this.endWallDrawing();this.toast('Wall updated');return;
+  }
   const draft=this.wallDrawing;if(!draft||draft.points.length<2)return;
-  let points=draft.points;if(byId('wallSmooth').checked)points=simplifyWallPoints(points.map(p=>[p.x,p.z]),.13).map(([x,z])=>({x,z}));
-  if(points.length<2)return this.toast('Draw at least two wall points');
-  const local=wallWorldToLocal(points);const options=this.readWallOptions(local.points);const wall=objectFor('wall');wall.position.set(local.origin.x,0,local.origin.z);wall.name='Office wall';
+  let points=draft.points;
+  if(draft.mode==='freehand'&&byId('wallSmooth').checked)points=smoothWallPoints(points.map(p=>[p.x,p.z]),Number(byId('wallSmoothStrength').value)).map(([x,z])=>({x,z}));
+  if(points.length<2)return this.toast('Draw at least two points');
+  const local=wallWorldToLocal(points);const options=this.readWallOptions(local.points);const wall=objectFor('wall');
+  wall.position.set(local.origin.x,0,local.origin.z);wall.name='Office wall';
   wall.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
   wall.userData.physics=physicsOptions({mode:byId('wallPhysics').value});rebuildOfficeWall(wall,options);
-  this.items.push(wall);this.world.scene.add(wall);this.physics.sync(wall);this.endWallDrawing();this.select(wall);this.refreshList();this.recordEdit(null,this.snapshot(wall));this.queueSave(wall);this.toast('Office wall created');
+  this.items.push(wall);this.world.scene.add(wall);this.physics.sync(wall);this.endWallDrawing();
+  this.skipNextWallPanel=true;this.select(wall);this.skipNextWallPanel=false;
+  this.refreshList();this.recordEdit(null,this.snapshot(wall));this.queueSave(wall);this.toast('Office wall created');
  }
  events(){
   const canvas=this.world.renderer.domElement;let startX,startY;
@@ -536,7 +624,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(this.canTransform(obj)&&obj.userData.editorKind!=='robot')this.transform.attach(obj);
   else{this.transform.detach();if(!this.canEdit(obj))this.toast('Read-only object · owned by another user');}
   this.updateInspector();this.refreshList();this.updateRobotDebugStatus();
-  if(obj?.userData.editorKind==='wall'&&!this.wallDrawing)this.openWallPanel(obj);else if(this.wallEditTarget)this.endWallDrawing();
+  if(obj?.userData.editorKind==='wall'&&!this.wallDrawing&&!this.skipNextWallPanel)this.openWallPanel(obj);else if(this.wallEditTarget)this.endWallDrawing();
   window.dispatchEvent(new CustomEvent('solvi:properties-robot-selected',{detail:{robotId:obj?.userData.editorKind==='robot'?obj.userData.editorId:null}}));
   // Selection must never move the camera; numpad presets and zoom remain explicit.
   if(obj)this.broadcastEdit(true);}
@@ -629,6 +717,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
    this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);if(entry.kind==='media')hydrateSceneMedia(o,this.world);this.physics.sync(o);}this.refreshList();if(restorePhysics)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));}
  disposeObject(obj){
+  if(obj.userData.editorKind==='wall')obj.userData.wallTextureSource=null;
   if(obj.userData.editorKind==='model'){invalidateSceneModel(obj);return;}
   if(obj.userData.editorKind==='media'){disposeSceneMedia(obj);return;}
   obj.traverse(x=>{x.geometry?.dispose();if(x.material?.map)x.material.map.dispose();x.material?.dispose?.();});

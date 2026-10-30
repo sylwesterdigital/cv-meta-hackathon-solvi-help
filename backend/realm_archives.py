@@ -12,6 +12,11 @@ def scene_placeholders(objects):
     for obj in objects:
         if not isinstance(obj,dict):continue
         item=dict(obj)
+        if item.get('kind')=='wall':
+            wall=dict(item.get('wall') or {})
+            if wall.get('texture')=='custom':
+                wall['texture']='plaster';wall['textureMediaId']=''
+            item['wall']=wall
         if item.get('kind') in ('model','media'):
             item.pop('media',None);item.pop('model',None)
             item['kind']='cube';item['primitive']={'width':1,'height':1,'depth':0.1}
@@ -24,6 +29,7 @@ def asset_manifest(objects,con):
     for obj in objects:
         if not isinstance(obj,dict):continue
         if obj.get('kind')=='media':media_ids.add(str((obj.get('media') or {}).get('id','')))
+        if obj.get('kind')=='wall':media_ids.add(str((obj.get('wall') or {}).get('textureMediaId','')))
         if obj.get('kind')=='robot':
             media_ids.add(str((obj.get('brain') or {}).get('portrait','')))
             avatar_urls.add(str(obj.get('avatar','')))

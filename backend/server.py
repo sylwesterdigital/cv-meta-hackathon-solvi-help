@@ -188,7 +188,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.80',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.81',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1285,7 +1285,7 @@ def research_topic_sources(topic,limit=6):
     import urllib.parse
     sources=[]
     def read_json(url):
-        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.80 (public academic references)','Accept':'application/json'})
+        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.81 (public academic references)','Accept':'application/json'})
         with urlopen(req,timeout=3.5) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Large search response')
             return json.loads(response.read(180001).decode('utf-8'))
@@ -2637,7 +2637,10 @@ def valid_office_wall(wall):
     for key,low,high in (('width',.05,1.5),('height',.3,10),('opacity',.08,1)):
         val=wall.get(key)
         if not isinstance(val,(int,float)) or isinstance(val,bool) or not math.isfinite(val) or not low<=val<=high:return False
-    if wall.get('texture') not in {'plaster','concrete','bricks','glass'}:return False
+    if wall.get('texture') not in {'plaster','concrete','bricks','glass','custom'}:return False
+    media_id=wall.get('textureMediaId','')
+    if not isinstance(media_id,str) or (media_id and not re.fullmatch(r'[0-9a-f-]{36}',media_id,re.I)):return False
+    if wall.get('texture')=='custom' and not media_id:return False
     if not isinstance(wall.get('color'),str) or not re.fullmatch('#[0-9a-fA-F]{6}',wall['color']):return False
     return isinstance(wall.get('smooth',False),bool)
 
@@ -3055,6 +3058,12 @@ def import_realm_archive():
                     if obj['kind']=='media':
                         record=obj.get('media') or {};record['id']=media_map.get(str(record.get('id','')),'')
                         if not record['id']:obj.update(kind='cube',name='Placeholder · '+str(obj.get('name',''))[:70],primitive={'width':1,'height':1,'depth':.1});obj.pop('media',None)
+                    if obj['kind']=='wall':
+                        wall=obj.get('wall') or {}
+                        if wall.get('texture')=='custom':
+                            wall['textureMediaId']=media_map.get(str(wall.get('textureMediaId','')),'')
+                            if not wall['textureMediaId']:wall['texture']='plaster'
+                        obj['wall']=wall
                     if obj['kind']=='robot':
                         brain=obj.get('brain') or {};brain['portrait']=media_map.get(str(brain.get('portrait','')),'');obj['brain']=brain
                         avatar_match=re.fullmatch(r'/api/avatars/([0-9a-f]{32})\.glb',str(obj.get('avatar','')))
