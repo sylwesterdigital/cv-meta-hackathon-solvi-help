@@ -68,7 +68,7 @@ export function robotAction(robot,mode){
   }
   robot.userData.robotAnimator?.play(mode);
   if(mode==='wave')robot.userData.waveEnd=performance.now()+1800;
-  if(mode==='jump'){robot.userData.robotJumpActive=true;robot.userData.robotJumpUntil=performance.now()+1050;robot.userData.jumpVel=4.6;robot.userData.groundY=robot.position.y;}
+  if(mode==='jump'){robot.userData.robotJumpActive=true;robot.userData.robotJumpUntil=performance.now()+1700;robot.userData.jumpVel=5.7;robot.userData.groundY=robot.position.y;}
 }
 export function tickRobots(items,dt,onMove=()=>{}){
   for(const robot of items){
@@ -274,6 +274,12 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     // Jump owns animation until Rapier confirms landing. Movement input,
     // stair autostep and contact clips cannot abort a jump in midair.
     if(data.robotJumpActive||data.physicsAirborne&&data.robotMode==='jump')mode='jump';
+    else if(data.robotReaction){
+      const reaction=data.robotReaction;reaction.elapsed=(reaction.elapsed||0)+Math.max(0,dt);
+      if(reaction.elapsed<reaction.duration)mode=reaction.clip;
+      else if(reaction.next){data.robotReaction={clip:reaction.next,elapsed:0,duration:.85};mode=reaction.next;data.robotPlaying=null;}
+      else data.robotReaction=null;
+    }else if(data.robotFallActive)mode=data.robotFallMode||'falling';
     else if(!shot||shot.elapsed>=shot.duration){
       const pushed=data.robotPushState;
       if(pushed&&now-pushed.at<420&&pushed.speed>.06)mode=pushed.kind;
@@ -289,12 +295,15 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     if(data.robotPlaying!==mode){
       if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){
         animator?.playOnce(mode,shot.timing);
+      }else if(data.robotReaction&&mode===data.robotReaction.clip){
+        const clipSeconds=animator?.clipDuration?.(mode)||data.robotReaction.duration;
+        animator?.playOnce(mode,{rate:Math.max(.85,Math.min(6.5,clipSeconds/Math.max(.15,data.robotReaction.duration))),trimStart:0,trimEnd:0});
       }else animator?.play(mode);
       data.robotPlaying=mode;
     }
     if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){/* playOnce owns rate */}
     else if(data.robotPushState&&now-data.robotPushState.at<420&&mode===data.robotPushState.kind)animator?.setPlaybackSpeed(data.robotPushState.rate);
-    else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode))animator?.setPlaybackSpeed(footfallRate(data.robotActualSpeed,mode));
+    else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode))animator?.setPlaybackSpeed(footfallRate(data.robotActualSpeed,mode)*(mode==='run'&&!animator?.actions?.has?.('run')?1.45:1));
     else animator?.setPlaybackSpeed(1);
     animator?.update(dt);
     const visual=robot.children.find(c=>c.userData.robotVisual);

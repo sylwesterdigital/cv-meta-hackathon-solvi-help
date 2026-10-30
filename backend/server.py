@@ -188,7 +188,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.85',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.86',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1285,7 +1285,7 @@ def research_topic_sources(topic,limit=6):
     import urllib.parse
     sources=[]
     def read_json(url):
-        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.85 (public academic references)','Accept':'application/json'})
+        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.86 (public academic references)','Accept':'application/json'})
         with urlopen(req,timeout=3.5) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Large search response')
             return json.loads(response.read(180001).decode('utf-8'))
@@ -2937,6 +2937,24 @@ def websocket(ws):
                     controlled=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
                 if not controlled or not may_edit(uid,controlled,room_policy(room_id)):continue
                 publish({'type':'robot-motion','room':room_id,'by':uid,'id':identifier,'position':position,'rotation':rotation,'mode':mode},except_id=uid,room_id=room_id)
+            elif msg.get('type')=='robot-impact':
+                # Compact victim impulse event; authority is tied to the attacking
+                # robot. No per-frame pose arrays or client-supplied coordinates.
+                identifier=str(msg.get('id',''))
+                target=str(msg.get('target',''))
+                kind=msg.get('kind')
+                if identifier==target or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',target) or kind not in ('punch','kick','throw','push'):continue
+                try:strength=float(msg.get('force',5));seq=int(msg.get('seq',0))
+                except (ValueError,TypeError,OverflowError):continue
+                if not math.isfinite(strength) or not .5<=strength<=20 or not 0<=seq<=2147483647:continue
+                with db() as con:
+                    row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+                    objects=json.loads(row['payload']) if row else []
+                    attacker=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
+                    victim=next((o for o in objects if o.get('id')==target and o.get('kind')=='robot'),None)
+                if not attacker or not victim or not may_edit(uid,attacker,room_policy(room_id)):continue
+                publish({'type':'robot-impact','room':room_id,'by':uid,'id':identifier,
+                         'target':target,'kind':kind,'force':round(strength,2),'seq':seq},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-action':
                 now_action=time.monotonic()
                 if now_action-last_action<.28:continue

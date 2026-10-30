@@ -42,7 +42,7 @@ test('punch and kick are one-shot with a single mid-clip impulse, never key-down
  const {anim,bot,calls}=harness();const impacts=[];
  const timing=combatTimeline('punch',2);
  assert(timing.rate>2.7&&timing.duration<.7);
- assert(combatTimeline('kick',2).impactPhase>.5);
+ assert(combatTimeline('kick',2).impactPhase>.35&&combatTimeline('kick',2).impactPhase<.5);
  bot.userData.robotOneShot={kind:'punch',clip:'clip:Hook Punch',timing,force:7,remote:false,elapsed:0,duration:timing.duration,impactPhase:timing.impactPhase,impactDone:false};
  const tick=dt=>anim([bot],dt,(...args)=>impacts.push(args));
  tick(.05);assert.equal(impacts.length,0);

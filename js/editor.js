@@ -823,7 +823,15 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(isNew){obj.userData.editorId=id;this.items.push(obj);this.world.scene.add(obj);}
   obj.name=entry.name||obj.name;obj.userData.ownerId=entry.owner||null;obj.userData.transformLocked=entry.transformLocked===true;
   const oldTexture=obj.userData.textureName||'none',newTexture=entry.texture||'none';
-  obj.position.fromArray(entry.position);obj.rotation.fromArray(entry.rotation);obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'&&JSON.stringify(obj.userData.stairs)!==JSON.stringify(entry.stairs))rebuildOfficeStairs(obj,entry.stairs||{});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive);if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)){const prior=obj.geometry;obj.geometry=buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;}
+  // Scene persistence is a checkpoint, not an animation frame. Never rewind
+  // a locally driven or currently predicted remote robot to a stale save.
+  const movingRemote=this.remoteInput.get(id);
+  const preserveRobotPose=!isNew&&entry.kind==='robot'&&(
+    (movingRemote&&performance.now()-movingRemote.received<2400)||
+    (this.controlMode==='robot'&&this.selected===obj&&this.canEdit(obj))||
+    Boolean(obj.userData.robotImpactVelocity));
+  if(!preserveRobotPose){obj.position.fromArray(entry.position);obj.rotation.fromArray(entry.rotation);}
+  obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'&&JSON.stringify(obj.userData.stairs)!==JSON.stringify(entry.stairs))rebuildOfficeStairs(obj,entry.stairs||{});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive);if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)){const prior=obj.geometry;obj.geometry=buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;}
   if(entry.color&&entry.kind!=='model'&&entry.kind!=='media'){obj.traverse(node=>{if(node.material?.color&&node.userData.editorKind!=='robot'){
    if(node.isMesh&&!node.userData.robotPlaceholder&&entry.kind==='robot')return;
    if(node.material.color.getHexString()!==entry.color.slice(1))node.material.color.set(entry.color);
@@ -864,7 +872,19 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  }
  async load(){const api=window.solviAPI;const local=localStorage.getItem('solvi-scene-'+(window.solviRoom||'main'));
   if(!api?.online){if(local)this.apply(JSON.parse(local));this.toast('Local scene loaded (not shared)');return;}
-  try{const data=await api.req('/api/scene?room='+encodeURIComponent(window.solviRoom||'main'));this.revision=data.revision;this.apply(data.objects);this.toast('Shared scene loaded');}catch(e){this.toast(e.message);}}
+  try{
+   const room=window.solviRoom||'main';
+   const data=await api.req('/api/scene?room='+encodeURIComponent(room));
+   this.revision=data.revision;
+   if(this.lastLoadedRoom===room&&this.items.length){
+    // Merge revisions without destroying every GLB and its animation mixer.
+    const next=new Set((data.objects||[]).map(o=>o.id));
+    for(const entry of data.objects||[])this.applyObjectPatch({action:'upsert',object:entry});
+    for(const old of [...this.items])if(!next.has(old.userData.editorId))this.applyObjectPatch({action:'remove',id:old.userData.editorId});
+   }else this.apply(data.objects);
+   this.lastLoadedRoom=room;
+   this.toast('Shared scene loaded');
+  }catch(e){this.toast(e.message);}}
  async save(){const list=this.serialize();const api=window.solviAPI;
   if(!api?.online){localStorage.setItem('solvi-scene-'+(window.solviRoom||'main'),JSON.stringify(list));this.toast('Scene saved locally (not shared)');return;}
   try{const data=await api.req('/api/scene',{method:'PUT',body:JSON.stringify({room:window.solviRoom||'main',revision:this.revision,objects:list})});this.revision=data.revision;this.toast('Shared scene saved');}catch(e){this.toast(e.message);}}
@@ -983,7 +1003,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
       const moving=active(input)||Math.abs(robot.userData.robotVelocity||0)>.04||Math.abs(robot.userData.robotLateral||0)>.04;
       const wasMoving=previous&&(active(previous)||previous.moving);
       const changed=!previous||input.f!==previous.f||input.t!==previous.t||input.r!==previous.r||input.b!==previous.b||input.s!==previous.s||input.q!==previous.q||input.u!==previous.u||input.j!==previous.j;
-      if(changed||((moving||wasMoving)&&now-this.lastRobotPacket>950)){
+      if(changed||((moving||wasMoving)&&now-this.lastRobotPacket>140)){
         window.solviRoomSocket?.send({...packetFor(robot.userData.editorId,{...input,j:input.j&&!previous?.j?1:0},robot,!moving&&!input.j),seq:++this.robotPacketSeq});
         this.lastRobotPacket=now;
       }
@@ -1042,6 +1062,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     robot.userData.robotPlaying=null; // force replay even when alternating the same clip
     robot.userData.robotContactAction=null;
   }
+  applyRemoteRobotImpact(packet){this.physics.applyRobotImpact(packet);}
   applyRemoteRobotAction(packet){
     const robot=this.items.find(o=>o.userData.editorId===packet.id&&o.userData.editorKind==='robot');
     if(!robot||!COMBAT_ACTIONS.includes(packet.action))return;

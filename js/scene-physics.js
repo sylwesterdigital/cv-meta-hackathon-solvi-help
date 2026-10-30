@@ -169,7 +169,7 @@ export class ScenePhysics{
   this.bodies.set(id,body);this.colliders.set(id,collider);this.settings.set(id,signature);
   if(type==='dynamic')body.wakeUp();
   if(isRobot){
-   this.characters.set(id,{verticalSpeed:0,grounded:object.position.y<=.08,previousJump:false,jumpStarted:false,wasAirborne:false});
+   this.characters.set(id,{verticalSpeed:0,grounded:object.position.y<=.08,previousJump:false,jumpStarted:false,wasAirborne:false,airStartY:null,airStartAt:0,jumpStartedAt:0});
    object.userData.physicsCharacterActive=true;
   }
  }
@@ -188,8 +188,21 @@ export class ScenePhysics{
  // Physical contact in the locally owned Rapier world: never displace
  // remote-owned robots, objects, active missions, or targets behind static walls.
  tryPushRobot(actor,target,actorNext,dt,maxStep=.14){
-  if(!this.enabled||!this.world||actor===target||!this.owns(target)||target.userData.robotMission||target.userData.robotGoal)return false;
+  if(!this.enabled||!this.world||actor===target||target.userData.robotMission||target.userData.robotGoal)return false;
   if(actor.userData.editorKind!=='robot'||target.userData.editorKind!=='robot')return false;
+  if(!this.owns(target)){
+   // The attacker's client cannot directly edit someone else's capsule.
+   // Request one small impact event so the victim's owner resolves it with
+   // Rapier and sends its smooth pose stream back to the room.
+   const now=performance.now();
+   if(this.owns(actor)&&now-(target.userData.lastRemoteContact||0)>700){
+    target.userData.lastRemoteContact=now;
+    const packet={type:'robot-impact',id:actor.userData.editorId,target:target.userData.editorId,
+      kind:'push',force:2.5,seq:++this.editor.robotActionSeq};
+    this.applyRobotImpact(packet);window.solviRoomSocket?.send(packet);
+   }
+   return false;
+  }
   // Limit contact displacement by frame time: no sudden 8 m/s shove when
   // a robot takes an ordinary walking step into another capsule.
   const movement=robotPushVector(actorNext,target.position,.68,Math.min(maxStep,Math.max(.008,dt*2.4)));
@@ -209,6 +222,12 @@ export class ScenePhysics{
   body.setNextKinematicTranslation({x:nextX,y:target.position.y,z:nextZ});
   const motion=pushedWalkState({x:computed.x,z:computed.z},target.rotation.y,dt);
   target.userData.robotPushState={...motion,at:performance.now()};
+  const nowPush=performance.now();
+  if(this.owns(actor)&&nowPush-(target.userData.lastPushImpact||0)>650){
+   target.userData.lastPushImpact=nowPush;
+   window.solviRoomSocket?.send({type:'robot-impact',id:actor.userData.editorId,
+     target:target.userData.editorId,kind:'push',force:2.5,seq:++this.editor.robotActionSeq});
+  }
   // A pushed idle robot animates its measured forward/backward/sideways
   // displacement locally; never send an animation array over the network.
   if(!actor.userData.robotOneShot)actor.userData.robotContactAction={kind:'push',until:performance.now()+190};
@@ -242,12 +261,15 @@ export class ScenePhysics{
    const id=target.userData.editorId,body=this.bodies.get(id);
    if(!body)continue;
    if(target.userData.editorKind==='robot'){
-    if(!this.owns(target)||target.userData.robotMission)continue;
-    // Use the same capsule collision controller as ordinary robot contact.
-    this.inCombatAction=true;
-    const move=this.tryPushRobot(actor,target,{x:actor.position.x+forward.x*.72,z:actor.position.z+forward.z*.72},1/30,Math.min(.32,Math.max(.05,Number(force)||5)*.018));
-    this.inCombatAction=false;
-    if(move)hits++;
+    // One compact impact event is the source of truth for the victim's
+    // impulse/reaction, including when the two robots have different owners.
+    // A remote replay of the attack does not generate a second impact.
+    if(fromRemote||kind==='throw'||target.userData.robotMission)continue;
+    const hit={type:'robot-impact',id:actor.userData.editorId,target:id,kind,
+      force:Math.max(.5,Math.min(20,Number(force)||5)),seq:++this.editor.robotActionSeq};
+    this.applyRobotImpact(hit);
+    window.solviRoomSocket?.send(hit);
+    hits++;
     continue;
    }
    if(target.userData.physics?.mode!=='dynamic'||!this.owns(target))continue;
@@ -263,6 +285,33 @@ export class ScenePhysics{
    hits++;
   }
   return hits;
+ }
+ // Compact hit impulse: all peers animate the same reaction while the
+ // victim owner's collider remains authoritative for actual displacement.
+ applyRobotImpact(packet){
+  if(!this.enabled||!this.world||!packet)return false;
+  const target=this.editor.items.find(item=>item.userData.editorId===packet.target&&item.userData.editorKind==='robot');
+  const actor=this.editor.items.find(item=>item.userData.editorId===packet.id&&item.userData.editorKind==='robot');
+  if(!target||!actor||target===actor||target.userData.robotMission)return false;
+  const force=Math.max(.5,Math.min(20,Number(packet.force)||5));
+  const dx=target.position.x-actor.position.x,dz=target.position.z-actor.position.z;
+  const distance=Math.hypot(dx,dz),yaw=actor.rotation.y;
+  const forward={x:Math.sin(yaw),z:Math.cos(yaw)};
+  const direction=distance>.16?{x:dx/distance,z:dz/distance}:forward;
+  // No teleport. Capsule motion is consumed by driveRobot using Rapier's
+  // obstacle-aware character controller on subsequent frames.
+  const speed=Math.min(5.5,.65+force*.22);
+  target.userData.robotImpactVelocity={x:direction.x*speed,z:direction.z*speed};
+  if(packet.kind!=='push'){
+   const head=packet.kind==='kick'&&force>10;
+   const severe=force>=18;
+   const victimClip=severe?'dying':head?'hitHead':'hitBody';
+   const actual=target.userData.robotAnimator?.actions?.has?.(victimClip)?victimClip:
+     target.userData.robotAnimator?.actions?.has?.('hitBody')?'hitBody':'fallingImpact';
+   target.userData.robotReaction={clip:actual,duration:severe?1.3:.58,elapsed:0,next:severe?'standUp':null};
+   target.userData.robotPlaying=null;
+  }
+  return true;
  }
  // Rapier handles movement of dynamic bodies. Show Push only when a movable
  // body actually receives contact in front of the actor, never for a fixed mesh.
@@ -301,11 +350,19 @@ export class ScenePhysics{
   const p=body.translation(),desired={x:object.position.x,y:object.position.y,z:object.position.z};
   // A genuine teleport (e.g. user moving a robot between worlds) is explicit, not used for walking.
   if(Math.hypot(desired.x-p.x,desired.z-p.z)>4){body.setTranslation(desired,true);state.verticalSpeed=0;return;}
+  const impact=object.userData.robotImpactVelocity;
+  const impactBefore=impact?{x:impact.x,z:impact.z}:null;
+  if(impact){
+   desired.x+=impact.x*dt;desired.z+=impact.z*dt;
+   const friction=Math.exp(-Math.max(0,dt)*7);
+   impact.x*=friction;impact.z*=friction;
+   if(Math.hypot(impact.x,impact.z)<.06)delete object.userData.robotImpactVelocity;
+  }
   const wantJump=Number.isFinite(object.userData.jumpVel)&&object.userData.jumpVel>0;
   const canJump=state.grounded||p.y<=.07;
   const jump=wantJump&&canJump;
-  if(jump){object.userData.robotJumpActive=true;state.jumpStarted=true;}
-  if(wantJump)delete object.userData.jumpVel; // one-shot; the rigid-body controller owns subsequent frames
+  if(jump){object.userData.robotJumpActive=true;state.jumpStarted=true;state.wasAirborne=false;state.jumpStartedAt=performance.now();state.jumpStartY=p.y;}
+  if(wantJump)delete object.userData.jumpVel; // one-shot; Rapier owns subsequent vertical frames
   const delta=characterMotion({...p,verticalSpeed:state.verticalSpeed},desired,dt,jump);
   state.verticalSpeed=delta.verticalSpeed;
   if(Math.hypot(delta.x,delta.z)>.003&&Math.hypot(delta.x,delta.z)<.32){
@@ -321,21 +378,63 @@ export class ScenePhysics{
   // walls and the ground must never trigger the Push animation.
   if(desiredHorizontal>.012&&state.grounded&&this.owns(object))this.noteDynamicPush(object,delta,desiredHorizontal);
   const supported=this.hasGroundSupport(resolved,collider);
-  state.verticalSpeed=resolved.verticalSpeed;state.grounded=resolved.grounded&&supported;
-  if(!state.grounded&&state.verticalSpeed>=0&&!jump)state.verticalSpeed=-.1;
+  state.verticalSpeed=resolved.verticalSpeed;
+  // Rapier may report grounded for the first ascending jump frame due to the
+  // collider's snap-to-ground margin. Upward motion must not cancel a jump.
+  const climbing=state.jumpStarted&&state.verticalSpeed>.05;
+  state.grounded=resolved.grounded&&supported&&!climbing;
+  if(!state.grounded&&state.verticalSpeed>=0&&!jump&&!state.jumpStarted)state.verticalSpeed=-.1;
+  const now=performance.now();
+  if(!state.grounded){
+   if(state.airStartY===null||state.airStartY===undefined)state.airStartY=p.y;
+   if(!state.jumpStarted&&state.verticalSpeed<-.65&&now-(state.airStartAt||now)>100){
+    object.userData.robotFallActive=true;
+    object.userData.robotFallMode=state.verticalSpeed< -4?'fallingIdle':'falling';
+   }
+   if(!state.airStartAt)state.airStartAt=now;
+  }else if(state.airStartAt){
+   const fallHeight=Math.max(0,(state.airStartY??p.y)-resolved.y);
+   if(object.userData.robotFallActive&&now-state.airStartAt>120){
+    const heavy=fallHeight>2.5;
+    object.userData.robotReaction={clip:heavy?'fallingImpact':'fallingLanding',duration:heavy?1.25:.65,elapsed:0,next:heavy?'standUp':null};
+    object.userData.robotPlaying=null;
+   }
+   object.userData.robotFallActive=false;
+   state.airStartY=null;state.airStartAt=0;
+  }
   body.setNextKinematicTranslation({x:resolved.x,y:resolved.y,z:resolved.z});
   body.setNextKinematicRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
   object.position.set(resolved.x,resolved.y,resolved.z);
+  if(impactBefore){
+   const dx=resolved.x-p.x,dz=resolved.z-p.z;
+   if(Math.hypot(dx,dz)>.005){
+    const motion=pushedWalkState({x:dx,z:dz},object.rotation.y,dt);
+    object.userData.robotPushState={...motion,at:performance.now()};
+   }
+  }
   object.userData.physicsAirborne=!state.grounded;
   if(state.jumpStarted&&!state.grounded)state.wasAirborne=true;
-  if(state.jumpStarted&&state.wasAirborne&&state.grounded&&!jump){
+  // Only release after a real ascent AND descent. An ascending frame can be
+  // reported as grounded by the Rapier autostep/snap logic.
+  if(state.jumpStarted&&state.wasAirborne&&state.grounded&&!jump&&state.verticalSpeed<=.05){
     state.jumpStarted=false;state.wasAirborne=false;
     object.userData.robotJumpActive=false;
     object.userData.robotMode='idle';object.userData.robotArrived=true;
   }
-  // A jump that is physically blocked vertically also releases the lock.
-  if(state.jumpStarted&&!state.wasAirborne&&state.grounded&&!jump){
+  // Low ceilings may prevent ascent. Still retain the jump pose through its
+  // minimum launch interval, instead of dropping to walk after one frame.
+  if(state.jumpStarted&&!state.wasAirborne&&state.grounded&&!jump&&
+     performance.now()-(state.jumpStartedAt||0)>500){
     state.jumpStarted=false;object.userData.robotJumpActive=false;
+  }
+  // Publish short owner-controlled follow-up poses for impacted idle robots.
+  // The peer interpolates these, rather than periodically snapping to saved positions.
+  if(impact&&this.owns(object)&&performance.now()-(object.userData.lastImpactPacket||0)>110){
+   object.userData.lastImpactPacket=performance.now();
+   const id=object.userData.editorId;
+   window.solviRoomSocket?.send({type:'robot-input',id,f:0,t:0,r:0,b:0,m:0,
+     x:+object.position.x.toFixed(2),y:+object.position.y.toFixed(2),z:+object.position.z.toFixed(2),
+     yaw:+object.rotation.y.toFixed(3),s:1.8,q:2.5,u:4,j:0,seq:++this.editor.robotPacketSeq});
   }
  }
  tick(dt){

@@ -1,5 +1,5 @@
 // Deterministic, engine-independent character state for Rapier kinematic controllers.
-export const CHARACTER = Object.freeze({radius:.29,halfHeight:.61,centerY:.90,gravity:9.81,terminal:19,jumpSpeed:4.6,maxStep:.28,snapDistance:.20,slopeDegrees:48});
+export const CHARACTER = Object.freeze({radius:.29,halfHeight:.61,centerY:.90,gravity:9.81,terminal:19,jumpSpeed:5.7,maxStep:.28,snapDistance:.20,slopeDegrees:48});
 export function characterMotion(previous, desired, dt, jumping=false, config=CHARACTER){
   const time=Math.max(0,Math.min(.065,Number(dt)||0));
   const speedY=jumping?config.jumpSpeed:Math.max(-config.terminal,(Number(previous?.verticalSpeed)||0)-config.gravity*time);

@@ -28,7 +28,7 @@ test('walk/turn/jump and sitting tasks are implemented, not a chatbot-only respo
  const robots=read('js/robots.js'),net=read('js/robot-net.js'),editor=read('js/editor.js');
  for(const action of ['walk','run','jump'])assert.ok(robots.includes(`mode==='${action}'`));
  assert.match(robots,/robot\.rotation\.y\+=/);
- assert.match(robots,/robot\.userData\.jumpVel=4\.6/);
+ assert.match(robots,/robot\.userData\.jumpVel=5\.7/);
  assert.match(robots,/robot\.userData\.robotSitPose=clip\?'clip':'procedural'/);
  assert.match(editor,/e\.code==='Space'/);
  assert.match(net,/u:\+\(i\.u\|\|1\)/);

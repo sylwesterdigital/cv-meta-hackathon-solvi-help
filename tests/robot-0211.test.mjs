@@ -65,7 +65,7 @@ class FakeAction {
 }
 class FakeMixer{constructor(){this.items=new Map();}clipAction(clip){if(!this.items.has(clip.name))this.items.set(clip.name,new FakeAction(clip));return this.items.get(clip.name);}update(){} }
 
-test('Backward uses forward walk clip with negative playhead, then forward restores +1',()=>{
+test('Backward uses an authored backward clip, falling back to reversed walking only when missing',()=>{
   const three={AnimationMixer:FakeMixer,LoopOnce:10,LoopRepeat:20};
   const robot=new MotionController(three,{},[
     {name:'Idle',duration:2},
@@ -76,10 +76,12 @@ test('Backward uses forward walk clip with negative playhead, then forward resto
   const alternate=robot.actions.get('walkBackward');
   assert.notEqual(walking,alternate);
   robot.play('walk',0);assert.equal(walking.scale,1);
-  robot.play('walkBackward');assert.equal(robot.current,walking,'reuse SAME forward-walk animation');
-  assert.equal(walking.scale,-1,'negative timeScale runs keyframes in reverse');
-  assert.ok(walking.time>1.5&&walking.time<1.6,'start near the end of the clip');
+  robot.play('walkBackward');assert.equal(robot.current,alternate,'use the authored backward steps');
+  assert.equal(alternate.scale,1,'play the authored backward cycle forward');
   robot.play('walk');assert.equal(walking.scale,1);assert.equal(walking.time,0);
+  const fallback=new MotionController(three,{},[{name:'Idle',duration:2},{name:'Walking',duration:1.6}]);
+  fallback.play('walkBackward');assert.equal(fallback.current,fallback.actions.get('walk'));
+  assert.equal(fallback.current.scale,-1,'reverse only if no backward clip exists');
 });
 
 test('Legacy visual correction does not alter robot root yaw or reverse heading',()=>{
