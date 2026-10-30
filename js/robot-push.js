@@ -10,6 +10,8 @@ export function robotPushVector(actorNext,target,minimum=0.68,maxStep=.14){
 }
 export function pushedWalkState(positionDelta,yaw,dt){
  const speed=Math.hypot(positionDelta.x,positionDelta.z)/Math.max(.016,dt);
- const facing=positionDelta.x*Math.sin(yaw)+positionDelta.z*Math.cos(yaw);
- return {kind:speed<.06?'idle':facing<0?'walkBackward':'walk',rate:Math.max(.35,Math.min(1.9,speed/1.2)),speed};
+ const forward=positionDelta.x*Math.sin(yaw)+positionDelta.z*Math.cos(yaw);
+ const lateral=positionDelta.x*Math.cos(yaw)-positionDelta.z*Math.sin(yaw);
+ const kind=speed<.06?'idle':Math.abs(lateral)>Math.abs(forward)*1.15?(lateral>0?'strafeRight':'strafeLeft'):forward<0?'walkBackward':'walk';
+ return {kind,rate:Math.max(.9,Math.min(2.3,speed/1.2)),speed};
 }

@@ -43,7 +43,7 @@ test('physics contact uses Push animation, forces and platform support probe',()
  assert.match(physics,/body\.setTranslation\(\{x:actor\.position\.x/);
  assert.match(physics,/hasGroundSupport\(resolved,collider\)/);
  assert.match(physics,/state\.grounded=resolved\.grounded&&supported/);
- assert.match(robots,/footfallRate\(robot\.userData\.robotActualSpeed/);
+ assert.match(robots,/footfallRate\(data\.robotActualSpeed/);
  const snapshot=editor.indexOf('const previousRobotPositions=new Map');
  const motion=editor.indexOf('stepRobotMotion(',editor.indexOf('tick(dt){'));
  assert.ok(snapshot>0&&motion>snapshot,'speed snapshot must precede player movement');
@@ -59,7 +59,8 @@ test('persisted compact per-robot control settings are validated for bulk and at
  assert.match(s,/if obj\['kind'\]=='robot' and 'combat' in obj and not valid_robot_combat/);
  assert.match(editor,/combat:o\.userData\.editorKind==='robot'/);
  assert.match(editor,/this\.triggerRobotCombat\(this\.selected/);
- assert.match(editor,/this\.physics\.applyCombat\(robot,action,force\)/);
+ assert.match(editor,/animateRobots\(this\.items,dt,/);
+ assert.match(editor,/this\.physics\.applyCombat\(actor,kind,force,remote\)/);
 });
 
 

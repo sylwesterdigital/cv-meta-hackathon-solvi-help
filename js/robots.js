@@ -3,7 +3,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MotionController,computeMode} from './animations.js';
 import {pathBlocked} from './robot-pathfinding.js';
-import {footfallRate} from './robot-combat.js';
+import {footfallRate,combatPhase} from './robot-combat.js';
 
 const loader=new GLTFLoader();
 const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');loader.setDRACOLoader(draco);
@@ -68,7 +68,7 @@ export function robotAction(robot,mode){
   }
   robot.userData.robotAnimator?.play(mode);
   if(mode==='wave')robot.userData.waveEnd=performance.now()+1800;
-  if(mode==='jump'){robot.userData.robotJumpUntil=performance.now()+1050;robot.userData.jumpVel=4.6;robot.userData.groundY=robot.position.y;}
+  if(mode==='jump'){robot.userData.robotJumpActive=true;robot.userData.robotJumpUntil=performance.now()+1050;robot.userData.jumpVel=4.6;robot.userData.groundY=robot.position.y;}
 }
 export function tickRobots(items,dt,onMove=()=>{}){
   for(const robot of items){
@@ -98,7 +98,7 @@ export function tickRobots(items,dt,onMove=()=>{}){
     }
     if(mode==='jump'&&robot.userData.jumpVel!==undefined&&!robot.userData.physicsCharacterActive){
       robot.position.y+=robot.userData.jumpVel*dt;robot.userData.jumpVel-=12.5*dt;
-      if(robot.position.y<=(robot.userData.groundY??0)){robot.position.y=robot.userData.groundY??0;delete robot.userData.jumpVel;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;
+      if(robot.position.y<=(robot.userData.groundY??0)){robot.position.y=robot.userData.groundY??0;delete robot.userData.jumpVel;robot.userData.robotJumpActive=false;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;
         const mission=robot.userData.robotMission;
         if(mission?.kind==='jump'){robot.userData.robotMission=null;
           window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,
@@ -182,30 +182,11 @@ export function tickRobots(items,dt,onMove=()=>{}){
         const angle=Math.atan2(delta.x,delta.z);robot.rotation.y+=Math.atan2(Math.sin(angle-robot.rotation.y),Math.cos(angle-robot.rotation.y))*clamp(dt*6,0,1);
       }
     }
-    const contact=robot.userData.robotContactAction;
-    if(contact&&performance.now()<contact.until)mode=contact.clip||contact.kind;
-    else if(contact){robot.userData.robotContactAction=null;if(mode==='push'||String(mode).startsWith('clip:'))mode=robot.userData.robotGoal?'walk':'idle';}
-    const push=robot.userData.robotPushState;
-    if(!contact&&push&&performance.now()-push.at<270&&!robot.userData.robotGoal&&!robot.userData.robotMission&&mode==='idle'){mode=push.kind;}
-    const visual=robot.children.find(c=>c.userData.robotVisual);if(visual){const lean=(robot.userData.robotLateral||0)*-.075;visual.rotation.z+=(lean-visual.rotation.z)*Math.min(1,dt*5);}
-    if(robot.userData.robotPlaying!==mode){robot.userData.robotAnimator?.play(mode);robot.userData.robotPlaying=mode;}
-    // Footfall cadence follows measured displacement, not an in-place walk timer.
-    if(push&&performance.now()-push.at<270&&mode===push.kind)robot.userData.robotAnimator?.setPlaybackSpeed(push.rate);
-    else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode))robot.userData.robotAnimator?.setPlaybackSpeed(footfallRate(robot.userData.robotActualSpeed,mode));
-    else robot.userData.robotAnimator?.setPlaybackSpeed(1);
-    robot.userData.robotAnimator?.update(dt);
-    if(robot.userData.robotSeated&&robot.userData.robotSitPose==='procedural'){
-      const visualModel=visual?.children[0];
-      if(visualModel){visualModel.position.y+=(Math.max(-.40,(visualModel.userData.sitBaseY??visualModel.position.y)-.32)-visualModel.position.y)*Math.min(1,dt*4);
-        visualModel.traverse(bone=>{if(!bone.isBone)return;const name=bone.name.toLowerCase();
-          if(/(?:left|right|l_|r_).*(?:upleg|thigh|upperleg)|(?:upleg|thigh|upperleg).*(?:left|right)/.test(name))bone.rotation.x+=((bone.userData.sitBaseX??(bone.userData.sitBaseX=bone.rotation.x))+1.0-bone.rotation.x)*Math.min(1,dt*5);
-          if(/(?:left|right|l_|r_).*(?:leg|calf|shin)|(?:calf|shin|lowerleg).*(?:left|right)/.test(name)&&!/upper|thigh|upleg/.test(name))bone.rotation.x+=((bone.userData.sitBaseX??(bone.userData.sitBaseX=bone.rotation.x))-.9-bone.rotation.x)*Math.min(1,dt*5);
-        });
-      }
-    }else if(visual?.children[0]?.userData.sitBaseY!==undefined){const model=visual.children[0];model.position.y+=(model.userData.sitBaseY-model.position.y)*Math.min(1,dt*5);}
+    robot.userData.robotMode=mode;
     if(robot.userData.robotGoal||robot.userData.robotMission||robot.userData.robotArrived){onMove(robot,Boolean(robot.userData.robotArrived));robot.userData.robotArrived=false;}
   }
 }
+
 export function setRobotDestination(robot,point,run=false){
   if(!robot||robot.userData.editorKind!=='robot')return;
   robot.userData.robotGoal=new THREE.Vector3(point.x,robot.position.y,point.z);
@@ -270,4 +251,62 @@ export async function captureRobotPortrait(world,robot){
   const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.88));
   if(!blob?.size)throw Error('Headshot render did not create an image.');
   return blob;
+}
+
+// Run AFTER Rapier has resolved capsule movement. Locomotion cadence and
+// pushed direction reflect the actual displacement of the current frame.
+export function animateRobots(items,dt,onImpact=()=>{}){
+  for(const robot of items){
+    if(robot.userData.editorKind!=='robot')continue;
+    const data=robot.userData;
+    const now=performance.now();
+    let mode=data.robotMode||'idle';
+    const shot=data.robotOneShot;
+    if(shot){
+      shot.elapsed+=Math.max(0,dt);
+      if(!shot.impactDone&&combatPhase(shot.elapsed,shot.duration)>=shot.impactPhase){
+        shot.impactDone=true;
+        onImpact(robot,shot.kind,shot.force,shot.remote);
+      }
+      if(shot.elapsed<shot.duration){mode=shot.clip;}
+      else{data.robotOneShot=null;mode=data.robotMode||'idle';}
+    }
+    // Jump owns animation until Rapier confirms landing. Movement input,
+    // stair autostep and contact clips cannot abort a jump in midair.
+    if(data.robotJumpActive||data.physicsAirborne&&data.robotMode==='jump')mode='jump';
+    else if(!shot||shot.elapsed>=shot.duration){
+      const pushed=data.robotPushState;
+      if(pushed&&now-pushed.at<420&&pushed.speed>.06)mode=pushed.kind;
+      else{
+        const contact=data.robotContactAction;
+        if(contact&&now<contact.until)mode=contact.clip||contact.kind;
+        else if(contact)data.robotContactAction=null;
+      }
+    }
+    // Do not walk in place against an immovable wall or stair riser.
+    if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode)&&data.robotActualSpeed<.06&&!data.robotContactAction)mode='idle';
+    const animator=data.robotAnimator;
+    if(data.robotPlaying!==mode){
+      if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){
+        animator?.playOnce(mode,shot.timing);
+      }else animator?.play(mode);
+      data.robotPlaying=mode;
+    }
+    if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){/* playOnce owns rate */}
+    else if(data.robotPushState&&now-data.robotPushState.at<420&&mode===data.robotPushState.kind)animator?.setPlaybackSpeed(data.robotPushState.rate);
+    else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode))animator?.setPlaybackSpeed(footfallRate(data.robotActualSpeed,mode));
+    else animator?.setPlaybackSpeed(1);
+    animator?.update(dt);
+    const visual=robot.children.find(c=>c.userData.robotVisual);
+    if(visual){const lean=(data.robotLateral||0)*-.075;visual.rotation.z+=(lean-visual.rotation.z)*Math.min(1,dt*5);}
+    if(robot.userData.robotSeated&&robot.userData.robotSitPose==='procedural'){
+      const visualModel=visual?.children[0];
+      if(visualModel){visualModel.position.y+=(Math.max(-.40,(visualModel.userData.sitBaseY??visualModel.position.y)-.32)-visualModel.position.y)*Math.min(1,dt*4);
+        visualModel.traverse(bone=>{if(!bone.isBone)return;const name=bone.name.toLowerCase();
+          if(/(?:left|right|l_|r_).*(?:upleg|thigh|upperleg)|(?:upleg|thigh|upperleg).*(?:left|right)/.test(name))bone.rotation.x+=((bone.userData.sitBaseX??(bone.userData.sitBaseX=bone.rotation.x))+1.0-bone.rotation.x)*Math.min(1,dt*5);
+          if(/(?:left|right|l_|r_).*(?:leg|calf|shin)|(?:calf|shin|lowerleg).*(?:left|right)/.test(name)&&!/upper|thigh|upleg/.test(name))bone.rotation.x+=((bone.userData.sitBaseX??(bone.userData.sitBaseX=bone.rotation.x))-.9-bone.rotation.x)*Math.min(1,dt*5);
+        });
+      }
+    }else if(visual?.children[0]?.userData.sitBaseY!==undefined){const model=visual.children[0];model.position.y+=(model.userData.sitBaseY-model.position.y)*Math.min(1,dt*5);}
+  }
 }

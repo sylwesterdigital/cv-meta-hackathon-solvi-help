@@ -47,6 +47,7 @@ export class ScenePhysics{
   this.characterController=null;this.accumulator=0;
   for(const object of this.editor.items||[]){if(object.userData.editorKind==='robot'){
    object.userData.physicsCharacterActive=false;object.userData.physicsAirborne=false;
+   object.userData.robotJumpActive=false;
   }}
  }
  remove(id){
@@ -168,7 +169,7 @@ export class ScenePhysics{
   this.bodies.set(id,body);this.colliders.set(id,collider);this.settings.set(id,signature);
   if(type==='dynamic')body.wakeUp();
   if(isRobot){
-   this.characters.set(id,{verticalSpeed:0,grounded:object.position.y<=.08,previousJump:false});
+   this.characters.set(id,{verticalSpeed:0,grounded:object.position.y<=.08,previousJump:false,jumpStarted:false,wasAirborne:false});
    object.userData.physicsCharacterActive=true;
   }
  }
@@ -187,9 +188,11 @@ export class ScenePhysics{
  // Physical contact in the locally owned Rapier world: never displace
  // remote-owned robots, objects, active missions, or targets behind static walls.
  tryPushRobot(actor,target,actorNext,dt,maxStep=.14){
-  if(!this.enabled||!this.world||actor===target||!this.owns(actor)||!this.owns(target)||target.userData.robotMission||target.userData.robotGoal)return false;
+  if(!this.enabled||!this.world||actor===target||!this.owns(target)||target.userData.robotMission||target.userData.robotGoal)return false;
   if(actor.userData.editorKind!=='robot'||target.userData.editorKind!=='robot')return false;
-  const movement=robotPushVector(actorNext,target.position,.68,maxStep);
+  // Limit contact displacement by frame time: no sudden 8 m/s shove when
+  // a robot takes an ordinary walking step into another capsule.
+  const movement=robotPushVector(actorNext,target.position,.68,Math.min(maxStep,Math.max(.008,dt*2.4)));
   if(!movement)return false;
   const collider=this.colliders.get(target.userData.editorId),body=this.bodies.get(target.userData.editorId);
   if(!collider||!body)return false;
@@ -206,8 +209,10 @@ export class ScenePhysics{
   body.setNextKinematicTranslation({x:nextX,y:target.position.y,z:nextZ});
   const motion=pushedWalkState({x:computed.x,z:computed.z},target.rotation.y,dt);
   target.userData.robotPushState={...motion,at:performance.now()};
-  if(!actor.userData.robotContactAction||performance.now()>=actor.userData.robotContactAction.until||actor.userData.robotContactAction.kind==='push')actor.userData.robotContactAction={kind:'push',until:performance.now()+360};
-  if(!this.inCombatAction&&performance.now()-(actor.userData.lastContactPacket||0)>850){
+  // A pushed idle robot animates its measured forward/backward/sideways
+  // displacement locally; never send an animation array over the network.
+  if(!actor.userData.robotOneShot)actor.userData.robotContactAction={kind:'push',until:performance.now()+190};
+  if(this.owns(actor)&&!this.inCombatAction&&performance.now()-(actor.userData.lastContactPacket||0)>850){
    actor.userData.lastContactPacket=performance.now();
    window.solviRoomSocket?.send({type:'robot-action',id:actor.userData.editorId,action:'push',force:5,seq:++this.editor.robotActionSeq});
   }
@@ -225,9 +230,15 @@ export class ScenePhysics{
   let hits=0;
   for(const target of this.editor.items){
    if(target===actor||!target.userData.editorId||target.userData.editorKind==='light')continue;
-   const dx=target.position.x-actor.position.x,dz=target.position.z-actor.position.z;
+   // Strike the closest point of the target collider's world bounds rather
+   // than its pivot. Large spheres / furniture can be hit at the edge.
+   const box=new THREE.Box3().setFromObject(target);
+   const nearX=Math.max(box.min.x,Math.min(box.max.x,actor.position.x));
+   const nearZ=Math.max(box.min.z,Math.min(box.max.z,actor.position.z));
+   const dx=nearX-actor.position.x,dz=nearZ-actor.position.z;
+   const cx=target.position.x-actor.position.x,cz=target.position.z-actor.position.z;
    const distance=Math.hypot(dx,dz);
-   if(distance>reach||dx*forward.x+dz*forward.z<-.15)continue;
+   if(distance>reach||cx*forward.x+cz*forward.z<-.15)continue;
    const id=target.userData.editorId,body=this.bodies.get(id);
    if(!body)continue;
    if(target.userData.editorKind==='robot'){
@@ -236,7 +247,7 @@ export class ScenePhysics{
     this.inCombatAction=true;
     const move=this.tryPushRobot(actor,target,{x:actor.position.x+forward.x*.72,z:actor.position.z+forward.z*.72},1/30,Math.min(.32,Math.max(.05,Number(force)||5)*.018));
     this.inCombatAction=false;
-    if(move){hits++;target.userData.robotPushState={...pushedWalkState({x:forward.x*.14,z:forward.z*.14},target.rotation.y,1/30),at:performance.now()};}
+    if(move)hits++;
     continue;
    }
    if(target.userData.physics?.mode!=='dynamic'||!this.owns(target))continue;
@@ -252,6 +263,28 @@ export class ScenePhysics{
    hits++;
   }
   return hits;
+ }
+ // Rapier handles movement of dynamic bodies. Show Push only when a movable
+ // body actually receives contact in front of the actor, never for a fixed mesh.
+ noteDynamicPush(actor,delta,distance){
+  if(!this.enabled||distance<.008)return false;
+  const direction={x:delta.x/distance,z:delta.z/distance};
+  for(const target of this.editor.items){
+   if(target===actor||target.userData.editorKind==='robot'||target.userData.physics?.mode!=='dynamic'||!this.owns(target))continue;
+   const body=this.bodies.get(target.userData.editorId);
+   if(!body?.isDynamic?.())continue;
+   const dx=target.position.x-actor.position.x,dz=target.position.z-actor.position.z;
+   const front=dx*direction.x+dz*direction.z;
+   const lateral=Math.abs(dx*direction.z-dz*direction.x);
+   const bounds=new THREE.Box3().setFromObject(target),span=bounds.getSize(new THREE.Vector3());
+   const radius=Math.min(2.5,Math.max(.1,Math.hypot(span.x,span.z)*.5));
+   if(front<-.08||front>radius+.43||lateral>radius+.35)continue;
+   // Body is eligible for Rapier's dynamic impulses; static stairs / walls
+   // and kinematic objects do not qualify even if their boxes overlap.
+   actor.userData.robotContactAction={kind:'push',until:performance.now()+190};
+   return true;
+  }
+  return false;
  }
  // The character controller can report a sticky "grounded" result at a lip.
  // Probe directly under the next capsule foot to distinguish a real support
@@ -271,6 +304,7 @@ export class ScenePhysics{
   const wantJump=Number.isFinite(object.userData.jumpVel)&&object.userData.jumpVel>0;
   const canJump=state.grounded||p.y<=.07;
   const jump=wantJump&&canJump;
+  if(jump){object.userData.robotJumpActive=true;state.jumpStarted=true;}
   if(wantJump)delete object.userData.jumpVel; // one-shot; the rigid-body controller owns subsequent frames
   const delta=characterMotion({...p,verticalSpeed:state.verticalSpeed},desired,dt,jump);
   state.verticalSpeed=delta.verticalSpeed;
@@ -282,8 +316,10 @@ export class ScenePhysics{
   }
   this.characterController.computeColliderMovement(collider,{x:delta.x,y:delta.y,z:delta.z});
   const resolved=resolveCharacterMotion(p,this.characterController.computedMovement(),this.characterController.computedGrounded(),state.verticalSpeed);
-  const desiredHorizontal=Math.hypot(delta.x,delta.z),actualHorizontal=Math.hypot(resolved.x-p.x,resolved.z-p.z);
-  if(desiredHorizontal>.012&&actualHorizontal<desiredHorizontal*.4&&state.grounded){object.userData.robotContactAction={kind:'push',until:performance.now()+260};}
+  const desiredHorizontal=Math.hypot(delta.x,delta.z);
+  // A blocked capsule is NOT proof of a push: stair risers, static trimeshes,
+  // walls and the ground must never trigger the Push animation.
+  if(desiredHorizontal>.012&&state.grounded&&this.owns(object))this.noteDynamicPush(object,delta,desiredHorizontal);
   const supported=this.hasGroundSupport(resolved,collider);
   state.verticalSpeed=resolved.verticalSpeed;state.grounded=resolved.grounded&&supported;
   if(!state.grounded&&state.verticalSpeed>=0&&!jump)state.verticalSpeed=-.1;
@@ -291,7 +327,16 @@ export class ScenePhysics{
   body.setNextKinematicRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
   object.position.set(resolved.x,resolved.y,resolved.z);
   object.userData.physicsAirborne=!state.grounded;
-  if(state.grounded&&object.userData.robotMode==='jump'&&!jump){object.userData.robotMode='idle';object.userData.robotArrived=true;}
+  if(state.jumpStarted&&!state.grounded)state.wasAirborne=true;
+  if(state.jumpStarted&&state.wasAirborne&&state.grounded&&!jump){
+    state.jumpStarted=false;state.wasAirborne=false;
+    object.userData.robotJumpActive=false;
+    object.userData.robotMode='idle';object.userData.robotArrived=true;
+  }
+  // A jump that is physically blocked vertically also releases the lock.
+  if(state.jumpStarted&&!state.wasAirborne&&state.grounded&&!jump){
+    state.jumpStarted=false;object.userData.robotJumpActive=false;
+  }
  }
  tick(dt){
   if(!this.enabled||!this.world)return;

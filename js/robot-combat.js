@@ -36,5 +36,17 @@ export function impactImpulse(direction,force,kind){
 }
 export function footfallRate(speed,kind){
  const target=kind==='run'?2.9:kind==='walkBackward'?1.15:1.25;
- return Math.max(.72,Math.min(2.3,(Number.isFinite(speed)?speed:target)/target));
+ return Math.max(.90,Math.min(2.3,(Number.isFinite(speed)?speed:target)/target));
 }
+
+// Clip phases are normalized, not wall-clock delays from the key-down event.
+// The limb should reach contact around the middle of the authored action.
+export function combatTimeline(kind,clipSeconds=0){
+ const target={punch:.58,kick:.78,throw:1.02,push:.76}[kind]||.7;
+ const source=Number.isFinite(clipSeconds)&&clipSeconds>.05?clipSeconds:target;
+ const trimStart=.055,trimEnd=.075;
+ const rate=Math.max(.85,Math.min(6.5,source*(1-trimStart-trimEnd)/target));
+ const duration=(source*(1-trimStart-trimEnd))/rate;
+ return {duration:Math.max(.16,duration),rate,trimStart,trimEnd,impactPhase:{punch:.52,kick:.59,throw:.62,push:.52}[kind]||.55};
+}
+export function combatPhase(elapsed,duration){return Math.min(1,Math.max(0,(Number(elapsed)||0)/Math.max(.001,duration)));}

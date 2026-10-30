@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.84",
+  "currentVersion": "0.2.85",
   "releases": [
+    {
+      "version": "0.2.85",
+      "publishedAt": "2026-10-30T20:34:11Z",
+      "changes": [
+        "Prevent static walls, floors and stair trimeshes from triggering a Push animation: contact now requires a nearby movable dynamic body or actual robot-to-robot displacement.",
+        "Animate only after Rapier resolves movement so walking cadence follows current-frame displacement; prevent slow in-place limping when blocked by fixed scenery.",
+        "Keep Jump animation active until the character controller records actual airborne movement and subsequent landing, regardless of keyboard movement or stair autostep.",
+        "Give Punch/Kick/Throw one-shot Mixamo clip playback with clipped intro/outro, action-length scaling and a once-only mid-clip Rapier impulse instead of a key-down impact.",
+        "Drive pushed robot forward, backward or lateral step animations from actual capsule displacement with frame-limited motion; preserve remote action packets and owner-simulated dynamic bodies.",
+        "Use collider world bounds rather than pivot distance for combat hits on spheres and furniture; keep physics impulses limited to movable bodies.",
+        "Add six executable animation lifecycle tests and retain existing movement and backend route regression coverage."
+      ]
+    },
     {
       "version": "0.2.84",
       "publishedAt": "2026-10-30T20:10:15Z",
@@ -331,17 +344,6 @@
         "Serialize rapid autosaves, preserve latest edits across concurrent responses, and keep a room-specific local draft on network or permission failures for retry on reopen, reconnect or reload.",
         "Show compact saving, saved, or failed status directly under the World Settings header, and automatically persist an explicitly confirmed reset to defaults.",
         "Add autosave lifecycle regression tests for save, failure/retry, room isolation and fast slider changes; verify mobile and desktop drawer layouts."
-      ]
-    },
-    {
-      "version": "0.2.51",
-      "publishedAt": "2026-10-29T03:07:57Z",
-      "changes": [
-        "Add a shared Assets gallery after Avatars in World tools, browsing existing uploaded GLB/FBX models with searchable 3D previews and a new upload option.",
-        "Add Upload model and Assets swap actions directly in the Properties object-actions row for selected 3D models; preserve object identity, pose, scale and physics settings when replacing geometry.",
-        "Preflight replacement model loading, handle missing assets without deleting the previous model, and invalidate/rebuild Rapier collision shapes after replacement and scale edits.",
-        "Compute accurate scaled model collider bounds in local rigid-body axes so rotated objects no longer get inflated world-axis colliders.",
-        "Add tests for uploaded-asset validation, replacement persistence, collider scale and rotation geometry, and compact mobile/tablet/desktop Assets and Properties layouts."
       ]
     }
   ]

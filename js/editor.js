@@ -3,7 +3,7 @@ import {setupAvatarGallery} from './avatar-gallery.js';
 import {setupAssetGallery} from './asset-gallery.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
 import {EditHistory,duplicateElevation,nextDuplicateName} from './edit-history.js';
-import {makeRobot,hydrateRobot,robotAction,tickRobots,setRobotDestination,interruptRobotMission,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
+import {makeRobot,hydrateRobot,robotAction,tickRobots,animateRobots,setRobotDestination,interruptRobotMission,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
 import {intent,active,packetFor,stepRobotMotion,signedAngle,makeRemoteCorrection,applyRemoteCorrection} from './robot-net.js';
 import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneModelRenderer,isSceneModelURL,loadSceneAsset} from './scene-models.js';
 import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,toggleSceneMediaPlayback,setSceneMediaMuted,setSceneMediaLoop,setSceneMediaSpatial,syncSceneMediaGroup,sceneMediaMuted,sceneMediaPlaying,sceneMediaKind,showSceneMediaCaptions} from './scene-media.js';
@@ -16,7 +16,7 @@ import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobot
 import {robotPathVisible} from './robot-debug.js';
 import {plannedRouteLength,newMovementTelemetry,sampleMovementTelemetry,missionMovementEvidence,shouldRejectClaimedArrival} from './robot-telemetry.js';
 import {physicsOptions} from './physics-options.js';
-import {combatSettings,combatForKey,combatClip,COMBAT_ACTIONS} from './robot-combat.js';
+import {combatSettings,combatForKey,combatClip,combatTimeline,COMBAT_ACTIONS} from './robot-combat.js';
 import {isTransformLocked,mayTransform} from './transform-lock.js';
 import {OrbitGesture,recoverStaleOrbitPointers} from './orbit-gesture.js';
 import {readPreferences} from './preferences.js';
@@ -974,7 +974,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
       robot.userData.robotVelocity=motion.velocity;robot.userData.robotSteer=motion.steer;robot.userData.robotLateral=motion.lateral;
       const walking=Math.abs(motion.velocity)>.04;const strafing=Math.abs(motion.lateral)>.04;
       if(input.f||input.t||input.j)interruptRobotMission(robot);
-      if(robot.userData.jumpVel===undefined&&!robot.userData.physicsAirborne){
+      if(!robot.userData.robotJumpActive&&robot.userData.jumpVel===undefined&&!robot.userData.physicsAirborne){
        if(!robot.userData.robotMission&&!robot.userData.robotSeated)robot.userData.robotMode=!walking?(strafing?(motion.lateral>0?'strafeLeft':'strafeRight'):'idle'):motion.velocity<0?'walkBackward':(input.r&&motion.velocity>1.4?'run':'walk');
       }
     }
@@ -996,7 +996,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
       if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotMode='idle';other.userData.robotVelocity=0;other.userData.robotSteer=0;other.userData.robotLateral=0;}continue;}
       const next=stepRobotMotion({x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0,steer:other.userData.robotSteer||0,lateral:other.userData.robotLateral||0},remote,dt);
       other.position.x=next.x;other.position.z=next.z;other.rotation.y=next.yaw;other.userData.robotVelocity=next.velocity;other.userData.robotSteer=next.steer;other.userData.robotLateral=next.lateral;
-      if(other.userData.jumpVel===undefined&&!other.userData.physicsAirborne){other.userData.robotMode=Math.abs(next.velocity)<.04?(Math.abs(next.lateral)>.04?(next.lateral>0?'strafeLeft':'strafeRight'):'idle'):next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
+      if(!other.userData.robotJumpActive&&other.userData.jumpVel===undefined&&!other.userData.physicsAirborne){other.userData.robotMode=Math.abs(next.velocity)<.04?(Math.abs(next.lateral)>.04?(next.lateral>0?'strafeLeft':'strafeRight'):'idle'):next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
     }
     // Smooth server-authoritative corrections without reloading the avatar mesh.
     for(const [id,correction] of this.remoteCorrections){
@@ -1015,6 +1015,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot)}));
     this.physics.tick(dt);
     for(const r of this.items){if(r.userData.editorKind!=='robot')continue;const previous=previousRobotPositions.get(r.userData.editorId);if(!previous)continue;const distance=Math.hypot(r.position.x-previous.x,r.position.z-previous.z);r.userData.robotActualSpeed=distance/Math.max(.016,dt);}
+    animateRobots(this.items,dt,(actor,kind,force,remote)=>this.physics.applyCombat(actor,kind,force,remote));
     for(const item of this.items){if(item.userData.editorKind!=='robot')continue;
       if(item.userData.robotTelemetry&&item.userData.robotMission)sampleMovementTelemetry(item.userData.robotTelemetry,item);
       if(item.userData.robotMission&&this.robotPathDebugVisible(item))trackRobotPathDebug(this.world,item);}
@@ -1022,18 +1023,24 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   triggerRobotCombat(robot,action){
     if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot))return false;
     if(!this.physics.enabled||!this.physics.world){this.toast('Enable room Physics to use combat actions');return false;}
+    if(robot.userData.robotJumpActive||robot.userData.robotOneShot)return false;
     const now=performance.now();if(now-this.lastRobotCombat<340)return false;
     this.lastRobotCombat=now;const settings=combatSettings(robot.userData.robotCombat),force=settings[action].force;
-    this.playRobotCombat(robot,action);
-    this.physics.applyCombat(robot,action,force);
+    this.playRobotCombat(robot,action,force,false);
+    // No impulse here: the physical contact occurs at the clip's impact phase.
     window.solviRoomSocket?.send({type:'robot-action',id:robot.userData.editorId,action,force,seq:++this.robotActionSeq});
     return true;
   }
-  playRobotCombat(robot,action){
+  playRobotCombat(robot,action,force=5,remote=false){
     const last=robot.userData.lastCombatClip||'';
     const clip=combatClip(robot.userData.robotAvailableActions||[],action,last);
     if(clip)robot.userData.lastCombatClip=clip;
-    robot.userData.robotContactAction={kind:action,clip:clip?'clip:'+clip:action==='push'?'push':'wave',until:performance.now()+(action==='throw'?900:action==='kick'?720:550)};
+    const selectedClip=clip?'clip:'+clip:action==='push'?'push':'wave';
+    const timing=combatTimeline(action,robot.userData.robotAnimator?.clipDuration(selectedClip)||0);
+    robot.userData.robotOneShot={kind:action,clip:selectedClip,timing,force,remote,
+      elapsed:0,duration:timing.duration,impactPhase:timing.impactPhase,impactDone:false};
+    robot.userData.robotPlaying=null; // force replay even when alternating the same clip
+    robot.userData.robotContactAction=null;
   }
   applyRemoteRobotAction(packet){
     const robot=this.items.find(o=>o.userData.editorId===packet.id&&o.userData.editorKind==='robot');
@@ -1041,8 +1048,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     const seq=Number(packet.seq)||0,prior=this.remoteActionSequences.get(packet.id)||0;
     if(seq&&seq<=prior)return;
     this.remoteActionSequences.set(packet.id,seq);
-    this.playRobotCombat(robot,packet.action);
-    this.physics.applyCombat(robot,packet.action,packet.force,true);
+    this.playRobotCombat(robot,packet.action,packet.force,true);
   }
   applyRobotInput(packet){
     const robot=this.items.find(o=>o.userData.editorId===packet.id&&o.userData.editorKind==='robot');
@@ -1055,7 +1061,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     const x=Number(packet.x),z=Number(packet.z),yaw=Number(packet.yaw);
     if(Number.isFinite(x)&&Number.isFinite(z)&&Number.isFinite(yaw))this.remoteCorrections.set(packet.id,makeRemoteCorrection({x:robot.position.x,z:robot.position.z,yaw:robot.rotation.y},{x,z,yaw}));
     if(packet.m&&(packet.f||packet.t))robot.userData.robotGoal=null;
-    if(packet.j&&!robot.userData.jumpVel)robotAction(robot,'jump');
+    if(packet.j&&!robot.userData.jumpVel&&!robot.userData.robotJumpActive)robotAction(robot,'jump');
     if(!packet.m){
       // Decelerate through the same motion integrator instead of stopping at once.
       this.remoteInput.set(packet.id,{f:0,t:0,r:0,b:0,s:packet.s??1.8,q:packet.q??2.5,u:packet.u??4,received:performance.now()});

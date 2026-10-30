@@ -23,7 +23,7 @@ export function computeMode(speed){return speed<.05?'idle':speed<2?'walk':'run';
 export class MotionController{
   constructor(THREE,root,clips){
     this.THREE=THREE;this.mixer=new THREE.AnimationMixer(root);
-    this.actions=new Map();this.current=null;this.currentKind=null;this.playbackSpeed=1;this.clipNames=clips.map(c=>String(c.name||'')).filter(Boolean);
+    this.actions=new Map();this.current=null;this.currentKind=null;this.playbackSpeed=1;this.oneShotStopAt=null;this.clipNames=clips.map(c=>String(c.name||'')).filter(Boolean);
     for(const kind of Object.keys(MOTION_ALIASES)){
       const clip=findClip(clips,kind);
       if(clip)this.actions.set(kind,this.mixer.clipAction(clip));
@@ -31,7 +31,8 @@ export class MotionController{
     for(const clip of clips)if(clip.name)this.actions.set('clip:'+clip.name,this.mixer.clipAction(clip));
     this.play('idle',0);
   }
-  play(kind,fade=.34){
+  clipDuration(kind){return this.actions.get(kind)?.getClip()?.duration||0;}
+  play(kind,fade=.22){
     // Reverse walking means running the *same forward walk clip* backwards,
     // so leg/foot positions rewind instead of playing a separate forward-timed
     // action. Only use a dedicated backward clip when no walk clip exists.
@@ -47,6 +48,7 @@ export class MotionController{
       }
       return;
     }
+    this.oneShotStopAt=null;action.paused=false;
     action.reset().setEffectiveWeight(1).setEffectiveTimeScale((reverseWalk?-1:1)*this.playbackSpeed).play();
     if(reverseWalk)action.time=Math.max(0,action.getClip().duration-.001);
     action.setLoop(['wave','jump'].includes(kind)||kind.startsWith('clip:')?this.THREE.LoopOnce:this.THREE.LoopRepeat,['wave','jump'].includes(kind)||kind.startsWith('clip:')?1:Infinity);
@@ -56,6 +58,28 @@ export class MotionController{
     else if(this.current)this.current.stop();
     this.current=action;this.currentKind=kind;
   }
-  setPlaybackSpeed(value=1){this.playbackSpeed=Math.max(.25,Math.min(2,Number(value)||1));if(this.current)this.current.setEffectiveTimeScale((this.currentKind==='walkBackward'&&this.actions.has('walk')?-1:1)*this.playbackSpeed);}
-  update(dt){this.mixer.update(dt);}
+  playOnce(kind,{rate=1,trimStart=0,trimEnd=0}={}){
+    const action=this.actions.get(kind)||this.actions.get('wave');
+    if(!action){this.play('idle');return false;}
+    this.playbackSpeed=Math.max(.85,Math.min(6.5,rate));
+    // Replay the same clip, including alternating punches, without inheriting
+    // an old crossfade or a paused/clamped playhead.
+    if(action===this.current){action.stop();this.current=null;}
+    this.play(kind,.09);
+    const clipDuration=Math.max(.001,action.getClip().duration||1);
+    action.time=clipDuration*Math.max(0,Math.min(.35,trimStart));
+    this.oneShotStopAt=clipDuration*(1-Math.max(0,Math.min(.35,trimEnd)));
+    action.paused=false;
+    action.setLoop(this.THREE.LoopOnce,1);
+    action.clampWhenFinished=true;
+    this.setPlaybackSpeed(this.playbackSpeed);
+    return true;
+  }
+  setPlaybackSpeed(value=1){this.playbackSpeed=Math.max(.85,Math.min(6.5,Number(value)||1));if(this.current)this.current.setEffectiveTimeScale((this.currentKind==='walkBackward'&&this.actions.has('walk')?-1:1)*this.playbackSpeed);}
+  update(dt){
+    this.mixer.update(dt);
+    if(this.oneShotStopAt!==null&&this.current&&this.current.time>=this.oneShotStopAt){
+      this.current.time=this.oneShotStopAt;this.current.paused=true;
+    }
+  }
 }
