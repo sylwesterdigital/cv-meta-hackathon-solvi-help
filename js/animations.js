@@ -7,7 +7,8 @@ export const MOTION_ALIASES=Object.freeze({
   strafeRight:['strafe right','right strafe','walk right','side step right'],
   walkBackward:['walk backwards','walking backwards','backward walk','walk backward'],
   wave:['waving','wave'],
-  jump:['jump','jumping']
+  jump:['jump','jumping'],
+  push:['pushing','push']
 });
 export function clipBase(name){return String(name||'').split('__')[0].trim().toLowerCase().replace(/[\s_-]+/g,' ');}
 export function findClip(clips,kind){
@@ -15,6 +16,7 @@ export function findClip(clips,kind){
   for(const name of aliases){const match=clips.find(clip=>clipBase(clip.name)===name);if(match)return match;}
   // Only accept label prefixes, never a substring (e.g. "Falling Idle").
   for(const name of aliases){const match=clips.find(clip=>clipBase(clip.name).startsWith(name+' '));if(match)return match;}
+  if(kind==='push')return clips.find(clip=>/\bpush(?:ing)?\b/.test(clipBase(clip.name)))||null;
   return null;
 }
 export function computeMode(speed){return speed<.05?'idle':speed<2?'walk':'run';}
@@ -47,8 +49,8 @@ export class MotionController{
     }
     action.reset().setEffectiveWeight(1).setEffectiveTimeScale((reverseWalk?-1:1)*this.playbackSpeed).play();
     if(reverseWalk)action.time=Math.max(0,action.getClip().duration-.001);
-    action.setLoop(['wave','jump'].includes(kind)?this.THREE.LoopOnce:this.THREE.LoopRepeat,['wave','jump'].includes(kind)?1:Infinity);
-    action.clampWhenFinished=['wave','jump'].includes(kind);
+    action.setLoop(['wave','jump'].includes(kind)||kind.startsWith('clip:')?this.THREE.LoopOnce:this.THREE.LoopRepeat,['wave','jump'].includes(kind)||kind.startsWith('clip:')?1:Infinity);
+    action.clampWhenFinished=['wave','jump'].includes(kind)||kind.startsWith('clip:');
     // Crossfade between clips using AnimationMixer; avoid snapping pose on mode change.
     if(this.current&&fade)action.crossFadeFrom(this.current,fade,false);
     else if(this.current)this.current.stop();

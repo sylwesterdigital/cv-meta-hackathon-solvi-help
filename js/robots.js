@@ -3,6 +3,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MotionController,computeMode} from './animations.js';
 import {pathBlocked} from './robot-pathfinding.js';
+import {footfallRate} from './robot-combat.js';
 
 const loader=new GLTFLoader();
 const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');loader.setDRACOLoader(draco);
@@ -181,13 +182,16 @@ export function tickRobots(items,dt,onMove=()=>{}){
         const angle=Math.atan2(delta.x,delta.z);robot.rotation.y+=Math.atan2(Math.sin(angle-robot.rotation.y),Math.cos(angle-robot.rotation.y))*clamp(dt*6,0,1);
       }
     }
+    const contact=robot.userData.robotContactAction;
+    if(contact&&performance.now()<contact.until)mode=contact.clip||contact.kind;
+    else if(contact){robot.userData.robotContactAction=null;if(mode==='push'||String(mode).startsWith('clip:'))mode=robot.userData.robotGoal?'walk':'idle';}
     const push=robot.userData.robotPushState;
-    if(push&&performance.now()-push.at<270&&!robot.userData.robotGoal&&!robot.userData.robotMission&&mode==='idle'){mode=push.kind;}
+    if(!contact&&push&&performance.now()-push.at<270&&!robot.userData.robotGoal&&!robot.userData.robotMission&&mode==='idle'){mode=push.kind;}
     const visual=robot.children.find(c=>c.userData.robotVisual);if(visual){const lean=(robot.userData.robotLateral||0)*-.075;visual.rotation.z+=(lean-visual.rotation.z)*Math.min(1,dt*5);}
     if(robot.userData.robotPlaying!==mode){robot.userData.robotAnimator?.play(mode);robot.userData.robotPlaying=mode;}
     // Footfall cadence follows measured displacement, not an in-place walk timer.
     if(push&&performance.now()-push.at<270&&mode===push.kind)robot.userData.robotAnimator?.setPlaybackSpeed(push.rate);
-    else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode)){const measured=robot.userData.robotActualSpeed;robot.userData.robotAnimator?.setPlaybackSpeed(Number.isFinite(measured)?Math.max(.25,Math.min(2.5,measured/(mode==='run'?2.7:1.2))):1);}
+    else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode))robot.userData.robotAnimator?.setPlaybackSpeed(footfallRate(robot.userData.robotActualSpeed,mode));
     else robot.userData.robotAnimator?.setPlaybackSpeed(1);
     robot.userData.robotAnimator?.update(dt);
     if(robot.userData.robotSeated&&robot.userData.robotSitPose==='procedural'){

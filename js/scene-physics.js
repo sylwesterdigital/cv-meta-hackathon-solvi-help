@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {physicsOptions} from './physics-options.js';
 import {CHARACTER,characterMotion,resolveCharacterMotion,easedRemotePose} from './character-physics.js';
 import {robotPushVector,pushedWalkState} from './robot-push.js';
+import {combatReach,combatDirection,impactImpulse} from './robot-combat.js';
 
 // Bodies live for the lifetime of the scene object; movement never re-creates a GLB.
 export class ScenePhysics{
@@ -185,10 +186,10 @@ export class ScenePhysics{
  }
  // Physical contact in the locally owned Rapier world: never displace
  // remote-owned robots, objects, active missions, or targets behind static walls.
- tryPushRobot(actor,target,actorNext,dt){
+ tryPushRobot(actor,target,actorNext,dt,maxStep=.14){
   if(!this.enabled||!this.world||actor===target||!this.owns(actor)||!this.owns(target)||target.userData.robotMission||target.userData.robotGoal)return false;
   if(actor.userData.editorKind!=='robot'||target.userData.editorKind!=='robot')return false;
-  const movement=robotPushVector(actorNext,target.position);
+  const movement=robotPushVector(actorNext,target.position,.68,maxStep);
   if(!movement)return false;
   const collider=this.colliders.get(target.userData.editorId),body=this.bodies.get(target.userData.editorId);
   if(!collider||!body)return false;
@@ -205,8 +206,61 @@ export class ScenePhysics{
   body.setNextKinematicTranslation({x:nextX,y:target.position.y,z:nextZ});
   const motion=pushedWalkState({x:computed.x,z:computed.z},target.rotation.y,dt);
   target.userData.robotPushState={...motion,at:performance.now()};
+  if(!actor.userData.robotContactAction||performance.now()>=actor.userData.robotContactAction.until||actor.userData.robotContactAction.kind==='push')actor.userData.robotContactAction={kind:'push',until:performance.now()+360};
+  if(!this.inCombatAction&&performance.now()-(actor.userData.lastContactPacket||0)>850){
+   actor.userData.lastContactPacket=performance.now();
+   window.solviRoomSocket?.send({type:'robot-action',id:actor.userData.editorId,action:'push',force:5,seq:++this.editor.robotActionSeq});
+  }
   const stamp=performance.now();if(stamp-(target.userData.robotPushLastSave||0)>650){target.userData.robotPushLastSave=stamp;this.editor.queueSave(target);}
   return true;
+ }
+ // A short contact action has one owner for each dynamic body. Other clients
+ // reproduce the animation and the owning body receives the same bounded impulse.
+ applyCombat(actor,kind,force,fromRemote=false){
+  if(!this.enabled||!this.world||!['punch','kick','throw','push'].includes(kind))return 0;
+  if(!fromRemote&&!this.owns(actor))return 0;
+  const facing=combatDirection(actor.rotation.y,kind),reach=combatReach(kind);
+  const forward={x:Math.sin(actor.rotation.y),z:Math.cos(actor.rotation.y)};
+  const impulse=impactImpulse(facing,force,kind);
+  let hits=0;
+  for(const target of this.editor.items){
+   if(target===actor||!target.userData.editorId||target.userData.editorKind==='light')continue;
+   const dx=target.position.x-actor.position.x,dz=target.position.z-actor.position.z;
+   const distance=Math.hypot(dx,dz);
+   if(distance>reach||dx*forward.x+dz*forward.z<-.15)continue;
+   const id=target.userData.editorId,body=this.bodies.get(id);
+   if(!body)continue;
+   if(target.userData.editorKind==='robot'){
+    if(!this.owns(target)||target.userData.robotMission)continue;
+    // Use the same capsule collision controller as ordinary robot contact.
+    this.inCombatAction=true;
+    const move=this.tryPushRobot(actor,target,{x:actor.position.x+forward.x*.72,z:actor.position.z+forward.z*.72},1/30,Math.min(.32,Math.max(.05,Number(force)||5)*.018));
+    this.inCombatAction=false;
+    if(move){hits++;target.userData.robotPushState={...pushedWalkState({x:forward.x*.14,z:forward.z*.14},target.rotation.y,1/30),at:performance.now()};}
+    continue;
+   }
+   if(target.userData.physics?.mode!=='dynamic'||!this.owns(target))continue;
+   const bounds=new THREE.Box3().setFromObject(target),extent=bounds.getSize(new THREE.Vector3());
+   if(kind==='throw'&&Math.max(extent.x,extent.y,extent.z)>1.2)continue; // only small props can be thrown
+   if(kind==='throw'){
+    // Small, nearby props are picked up into an approximate hand position
+    // before launch; large furniture never teleports into the hand.
+    body.setTranslation({x:actor.position.x+forward.x*.68,y:actor.position.y+1.12,z:actor.position.z+forward.z*.68},true);
+    body.setLinvel({x:0,y:0,z:0},true);body.setAngvel({x:0,y:0,z:0},true);
+   }
+   body.wakeUp();body.applyImpulse(impulse,true);
+   hits++;
+  }
+  return hits;
+ }
+ // The character controller can report a sticky "grounded" result at a lip.
+ // Probe directly under the next capsule foot to distinguish a real support
+ // surface from a nearby wall or a platform we have already stepped off.
+ hasGroundSupport(p,collider){
+  if(!this.world||!this.runtime?.Ray)return true;
+  const ray=new this.runtime.Ray({x:p.x,y:p.y+.26,z:p.z},{x:0,y:-1,z:0});
+  const hit=this.world.castRay(ray,.55,true,undefined,undefined,collider);
+  return Boolean(hit);
  }
  driveRobot(object,dt){
   const id=object.userData.editorId,body=this.bodies.get(id),collider=this.colliders.get(id),state=this.characters.get(id);
@@ -228,7 +282,11 @@ export class ScenePhysics{
   }
   this.characterController.computeColliderMovement(collider,{x:delta.x,y:delta.y,z:delta.z});
   const resolved=resolveCharacterMotion(p,this.characterController.computedMovement(),this.characterController.computedGrounded(),state.verticalSpeed);
-  state.verticalSpeed=resolved.verticalSpeed;state.grounded=resolved.grounded;
+  const desiredHorizontal=Math.hypot(delta.x,delta.z),actualHorizontal=Math.hypot(resolved.x-p.x,resolved.z-p.z);
+  if(desiredHorizontal>.012&&actualHorizontal<desiredHorizontal*.4&&state.grounded){object.userData.robotContactAction={kind:'push',until:performance.now()+260};}
+  const supported=this.hasGroundSupport(resolved,collider);
+  state.verticalSpeed=resolved.verticalSpeed;state.grounded=resolved.grounded&&supported;
+  if(!state.grounded&&state.verticalSpeed>=0&&!jump)state.verticalSpeed=-.1;
   body.setNextKinematicTranslation({x:resolved.x,y:resolved.y,z:resolved.z});
   body.setNextKinematicRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
   object.position.set(resolved.x,resolved.y,resolved.z);

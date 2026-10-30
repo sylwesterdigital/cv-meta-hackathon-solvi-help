@@ -1723,3 +1723,10 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #wallPanel #wallStairOptions[hidden],#wallPanel #wallMaterialOptions[hidden],#wallPanel #wallSmoothingOptions[hidden],#wallPanel #wallPreviewModeRow[hidden]{display:none!important}
 #wallPanel .wall-guide-note{font-size:10px;align-self:center;opacity:.8}
 @media(max-width:480px){#wallPanel.wall-panel{max-height:calc(100dvh - 12px);top:6px;left:6px;width:calc(100vw - 12px)}#wallPanel .wall-compact-fields{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Compact game-action settings reuse inspector dimensions and input styling. */
+.robot-combat-list{display:grid;gap:6px;margin:8px 0}
+.robot-combat-row{display:grid;grid-template-columns:minmax(60px,1fr) minmax(80px,1.1fr) minmax(66px,.8fr);align-items:center;gap:6px}
+.robot-combat-row label{font-size:.83rem}
+.robot-combat-row select,.robot-combat-row input{box-sizing:border-box;width:100%;min-width:0;max-width:100%;padding:6px;border-radius:6px}
+#robotCombatDetails small{display:block;margin:6px 0;color:var(--muted,#9eb4c6);font-size:.72rem}

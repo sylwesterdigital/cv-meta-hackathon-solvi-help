@@ -17,7 +17,17 @@ for _module in _local_imports:
     assert 'BACKEND_PY_MODULES=' in _installer and 'install -m 644 "$SRC/$module" "$TARGET/$module"' in _installer, 'Installer must deploy local Python modules'
 assert "DEPLOY_PHASE='Python backend import preflight'" in _installer
 print('PASS: local backend modules deployed, rollback protected and import preflight configured')
-from server import app
+from server import app, patch_scene_object, valid_robot_combat
+# Regression: the Flask POST decorator must belong to the HTTP handler,
+# never to the combat-settings validator (the latter takes a settings arg).
+scene_object_rules=[rule for rule in app.url_map.iter_rules()
+                    if rule.rule=='/api/scene/object' and 'POST' in rule.methods]
+assert len(scene_object_rules)==1 and app.view_functions[scene_object_rules[0].endpoint] is patch_scene_object, scene_object_rules
+assert not hasattr(valid_robot_combat, 'view_class') and callable(valid_robot_combat)
+assert valid_robot_combat({'punch': {'key':'KeyP', 'force':6.0}, 'kick': {'key':'KeyK', 'force':9}})
+assert not valid_robot_combat({'punch': {'key':'Key-P', 'force':6.0}})
+assert not valid_robot_combat({'kick': {'key':'KeyK', 'force':float('nan')}})
+print('PASS: combat validator separate from Flask route and scene-object POST correctly registered')
 from server import robot_command_clause
 _multiples=[{'id':'e','name':'Elox'},{'id':'c','name':'Cybert'}]
 _split='@Elox go to Black Sofa and @Cybert please follow Elox'
@@ -158,6 +168,22 @@ robot={'id':'testrobot-001','kind':'robot','name':'Pilot','position':[0,0,0],
 r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot})
 assert r.status_code==200,(r.status_code,r.data)
 assert c.get('/api/scene?room=lab',headers=headers).get_json()['objects'][0]['speed']==1.65
+# Persist combat bindings through both the atomic object endpoint and full-scene PUT.
+robot['combat']={'punch':{'key':'KeyP','force':6},'kick':{'key':'KeyK','force':8.5},'throw':{'key':'','force':4}}
+r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot})
+assert r.status_code==200,(r.status_code,r.data)
+scene=c.get('/api/scene?room=lab',headers=headers).get_json()
+assert scene['objects'][0]['combat']==robot['combat']
+r=c.put('/api/scene',headers=headers,json={'room':'lab','revision':scene['revision'],'objects':[robot]})
+assert r.status_code==200,(r.status_code,r.data)
+for bad_combat in ({'punch':{'key':'Key-P','force':6}}, {'kick':{'key':'KeyK','force':float('nan')}}, {'kick':{'key':'KeyK','force':90}}):
+    invalid={**robot,'combat':bad_combat}
+    r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':invalid})
+    assert r.status_code==400,(bad_combat,r.status_code,r.data)
+    scene=c.get('/api/scene?room=lab',headers=headers).get_json()
+    r=c.put('/api/scene',headers=headers,json={'room':'lab','revision':scene['revision'],'objects':[invalid]})
+    assert r.status_code==400,(bad_combat,r.status_code,r.data)
+print('PASS: robot combat controls persist via atomic/bulk saves and reject invalid bindings')
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-001'}}).status_code==200
 # Every room defaults to shared editing; owners can be enforced independently.
 settings=c.get('/api/room/settings?room=lab',headers=headers)

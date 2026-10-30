@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.82",
+  "currentVersion": "0.2.84",
   "releases": [
+    {
+      "version": "0.2.84",
+      "publishedAt": "2026-10-30T20:10:15Z",
+      "changes": [
+        "Fix the Flask scene-object POST route mistakenly registered on valid_robot_combat(settings), which returned 500 on any atomic object save.",
+        "Register /api/scene/object on patch_scene_object() and retain the combat validator as an undecorated utility.",
+        "Add Flask integration checks for route registration, valid robot combat persistence and invalid settings in both atomic and bulk scene writes.",
+        "Preserve v0.2.83 robot footsteps, push, combat, impulses, multiplayer actions and platform gravity without changing their behavior."
+      ]
+    },
     {
       "version": "0.2.82",
       "publishedAt": "2026-10-30T14:17:33Z",
@@ -332,16 +342,6 @@
         "Preflight replacement model loading, handle missing assets without deleting the previous model, and invalidate/rebuild Rapier collision shapes after replacement and scale edits.",
         "Compute accurate scaled model collider bounds in local rigid-body axes so rotated objects no longer get inflated world-axis colliders.",
         "Add tests for uploaded-asset validation, replacement persistence, collider scale and rotation geometry, and compact mobile/tablet/desktop Assets and Properties layouts."
-      ]
-    },
-    {
-      "version": "0.2.50",
-      "publishedAt": "2026-10-29T02:12:51Z",
-      "changes": [
-        "Prevent idle mouse movement from rotating the scene by enabling OrbitControls only while an accepted mouse, pen, or touch gesture is pressed; preserve explicit wheel zoom.",
-        "Keep the transform gizmo and camera orbit mutually exclusive for the duration of a gesture; allow pointerup to reach OrbitControls after picking an object, without triggering floor navigation.",
-        "Stop orbit immediately on pointerup, pointercancel, pointer capture loss, browser blur, hidden tab, or a missed mouse release; recover stale Three.js OrbitControls pointer state.",
-        "Add pointer lifecycle regression tests for gizmo capture, multi-touch, mouse/pen release, lost focus, wheel zoom and stale pointer recovery."
       ]
     }
   ]
