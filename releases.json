@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.79",
+  "currentVersion": "0.2.80",
   "releases": [
+    {
+      "version": "0.2.80",
+      "publishedAt": "2026-10-30T12:51:58Z",
+      "changes": [
+        "Fix the live Add menu using a stale editor.js even though v0.2.79 was deployed, by cache-busting all first-party ES modules through a release-specific import map.",
+        "Version the main.js entrypoint and styles.css URL to prevent stale top-level scripts/styles on browser reload.",
+        "Retain procedural Office Space > Walls directly after Torus, robot pushing, wall editing and v0.2.79 scene features.",
+        "Add two tests checking Office Space menu registration and versioned module resolution across all first-party imports."
+      ]
+    },
     {
       "version": "0.2.79",
       "publishedAt": "2026-10-30T12:38:53Z",
@@ -326,17 +336,6 @@
         "Expand scene camera far clip, orbit range, inspector position slider, XR teleport region and ground movement to support very large rooms and imported objects.",
         "Synchronize appearance across users by room-specific authenticated SQLite endpoints and live WebSocket events; preview locally and save explicitly.",
         "Add frontend and backend regression coverage for validation, layout, room isolation, camera extents and effect modes."
-      ]
-    },
-    {
-      "version": "0.2.46",
-      "publishedAt": "2026-10-28T23:27:29Z",
-      "changes": [
-        "Filter target-specific robot 180/360 head-camera scans to at most three relevant viewpoints, using scene camera geometry or SAM detections; discard empty scans before Muse and chat attachments.",
-        "Require concise target-location replies rather than frame-by-frame descriptions and preserve general room scans for broad questions.",
-        "Report zero verified targets without a Muse inference or fabricated location; protect empty-JPEG requests with saved-question, room, robot and target validation.",
-        "Keep only positive SAM frames in Brains visual-search gallery and avoid diagnosing the last empty frame with Muse; clarify robot arrival messages.",
-        "Add regression coverage for target parsing, camera view selection, zero matches, and unchanged deployment packaging."
       ]
     }
   ]
