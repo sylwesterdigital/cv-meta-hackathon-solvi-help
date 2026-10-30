@@ -53,7 +53,7 @@ test('punch and kick are one-shot with a single mid-clip impulse, never key-down
  assert.equal(bot.userData.robotOneShot,null);
  const editor=src('js/editor.js');
  assert.doesNotMatch(editor,/this\.physics\.applyCombat\(robot,action,force\)/);
- assert.match(editor,/animateRobots\(this\.items,dt,\(actor,kind,force,remote\)=>this\.physics\.applyCombat/);
+ assert.match(editor,/animateRobots\(this\.items,dt,\(actor,kind,force,remote\)=>\{[\s\S]*?this\.physics\.applyCombat\(actor,kind,force,remote\)/);
  assert.match(editor,/this\.playRobotCombat\(robot,packet\.action,packet\.force,true\)/);
 });
 test('pushed robot chooses backwards or sideways steps from actual displacement',()=>{
@@ -85,7 +85,10 @@ test('mixer plays a trimmed, accelerated once-only clip and releases held pose',
 test('only dynamic physics targets receive impulses, including surface hits',()=>{
  const s=src('js/scene-physics.js');
  assert.match(s,/new THREE\.Box3\(\)\.setFromObject\(target\)/);
- assert.match(s,/Math\.max\(box\.min\.x,Math\.min\(box\.max\.x,actor\.position\.x\)\)/);
- assert.match(s,/target\.userData\.physics\?\.mode!=='dynamic'\|\|!this\.owns\(target\)/);
+ assert.match(s,/combatContact\(box,actor\.position,actor\.rotation\.y,kind\)/);
+ assert.match(src('js/robot-combat.js'),/const x=clamp\(actor\.x,bounds\.min\.x,bounds\.max\.x\)/);
+ assert.match(s,/target\.userData\.physics\?\.mode!=='dynamic'/);
+ assert.match(s,/if\(!this\.owns\(target\)\)\{hits\+\+;continue;\}/);
+ assert.match(s,/if\(!body\.isDynamic\?\.\(\)\)continue/);
  assert.match(s,/body\.applyImpulse\(impulse,true\)/);
 });

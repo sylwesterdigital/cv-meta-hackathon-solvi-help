@@ -30,6 +30,25 @@ export function combatDirection(yaw,kind){
  return {x:f.x*multiplier,z:f.z*multiplier};
 }
 export function combatReach(kind){return kind==='kick'?1.35:kind==='throw'?1.4:1.05;}
+// Test the attack at the collider surface and at the appropriate limb height.
+// The pivot of a large imported GLB can be several metres from the struck face.
+export function combatContact(bounds,actor,yaw,kind){
+ if(!bounds?.min||!bounds?.max||!actor)return null;
+ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+ const x=clamp(actor.x,bounds.min.x,bounds.max.x),z=clamp(actor.z,bounds.min.z,bounds.max.z);
+ const y=actor.y+(kind==='kick'?.63:1.10);
+ if(y<bounds.min.y-.28||y>bounds.max.y+.28)return null;
+ const dx=x-actor.x,dz=z-actor.z,distance=Math.hypot(dx,dz);
+ if(distance>combatReach(kind))return null;
+ const forwardX=Math.sin(yaw),forwardZ=Math.cos(yaw);
+ const centerX=(bounds.min.x+bounds.max.x)*.5-actor.x;
+ const centerZ=(bounds.min.z+bounds.max.z)*.5-actor.z;
+ // When the attacker is already inside the world AABB, face the object's
+ // centre; otherwise use the nearest collider surface, not its distant pivot.
+ const facing=distance>.03?dx*forwardX+dz*forwardZ:centerX*forwardX+centerZ*forwardZ;
+ if(facing<-.15)return null;
+ return {x,y:clamp(y,bounds.min.y,bounds.max.y),z,distance};
+}
 export function impactImpulse(direction,force,kind){
  const safe=Math.max(.5,Math.min(20,Number(force)||5));
  return {x:direction.x*safe,y:kind==='throw'?safe*.65:kind==='kick'?safe*.17:safe*.05,z:direction.z*safe};

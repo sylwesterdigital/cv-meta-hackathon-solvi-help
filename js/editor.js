@@ -206,7 +206,17 @@ export class SceneEditor{
   };
   byId('closeScenePanel').onclick=()=>byId('scenePanel').hidden=true;
   byId('closeProperties').onclick=()=>{byId('propertiesPanel').hidden=true;this.clearLightHelper();};
-  for(const id of ['objectPhysicsMode','objectCollider','objectRestitution','objectFriction'])byId(id).addEventListener('change',()=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||['robot','light'].includes(obj.userData.editorKind))return;obj.userData.physics=physicsOptions({mode:byId('objectPhysicsMode').value,collider:byId('objectCollider').value,friction:byId('objectFriction').value,restitution:byId('objectRestitution').value});this.physics.sync(obj);this.queueSave(obj);this.updateColliderOption();});
+  for(const id of ['objectPhysicsMode','objectCollider','objectRestitution','objectFriction'])byId(id).addEventListener('change',()=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||['robot','light'].includes(obj.userData.editorKind))return;obj.userData.physics=physicsOptions({mode:byId('objectPhysicsMode').value,collider:byId('objectCollider').value,friction:byId('objectFriction').value,restitution:byId('objectRestitution').value});this.physics.sync(obj);this.queueSave(obj);this.updateColliderOption();this.updateCombatPhysicsHint();});
+  byId('makeObjectPushable').onclick=()=>{
+   const obj=this.selected;
+   if(!obj||!this.canEdit(obj)||['robot','light'].includes(obj.userData.editorKind))return;
+   const before=this.snapshot(obj);
+   obj.userData.physics=physicsOptions({...obj.userData.physics,mode:'dynamic',collider:'box'});
+   byId('objectPhysicsMode').value='dynamic';byId('objectCollider').value='box';
+   this.physics.sync(obj);this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
+   this.updateColliderOption();this.updateCombatPhysicsHint();
+   if(!this.physics.enabled)this.toast('Object is now Dynamic. Enable room Physics to make combat impulses work.');
+  };
   const surfaceSelect=byId('objectSurfaceProperty'),surfaceValue=byId('objectSurfaceValue'),surfaceRange=byId('objectSurfaceRange');
   const currentSurface=()=>byId(surfaceSelect.value==='restitution'?'objectRestitution':'objectFriction');
   const syncSurface=()=>{const source=currentSurface();const max=surfaceSelect.value==='restitution'?1:2;surfaceValue.max=String(max);surfaceRange.max=String(max);surfaceValue.value=source.value;surfaceRange.value=source.value;surfaceRange.setAttribute('aria-label','Adjust '+surfaceSelect.selectedOptions[0].text);};
@@ -319,12 +329,32 @@ export class SceneEditor{
    if(!activeNumeric||activeNumeric.disabled)return;
    const isScale=activeNumeric.id.startsWith('scale-');activeNumeric.value=isScale?String(Number(sliderToScale(Number(range.value)).toFixed(3))):range.value;
    byId('inspectorSliderValue').textContent=activeNumeric.value;
-   activeNumeric.dispatchEvent(new Event('change',{bubbles:true}));
+   // Linked XYZ must update while the pointer moves, not after leaving the slider.
+   activeNumeric.dispatchEvent(new Event(isScale?'input':'change',{bubbles:true}));
   });
+  range.addEventListener('change',()=>{
+   if(activeNumeric?.id.startsWith('scale-'))activeNumeric.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  const scaleEditBefore=new WeakMap();
+  const syncScaleFields=(obj,changed)=>{
+   ['x','y','z'].forEach((key,i)=>{const field=byId('scale-'+i);if(field!==changed)field.value=Number(obj.scale[key].toFixed(4)).toString();});
+  };
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
    const id=`${field}-${axis}`,number=byId(id);
+   if(field==='scale'){
+    number.addEventListener('focus',()=>{if(this.selected)scaleEditBefore.set(number,this.snapshot(this.selected));});
+    number.addEventListener('input',()=>{
+     const obj=this.selected,value=Number(number.value);
+     if(!obj||!this.canTransform(obj)||!number.value.trim()||!Number.isFinite(value)||value<=0)return;
+     if(!scaleEditBefore.has(number))scaleEditBefore.set(number,this.snapshot(obj));
+     const axisName=['x','y','z'][axis];
+     if(byId('scaleUniform').checked){const next=linkedScale(obj.scale,axisName,value);obj.scale.set(next.x,next.y,next.z);}
+     else obj.scale[axisName]=value;
+     syncScaleFields(obj,number);
+     // Avoid rebuilding Rapier's collider on every keystroke; commit on change.
+    });
+   }
    number.addEventListener('input',()=>{if(activeNumeric===number){range.value=number.id.startsWith('scale-')?String(scaleToSlider(Number(number.value))):number.value;byId('inspectorSliderValue').textContent=number.value;}});
-
   }
   for(const field of ['position','rotation','scale'])byId(field+'-reset').onclick=()=>{
    const obj=this.selected;if(!obj||!this.canTransform(obj))return;
@@ -334,9 +364,15 @@ export class SceneEditor{
    byId('inspectorValueSlider').hidden=true;
   };
   for(const field of ['position','rotation','scale'])for(let axis=0;axis<3;axis++){
-   const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canTransform(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v))return;const before=this.snapshot(this.selected);
-    const vec=this.selected[field];const name=['x','y','z'][axis];if(field==='scale'&&byId('scaleUniform').checked){const next=linkedScale(vec,[name],v);vec.set(next.x,next.y,next.z);}else vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
-    this.physics.sync(this.selected);this.recordEdit(before,this.snapshot(this.selected));this.refreshList();this.queueSave(this.selected);};}
+   const el=byId(`${field}-${axis}`);el.onchange=()=>{if(!this.selected||!this.canTransform(this.selected))return;const v=Number(el.value);if(!Number.isFinite(v)||field==='scale'&&v<=0)return;
+    const obj=this.selected,before=field==='scale'?(scaleEditBefore.get(el)||this.snapshot(obj)):this.snapshot(obj);
+    const vec=obj[field],name=['x','y','z'][axis];
+    if(field==='scale'){
+     // 'input' already updated the scene, but a programmatic 'change' must work too.
+     if(Math.abs(vec[name]-v)>0.00001){if(byId('scaleUniform').checked){const next=linkedScale(vec,name,v);vec.set(next.x,next.y,next.z);}else vec[name]=v;}
+     syncScaleFields(obj,el);scaleEditBefore.delete(el);
+    }else vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
+    this.physics.sync(obj);this.recordEdit(before,this.snapshot(obj));this.refreshList();this.queueSave(obj);};}
   byId('objectColor').addEventListener('focus',()=>this.colorBefore=this.snapshot(this.selected));byId('objectColor').addEventListener('change',()=>{this.recordEdit(this.colorBefore,this.snapshot(this.selected));this.colorBefore=null;});
   byId('objectColor').oninput=e=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||obj.userData.editorKind==='robot')return;obj.traverse(o=>{if(o.material?.color)o.material.color.set(e.target.value);});this.queueSave(obj);};
   byId('texturePreset').onchange=e=>{const before=this.snapshot(this.selected);this.texture(e.target.value);this.recordEdit(before,this.snapshot(this.selected));};byId('textureUploadButton').onclick=()=>byId('textureUpload').click();
@@ -709,7 +745,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;byId('inspectorValueSlider').hidden=true;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
   this.syncTransformLockControls(obj);
   this.renderPrimitiveControls(obj);
-  byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;this.syncPhysicsSurface?.();byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';byId('mediaObjectControls').hidden=obj.userData.editorKind!=='media';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
+  byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();this.updateCombatPhysicsHint();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;this.syncPhysicsSurface?.();byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';byId('mediaObjectControls').hidden=obj.userData.editorKind!=='media';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
   if(obj.userData.editorKind==='robot'){const settings=combatSettings(obj.userData.robotCombat);for(const el of byId('robotCombatList').querySelectorAll('[data-combat-action]'))el.value=String(settings[el.dataset.combatAction][el.dataset.combatField]);}
@@ -754,6 +790,18 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(locked&&this.transform.object===obj){this.transform.detach();this.world.editorGizmoPointer=false;this.world.editorDragging=false;}
   if(obj===this.selected){this.syncTransformLockControls(obj);if(!locked&&obj.userData.editorKind!=='robot')this.transform.attach(obj);}
   this.queueSave(obj);this.refreshList();this.toast(locked?'Transform locked · '+obj.name:'Transform unlocked · '+obj.name);
+ }
+ updateCombatPhysicsHint(){
+  const obj=this.selected,hint=byId('combatObjectPhysicsHint'),make=byId('makeObjectPushable');
+  if(!hint||!make)return;
+  const eligible=obj&&!['robot','light'].includes(obj.userData.editorKind);
+  hint.hidden=!eligible;make.hidden=!eligible||byId('objectPhysicsMode').value==='dynamic';
+  if(!eligible)return;
+  const mode=byId('objectPhysicsMode').value;
+  hint.textContent=mode==='dynamic'?'Pushable: Punch/Kick transfer force when room Physics is on and the attack connects.':
+    mode==='off'?'No physics: attacks pass through. Set Dynamic to receive punches and kicks.':
+    'Static/kinematic: stays fixed during combat. Use Dynamic if this object should move.';
+  make.disabled=!this.canEdit(obj);
  }
  updateColliderOption(){const mode=byId('objectPhysicsMode').value;const selector=byId('objectCollider');selector.disabled=mode!=='static';if(mode!=='static')selector.value='box';byId('colliderHint').hidden=mode!=='static';const status=byId('colliderRuntimeStatus');status.hidden=mode!=='static'||selector.value!=='trimesh';status.textContent=this.selected?.userData.colliderStatus||(this.selected?.userData.editorKind==='model'&&!this.selected?.userData.modelReady?'Waiting for imported model geometry':'Physics must be enabled for collider creation');
   const runtime=byId('physicsRuntimeStatus');runtime.hidden=mode==='off';
@@ -1039,7 +1087,13 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot)}));
     this.physics.tick(dt);
     for(const r of this.items){if(r.userData.editorKind!=='robot')continue;const previous=previousRobotPositions.get(r.userData.editorId);if(!previous)continue;const distance=Math.hypot(r.position.x-previous.x,r.position.z-previous.z);r.userData.robotActualSpeed=distance/Math.max(.016,dt);}
-    animateRobots(this.items,dt,(actor,kind,force,remote)=>this.physics.applyCombat(actor,kind,force,remote));
+    animateRobots(this.items,dt,(actor,kind,force,remote)=>{
+      const hits=this.physics.applyCombat(actor,kind,force,remote);
+      if(!remote&&this.selected===actor&&['punch','kick'].includes(kind)&&!hits){
+        this.toast('No pushable target hit. Set the target to Dynamic, enable room Physics, and face it within reach.');
+      }
+      return hits;
+    });
     for(const item of this.items){if(item.userData.editorKind!=='robot')continue;
       if(item.userData.robotTelemetry&&item.userData.robotMission)sampleMovementTelemetry(item.userData.robotTelemetry,item);
       if(item.userData.robotMission&&this.robotPathDebugVisible(item))trackRobotPathDebug(this.world,item);}

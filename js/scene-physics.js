@@ -3,7 +3,7 @@ import {physicsOptions} from './physics-options.js';
 import {CHARACTER,characterMotion,resolveCharacterMotion,easedRemotePose} from './character-physics.js';
 import {robotPushVector,pushedWalkState} from './robot-push.js';
 import {approachingRobotContact,ROBOT_CONTACT_DISTANCE} from './robot-contact.js';
-import {combatReach,combatDirection,impactImpulse} from './robot-combat.js';
+import {combatReach,combatDirection,impactImpulse,combatContact} from './robot-combat.js';
 
 // Bodies live for the lifetime of the scene object; movement never re-creates a GLB.
 export class ScenePhysics{
@@ -245,21 +245,17 @@ export class ScenePhysics{
  applyCombat(actor,kind,force,fromRemote=false){
   if(!this.enabled||!this.world||!['punch','kick','throw','push'].includes(kind))return 0;
   if(!fromRemote&&!this.owns(actor))return 0;
-  const facing=combatDirection(actor.rotation.y,kind),reach=combatReach(kind);
+  const facing=combatDirection(actor.rotation.y,kind);
   const forward={x:Math.sin(actor.rotation.y),z:Math.cos(actor.rotation.y)};
   const impulse=impactImpulse(facing,force,kind);
   let hits=0;
   for(const target of this.editor.items){
    if(target===actor||!target.userData.editorId||target.userData.editorKind==='light')continue;
-   // Strike the closest point of the target collider's world bounds rather
-   // than its pivot. Large spheres / furniture can be hit at the edge.
+   // Combat targets the surface in front of the striking limb, not a
+   // model pivot which may be behind the nearest face or below the floor.
    const box=new THREE.Box3().setFromObject(target);
-   const nearX=Math.max(box.min.x,Math.min(box.max.x,actor.position.x));
-   const nearZ=Math.max(box.min.z,Math.min(box.max.z,actor.position.z));
-   const dx=nearX-actor.position.x,dz=nearZ-actor.position.z;
-   const cx=target.position.x-actor.position.x,cz=target.position.z-actor.position.z;
-   const distance=Math.hypot(dx,dz);
-   if(distance>reach||cx*forward.x+cz*forward.z<-.15)continue;
+   const contact=combatContact(box,actor.position,actor.rotation.y,kind);
+   if(!contact)continue;
    const id=target.userData.editorId,body=this.bodies.get(id);
    if(!body)continue;
    if(target.userData.editorKind==='robot'){
@@ -274,16 +270,23 @@ export class ScenePhysics{
     hits++;
     continue;
    }
-   if(target.userData.physics?.mode!=='dynamic'||!this.owns(target))continue;
-   const bounds=new THREE.Box3().setFromObject(target),extent=bounds.getSize(new THREE.Vector3());
+   if(target.userData.physics?.mode!=='dynamic')continue;
+   const extent=box.getSize(new THREE.Vector3());
    if(kind==='throw'&&Math.max(extent.x,extent.y,extent.z)>1.2)continue; // only small props can be thrown
+   // Only the body's owner integrates the impulse. On other clients the
+   // existing robot-action event replays this hit for the authoritative body.
+   if(!this.owns(target)){hits++;continue;}
+   if(!body.isDynamic?.())continue;
    if(kind==='throw'){
     // Small, nearby props are picked up into an approximate hand position
     // before launch; large furniture never teleports into the hand.
     body.setTranslation({x:actor.position.x+forward.x*.68,y:actor.position.y+1.12,z:actor.position.z+forward.z*.68},true);
     body.setLinvel({x:0,y:0,z:0},true);body.setAngvel({x:0,y:0,z:0},true);
    }
-   body.wakeUp();body.applyImpulse(impulse,true);
+   body.wakeUp();
+   // An impulse at the point of impact can also rotate a movable prop.
+   if(typeof body.applyImpulseAtPoint==='function')body.applyImpulseAtPoint(impulse,contact,true);
+   else body.applyImpulse(impulse,true);
    hits++;
   }
   return hits;

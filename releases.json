@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.87",
+  "currentVersion": "0.2.88",
   "releases": [
+    {
+      "version": "0.2.88",
+      "publishedAt": "2026-10-30T22:57:42Z",
+      "changes": [
+        "Fix Uniform Scale editing: scale X/Y/Z geometry and inspector fields update together while typing or dragging the contextual range slider, with a single edit commit on change.",
+        "Clarify physics modes in object Properties, including a permission-checked Make pushable control that sets an object to Dynamic and keeps static scenery unchanged.",
+        "Improve Punch/Kick target contact against imported meshes by testing the nearest collider surface in front of the striking limb and verifying strike height instead of testing distant model pivots.",
+        "Apply Dynamic-object combat impulses at the physical contact point when supported by Rapier, including rotational response, with authority retained by the object owner.",
+        "Report when a local punch or kick does not find a movable target and add functional tests for contact detection and Dynamic-only impulse application."
+      ]
+    },
     {
       "version": "0.2.87",
       "publishedAt": "2026-10-30T21:26:59Z",
@@ -332,18 +343,6 @@
         "Persist avatar thumbnails in browser CacheStorage with a memory fallback, avoiding repeated GLB downloads and GPU rendering when the avatar library is reopened or the page is revisited.",
         "Limit first-load avatar preview decoding to two concurrent jobs, reuse the single existing WebGL gallery renderer, and dispose short-lived GLB preview geometries/materials/textures.",
         "Show built-in avatar cards without waiting for the authenticated uploaded-avatar API, and add four new thumbnail/cache/UI regression tests."
-      ]
-    },
-    {
-      "version": "0.2.54",
-      "publishedAt": "2026-10-29T12:36:39Z",
-      "changes": [
-        "Rebuild realm gallery as image-first tiles with name overlay, live participant count and round avatar thumbnails; remove redundant card icons, wrap-free labels and oval header pills.",
-        "Add authenticated realm renaming and protected double-confirmation deletion with owner/admin authorization, active-participant guard and persistent SQLite owner migration.",
-        "Use one reusable WebGL preview renderer for Assets and Avatars, lazy sequential thumbnails and one on-demand cached room preview to reduce context-loss risk.",
-        "Replace redundant Hide chat and chat-panel Close controls with a reliable Overlay \u2192 Window \u2192 Hidden \u2192 Overlay cycle on the persistent bottom-left chat mode button.",
-        "Add browser-local settings for borderless controls, disabled interface shadows, backdrop blur and opt-out object-deletion confirmation; require confirmation across object list, Properties and keyboard.",
-        "Remove unused sceneModelPath text and unconfigured AI model selector, associate key fields with forms, add favicon and keep navigation/button labels on one line."
       ]
     }
   ]

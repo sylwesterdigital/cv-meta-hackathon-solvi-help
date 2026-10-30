@@ -43,5 +43,5 @@ test('model swap retains identity and scales while replacing collision geometry'
  assert.match(physics,/object\.scale\.toArray\(\)\.join/);
  assert.match(physics,/geometry\.boundingBox/);
  assert.match(physics,/applyQuaternion\(undoRotation\)/);
- assert.match(editor,/this\.physics\.sync\(this\.selected\);this\.recordEdit\(before/);
+ assert.match(editor,/this\.physics\.sync\(obj\);this\.recordEdit\(before,this\.snapshot\(obj\)\)/);
 });
