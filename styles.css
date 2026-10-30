@@ -1709,3 +1709,17 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #wallPanel .wall-actions #wallConfirm{flex:1.5 0 auto}
 #wallPanel #wallStatus{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;min-height:14px;opacity:.7}
 @media(max-width:480px){#wallPanel.wall-panel{left:7px;top:55px;width:min(308px,calc(100vw - 14px));max-height:68dvh}#wallPanel .wall-panel-content{gap:5px;padding:7px}#wallPanel .wall-panel-content :is(select,input[type=number]){font-size:11px}#wallPanel .wall-compact-fields{gap:4px}}
+
+/* v0.2.82: keep native pickers visible and all fields scrollable; no clipping by nested grid. */
+#wallPanel.wall-panel{max-height:calc(100dvh - 20px);width:min(350px,calc(100vw - 16px));overflow:auto;min-height:0}
+#wallPanel .wall-panel-content{overflow:visible;min-height:auto;flex:0 0 auto}
+#wallPanel .wall-compact-fields>*{min-width:0;max-width:100%}
+#wallPanel .wall-compact-fields :is(input,select,button){min-width:0;box-sizing:border-box}
+#wallPanel .wall-compact-fields{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+#wallPanel .wall-actions{display:flex;flex-wrap:wrap}
+#wallPanel .wall-actions button{flex:1 1 28%;min-width:0}
+#wallPanel .wall-actions #wallConfirm{flex:1 1 39%}
+#wallPanel #wallStairOptions{display:grid;gap:6px}
+#wallPanel #wallStairOptions[hidden],#wallPanel #wallMaterialOptions[hidden],#wallPanel #wallSmoothingOptions[hidden],#wallPanel #wallPreviewModeRow[hidden]{display:none!important}
+#wallPanel .wall-guide-note{font-size:10px;align-self:center;opacity:.8}
+@media(max-width:480px){#wallPanel.wall-panel{max-height:calc(100dvh - 12px);top:6px;left:6px;width:calc(100vw - 12px)}#wallPanel .wall-compact-fields{grid-template-columns:repeat(3,minmax(0,1fr))}}

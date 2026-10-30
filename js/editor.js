@@ -10,6 +10,7 @@ import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive} from './primitive-properties.js';
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal} from './office-walls.js';
+import {makeOfficeStairs,rebuildOfficeStairs,sanitiseStairs,stairSegments} from './office-stairs.js';
 import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
 import {robotPathVisible} from './robot-debug.js';
@@ -20,7 +21,7 @@ import {OrbitGesture,recoverStaleOrbitPointers} from './orbit-gesture.js';
 import {readPreferences} from './preferences.js';
 import {sliderToScale,scaleToSlider,linkedScale} from './transform-values.js';
 
-const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall'];
+const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs'];
 const byId=id=>document.getElementById(id);
 const material=(color='#8bc3ff')=>new THREE.MeshStandardMaterial({color,roughness:.7,side:THREE.DoubleSide});
 const xyz=v=>[+v.x.toFixed(4),+v.y.toFixed(4),+v.z.toFixed(4)];
@@ -48,6 +49,7 @@ function objectFor(kind){
  case 'robot':object=makeRobot();break;
  case 'model':object=makeSceneModel();break;
  case 'wall':object=makeOfficeWall();break;
+ case 'stairs':object=makeOfficeStairs();break;
  case 'media':object=makeSceneMedia();break;
  case 'light':{object=new THREE.Group();const icon=new THREE.Mesh(new THREE.SphereGeometry(.125,12,8),new THREE.MeshBasicMaterial({color:'#ffe3a2',depthTest:false}));icon.userData.lightMarker=true;object.add(icon);setLight(object,{type:'point',intensity:2,range:10,decay:2,color:'#d0efff'});break;}
  default:throw Error('Unsupported kind');
@@ -100,7 +102,7 @@ export class SceneEditor{
   this.transform.addEventListener('mouseUp',()=>{this.broadcastEdit(false);world.editorDragging=false;this.physics.sync(this.selected);this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
   this.transform.addEventListener('objectChange',()=>{if(!this.canTransform(this.selected))return;if(this.transform.mode==='scale'&&this.selected?.userData.editorKind!=='robot'&&performance.now()-(this.lastScaleColliderSync||0)>180){this.physics.sync(this.selected);this.lastScaleColliderSync=performance.now();}this.updateInspector();this.queueSave(this.selected);});
   window.addEventListener('solvi:robot-model-ready',e=>{if(this.selected?.userData.editorId===e.detail.id)this.updateInspector();});
-  this.wallDrawing=null;this.wallPreview=null;this.wallEditTarget=null;this.wallEditOriginal=null;this.wallTextureMediaId="";
+  this.wallDrawing=null;this.wallPreview=null;this.wallEditTarget=null;this.wallEditOriginal=null;this.wallTextureMediaId="";this.wallSessionHistory=new EditHistory(120);this.wallStateLast=null;this.wallRestoring=false;this.wallPreviewCustom=null;this.wallPreviewTextureId='';this.wallPreviewTextureReq=0;
   this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);this.assetGallery=setupAssetGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
   window.addEventListener('solvi:robot-task-update',event=>{const detail=event.detail||{},id=detail.robotId;const robot=this.items.find(o=>o.userData.editorId===id);
     if(robot){const audit=missionMovementEvidence(robot.userData.robotTelemetry,robot,robot.userData.robotDebugRoute,detail.status);
@@ -110,12 +112,12 @@ export class SceneEditor{
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs']],['Curves / surfaces',['curve','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';const head=document.createElement('div');head.className='add-fixed-head';head.append(bar);const content=document.createElement('div');content.className='add-scroll-content';menu.append(head,content);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';head.append(search);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
   search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
-   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else if(k==='media frame'){this.add('media');}else if(k==='walls'){this.startWallDrawing();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}content.append(group);}
+   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else if(k==='media frame'){this.add('media');}else if(k==='walls'){this.startWallDrawing('wall');}else if(k==='closed room'){this.startWallDrawing('wall',true);}else if(k==='stairs'){this.startWallDrawing('stairs');}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}content.append(group);}
   this.setupWallControls();
   const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton','assetsButton'])toolbox.append(byId(id));
   byId('importModelButton').onclick=()=>byId('modelImportFile').click();byId('quickModelImport').onclick=()=>byId('modelImportFile').click();
@@ -333,7 +335,7 @@ export class SceneEditor{
  }
  setupWallControls(){
   const field=id=>byId(id),panel=field('wallPanel');if(!panel)return;
-  const ranges={wallWidth:[.05,1.5,.01,'m'],wallHeight:[.3,10,.1,'m'],wallOpacity:[.08,1,.02,'']};
+  const ranges={wallWidth:[.05,4,.01,'m'],wallHeight:[.2,10,.1,'m'],wallOpacity:[.08,1,.02,'']};
   let active='wallHeight';
   const setActive=id=>{active=id;const input=field(id),slider=field('wallValueSlider'),[min,max,step,unit]=ranges[id];
    slider.min=min;slider.max=max;slider.step=step;slider.value=input.value;
@@ -341,12 +343,17 @@ export class SceneEditor{
   };
   const rerender=()=>{
    if(panel.hidden)return;
-   if(this.wallDrawing){this.drawWallPreview();return;}
+   const stairMode=field('stairStepMode').value;const stairData=this.wallDrawing?.points||this.wallEditTarget?.userData?.stairs?.points||[];
+   if((this.wallDrawing?.kind==='stairs'||this.wallEditTarget?.userData.editorKind==='stairs')&&stairData.length>=2){const steps=stairSegments(this.readStairOptions(this.wallDrawing?wallWorldToLocal(stairData).points:stairData));field('stairInfo').textContent=steps.length?`${steps.length} steps · ${steps.at(-1).top.toFixed(2)} m`:'';}
+   field('stairCount').disabled=stairMode==='fixed';field('stairTread').disabled=stairMode!=='fixed';field('stairRiser').disabled=stairMode!=='fixed';field('wallHeight').disabled=(this.wallDrawing?.kind==='stairs'||this.wallEditTarget?.userData.editorKind==='stairs')&&stairMode==='fixed';
+   if(this.wallDrawing){this.drawWallPreview();this.trackWallState();return;}
    const obj=this.wallEditTarget;
    if(obj&&this.canEdit(obj)){
-    // In-place geometry update: never spawn a second wall while editing.
-    rebuildOfficeWall(obj,this.readWallOptions(obj.userData.wall?.points));
+    if(obj.userData.editorKind==='stairs')rebuildOfficeStairs(obj,this.readStairOptions(obj.userData.stairs?.points));
+    else rebuildOfficeWall(obj,this.readWallOptions(obj.userData.wall?.points));
+    this.physics.sync(obj);
    }
+   this.trackWallState();
   };
   for(const id of Object.keys(ranges)){
    const input=field(id);
@@ -355,7 +362,9 @@ export class SceneEditor{
    input.addEventListener('change',()=>{const [min,max]=ranges[id];input.value=Math.min(max,Math.max(min,Number(input.value)||min));setActive(id);rerender();});
   }
   field('wallValueSlider').addEventListener('input',e=>{field(active).value=e.target.value;setActive(active);rerender();});
-  for(const id of ['wallTexture','wallColor','wallSmooth','wallPhysics'])field(id).addEventListener('change',rerender);
+  for(const id of ['wallTexture','wallSmooth','wallPhysics','wallPreviewMode','wallCeilingHeight','stairStepMode','stairCount','stairTread','stairRiser','stairFloating'])field(id).addEventListener('change',rerender);
+  field('wallColor').addEventListener('input',rerender); // Input, not change: update while native colour picker is open.
+  for(const id of ['stairCount','stairTread','stairRiser','wallCeilingHeight'])field(id).addEventListener('input',rerender);
   for(const id of ['wallSnap','wallGridStep','wallAngleStep'])field(id).addEventListener('change',()=>this.drawWallPreview());
   field('wallTexture').addEventListener('change',()=>{if(field('wallTexture').value==='custom'&&!this.wallTextureMediaId)field('wallUploadButton').click();});
   field('wallUploadButton').onclick=()=>field('wallTextureUpload').click();
@@ -366,7 +375,7 @@ export class SceneEditor{
    try{
     const body=new FormData();body.append('file',file,file.name);
     const result=await window.solviAPI.req('/api/media',{method:'POST',body});
-    this.wallTextureMediaId=result.media.id;field('wallTexture').value='custom';rerender();
+    this.wallTextureMediaId=result.media.id;field('wallTexture').value='custom';this.loadWallDraftTexture(result.media.id);rerender();
    }catch(error){this.toast(error.message||'Texture upload failed');}finally{button.disabled=false;}
   };
   field('wallSmoothNow').onclick=()=>{
@@ -374,7 +383,7 @@ export class SceneEditor{
    if(this.wallDrawing){
     const draft=this.wallDrawing;if(draft.points.length<3)return;
     draft.points=smoothWallPoints(draft.points.map(p=>[p.x,p.z]),tolerance).map(([x,z])=>({x,z}));
-    draft.cursor=null;this.drawWallPreview();
+    draft.cursor=null;this.drawWallPreview();this.trackWallState();
    }else if(this.wallEditTarget&&this.canEdit(this.wallEditTarget)){
     const obj=this.wallEditTarget,wall=obj.userData.wall;
     rebuildOfficeWall(obj,{...wall,points:smoothWallPoints(wall.points,tolerance)});
@@ -384,42 +393,81 @@ export class SceneEditor{
   };
   field('wallConfirm').onclick=()=>this.confirmWall();
   field('wallFinish').onclick=()=>this.finishWallStroke();
-  field('wallUndo').onclick=()=>{if(!this.wallDrawing)return;const draft=this.wallDrawing;draft.finished=false;draft.points.pop();this.drawWallPreview();};
+  field('wallUndo').onclick=()=>this.undoWall();
+  field('wallRedo').onclick=()=>this.redoWall();
+  field('wallCloseLoop').onclick=()=>{if(this.wallDrawing?.points.length>=3){this.wallDrawing.closed=true;this.wallDrawing.finished=true;this.drawWallPreview();this.trackWallState();}};
   field('wallCancel').onclick=()=>this.endWallDrawing();
   field('wallClose').onclick=()=>this.endWallDrawing();
-  field('wallDrawMode').onchange=()=>{if(this.wallDrawing){this.wallDrawing.mode=field('wallDrawMode').value;this.wallDrawing.points=[];this.wallDrawing.cursor=null;this.wallDrawing.finished=false;this.drawWallPreview();}};
+  field('wallDrawMode').onchange=()=>{if(this.wallDrawing){this.wallDrawing.mode=field('wallDrawMode').value;this.wallDrawing.points=[];this.wallDrawing.cursor=null;this.wallDrawing.finished=false;this.wallDrawing.closed=field('wallDrawMode').value==='closed';this.drawWallPreview();this.trackWallState();}};
   this.wallSetActiveSlider=setActive;
  }
- readWallOptions(points=[]){return sanitiseWall({points,width:byId('wallWidth').value,height:byId('wallHeight').value,opacity:byId('wallOpacity').value,texture:byId('wallTexture').value==='custom'&&!this.wallTextureMediaId?'plaster':byId('wallTexture').value,textureMediaId:this.wallTextureMediaId,color:byId('wallColor').value,smooth:byId('wallSmooth').checked});}
+ loadWallDraftTexture(id){
+  if(!id||this.wallPreviewTextureId===id)return;
+  const sequence=++this.wallPreviewTextureReq;this.wallPreviewTextureId=id;
+  this.wallPreviewCustom?.dispose();this.wallPreviewCustom=null;
+  window.solviAPI?.mediaBlobInfo?.(id).then(info=>{
+   new THREE.TextureLoader().load(info.url,texture=>{
+    URL.revokeObjectURL(info.url);
+    if(sequence!==this.wallPreviewTextureReq){texture.dispose();return;}
+    texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;
+    this.wallPreviewCustom=texture;if(this.wallDrawing)this.drawWallPreview();
+   },undefined,()=>URL.revokeObjectURL(info.url));
+  }).catch(()=>{this.wallPreviewTextureId='';});
+ }
+ readWallOptions(points=[]){return sanitiseWall({points,closed:!!(this.wallDrawing?.closed||this.wallEditTarget?.userData?.wall?.closed||byId('wallDrawMode').value==='closed'),width:byId('wallWidth').value,height:byId('wallHeight').value,opacity:byId('wallOpacity').value,texture:byId('wallTexture').value==='custom'&&!this.wallTextureMediaId?'plaster':byId('wallTexture').value,textureMediaId:this.wallTextureMediaId,color:byId('wallColor').value,smooth:byId('wallSmooth').checked});}
+ readStairOptions(points=[]){return sanitiseStairs({points,width:byId('wallWidth').value,height:byId('wallHeight').value,opacity:byId('wallOpacity').value,color:byId('wallColor').value,stepMode:byId('stairStepMode').value,steps:Number(byId('stairCount').value),treadMm:Number(byId('stairTread').value),riserMm:Number(byId('stairRiser').value),floating:byId('stairFloating').checked});}
+ wallSessionState(){
+  return {points:this.wallDrawing?.points.map(p=>({...p}))||null,finished:this.wallDrawing?.finished||false,closed:this.wallDrawing?.closed||false,mode:this.wallDrawing?.mode||'single',
+   values:Object.fromEntries(['wallDrawMode','wallWidth','wallHeight','wallOpacity','wallColor','wallTexture','wallPhysics','wallPreviewMode','wallCeilingHeight','wallSnap','wallGridStep','wallAngleStep','wallSmooth','wallSmoothStrength','stairStepMode','stairCount','stairTread','stairRiser','stairFloating'].map(id=>[id,byId(id).type==='checkbox'?byId(id).checked:byId(id).value])),
+   textureMediaId:this.wallTextureMediaId,wallPoints:!this.wallDrawing&&this.wallEditTarget?.userData.editorKind==='wall'?structuredClone(this.wallEditTarget.userData.wall?.points):null};
+ }
+ trackWallState(){if(this.wallRestoring||byId('wallPanel').hidden)return;const next=this.wallSessionState();if(this.wallStateLast)this.wallSessionHistory.push(this.wallStateLast,next);this.wallStateLast=next;}
+ restoreWallSessionState(state){if(!state)return;this.wallRestoring=true;
+  for(const [id,value] of Object.entries(state.values)){const input=byId(id);if(input.type==='checkbox')input.checked=value;else input.value=value;}
+  this.wallTextureMediaId=state.textureMediaId||'';
+  if(this.wallDrawing){Object.assign(this.wallDrawing,{points:state.points||[],finished:state.finished,closed:state.closed,mode:state.mode,cursor:null});this.drawWallPreview();}
+  else if(this.wallEditTarget){const obj=this.wallEditTarget;if(obj.userData.editorKind==='stairs')rebuildOfficeStairs(obj,this.readStairOptions(obj.userData.stairs?.points));else rebuildOfficeWall(obj,this.readWallOptions(state.wallPoints||obj.userData.wall?.points));this.physics.sync(obj);}
+  this.wallSetActiveSlider?.('wallHeight');this.wallStateLast=state;this.wallRestoring=false;
+ }
+ undoWall(){const ok=this.wallSessionHistory.undo(wanted=>this.restoreWallSessionState(wanted));if(ok)this.toast('Undo wall');return ok;}
+ redoWall(){const ok=this.wallSessionHistory.redo(wanted=>this.restoreWallSessionState(wanted));if(ok)this.toast('Redo wall');return ok;}
  openWallPanel(wall=null){
   if(wall&&wall===this.wallEditTarget&&!byId('wallPanel').hidden)return;
   if(this.wallEditTarget&&this.wallEditTarget!==wall)this.endWallDrawing();
   const panel=byId('wallPanel');panel.hidden=false;this.wallEditTarget=wall;
-  const config=sanitiseWall(wall?.userData?.wall||{});
+  const stair=wall?.userData?.editorKind==='stairs'||this.wallDrawing?.kind==='stairs';
+  const config=stair?sanitiseStairs(wall?.userData?.stairs||{}):sanitiseWall(wall?.userData?.wall||{});
+  panel.querySelector('.panel-title strong').textContent=stair?'Office Space · Stairs':'Office Space · Walls';
+  byId('wallStairOptions').hidden=!stair;byId('wallMaterialOptions').hidden=stair;byId('wallSmoothingOptions').hidden=stair;
+  byId('wallPreviewModeRow').hidden=!!wall;byId('wallCeilingRow').hidden=stair;byId('wallDrawMode').querySelector('option[value=closed]').hidden=stair;
   this.wallTextureMediaId=config.textureMediaId||'';
-  this.wallEditOriginal=wall?{object:wall,before:this.snapshot(wall),wall:structuredClone(wall.userData.wall),physics:structuredClone(wall.userData.physics)}:null;
+  this.wallEditOriginal=wall?{object:wall,before:this.snapshot(wall),wall:wall.userData.wall?structuredClone(wall.userData.wall):null,stairs:wall.userData.stairs?structuredClone(wall.userData.stairs):null,physics:structuredClone(wall.userData.physics)}:null;
   for(const [key,id] of [['width','wallWidth'],['height','wallHeight'],['opacity','wallOpacity']])byId(id).value=config[key];
-  byId('wallTexture').value=config.texture;byId('wallColor').value=config.color;byId('wallSmooth').checked=config.smooth;
+  byId('wallTexture').value=config.texture||'plaster';byId('wallColor').value=config.color;byId('wallSmooth').checked=config.smooth!==false;
+  if(stair){byId('stairStepMode').value=config.stepMode;byId('stairCount').value=config.steps;byId('stairTread').value=config.treadMm;byId('stairRiser').value=config.riserMm;byId('stairFloating').checked=config.floating;}
+  byId('wallDrawMode').value=stair?'single':config.closed?'closed':'single';
+  byId('wallWidth').min=stair?'0.4':'0.05';byId('wallWidth').max=stair?'4':'1.5';byId('wallHeight').min=stair?'0.2':'0.3';
   byId('wallPhysics').value=wall?.userData?.physics?.mode||'static';byId('wallDrawMode').disabled=!!wall;
-  byId('wallFinish').hidden=!!wall;byId('wallUndo').hidden=!!wall;
+  byId('wallFinish').hidden=!!wall;byId('wallUndo').hidden=false;byId('wallRedo').hidden=false;
   byId('wallSmoothNow').disabled=!wall&&!this.wallDrawing?.points?.length;
   byId('wallConfirm').disabled=!wall;byId('wallConfirm').textContent=wall?'Save wall':'Create wall';
-  byId('wallStatus').textContent=wall?'Editing selected wall':'Move pointer over floor to begin';
+  byId('wallStatus').textContent=wall?'Editing selected geometry':'Move pointer over floor to begin';
+  byId('wallCloseLoop').hidden=stair||!!wall;this.wallSessionHistory.clear();this.wallStateLast=this.wallSessionState();
   this.wallSetActiveSlider?.('wallHeight');
  }
- startWallDrawing(){
+ startWallDrawing(kind='wall',closed=false){
   this.endWallDrawing();byId('addMenu').hidden=true;
-  this.wallDrawing={points:[],cursor:null,mode:'single',drawing:false,finished:false};
-  this.openWallPanel();this.wallDrawing.mode=byId('wallDrawMode').value;
+  this.wallDrawing={kind,points:[],cursor:null,mode:closed?'closed':'single',closed,drawing:false,finished:false};
+  this.openWallPanel();byId('wallDrawMode').value=closed?'closed':'single';this.wallDrawing.mode=byId('wallDrawMode').value;this.wallStateLast=this.wallSessionState();
   this.world.controls.enabled=false;this.transform.detach();
  }
  endWallDrawing(){
   const original=this.wallEditOriginal;
   if(original&&original.object&&this.items.includes(original.object)){
-   rebuildOfficeWall(original.object,original.wall);
-   original.object.userData.physics=original.physics;
+   if(original.object.userData.editorKind==='stairs')rebuildOfficeStairs(original.object,original.stairs);else rebuildOfficeWall(original.object,original.wall);
+   original.object.userData.physics=original.physics;this.physics.sync(original.object);
   }
-  this.wallDrawing=null;this.wallEditTarget=null;this.wallEditOriginal=null;this.wallTextureMediaId='';
+  this.wallDrawing=null;this.wallEditTarget=null;this.wallEditOriginal=null;this.wallTextureMediaId='';this.wallStateLast=null;this.wallSessionHistory.clear();++this.wallPreviewTextureReq;this.wallPreviewCustom?.dispose();this.wallPreviewCustom=null;this.wallPreviewTextureId='';
   if(this.wallPreview){this.world.scene.remove(this.wallPreview);this.disposeObject(this.wallPreview);this.wallPreview=null;}
   if(byId('wallPanel'))byId('wallPanel').hidden=true;
   this.world.controls.enabled=true;
@@ -440,13 +488,14 @@ export class SceneEditor{
   if(event.type==='pointerdown'){
    if(draft.finished)return true;
    if(draft.mode==='freehand'){draft.points=[point];draft.drawing=true;}
+   else if(draft.mode==='closed'&&draft.points.length>=3&&Math.hypot(point.x-draft.points[0].x,point.z-draft.points[0].z)<.5){draft.closed=true;draft.finished=true;}
    else if(!anchor||Math.hypot(point.x-anchor.x,point.z-anchor.z)>.05){draft.points.push(point);if(draft.mode==='single'&&draft.points.length>=2)draft.finished=true;}
-   draft.cursor=point;this.drawWallPreview();
+   draft.cursor=point;this.drawWallPreview();this.trackWallState();
   }else if(event.type==='pointermove'){
    draft.cursor=point;
    if(draft.mode==='freehand'&&draft.drawing&&(!anchor||Math.hypot(point.x-anchor.x,point.z-anchor.z)>.09)&&draft.points.length<150)draft.points.push(point);
    this.drawWallPreview();
-  }else if(event.type==='pointerup'&&draft.drawing){draft.drawing=false;draft.finished=true;draft.cursor=point;this.drawWallPreview();}
+  }else if(event.type==='pointerup'&&draft.drawing){draft.drawing=false;draft.finished=true;draft.cursor=point;this.drawWallPreview();this.trackWallState();}
   return true;
  }
  drawWallPreview(){
@@ -458,11 +507,12 @@ export class SceneEditor{
    const last=stroke.at(-1);if(Math.hypot(draft.cursor.x-last.x,draft.cursor.z-last.z)>.05)stroke.push(draft.cursor);
   }
   if(stroke.length>=2){
-   const local=wallWorldToLocal(stroke);const options=this.readWallOptions(local.points);
-   // A wireframe only. Never build opaque or duplicate saved wall geometry.
-   options.texture='plaster';options.textureMediaId='';
-   const ghost=makeOfficeWall(options);ghost.position.set(local.origin.x,0,local.origin.z);
-   for(const child of ghost.children){child.material?.map?.dispose();child.material?.dispose();child.material=new THREE.MeshBasicMaterial({color:'#55ecf8',transparent:true,opacity:.67,wireframe:true,depthTest:false});child.renderOrder=950;}
+   const local=wallWorldToLocal(stroke);const stairs=draft.kind==='stairs';const options=stairs?this.readStairOptions(local.points):this.readWallOptions(local.points);
+   if(!stairs){options.closed=draft.closed;}
+   const custom=options.texture==='custom';if(custom){options.texture='plaster';options.textureMediaId='';if(!this.wallPreviewCustom&&this.wallTextureMediaId)this.loadWallDraftTexture(this.wallTextureMediaId);}
+   const ghost=stairs?makeOfficeStairs(options):makeOfficeWall(options);ghost.position.set(local.origin.x,0,local.origin.z);
+   const solid=byId('wallPreviewMode').value==='solid';
+   for(const child of ghost.children){if(solid&&custom&&this.wallPreviewCustom){child.material.map?.dispose();child.material.map=this.wallPreviewCustom.clone();child.material.needsUpdate=true;}if(!solid){child.material?.map?.dispose();child.material?.dispose();child.material=new THREE.MeshBasicMaterial({color:'#55ecf8',transparent:true,opacity:.67,wireframe:true,depthTest:false});}else{child.material.transparent=true;child.material.opacity=Math.min(.72,options.opacity);child.material.depthWrite=false;const edges=new THREE.LineSegments(new THREE.EdgesGeometry(child.geometry),new THREE.LineBasicMaterial({color:'#50f0fc',transparent:true,opacity:.8,depthTest:false}));edges.renderOrder=951;child.add(edges);}child.renderOrder=950;}
    preview.add(ghost);
    const path=new THREE.BufferGeometry().setFromPoints(stroke.map(p=>new THREE.Vector3(p.x,.055,p.z)));
    const line=new THREE.Line(path,new THREE.LineBasicMaterial({color:'#ffffff',depthTest:false}));line.renderOrder=952;preview.add(line);
@@ -473,18 +523,33 @@ export class SceneEditor{
    const cross=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-.29,0,0),new THREE.Vector3(.29,0,0),new THREE.Vector3(0,0,-.29),new THREE.Vector3(0,0,.29)]);
    const lines=new THREE.LineSegments(cross,new THREE.LineBasicMaterial({color:'#7df7ff',depthTest:false}));lines.position.copy(marker.position);lines.renderOrder=961;preview.add(lines);
   }
+  // Scale references, display-only: 1.70-m person and 2.50-m ceiling marker.
+  const ref=draft.points[0]||draft.cursor;
+  if(ref){const person=new THREE.Group(),lineMat=new THREE.LineBasicMaterial({color:'#ffd66b',transparent:true,opacity:.85,depthTest:false});
+   const path=[[0,0],[0,1.25],[-.23,.9],[0,1.25],[.23,.9],[0,1.25],[0,1.02],[-.16,.04],[0,1.02],[.16,.04]].map(([x,y])=>new THREE.Vector3(x,y,0));
+   const stroke=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(path),lineMat);person.add(stroke);
+   const head=new THREE.Mesh(new THREE.SphereGeometry(.14,12,8),new THREE.MeshBasicMaterial({color:'#ffd66b',wireframe:true,depthTest:false}));head.position.y=1.56;person.add(head);
+   person.position.set(ref.x,.04,ref.z);person.renderOrder=953;preview.add(person);
+   if(draft.kind!=='stairs'){
+    const elevation=Math.max(2,Math.min(5,Number(byId('wallCeilingHeight').value)||2.5));
+    const ceilingPoints=(stroke.length>=2?stroke:[{x:ref.x-.8,z:ref.z},{x:ref.x+.8,z:ref.z}]).map(p=>new THREE.Vector3(p.x,elevation,p.z));
+    if(draft.closed&&stroke.length>=3)ceilingPoints.push(ceilingPoints[0].clone());
+    const ceiling=new THREE.Line(new THREE.BufferGeometry().setFromPoints(ceilingPoints),new THREE.LineDashedMaterial({color:'#ffbd68',dashSize:.14,gapSize:.08,depthTest:false}));ceiling.computeLineDistances();ceiling.renderOrder=956;preview.add(ceiling);
+   }
+  }
   this.wallPreview=preview;this.world.scene.add(preview);
-  byId('wallConfirm').disabled=draft.points.length<2;
+  byId('wallConfirm').disabled=draft.points.length<2||(draft.mode==='closed'&&draft.points.length<3);
   byId('wallSmoothNow').disabled=draft.points.length<3;
   byId('wallStatus').textContent=draft.points.length?`${draft.points.length} points${draft.finished?' · ready':''}`:'Click floor to start';
  }
- finishWallStroke(){if(!this.wallDrawing)return;this.wallDrawing.finished=this.wallDrawing.points.length>1;this.drawWallPreview();}
+ finishWallStroke(){if(!this.wallDrawing)return;this.wallDrawing.finished=this.wallDrawing.points.length>1;if(this.wallDrawing.mode==='closed'&&this.wallDrawing.points.length>=3)this.wallDrawing.closed=true;this.drawWallPreview();this.trackWallState();}
  confirmWall(){
   const target=this.wallEditTarget;
   if(target){
    if(!this.canEdit(target))return this.toast('Owner only');
    const before=this.wallEditOriginal?.before||this.snapshot(target);
-   rebuildOfficeWall(target,this.readWallOptions(target.userData.wall?.points));
+   if(target.userData.editorKind==='stairs')rebuildOfficeStairs(target,this.readStairOptions(target.userData.stairs?.points));
+   else rebuildOfficeWall(target,this.readWallOptions(target.userData.wall?.points));
    target.userData.physics=physicsOptions({mode:byId('wallPhysics').value});this.physics.sync(target);
    this.wallEditOriginal=null;this.recordEdit(before,this.snapshot(target));this.queueSave(target);
    this.endWallDrawing();this.toast('Wall updated');return;
@@ -493,17 +558,18 @@ export class SceneEditor{
   let points=draft.points;
   if(draft.mode==='freehand'&&byId('wallSmooth').checked)points=smoothWallPoints(points.map(p=>[p.x,p.z]),Number(byId('wallSmoothStrength').value)).map(([x,z])=>({x,z}));
   if(points.length<2)return this.toast('Draw at least two points');
-  const local=wallWorldToLocal(points);const options=this.readWallOptions(local.points);const wall=objectFor('wall');
-  wall.position.set(local.origin.x,0,local.origin.z);wall.name='Office wall';
+  const local=wallWorldToLocal(points);const stairs=draft.kind==='stairs';const options=stairs?this.readStairOptions(local.points):this.readWallOptions(local.points);
+  if(!stairs)options.closed=draft.closed;const wall=objectFor(stairs?'stairs':'wall');
+  wall.position.set(local.origin.x,0,local.origin.z);wall.name=stairs?'Office stairs':options.closed?'Closed room':'Office wall';
   wall.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
-  wall.userData.physics=physicsOptions({mode:byId('wallPhysics').value});rebuildOfficeWall(wall,options);
+  wall.userData.physics=physicsOptions({mode:byId('wallPhysics').value});if(stairs)rebuildOfficeStairs(wall,options);else rebuildOfficeWall(wall,options);
   this.items.push(wall);this.world.scene.add(wall);this.physics.sync(wall);this.endWallDrawing();
   this.skipNextWallPanel=true;this.select(wall);this.skipNextWallPanel=false;
   this.refreshList();this.recordEdit(null,this.snapshot(wall));this.queueSave(wall);this.toast('Office wall created');
  }
  events(){
   const canvas=this.world.renderer.domElement;let startX,startY;
-  window.addEventListener('keydown',e=>{if(!this.wallDrawing)return;if(e.key==='Escape'){e.preventDefault();this.endWallDrawing();}else if(e.key==='Enter'&&!e.target?.closest?.('input,select,textarea')){e.preventDefault();this.finishWallStroke();}},true);
+  window.addEventListener('keydown',e=>{if(!byId('wallPanel')||byId('wallPanel').hidden)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.code==='KeyZ'){e.preventDefault();e.stopImmediatePropagation();e.shiftKey?this.redoWall():this.undoWall();return;}if(cmd&&e.code==='KeyY'){e.preventDefault();e.stopImmediatePropagation();this.redoWall();return;}if(!this.wallDrawing)return;if(e.key==='Escape'){e.preventDefault();this.endWallDrawing();}else if(e.key==='Enter'&&!e.target?.closest?.('input,select,textarea')){e.preventDefault();this.finishWallStroke();}},true);
   for(const type of ['pointerdown','pointermove','pointerup'])document.addEventListener(type,e=>{if(this.wallPointer(e)){e.preventDefault();e.stopPropagation();}},true);
   canvas.addEventListener('dblclick',e=>{if(this.wallDrawing){e.preventDefault();e.stopPropagation();this.finishWallStroke();}},true);
   const orbitGesture=new OrbitGesture();
@@ -595,7 +661,7 @@ export class SceneEditor{
   duplicate.userData.textureName=entry.texture||'none';
   if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')duplicate.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.map=makeTexture(entry.texture);mesh.material.needsUpdate=true;}});
   if(entry.kind==='model'){duplicate.userData.modelUrl=entry.model;hydrateSceneModel(duplicate);}
-  if(entry.kind==='wall')rebuildOfficeWall(duplicate,entry.wall||{});
+  if(entry.kind==='wall')rebuildOfficeWall(duplicate,entry.wall||{});if(entry.kind==='stairs')rebuildOfficeStairs(duplicate,entry.stairs||{});
   if(entry.kind==='light')setLight(duplicate,entry.light||{});duplicate.userData.robotSpeed=entry.speed??1.8;duplicate.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;duplicate.userData.robotTurnSpeed=entry.turnSpeed??4;duplicate.userData.robotBrain=structuredClone(entry.brain||{});duplicate.userData.physics=physicsOptions(entry.physics);duplicate.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;duplicate.userData.avatarUrl=source.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;this.items.push(duplicate);this.world.scene.add(duplicate);this.physics.sync(duplicate);this.select(duplicate);if(entry.kind==='robot')hydrateRobot(duplicate);this.recordEdit(null,this.snapshot(duplicate));this.queueSave(duplicate);this.toast('Duplicated above original');
  }
  async replaceSpeakerModel(mediaObject,asset){
@@ -624,7 +690,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(this.canTransform(obj)&&obj.userData.editorKind!=='robot')this.transform.attach(obj);
   else{this.transform.detach();if(!this.canEdit(obj))this.toast('Read-only object · owned by another user');}
   this.updateInspector();this.refreshList();this.updateRobotDebugStatus();
-  if(obj?.userData.editorKind==='wall'&&!this.wallDrawing&&!this.skipNextWallPanel)this.openWallPanel(obj);else if(this.wallEditTarget)this.endWallDrawing();
+  if(['wall','stairs'].includes(obj?.userData.editorKind)&&!this.wallDrawing&&!this.skipNextWallPanel)this.openWallPanel(obj);else if(this.wallEditTarget)this.endWallDrawing();
   window.dispatchEvent(new CustomEvent('solvi:properties-robot-selected',{detail:{robotId:obj?.userData.editorKind==='robot'?obj.userData.editorId:null}}));
   // Selection must never move the camera; numpad presets and zoom remain explicit.
   if(obj)this.broadcastEdit(true);}
@@ -710,8 +776,8 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
   updateMediaHUDPosition(){const hud=byId('mediaInteractionHud');if(!hud)return;const obj=this.selected;if(!obj||obj.userData?.editorKind!=='media'){hud.hidden=true;return;}const pos=obj.getWorldPosition(new THREE.Vector3());pos.y+=0.9;pos.project(this.world.camera);if(pos.z>1){hud.hidden=true;return;}const rect=this.world.renderer.domElement.getBoundingClientRect();const x=(pos.x*.5+.5)*rect.width+rect.left,y=(-pos.y*.5+.5)*rect.height+rect.top;hud.style.left=`${x}px`;hud.style.top=`${y}px`;hud.hidden=false;byId('mediaHudPlay').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaHudMute').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';}
 
-  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed??2.5):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed??1.8):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed??4):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined,media:o.userData.editorKind==='media'?structuredClone(o.userData.media||{}):undefined,primitive:PRIMITIVE_FIELDS[o.userData.editorKind]?structuredClone(o.userData.primitive||sanitisePrimitive(o.userData.editorKind)):undefined,wall:o.userData.editorKind==='wall'?structuredClone(o.userData.wall):undefined}));}
- apply(data){clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;const restorePhysics=this.physics.enabled;this.physics.clear();byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.geometry=buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
+  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed??2.5):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed??1.8):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed??4):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined,media:o.userData.editorKind==='media'?structuredClone(o.userData.media||{}):undefined,primitive:PRIMITIVE_FIELDS[o.userData.editorKind]?structuredClone(o.userData.primitive||sanitisePrimitive(o.userData.editorKind)):undefined,wall:o.userData.editorKind==='wall'?structuredClone(o.userData.wall):undefined,stairs:o.userData.editorKind==='stairs'?structuredClone(o.userData.stairs):undefined}));}
+ apply(data){clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;const restorePhysics=this.physics.enabled;this.physics.clear();byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{});if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.geometry=buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
@@ -744,7 +810,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(isNew){obj.userData.editorId=id;this.items.push(obj);this.world.scene.add(obj);}
   obj.name=entry.name||obj.name;obj.userData.ownerId=entry.owner||null;obj.userData.transformLocked=entry.transformLocked===true;
   const oldTexture=obj.userData.textureName||'none',newTexture=entry.texture||'none';
-  obj.position.fromArray(entry.position);obj.rotation.fromArray(entry.rotation);obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive);if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)){const prior=obj.geometry;obj.geometry=buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;}
+  obj.position.fromArray(entry.position);obj.rotation.fromArray(entry.rotation);obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'&&JSON.stringify(obj.userData.stairs)!==JSON.stringify(entry.stairs))rebuildOfficeStairs(obj,entry.stairs||{});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive);if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)){const prior=obj.geometry;obj.geometry=buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;}
   if(entry.color&&entry.kind!=='model'&&entry.kind!=='media'){obj.traverse(node=>{if(node.material?.color&&node.userData.editorKind!=='robot'){
    if(node.isMesh&&!node.userData.robotPlaceholder&&entry.kind==='robot')return;
    if(node.material.color.getHexString()!==entry.color.slice(1))node.material.color.set(entry.color);
@@ -966,7 +1032,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   navigationObstacles(robot){
     this.world.scene.updateMatrixWorld(true);
     return this.items.filter(o=>o!==robot&&o.visible&&!['light','plane','points','curve'].includes(o.userData.editorKind)).flatMap(o=>{
-      if(o.userData.editorKind==='wall')return o.children.filter(child=>child.userData.wallSegment).map((child,i)=>{const b=new THREE.Box3().setFromObject(child);return {minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z,name:(o.name||'Office wall')+' section '+(i+1),kind:'wall',id:o.userData.editorId};});
+      if(['wall','stairs'].includes(o.userData.editorKind))return o.children.filter(child=>child.userData.wallSegment||child.userData.stairTread).map((child,i)=>{const b=new THREE.Box3().setFromObject(child);return {minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z,name:(o.name||'Office wall')+' section '+(i+1),kind:'wall',id:o.userData.editorId};});
       // Human-like glTF bounds can swell with animation and accessories. Use a
       // stable feet-centred capsule footprint for other robots instead.
       if(o.userData.editorKind==='robot')return {minX:o.position.x-.38,maxX:o.position.x+.38,minZ:o.position.z-.38,maxZ:o.position.z+.38,name:o.name||'Robot',kind:'robot',id:o.userData.editorId};

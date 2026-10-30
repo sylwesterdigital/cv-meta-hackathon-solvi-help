@@ -61,7 +61,7 @@ test('release lifecycle disables camera immediately and wheel dolly remains usab
  assert.match(editor,/lostpointercapture/);
  assert.match(editor,/orbitGesture\.orphanedMove\(e\)/);
  assert.match(editor,/e\.solviObjectPicked=true/);
- assert.doesNotMatch(editor,/stopImmediatePropagation\(\)/);
+ assert.match(editor,/if\(cmd&&e.code==='KeyZ'\).*stopImmediatePropagation\(\)/);
  assert.match(world,/if\(e\.solviObjectPicked\)return/);
  assert.match(editor,/recoverStaleOrbitPointers\(this\.world\.controls,orbitGesture\.pointers\)/);
  assert.match(world,/const cameraAllowed=this\.cameraOrbitGesture!==false/);

@@ -118,7 +118,7 @@ export class ScenePhysics{
   if(!isRobot&&opts.mode==='off'){this.remove(id);return;}
   const owner=this.owns(object);
   const type=isRobot?'avatar':opts.mode==='dynamic'&&!owner?'remote-dynamic':opts.mode;
-  const signature=`${kind}|${type}|${JSON.stringify(opts)}|${kind==='wall'?JSON.stringify(object.userData.wall):''}|${object.scale.toArray().join(',')}|${kind==='model'?(object.userData.modelUrl||'')+':'+Boolean(object.userData.modelReady):''}`;
+  const signature=`${kind}|${type}|${JSON.stringify(opts)}|${kind==='wall'?JSON.stringify(object.userData.wall):kind==='stairs'?JSON.stringify(object.userData.stairs):''}|${object.scale.toArray().join(',')}|${kind==='model'?(object.userData.modelUrl||'')+':'+Boolean(object.userData.modelReady):''}`;
   const existing=this.bodies.get(id);
   if(existing&&this.settings.get(id)===signature){
    // A remote object may be edited in place without allocating a new collider.
@@ -141,11 +141,11 @@ export class ScenePhysics{
   if(!isRobot)shape.setFriction(opts.friction).setRestitution(opts.restitution);
   else shape.setFriction(.85).setRestitution(0);
   let collider;
-  if(kind==='wall'&&object.children.length){
+  if((kind==='wall'||kind==='stairs')&&object.children.length){
    // Compound collider, one capsule-safe box per segment. Do not use a single
    // enclosing AABB that incorrectly blocks an open room / U-shaped wall.
    for(const segment of object.children){
-    if(!segment.userData.wallSegment)continue;
+    if(!segment.userData.wallSegment&&!segment.userData.stairTread)continue;
     const size=segment.geometry.parameters;
     const scale=object.scale;
     const halfX=Math.max(.025,size.width*Math.abs(scale.x)/2),halfY=Math.max(.025,size.height*Math.abs(scale.y)/2),halfZ=Math.max(.025,size.depth*Math.abs(scale.z)/2);

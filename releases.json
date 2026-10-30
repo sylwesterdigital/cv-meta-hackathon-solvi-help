@@ -1,6 +1,20 @@
 {
-  "currentVersion": "0.2.81",
+  "currentVersion": "0.2.82",
   "releases": [
+    {
+      "version": "0.2.82",
+      "publishedAt": "2026-10-30T14:17:33Z",
+      "changes": [
+        "Undo/redo Office Space construction and property changes using Control/Command+Z and Shift+Control/Command+Z.",
+        "Fix the wall panel responsive clipping and allow native select/color controls without cutting off options.",
+        "Show 1.70 m human silhouette and adjustable 2.5 m ceiling-height visual guide during wall placement.",
+        "Update wall color live during picker input and offer wireframe-only or live material plus wireframe previews.",
+        "Closed room vector tool draws a floor polygon outline and creates a closed wall perimeter with adjustable height.",
+        "Stair generator follows single/multiline/freehand floor paths, with even step counts or fixed tread/riser mm dimensions, optional free-floating treads and individual physics colliders.",
+        "Persist and validate stair geometry and closed room settings in scene object API; support scene archive metadata.",
+        "Add functional regression tests for stair flight metrics, geometry persistence, keyboard history and editor widgets."
+      ]
+    },
     {
       "version": "0.2.81",
       "publishedAt": "2026-10-30T13:17:03Z",
@@ -328,16 +342,6 @@
         "Keep the transform gizmo and camera orbit mutually exclusive for the duration of a gesture; allow pointerup to reach OrbitControls after picking an object, without triggering floor navigation.",
         "Stop orbit immediately on pointerup, pointercancel, pointer capture loss, browser blur, hidden tab, or a missed mouse release; recover stale Three.js OrbitControls pointer state.",
         "Add pointer lifecycle regression tests for gizmo capture, multi-touch, mouse/pen release, lost focus, wheel zoom and stale pointer recovery."
-      ]
-    },
-    {
-      "version": "0.2.49",
-      "publishedAt": "2026-10-29T01:52:21Z",
-      "changes": [
-        "Add a per-object transform lock/unlock icon directly before Delete in the Objects list, with a compact visual locked state and accessible button labels.",
-        "Prevent Move/Rotate/Scale gizmos, G/R/S hotkeys, XYZ value editing and transform resets while locked, preserving selection, other object settings and robot missions.",
-        "Save per-object transform locks in shared scenes, propagate them through object WebSocket patches and local room snapshots, and validate lock fields on the Flask backend.",
-        "Provide new lock/unlock SVGs and regression coverage for the editor controls, API persistence and mobile/desktop row layout."
       ]
     }
   ]

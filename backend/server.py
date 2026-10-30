@@ -188,7 +188,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.81',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.82',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1285,7 +1285,7 @@ def research_topic_sources(topic,limit=6):
     import urllib.parse
     sources=[]
     def read_json(url):
-        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.81 (public academic references)','Accept':'application/json'})
+        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.82 (public academic references)','Accept':'application/json'})
         with urlopen(req,timeout=3.5) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Large search response')
             return json.loads(response.read(180001).decode('utf-8'))
@@ -2642,7 +2642,18 @@ def valid_office_wall(wall):
     if not isinstance(media_id,str) or (media_id and not re.fullmatch(r'[0-9a-f-]{36}',media_id,re.I)):return False
     if wall.get('texture')=='custom' and not media_id:return False
     if not isinstance(wall.get('color'),str) or not re.fullmatch('#[0-9a-fA-F]{6}',wall['color']):return False
-    return isinstance(wall.get('smooth',False),bool)
+    return isinstance(wall.get('smooth',False),bool) and isinstance(wall.get('closed',False),bool)
+
+def valid_office_stairs(stairs):
+    if not isinstance(stairs,dict) or len(stairs)>12:return False
+    pts=stairs.get('points')
+    if not isinstance(pts,list) or not 2<=len(pts)<=80:return False
+    if any(not isinstance(p,list) or len(p)!=2 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or abs(v)>500 for v in p) for p in pts):return False
+    if any(math.hypot(a[0]-b[0],a[1]-b[1])<.04 for a,b in zip(pts,pts[1:])):return False
+    for key,lo,hi in (('width',.4,4),('height',.2,10),('steps',1,80),('treadMm',35,800),('riserMm',60,280),('opacity',.08,1)):
+        v=stairs.get(key)
+        if not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not lo<=v<=hi:return False
+    return stairs.get('stepMode') in ('fixed','count') and isinstance(stairs.get('floating'),bool) and isinstance(stairs.get('color'),str) and re.fullmatch(r'#[0-9a-fA-F]{6}',stairs['color']) is not None
 
 @app.put('/api/scene')
 def set_scene():
@@ -2653,10 +2664,11 @@ def set_scene():
     if not room_id:return json_error('Unknown room',404)
     objects=data.get('objects',[]);revision=data.get('revision');policy=room_policy(room_id)
     if not isinstance(objects,list) or len(objects)>128 or not isinstance(revision,int):return json_error('Invalid scene')
-    allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall'}
+    allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs'}
     for o in objects:
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
         if o['kind']=='wall' and not valid_office_wall(o.get('wall')):return json_error('Invalid office wall')
+        if o['kind']=='stairs' and not valid_office_stairs(o.get('stairs')):return json_error('Invalid office stairs')
         if 'primitive' in o:
             primitive=o['primitive']
             if o['kind'] not in {'cube','sphere','cylinder','plane','torus'} or not isinstance(primitive,dict) or len(primitive)>10 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not 0<=v<=128 for v in primitive.values()):return json_error('Invalid primitive geometry')
@@ -2708,10 +2720,11 @@ def patch_scene_object():
     if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',obj_id):return json_error('Invalid object id')
     if action not in ('upsert','remove'):return json_error('Invalid object action')
     if action=='upsert':
-        if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall'}:return json_error('Unsupported object type')
+        if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','physics','model','media','primitive','wall','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','physics','model','media','primitive','wall','stairs','transformLocked') if key in obj}
         if obj['kind']=='wall' and not valid_office_wall(obj.get('wall')):return json_error('Invalid office wall')
+        if obj['kind']=='stairs' and not valid_office_stairs(obj.get('stairs')):return json_error('Invalid office stairs')
         if 'primitive' in obj:
             primitive=obj['primitive']
             if obj['kind'] not in {'cube','sphere','cylinder','plane','torus'} or not isinstance(primitive,dict) or len(primitive)>10 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not 0<=v<=128 for v in primitive.values()):return json_error('Invalid primitive geometry')

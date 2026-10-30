@@ -13,8 +13,8 @@ const mappings=JSON.parse(match?.[1]||'{}').imports;
 
 test('cached editor cannot hide Office Space after a new release',()=>{
  const editor=fs.readFileSync(path.join(root,'js/editor.js'),'utf8');
- assert.match(editor,/\['Office Space',\['walls'\]\]/);
- assert.match(editor,/if\(k==='walls'\)\{this\.startWallDrawing\(\);\}/);
+ assert.match(editor,/\['Office Space',\['walls','closed room','stairs'\]\]/);
+ assert.match(editor,/if\(k==='walls'\)\{this\.startWallDrawing\('wall'\);\}/);
  assert.match(html,/id="wallPanel"/);
  assert.match(html,new RegExp(`src="\\./js/main\\.js\\?v=${version.replaceAll('.','\\.')}"`));
  assert.match(html,new RegExp(`href="\\./styles\\.css\\?v=${version.replaceAll('.','\\.')}"`));
