@@ -1,6 +1,22 @@
 """Run in a temporary data directory, never the production SQLite directory."""
 import json
 import os
+# Deployment contract: every local Python helper imported by server.py must be
+# installed alongside it, not merely included in the tested release ZIP.
+import ast
+from pathlib import Path as _Path
+_backend_dir=_Path(__file__).resolve().parent
+_server_ast=ast.parse((_backend_dir/'server.py').read_text(encoding='utf-8'))
+_installer=(_backend_dir/'install-ubuntu.sh').read_text(encoding='utf-8')
+_local_imports={node.module.split('.')[0] for node in ast.walk(_server_ast)
+                if isinstance(node,ast.ImportFrom) and node.module
+                and (_backend_dir/(node.module.split('.')[0]+'.py')).is_file()}
+assert _local_imports, 'No local backend modules found; check backend import detection'
+for _module in _local_imports:
+    assert f'{_module}.py' in _installer, f'Installer missing {_module}.py'
+    assert 'BACKEND_PY_MODULES=' in _installer and 'install -m 644 "$SRC/$module" "$TARGET/$module"' in _installer, 'Installer must deploy local Python modules'
+assert "DEPLOY_PHASE='Python backend import preflight'" in _installer
+print('PASS: local backend modules deployed, rollback protected and import preflight configured')
 from server import app
 
 c=app.test_client()

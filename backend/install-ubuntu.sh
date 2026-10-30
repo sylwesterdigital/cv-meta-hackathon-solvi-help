@@ -9,7 +9,7 @@ SERVICE=/etc/systemd/system/solvi-help.service
 TARGET=/opt/solvi-help
 STATE=/var/lib/solvi-help
 PORT=18765
-EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.75}
+EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.76}
 export SOLVI_EXPECTED_VERSION="$EXPECTED_VERSION"
 BACKUP=$(mktemp -d /root/solvi-backend-backup-XXXXXXXX)
 CHANGED=0
@@ -19,6 +19,9 @@ RESTORE_SNIPPET=0
 RESTORE_SITE=0
 RESTORE_SERVER=0
 RESTORE_REQUIREMENTS=0
+RESTORE_PY_MODULES=0
+# Keep these local Python modules together with server.py in /opt/solvi-help.
+BACKEND_PY_MODULES=(realm_archives.py)
 DEPLOY_PHASE='initial checks'
 # A failed SSH deployment previously reported only `Command failed (1): ssh -o`.
 # Report the failure phase without printing credentials from the environment.
@@ -40,6 +43,15 @@ finish() {
     if (( RESTORE_SNIPPET )); then cp -a "$BACKUP/snippet" "$SNIPPET"; else rm -f "$SNIPPET"; fi
     if (( RESTORE_SERVICE )); then cp -a "$BACKUP/service" "$SERVICE"; else rm -f "$SERVICE"; fi
     if (( RESTORE_SERVER )); then cp -a "$BACKUP/server.py" "$TARGET/server.py"; else rm -f "$TARGET/server.py"; fi
+    if (( RESTORE_PY_MODULES )); then
+      for module in "${BACKEND_PY_MODULES[@]}"; do
+        if [[ -f "$BACKUP/python-modules/$module" ]]; then
+          install -m 644 "$BACKUP/python-modules/$module" "$TARGET/$module"
+        else
+          rm -f "$TARGET/$module"
+        fi
+      done
+    fi
     if (( RESTORE_REQUIREMENTS )); then cp -a "$BACKUP/requirements.txt" "$TARGET/requirements.txt"; else rm -f "$TARGET/requirements.txt"; fi
     systemctl daemon-reload || true
     if (( RESTORE_SERVICE )); then systemctl restart solvi-help || true; else systemctl stop solvi-help || true; fi
@@ -53,6 +65,10 @@ trap finish EXIT
 [[ -f "$SITE" ]] || { echo "Missing $SITE" >&2; exit 1; }
 command -v nginx >/dev/null || { echo 'Nginx not installed' >&2; exit 1; }
 command -v apt-get >/dev/null || { echo 'Debian/Ubuntu required' >&2; exit 1; }
+# Fail before changing the running service if a required staged module is absent.
+for module in "${BACKEND_PY_MODULES[@]}"; do
+  [[ -s "$SRC/$module" ]] || { echo "[SOLVI] Missing required backend module in stage: $module" >&2; exit 1; }
+done
 mkdir -p "$TARGET" "$STATE/media" "$STATE/models" /etc/nginx/snippets
 chown -R www-data:www-data "$STATE"
 chmod 750 "$STATE" "$STATE/media"
@@ -70,12 +86,32 @@ if [[ -f "$SNIPPET" ]]; then cp -a "$SNIPPET" "$BACKUP/snippet"; RESTORE_SNIPPET
 if [[ -f "$SERVICE" ]]; then cp -a "$SERVICE" "$BACKUP/service"; RESTORE_SERVICE=1; fi
 if [[ -f "$TARGET/server.py" ]]; then cp -a "$TARGET/server.py" "$BACKUP/server.py"; RESTORE_SERVER=1; fi
 if [[ -f "$TARGET/requirements.txt" ]]; then cp -a "$TARGET/requirements.txt" "$BACKUP/requirements.txt"; RESTORE_REQUIREMENTS=1; fi
+mkdir -p "$BACKUP/python-modules"
+for module in "${BACKEND_PY_MODULES[@]}"; do
+  if [[ -f "$TARGET/$module" ]]; then cp -a "$TARGET/$module" "$BACKUP/python-modules/$module"; fi
+done
+RESTORE_PY_MODULES=1
 CHANGED=1
 DEPLOY_PHASE="install Python backend"
 install -m 644 "$SRC/server.py" "$TARGET/server.py"
+for module in "${BACKEND_PY_MODULES[@]}"; do
+  install -m 644 "$SRC/$module" "$TARGET/$module"
+done
 install -m 644 "$SRC/requirements.txt" "$TARGET/requirements.txt"
 if [[ ! -x "$TARGET/.venv/bin/python" ]]; then python3 -m venv "$TARGET/.venv"; fi
 "$TARGET/.venv/bin/python" -m pip install -q --disable-pip-version-check -r "$TARGET/requirements.txt"
+# Import the exact deployed Python files in an isolated SQLite directory before
+# restarting systemd. This catches missing local modules and import-time failures.
+DEPLOY_PHASE='Python backend import preflight'
+mkdir -p "$BACKUP/preflight-state"
+(
+  cd "$TARGET"
+  SOLVI_DATA_DIR="$BACKUP/preflight-state" SOLVI_STATIC_ROOT="$TARGET" "$TARGET/.venv/bin/python" - <<'PY_PREFLIGHT'
+import server
+assert server.app is not None
+print('[SOLVI] BACKEND IMPORT OK: server.py and realm_archives.py')
+PY_PREFLIGHT
+)
 # STT reuses the existing Rantlist Whisper.cpp executable and persistent base model.
 # No second model, inference wheel, or automatic download is installed by SOLVI.
 # One-time admin password; no default password. Do not print secret in deployment logs.

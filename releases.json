@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.75",
+  "currentVersion": "0.2.76",
   "releases": [
+    {
+      "version": "0.2.76",
+      "publishedAt": "2026-10-30T05:00:11Z",
+      "changes": [
+        "Fix Ubuntu Gunicorn boot failure by installing realm_archives.py alongside server.py; previously the ZIP contained this helper but the installer omitted it.",
+        "Backup and restore backend helper modules on rollback so failed upgrades do not leave mixed Python module versions behind.",
+        "Preflight importing the deployed backend with isolated temporary SQLite data before restarting the systemd service, failing with a named installer phase if startup imports are broken.",
+        "Add backend integration and JavaScript regression checks enforcing local Python module deployment for future releases."
+      ]
+    },
     {
       "version": "0.2.75",
       "publishedAt": "2026-10-30T04:25:08Z",
@@ -325,16 +335,6 @@
         "Send the entire camera batch with conversation, personality, goals and memories in one Muse Spark request, displaying all captured frames in chat and Brains.",
         "Enable opt-in proactive visual observation (five images, one model request) with short-lived single-use authorization and a multiuser cooldown; report grounded suggestions without unapproved movement.",
         "Expand SAM scene-object search to eight directions and add regression checks for camera plans, voice matching, authorization and usage."
-      ]
-    },
-    {
-      "version": "0.2.41",
-      "publishedAt": "2026-10-28T22:09:58Z",
-      "changes": [
-        "Make ElevenLabs voice generation failures visible and actionable; never silently replace cloud audio with a local browser voice.",
-        "Add authenticated ElevenLabs voice catalogue in Robot Brains, with named voice selection and a real synthesize/playback status.",
-        "Return sanitized provider errors for invalid API keys, inaccessible voices, insufficient quota, rate limiting and connectivity.",
-        "Protect voice cache against provider key changes; test provider audio and error mapping without sending real billable requests."
       ]
     }
   ]
