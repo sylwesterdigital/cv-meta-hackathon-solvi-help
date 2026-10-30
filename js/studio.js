@@ -79,7 +79,7 @@ const api={
   const headers={...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...(options.headers||{})};
   if(auth?.token)headers.Authorization='Bearer '+auth.token;
   headers['X-Solvi-Tab']=tab;
-  if(['/api/models','/api/chat','/api/robots/react','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
+  if(['/api/models','/api/chat','/api/robots/react','/api/robots/discussion/step','/api/robots/discussion/start','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
     const key=sessionStorage.getItem('solvi-meta-session-key');if(key)headers['X-Solvi-Model-Key']=key;
   }
   const res=await fetch(url,{...options,headers,cache:'no-store'});
@@ -332,6 +332,30 @@ async function reactOneRobot(message,targetRobotId,interruptedRobot=''){
  }
  return response;
 }
+// Evidence-aware, finite robot debates. The server verifies the original human
+// message, recipient handles, source metadata and each step before a model call.
+let discussionRun=null;
+async function runRobotDiscussion(message,room){
+ if(discussionRun)return; // A single discussion at a time per browser.
+ const state={messageId:message.id,room,cancelled:false};discussionRun=state;
+ const stop=$('stopDiscussionButton');if(stop)stop.hidden=false;
+ try{
+  const opened=await api.req('/api/robots/discussion/start',{method:'POST',body:JSON.stringify({room,message_id:message.id})});
+  const topic=opened.topic||'the topic',steps=opened.steps||[];
+  const count=(opened.sources||[]).length;
+  $('chatStatus').textContent='Discussion: '+topic+' · '+(count?`${count} external reference(s) retrieved`:'no live sources verified');
+  for(const step of steps){
+   if(state.cancelled||room!==activeRoom)break;
+   if(step.index)await robotSpeech?.waitUntilQuiet();
+   if(state.cancelled||room!==activeRoom)break;
+   const result=await api.req('/api/robots/discussion/step',{method:'POST',body:JSON.stringify({room,discussion_id:message.id,step_index:step.index})});
+   if(result.inference)emitBrainTrace(step.robot_id,step.robot_name,'DISCUSSION '+step.phase.toUpperCase()+' · EXACT MODEL I/O',result.inference);
+   if(result.answer){await bubble(result.answer);if(step.phase==='synthesis')$('chatStatus').textContent='Discussion concluded: agreement and differences recorded';}
+  }
+  if(state.cancelled)$('chatStatus').textContent='Discussion stopped after the last completed robot turn';
+ }catch(error){$('chatStatus').textContent='Discussion failed: '+error.message;toast('Research discussion: '+error.message);}
+ finally{if(discussionRun===state)discussionRun=null;if(stop)stop.hidden=true;}
+}
 // All turns for a single conversation are serialized. Each message has an ordered
 // recipient list verified by the server, then optional bounded bot-to-bot handoffs.
 let robotTurnSerial=Promise.resolve();
@@ -343,6 +367,7 @@ async function reactToRobotMessage(message,relayHops=0,interruptedRobot=''){
   while(queue.length&&count<10&&room===activeRoom){
    const item=queue.shift();
    const result=await api.req('/api/robots/queue',{method:'POST',body:JSON.stringify({room,message_id:item.message.id})});
+   if(result.discussion?.enabled&&item.depth===0){await runRobotDiscussion(item.message,room);continue;}
    for(const robot of result.targets||[]){
     if(count>=10||room!==activeRoom)break;
     const key=item.message.id+':'+robot.id;
@@ -1004,6 +1029,8 @@ function setupRobotVoiceSettings(){
  window.addEventListener('solvi:session-lost',()=>robotSpeech?.stop());
 }
 function bindUI(world){
+ $('stopDiscussionButton').onclick=()=>{if(discussionRun)discussionRun.cancelled=true;};
+ window.addEventListener('solvi:room-changed',()=>{if(discussionRun)discussionRun.cancelled=true;});
  const commandsButton=$('robotCommandsButton'),commandsCard=$('robotCommandsCard');
  commandsButton.onclick=()=>{commandsCard.hidden=!commandsCard.hidden;commandsButton.setAttribute('aria-expanded',String(!commandsCard.hidden));};
  // A lightweight DOM waveform projected from the talking robot's head.

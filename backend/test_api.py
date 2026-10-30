@@ -809,6 +809,50 @@ assert _motion_json.get('command',{}).get('kind')=='walk_forward' and _motion_js
 assert _motion_json['command']['robot_id']==elox['id'] and _motion_json.get('answer',{}).get('model')=='scene-command',_motion_json
 assert _motion_json['decision']['executable'] is True and _motion_json['decision']['model_plan_executes'] is False,_motion_json
 print('PASS: natural language walking dispatches a real scene command without a camera or Meta model')
+# v0.2.70: a substantive multi-handle discussion triggers a bounded, sourced,
+# serialized research debate rather than independent one-shot robot replies.
+from server import discussion_requested,discussion_topic,discussion_step_plan
+_disc_text='@Elox @Jessica there is discussion on the internet that vitamin C is good for hair loss: research pros and cons, then agree or disagree'
+assert discussion_requested(_disc_text,[elox,robot])
+assert 'vitamin C' in discussion_topic(_disc_text,[elox,robot]) and '@' not in discussion_topic(_disc_text,[elox,robot])
+assert not discussion_requested('@Elox @Jessica wave hello',[elox,robot])
+assert not discussion_requested('@All everybody dance',[elox,robot])
+assert [s['phase'] for s in discussion_step_plan([{'id':'a','name':'A'},{'id':'b','name':'B'}])]==['opening','opening','challenge','challenge','synthesis']
+_disc_message=c.post('/api/message',headers=headers,json={'room':'lab','text':_disc_text}).get_json()['message']
+_dq=c.post('/api/robots/queue',headers=headers,json={'room':'lab','message_id':_disc_message['id']})
+assert _dq.status_code==200 and _dq.get_json()['discussion']['enabled'] is True,(_dq.status_code,_dq.data)
+_disc_source={'id':'S1','provider':'PubMed','title':'Vitamin C and hair: literature overview','url':'https://pubmed.ncbi.nlm.nih.gov/12345678/','snippet':'Bibliographic listing'}
+with _patch('server.research_topic_sources',return_value=[_disc_source]) as _sources:
+    _start=c.post('/api/robots/discussion/start',headers=headers,json={'room':'lab','message_id':_disc_message['id']})
+assert _start.status_code==200,(_start.status_code,_start.data)
+assert _sources.call_count==1
+_dsteps=_start.get_json()['steps']
+assert len(_dsteps)==5 and _dsteps[0]['robot_name']=='Elox' and _dsteps[-1]['phase']=='synthesis'
+assert _start.get_json()['research_status']=='live-sources'
+with _patch('server.research_topic_sources',side_effect=AssertionError('Research must be cached')):
+    assert c.post('/api/robots/discussion/start',headers=headers,json={'room':'lab','message_id':_disc_message['id']}).status_code==200
+assert c.post('/api/robots/discussion/start',headers=headers,json={'room':'lab','message_id':'not-owned'}).status_code==403
+assert c.post('/api/robots/discussion/step',headers=headers,json={'room':'lab','discussion_id':_disc_message['id'],'step_index':1}).status_code==409
+for _step_index in range(5):
+    chat_attempts[data['user']['id']]=[]
+    fake={'id':'debate-'+str(_step_index),'output_text':('Agreement: the evidence remains uncertain. Disagreement: effectiveness is not established. Pros: plausible nutrition role. Cons: limited specific trials. Evidence gaps: controlled studies.' if _step_index==4 else 'I will compare the proposed mechanisms with the actual evidence [S1].'),'usage':{'input_tokens':23,'output_tokens':47}}
+    with _patch('server.active_model_key',return_value='test-key'),_patch('server.meta_request',return_value=fake) as _model:
+        _turn=c.post('/api/robots/discussion/step',headers=headers,json={'room':'lab','discussion_id':_disc_message['id'],'step_index':_step_index})
+        assert _model.call_count==1,(_step_index,_turn.status_code,_turn.data)
+    assert _turn.status_code==200,(_step_index,_turn.status_code,_turn.data)
+    _result=_turn.get_json()
+    assert _result['step']['phase']==_dsteps[_step_index]['phase']
+    assert _result['answer']['speaker']==_dsteps[_step_index]['robot_name']
+    assert _result['inference']['request']['developer'] and _result['inference']['request']['user']
+    assert '12345678' in _result['inference']['request']['user']
+assert 'Agreement' in _result['answer']['text'] and 'https://pubmed.ncbi.nlm.nih.gov/12345678/' in _result['answer']['text']
+with _patch('server.meta_request',side_effect=AssertionError('Replayed turn must not reissue a billable call')):
+    _again=c.post('/api/robots/discussion/step',headers=headers,json={'room':'lab','discussion_id':_disc_message['id'],'step_index':0})
+assert _again.status_code==200 and _again.get_json()['replayed'] is True
+assert c.post('/api/robots/discussion/step',headers=headers,json={'room':'lab','discussion_id':_disc_message['id'],'step_index':5}).status_code==400
+print('PASS: sourced multi-robot discussion, exact prompts, debate phases, synthesis, sequential ordering, persistent deduplication')
+
+
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-elox-060'}}).status_code==200
 print('PASS: attachments, exact furniture matching, verified 2-hop robot-robot @handles and deduplication')
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-0220'}}).status_code==200
@@ -877,3 +921,4 @@ _furniture=[{'id':'red-sphere', 'kind':'sphere','name':'Red Sphere','position':[
 _typo,_ack=_plan_motion('@Elox go to the Red Pshere now',_b,_furniture)
 assert _typo and _typo['kind']=='go_to' and _typo['target_id']=='red-sphere',(_typo,_ack)
 print('PASS: natural move-forward commands, safe typo target resolution, and physical task dispatch')
+

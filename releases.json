@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.69",
+  "currentVersion": "0.2.70",
   "releases": [
+    {
+      "version": "0.2.70",
+      "publishedAt": "2026-10-30T00:08:07Z",
+      "changes": [
+        "Engage two to four explicitly addressed robots in a structured, ordered evidence discussion directly from ordinary @handle chat; ordinary group chat and movement requests remain unaffected.",
+        "Retrieve live public reference metadata from PubMed and Wikipedia via bounded fixed endpoints; present search provenance and openly state when no verified sources were reachable.",
+        "Guide distinct robot positions through opening views, direct evidence challenges and a final agreement/disagreement synthesis, with no forced false balance and a fixed maximum of seven model turns.",
+        "Persist discussion sessions, source records and completed turns in SQLite; enforce sender/room/recipient verification, strict turn order, replay-safe deduplication and per-user start limits.",
+        "Provide discussion progress and an in-composer Stop discussion action; retain exact model prompt and response records in per-robot diagnostic logs."
+      ]
+    },
     {
       "version": "0.2.69",
       "publishedAt": "2026-10-29T23:51:43Z",
@@ -312,17 +323,6 @@
         "Front-facing 3D headshots can be saved for robot chat portraits and user profile photos.",
         "Robot portrait references persist in scene data; existing conversation history shows robot portraits rather than user photos.",
         "Server validates visual requests, room ownership, JPEG uploads and billing; failures never impersonate visual perception."
-      ]
-    },
-    {
-      "version": "0.2.34",
-      "publishedAt": "2026-10-28T18:28:35Z",
-      "changes": [
-        "Restore scene orbit and orbit-follow gestures by making transparent chat overlays pass through mouse/touch events.",
-        "Re-enable OrbitControls at the start of canvas drags when transform gizmos are not active.",
-        "Remove orphaned minimized Objects and World tools panels from the upper-left corner; reopen World tools from an explicit navigation control.",
-        "Keep object list accessible through World tools and preserve normal interactions with actual chat bubbles and the composer.",
-        "Remove obsolete top-level Export chat and Admin buttons; keep intentional actions in Settings only, with no corner artifacts."
       ]
     }
   ]
