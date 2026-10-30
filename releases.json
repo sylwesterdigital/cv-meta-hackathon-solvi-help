@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.78",
+  "currentVersion": "0.2.79",
   "releases": [
+    {
+      "version": "0.2.79",
+      "publishedAt": "2026-10-30T12:38:53Z",
+      "changes": [
+        "Add Office Space > Walls drawing in the Add menu with single-segment, multiple-node and freehand floor gestures, live wireframe previews and optional point simplification.",
+        "Create editable procedural office wall meshes with width, height, plaster/concrete/brick/glass materials, colour, opacity, static/dynamic/kinematic physics and segment-wise collision bodies.",
+        "Persist wall control points and material settings in room scenes, atomic object updates and realm archives; validate points and dimensions server-side.",
+        "Use bounded, ownership-checked Rapier capsule contact displacement for nearby idle robots, including forward/backward walking animation paced by measured movement.",
+        "Keep route planning collision checks aligned with individual wall segments rather than treating all open interior space as one solid wall bounding box."
+      ]
+    },
     {
       "version": "0.2.78",
       "publishedAt": "2026-10-30T05:37:02Z",
@@ -326,15 +337,6 @@
         "Report zero verified targets without a Muse inference or fabricated location; protect empty-JPEG requests with saved-question, room, robot and target validation.",
         "Keep only positive SAM frames in Brains visual-search gallery and avoid diagnosing the last empty frame with Muse; clarify robot arrival messages.",
         "Add regression coverage for target parsing, camera view selection, zero matches, and unchanged deployment packaging."
-      ]
-    },
-    {
-      "version": "0.2.45",
-      "publishedAt": "2026-10-28T23:06:09Z",
-      "changes": [
-        "Repair backend integration test expecting a four-direction SAM search after the vision search was expanded to eight directions.",
-        "Assert the actual eight-direction task-result response and include HTTP status/body on future mismatches.",
-        "Keep all v0.2.44 compact Properties, robot eyes, voice selection, and obstacle-aware navigation unchanged; advance release versions for the strict deployment watcher."
       ]
     }
   ]

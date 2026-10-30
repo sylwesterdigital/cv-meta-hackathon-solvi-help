@@ -17,8 +17,8 @@ const iconIds={
 export const objectKindIcons=Object.freeze({
  cube:'cube',sphere:'sphere',cylinder:'cylinder',plane:'plane',torus:'torus',
  curve:'curve',surface:'surface',text:'text-object',points:'points',
- light:'light',robot:'avatar-3d',model:'model',
- 'add 3d model':'model','point light':'light','spot light':'light',
+ light:'light',robot:'avatar-3d',model:'model',wall:'square',
+ 'walls':'square','add 3d model':'model','point light':'light','spot light':'light',
  'directional light':'light','ambient light':'light','hemisphere light':'light'
 });
 export function iconForObjectKind(kind){return objectKindIcons[String(kind||'').trim().toLowerCase()]||'model';}

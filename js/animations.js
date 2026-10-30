@@ -21,7 +21,7 @@ export function computeMode(speed){return speed<.05?'idle':speed<2?'walk':'run';
 export class MotionController{
   constructor(THREE,root,clips){
     this.THREE=THREE;this.mixer=new THREE.AnimationMixer(root);
-    this.actions=new Map();this.current=null;this.currentKind=null;this.clipNames=clips.map(c=>String(c.name||'')).filter(Boolean);
+    this.actions=new Map();this.current=null;this.currentKind=null;this.playbackSpeed=1;this.clipNames=clips.map(c=>String(c.name||'')).filter(Boolean);
     for(const kind of Object.keys(MOTION_ALIASES)){
       const clip=findClip(clips,kind);
       if(clip)this.actions.set(kind,this.mixer.clipAction(clip));
@@ -39,13 +39,13 @@ export class MotionController{
     if(!action)return;
     if(action===this.current){
       if(this.currentKind!==kind){
-        action.setEffectiveTimeScale(reverseWalk?-1:1);
+        action.setEffectiveTimeScale((reverseWalk?-1:1)*this.playbackSpeed);
         action.time=reverseWalk?Math.max(0,action.getClip().duration-.001):0;
         this.currentKind=kind;
       }
       return;
     }
-    action.reset().setEffectiveWeight(1).setEffectiveTimeScale(reverseWalk?-1:1).play();
+    action.reset().setEffectiveWeight(1).setEffectiveTimeScale((reverseWalk?-1:1)*this.playbackSpeed).play();
     if(reverseWalk)action.time=Math.max(0,action.getClip().duration-.001);
     action.setLoop(['wave','jump'].includes(kind)?this.THREE.LoopOnce:this.THREE.LoopRepeat,['wave','jump'].includes(kind)?1:Infinity);
     action.clampWhenFinished=['wave','jump'].includes(kind);
@@ -54,5 +54,6 @@ export class MotionController{
     else if(this.current)this.current.stop();
     this.current=action;this.currentKind=kind;
   }
+  setPlaybackSpeed(value=1){this.playbackSpeed=Math.max(.25,Math.min(2,Number(value)||1));if(this.current)this.current.setEffectiveTimeScale((this.currentKind==='walkBackward'&&this.actions.has('walk')?-1:1)*this.playbackSpeed);}
   update(dt){this.mixer.update(dt);}
 }

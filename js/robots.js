@@ -162,13 +162,14 @@ export function tickRobots(items,dt,onMove=()=>{}){
       else{
         delta.normalize();const speed=mode==='run'?2.7:1.2;
         const travel=Math.min(distance,speed*Math.max(0,Number(robot.userData.robotSpeed??1.8))*dt);const nx=robot.position.x+delta.x*travel,nz=robot.position.z+delta.z*travel;
-        const staticBlock=robot.userData.robotPathObstacles&&pathBlocked(nx,nz,robot.userData.robotPathObstacles,.25);
+        const staticBlock=robot.userData.robotPathObstacles&&pathBlocked(nx,nz,robot.userData.robotPathObstacles.filter(o=>o.kind!=='robot'),.25);
         // Occupied robot footprints are dynamic. Replan with a refreshed scene index.
         const neighbour=items.some(other=>{
           if(other===robot||other.userData.editorKind!=='robot')return false;
           const before=Math.hypot(other.position.x-robot.position.x,other.position.z-robot.position.z);
           const after=Math.hypot(other.position.x-nx,other.position.z-nz);
           // If already overlapping, moving AWAY is a safe way to resolve it.
+          if(after<.66&&after<before+0.0001&&onMove.push?.(robot,other,{x:nx,z:nz},dt))return false;
           return after<.66&&after<before+0.0001;
         });
         if(staticBlock||neighbour){
@@ -180,8 +181,14 @@ export function tickRobots(items,dt,onMove=()=>{}){
         const angle=Math.atan2(delta.x,delta.z);robot.rotation.y+=Math.atan2(Math.sin(angle-robot.rotation.y),Math.cos(angle-robot.rotation.y))*clamp(dt*6,0,1);
       }
     }
+    const push=robot.userData.robotPushState;
+    if(push&&performance.now()-push.at<270&&!robot.userData.robotGoal&&!robot.userData.robotMission&&mode==='idle'){mode=push.kind;}
     const visual=robot.children.find(c=>c.userData.robotVisual);if(visual){const lean=(robot.userData.robotLateral||0)*-.075;visual.rotation.z+=(lean-visual.rotation.z)*Math.min(1,dt*5);}
     if(robot.userData.robotPlaying!==mode){robot.userData.robotAnimator?.play(mode);robot.userData.robotPlaying=mode;}
+    // Footfall cadence follows measured displacement, not an in-place walk timer.
+    if(push&&performance.now()-push.at<270&&mode===push.kind)robot.userData.robotAnimator?.setPlaybackSpeed(push.rate);
+    else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode)){const measured=robot.userData.robotActualSpeed;robot.userData.robotAnimator?.setPlaybackSpeed(Number.isFinite(measured)?Math.max(.25,Math.min(2.5,measured/(mode==='run'?2.7:1.2))):1);}
+    else robot.userData.robotAnimator?.setPlaybackSpeed(1);
     robot.userData.robotAnimator?.update(dt);
     if(robot.userData.robotSeated&&robot.userData.robotSitPose==='procedural'){
       const visualModel=visual?.children[0];

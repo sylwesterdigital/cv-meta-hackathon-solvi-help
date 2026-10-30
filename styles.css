@@ -1683,3 +1683,6 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #chatFeed .chat-camera-source-frames{grid-column:1/-1;min-width:0;padding:3px 0}
 #chatFeed .chat-camera-source-frames>summary{font-size:11px;color:#adc7d6;cursor:pointer;padding:3px 5px}
 #chatFeed .chat-camera-source-frames>.chat-media-grid{margin-top:5px}
+
+.wall-panel{position:fixed;left:clamp(14px,5vw,80px);top:clamp(55px,10vh,130px);width:min(350px,calc(100vw - 28px));max-height:80vh;overflow:auto;z-index:1300;background:#102d3d;box-shadow:0 12px 35px #0008;border:1px solid #789cad;border-radius:15px;color:#ebf6ff}
+.wall-panel-content{display:grid;gap:9px;padding:12px}.wall-panel-content label{display:grid;gap:5px;font-size:.84rem}.wall-panel-content input[type=range]{width:100%;accent-color:#6cdbed}.wall-panel-content select,.wall-panel-content input[type=color]{width:100%;min-height:32px}.wall-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.wall-panel-content label:has(input[type=checkbox]){display:flex;align-items:center;gap:7px}.wall-actions{display:flex;gap:6px;flex-wrap:wrap}.wall-actions button{font-size:.8rem;padding:7px 10px}.wall-panel[hidden]{display:none!important}

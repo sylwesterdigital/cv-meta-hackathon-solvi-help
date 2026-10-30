@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {physicsOptions} from './physics-options.js';
 import {CHARACTER,characterMotion,resolveCharacterMotion,easedRemotePose} from './character-physics.js';
+import {robotPushVector,pushedWalkState} from './robot-push.js';
 
 // Bodies live for the lifetime of the scene object; movement never re-creates a GLB.
 export class ScenePhysics{
@@ -117,7 +118,7 @@ export class ScenePhysics{
   if(!isRobot&&opts.mode==='off'){this.remove(id);return;}
   const owner=this.owns(object);
   const type=isRobot?'avatar':opts.mode==='dynamic'&&!owner?'remote-dynamic':opts.mode;
-  const signature=`${kind}|${type}|${JSON.stringify(opts)}|${object.scale.toArray().join(',')}|${kind==='model'?(object.userData.modelUrl||'')+':'+Boolean(object.userData.modelReady):''}`;
+  const signature=`${kind}|${type}|${JSON.stringify(opts)}|${kind==='wall'?JSON.stringify(object.userData.wall):''}|${object.scale.toArray().join(',')}|${kind==='model'?(object.userData.modelUrl||'')+':'+Boolean(object.userData.modelReady):''}`;
   const existing=this.bodies.get(id);
   if(existing&&this.settings.get(id)===signature){
    // A remote object may be edited in place without allocating a new collider.
@@ -140,10 +141,28 @@ export class ScenePhysics{
   if(!isRobot)shape.setFriction(opts.friction).setRestitution(opts.restitution);
   else shape.setFriction(.85).setRestitution(0);
   let collider;
-  try{collider=this.world.createCollider(shape,body);}catch(error){
-   if(opts.collider!=='trimesh'||type!=='static')throw error;
-   object.userData.colliderStatus='Trimesh creation failed; using bounding box: '+String(error?.message||error).slice(0,120);
-   collider=this.world.createCollider(this.colliderShape(object).setFriction(opts.friction).setRestitution(opts.restitution),body);
+  if(kind==='wall'&&object.children.length){
+   // Compound collider, one capsule-safe box per segment. Do not use a single
+   // enclosing AABB that incorrectly blocks an open room / U-shaped wall.
+   for(const segment of object.children){
+    if(!segment.userData.wallSegment)continue;
+    const size=segment.geometry.parameters;
+    const scale=object.scale;
+    const halfX=Math.max(.025,size.width*Math.abs(scale.x)/2),halfY=Math.max(.025,size.height*Math.abs(scale.y)/2),halfZ=Math.max(.025,size.depth*Math.abs(scale.z)/2);
+    const rotation=segment.rotation.y;
+    const desc=R.ColliderDesc.cuboid(halfX,halfY,halfZ)
+      .setTranslation(segment.position.x*scale.x,segment.position.y*scale.y,segment.position.z*scale.z)
+      .setRotation({x:0,y:Math.sin(rotation/2),z:0,w:Math.cos(rotation/2)})
+      .setFriction(opts.friction).setRestitution(opts.restitution);
+    const segmentCollider=this.world.createCollider(desc,body);
+    if(!collider)collider=segmentCollider;
+   }
+  }else{
+   try{collider=this.world.createCollider(shape,body);}catch(error){
+    if(opts.collider!=='trimesh'||type!=='static')throw error;
+    object.userData.colliderStatus='Trimesh creation failed; using bounding box: '+String(error?.message||error).slice(0,120);
+    collider=this.world.createCollider(this.colliderShape(object).setFriction(opts.friction).setRestitution(opts.restitution),body);
+   }
   }
   this.bodies.set(id,body);this.colliders.set(id,collider);this.settings.set(id,signature);
   if(type==='dynamic')body.wakeUp();
@@ -164,6 +183,31 @@ export class ScenePhysics{
   this.remoteSequence.set(packet.id,seq);
   this.remoteTargets.set(packet.id,{position:{x:packet.x,y:packet.y,z:packet.z},rotation:packet.q,received:performance.now()});
  }
+ // Physical contact in the locally owned Rapier world: never displace
+ // remote-owned robots, objects, active missions, or targets behind static walls.
+ tryPushRobot(actor,target,actorNext,dt){
+  if(!this.enabled||!this.world||actor===target||!this.owns(actor)||!this.owns(target)||target.userData.robotMission||target.userData.robotGoal)return false;
+  if(actor.userData.editorKind!=='robot'||target.userData.editorKind!=='robot')return false;
+  const movement=robotPushVector(actorNext,target.position);
+  if(!movement)return false;
+  const collider=this.colliders.get(target.userData.editorId),body=this.bodies.get(target.userData.editorId);
+  if(!collider||!body)return false;
+  this.characterController.computeColliderMovement(collider,{x:movement.x,y:0,z:movement.z});
+  const computed=this.characterController.computedMovement();
+  const moved=Math.hypot(computed.x,computed.z);
+  if(moved<movement.speed*.75)return false;
+  const priorX=target.position.x,priorZ=target.position.z;
+  const nextX=priorX+computed.x,nextZ=priorZ+computed.z;
+  // This check protects against unusual collider/controller edge cases.
+  const floorLimit=this.editor.world.environment?.floorSize;
+  if(floorLimit&&Math.max(Math.abs(nextX),Math.abs(nextZ))>floorLimit/2-.4)return false;
+  target.position.x=nextX;target.position.z=nextZ;
+  body.setNextKinematicTranslation({x:nextX,y:target.position.y,z:nextZ});
+  const motion=pushedWalkState({x:computed.x,z:computed.z},target.rotation.y,dt);
+  target.userData.robotPushState={...motion,at:performance.now()};
+  const stamp=performance.now();if(stamp-(target.userData.robotPushLastSave||0)>650){target.userData.robotPushLastSave=stamp;this.editor.queueSave(target);}
+  return true;
+ }
  driveRobot(object,dt){
   const id=object.userData.editorId,body=this.bodies.get(id),collider=this.colliders.get(id),state=this.characters.get(id);
   if(!body||!collider||!state)return;
@@ -176,6 +220,12 @@ export class ScenePhysics{
   if(wantJump)delete object.userData.jumpVel; // one-shot; the rigid-body controller owns subsequent frames
   const delta=characterMotion({...p,verticalSpeed:state.verticalSpeed},desired,dt,jump);
   state.verticalSpeed=delta.verticalSpeed;
+  if(Math.hypot(delta.x,delta.z)>.003&&Math.hypot(delta.x,delta.z)<.32){
+   for(const target of this.editor.items){
+    if(target===object||target.userData.editorKind!=='robot')continue;
+    this.tryPushRobot(object,target,{x:desired.x,z:desired.z},dt);
+   }
+  }
   this.characterController.computeColliderMovement(collider,{x:delta.x,y:delta.y,z:delta.z});
   const resolved=resolveCharacterMotion(p,this.characterController.computedMovement(),this.characterController.computedGrounded(),state.verticalSpeed);
   state.verticalSpeed=resolved.verticalSpeed;state.grounded=resolved.grounded;

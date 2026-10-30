@@ -5,7 +5,7 @@ from pathlib import Path
 MAX_ARCHIVE_BYTES=94*1024*1024
 MAX_ENTRY_BYTES=20*1024*1024
 MAX_TOTAL_BYTES=87*1024*1024
-KINDS={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media'}
+KINDS={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall'}
 
 def scene_placeholders(objects):
     output=[]
@@ -94,7 +94,7 @@ def read_archive(upload):
 def safe_scene(objects):
     if not isinstance(objects,list) or len(objects)>128:raise ValueError('Invalid object list')
     if len(json.dumps(objects,ensure_ascii=False))>1_200_000:raise ValueError('Scene metadata exceeds 1.2 MB')
-    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','physics','model','media','primitive','transformLocked'}
+    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','physics','model','media','primitive','wall','transformLocked'}
     clean=[]
     for obj in objects:
         if not isinstance(obj,dict) or obj.get('kind') not in KINDS:continue
