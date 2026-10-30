@@ -174,7 +174,7 @@ async function bubble(entry){
   if(online&&auth){api.mediaBlobInfo(id).then(info=>{
     if(!slot.isConnected){URL.revokeObjectURL(info.url);return;}
     chatMediaURLs.add(info.url);
-    renderChatAttachment(slot,info,detail=>ensureChatMediaViewer().showFile(detail),{addToScene:addChatMediaToScene});
+    renderChatAttachment(slot,info,detail=>ensureChatMediaViewer().showFile(detail),{addToScene:info=>addChatMediaToScene({...info,author:entry.speaker,created:entry.created})});
     if(!renderingChat)scrollChatToLatest();
   }).catch(()=>{slot.textContent='Attachment unavailable';});}
  }
@@ -222,8 +222,8 @@ async function inspectMediaDimensions(source,mime=''){
 async function addChatMediaToScene(info,{backing='white'}={}){
  const editor=window.solviEditor;if(!editor)throw Error('The scene editor is not ready');
  const dims=await inspectMediaDimensions(info.blob,info.mime);
- editor.addSceneMedia({id:info.id,mime:info.mime,name:info.name,width:dims.width,height:dims.height},{backing,width:dims.width,height:dims.height,source:'chat'});
- toast((String(info.mime).startsWith('video/')?'Video screen':'Picture frame')+' added to the realm');
+ editor.addSceneMedia({id:info.id,mime:info.mime,name:info.name,width:dims.width,height:dims.height,author:info.author,created:info.created},{backing,width:dims.width,height:dims.height,source:'chat'});
+ toast((String(info.mime).startsWith('audio/')?'Audio speaker':String(info.mime).startsWith('video/')?'Video screen':'Picture frame')+' added to the realm');
  return true;
 }
 async function attach(file){if(!file)return false;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');return true;}catch(e){toast(e.message);return false;}}
@@ -432,7 +432,7 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
   $('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
   if(response.usage?.totals)$('metaUsageStatus').textContent=`Recorded ${response.usage.totals.requests} requests · ~US$${Number(response.usage.totals.usd).toFixed(4)} estimated`;
   if(response.message?.id && text){
-    try{await reactToRobotMessage(response.message,0,interruptedRobot);}
+    try{const eyes=/@([^\n@]+?)\s+\/eyes(?:\s+(180|360))?\s*$/i.exec(text);if(eyes){const name=eyes[1].trim().toLowerCase();const robot=window.solviEditor?.items.find(o=>o.userData.editorKind==='robot'&&o.name.toLowerCase()===name);if(robot)await window.solviPublishRobotEyes?.(Number(eyes[2]||180),robot);else toast('Robot for /eyes not found');}else await reactToRobotMessage(response.message,0,interruptedRobot);}
     catch(error){$('chatStatus').textContent='Message delivered; robot reaction failed: '+error.message;}
   }
  }catch(e){playCue('error');$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
@@ -840,6 +840,32 @@ function setupNewRoom(){
   holder.replaceChildren(makeRealmCards(window.solviRoomCards||[{id:'main',title:'Main realm'}],activeRoom));
   show('realmGalleryBackdrop',true);
  }
+ const selectedArchiveRoom=()=>holder.querySelector('.realm-export-check:checked')?.dataset.room||'';
+ holder.addEventListener('change',event=>{if(!event.target.matches('.realm-export-check'))return;for(const check of holder.querySelectorAll('.realm-export-check'))if(check!==event.target)check.checked=false;});
+ const exportRealm=async()=>{
+  const id=selectedArchiveRoom();if(!id)return toast('Select a realm checkbox to export');
+  const mode=$('realmExportMode').value,button=$('realmExportButton');button.disabled=true;$('realmArchiveStatus').textContent='Preparing '+mode+' archive…';
+  try{
+   const response=await fetch('/api/realms/'+encodeURIComponent(id)+'/export?mode='+encodeURIComponent(mode),{headers:{Authorization:'Bearer '+auth.token,'X-Solvi-Tab':tab}});
+   if(!response.ok)throw Error((await response.json()).error||'Export unavailable');
+   const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=id+(mode==='json'?'.realm.json':'-'+mode+'.tar.gz');link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+   $('realmArchiveStatus').textContent='Export complete · '+(blob.size/1048576).toFixed(1)+' MB';
+  }catch(e){$('realmArchiveStatus').textContent=e.message;toast(e.message);}finally{button.disabled=false;}
+ };
+ $('realmExportButton').onclick=exportRealm;
+ let archiveImportMode='realm';
+ $('realmImportButton').onclick=()=>{archiveImportMode='realm';$('realmArchiveFile').click();};
+ $('realmImportAssetsButton').onclick=()=>{if(!selectedArchiveRoom())return toast('Select a realm to receive the assets');archiveImportMode='assets';$('realmArchiveFile').click();};
+ $('realmArchiveFile').onchange=async event=>{
+  const file=event.target.files?.[0];event.target.value='';if(!file)return;
+  const confirmText=archiveImportMode==='realm'?'Create a new realm from this archive?':'Import media/models into the selected realm?';
+  if(!window.confirm(confirmText))return;
+  const data=new FormData();data.append('file',file);data.append('mode',archiveImportMode);
+  if(archiveImportMode==='assets')data.append('room',selectedArchiveRoom());
+  $('realmArchiveStatus').textContent='Importing and validating archive…';
+  try{const out=await api.req('/api/realms/import',{method:'POST',body:data});$('realmArchiveStatus').textContent=`Imported ${out.media} media and ${out.models} models · ${out.room}`;await configureRooms();await openGallery();}
+  catch(e){$('realmArchiveStatus').textContent=e.message;toast(e.message);}
+ };
  holder.addEventListener('click',async event=>{
   const control=event.target.closest('button.realm-card-action');
   if(control){
@@ -1214,7 +1240,7 @@ function bindUI(world){
   }
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();const value=$('chatInput').value.trim();if(value&&chatDraftHistory.at(-1)!==value){chatDraftHistory.push(value);if(chatDraftHistory.length>70)chatDraftHistory.shift();}draftIndex=-1;send();}
  });
- $('chatFile').onchange=e=>attach(e.target.files[0]);$('recordAudio').onclick=()=>startRecording(false);setupRecordingControls();
+ $('chatFile').onchange=e=>attach(e.target.files[0]);$('recordAudio').onclick=()=>startRecording(false);$('composerMic').onclick=()=>startRecording(false);$('composerPhoto').onclick=()=>document.getElementById('cameraBookmarkQuick').click();$('bookmarkGalleryTop').onclick=()=>document.getElementById('bookmarksToolButton').click();setupRecordingControls();
  const composer=$('chatComposer')||document.querySelector('.chat-composer');
  const dragAttachOn=()=>composer?.classList.add('drag-attach'),dragAttachOff=()=>composer?.classList.remove('drag-attach');
  composer?.addEventListener('dragenter',e=>{if([...e.dataTransfer?.items||[]].some(i=>i.kind==='file')){e.preventDefault();dragAttachOn();}});
@@ -1235,14 +1261,28 @@ function bindUI(world){
   }catch(error){toast(error.message);return false;}
  };
  $('recordVideo').onclick=()=>startRecording(true);
- $('robotVision').onclick=async()=>{try{
-   const robot=window.solviEditor?.selected;if(robot?.userData.editorKind!=='robot')throw Error('Select a robot before capturing its eyes.');
-   const img=await robotView(world);const media=await uploadFile(new File([img],`robot-eye-${Date.now()}.jpg`,{type:'image/jpeg'}));
+ const publishRobotEyes=async(degrees=180,specified=null)=>{try{
+   const robot=specified||window.solviEditor?.selected;
+   if(robot?.userData.editorKind!=='robot')throw Error('Select a robot before capturing its eyes.');
+   if(!window.solviEditor?.canEdit(robot))throw Error('Robot capture permission required');
+   const directions=observationPlan(degrees===180?'180 degrees':'look around');
+   const frames=[];
+   for(const direction of directions){
+    const blob=await captureRobotView(world,robot,{yawOffset:direction.yaw*Math.PI/180,pitchDegrees:direction.pitch});
+    if(!blob?.size)throw Error('Camera returned an empty frame');
+    frames.push({blob,yaw:direction.yaw,pitch:direction.pitch,label:direction.label});
+   }
+   if(panoramaMode(frames)!==degrees)throw Error('Camera sweep did not cover '+degrees+'°');
+   const pano=await stitchRobotPanorama(frames);
+   const media=await uploadFile(new File([pano],`robot-${robot.name}-${degrees}-eyes-${Date.now()}.jpg`,{type:'image/jpeg'}));
    const reply=await api.req('/api/robots/eyes',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:robot.userData.editorId,media_id:media.id})});
-   show('chatPanel',true);await bubble(reply.answer);$('chatStatus').textContent=robot.name+' · eye image shared'+(reply.usage?' · ~US$'+Number(reply.usage.estimated_usd||0).toFixed(5):'');
-   emitBrainTrace(robot.userData.editorId,robot.name,'EYE FRAME SHARED',`512×512 JPEG attached as ${robot.name}'s own reply; ${reply.model||'local'}; usage ${reply.usage?.estimated_usd||0}`);
-   scrollChatToLatest();
-  }catch(e){toast(e.message);}};
+   show('chatPanel',true);await bubble(reply.answer);scrollChatToLatest();
+   emitBrainTrace(robot.userData.editorId,robot.name,'PANORAMA SHARED',`${degrees}° · ${frames.length} true robot-camera JPEG frames stitched for room`);
+  }catch(e){toast('Robot Eyes: '+e.message);}
+ };
+ $('robotVision').onclick=()=>publishRobotEyes(180);
+ $('robotVision360').onclick=()=>publishRobotEyes(360);
+ window.solviPublishRobotEyes=publishRobotEyes;
  $('closeAdmin').onclick=()=>show('adminBackdrop',false);
  $('adminLogin').onclick=adminLogin;$('adminRefresh').onclick=stats;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){show('addMenu',false);show('adminBackdrop',false);if(me)show('profileBackdrop',false);}});

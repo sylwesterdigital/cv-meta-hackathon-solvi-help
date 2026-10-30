@@ -4,6 +4,7 @@ Run behind TLS reverse proxy. No default admin credentials. No API key in browse
 import math
 import io
 import tempfile
+import tarfile
 import base64
 from collections import deque
 from flask import has_request_context
@@ -55,7 +56,7 @@ def active_model_key():
 ADMIN_HASH = os.environ.get('SOLVI_ADMIN_PASSWORD_HASH', '')
 ALLOWED_ORIGINS = set(os.environ.get('SOLVI_ALLOWED_ORIGINS', 'https://solvi.help,http://localhost:8000,http://127.0.0.1:8000,http://127.0.0.1:8765').split(','))
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 24 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # Realm archives; each ordinary media upload remains limited separately
 STT_BIN=os.environ.get('SOLVI_WHISPER_BIN','/usr/local/bin/whisper-cli')
 STT_MODEL=os.environ.get('SOLVI_WHISPER_MODEL','/var/lib/whisper/models/ggml-base.bin')
 def whisper_ready():
@@ -135,6 +136,7 @@ def init_db():
         con.execute('CREATE TABLE IF NOT EXISTS robot_discussions (message_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, user_id TEXT NOT NULL, topic TEXT NOT NULL, participants TEXT NOT NULL, sources TEXT NOT NULL, created TEXT NOT NULL)')
         con.execute('CREATE TABLE IF NOT EXISTS robot_discussion_turns (message_id TEXT NOT NULL, step_index INTEGER NOT NULL, robot_id TEXT NOT NULL, reply_id TEXT NOT NULL, created TEXT NOT NULL, PRIMARY KEY(message_id,step_index))')
         con.execute('CREATE TABLE IF NOT EXISTS user_theme_presets (user_id TEXT NOT NULL,name TEXT NOT NULL,payload TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(user_id,name))')
+        con.execute('CREATE TABLE IF NOT EXISTS media_captions (media_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,text TEXT NOT NULL,created TEXT NOT NULL)')
         con.execute('CREATE TABLE IF NOT EXISTS camera_bookmarks (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,room_id TEXT NOT NULL,title TEXT NOT NULL,media_id TEXT NOT NULL,pose TEXT NOT NULL,created TEXT NOT NULL)')
         con.execute('CREATE INDEX IF NOT EXISTS camera_bookmarks_user_room ON camera_bookmarks(user_id,room_id,created)')
         con.execute('CREATE INDEX IF NOT EXISTS messages_room_created ON messages(room_id,created)')
@@ -186,7 +188,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.73',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.74',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -772,6 +774,32 @@ def get_media(mid):
     response.headers['Content-Security-Policy']="default-src 'none'; sandbox" if m['mime']=='application/pdf' else "default-src 'none'"
     return response
 
+@app.route('/api/media/<mid>/caption',methods=['GET','POST'])
+def media_caption(mid):
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:
+        media=con.execute('SELECT * FROM media WHERE id=?',(mid,)).fetchone()
+        existing=con.execute('SELECT text FROM media_captions WHERE media_id=?',(mid,)).fetchone()
+    if not media:return json_error('Media missing',404)
+    if not media['mime'].startswith(('audio/','video/')):return json_error('Audio or video required',400)
+    if request.method=='GET':return jsonify(text=existing['text'] if existing else '',engine='whisper.cpp')
+    if media['user_id']!=user['id'] and not admin_authorized():return json_error('Uploader or admin required',403)
+    if existing:return jsonify(text=existing['text'],engine='whisper.cpp',cached=True)
+    if not whisper_ready():return json_error('Ubuntu Whisper is not installed',503)
+    if not stt_guard.acquire(blocking=False):return json_error('Whisper busy',503)
+    try:
+        with tempfile.TemporaryDirectory(prefix='solvi-caption-',dir=STATE) as directory:
+            wav=Path(directory)/'speech.wav';output=Path(directory)/'speech'
+            subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-y','-i',media['path'],'-t','90','-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',str(wav)],check=True,timeout=45,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+            subprocess.run([STT_BIN,'-m',STT_MODEL,'-f',str(wav),'-l','auto','-t','2','-ng','-otxt','-of',str(output),'-np'],check=True,timeout=150,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+            result=output.with_suffix('.txt');text=result.read_text(encoding='utf8').strip()[:2000] if result.exists() else ''
+            with db() as con:con.execute('INSERT OR REPLACE INTO media_captions VALUES(?,?,?,?)',(mid,user['id'],text,now()))
+        return jsonify(text=text,engine='whisper.cpp',limited_seconds=90)
+    except (subprocess.CalledProcessError,subprocess.TimeoutExpired,OSError):
+        return json_error('Whisper transcription failed',503)
+    finally:stt_guard.release()
+
 def ensure_hls_stream(media_row):
     if not media_row or not str(media_row['mime']).startswith('video/'):
         raise ValueError('Video upload required')
@@ -1211,7 +1239,7 @@ def research_topic_sources(topic,limit=6):
     import urllib.parse
     sources=[]
     def read_json(url):
-        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.73 (public academic references)','Accept':'application/json'})
+        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.74 (public academic references)','Accept':'application/json'})
         with urlopen(req,timeout=3.5) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Large search response')
             return json.loads(response.read(180001).decode('utf-8'))
@@ -2563,6 +2591,9 @@ def set_scene():
     allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media'}
     for o in objects:
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
+        if 'primitive' in o:
+            primitive=o['primitive']
+            if o['kind'] not in {'cube','sphere','cylinder','plane','torus'} or not isinstance(primitive,dict) or len(primitive)>10 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not 0<=v<=128 for v in primitive.values()):return json_error('Invalid primitive geometry')
         if o['kind']=='model' and not model_asset_exists(o.get('model')):return json_error('Unknown scene model')
         if o['kind']=='media':
             media=o.get('media',{})
@@ -2613,7 +2644,10 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','physics','model','media','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','physics','model','media','primitive','transformLocked') if key in obj}
+        if 'primitive' in obj:
+            primitive=obj['primitive']
+            if obj['kind'] not in {'cube','sphere','cylinder','plane','torus'} or not isinstance(primitive,dict) or len(primitive)>10 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not 0<=v<=128 for v in primitive.values()):return json_error('Invalid primitive geometry')
         if 'transformLocked' in obj and not isinstance(obj['transformLocked'],bool):return json_error('Invalid transform lock')
         if len(str(obj.get('name','')))>100:return json_error('Object name too long')
         if obj['kind']=='model' and not model_asset_exists(obj.get('model')):return json_error('Unknown scene model')
@@ -2860,6 +2894,117 @@ def websocket(ws):
         if uid:
             with room_lock:room.pop(uid,None)
             publish({'type':'presence','event':'left','id':uid},room_id=room_id)
+
+
+# Realm portability. The archive contains only assets referenced by the exported scene,
+# and import never extracts caller-supplied paths or executes uploaded content.
+from realm_archives import archive_bytes, asset_manifest, read_archive, safe_scene, scene_placeholders
+
+@app.get('/api/realms/<room_id>/export')
+def export_realm(room_id):
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    rid=selected_room(room_id)
+    if rid!=room_id:return json_error('Unknown realm',404)
+    mode=request.args.get('mode','full')
+    if mode not in ('full','json','assets'):return json_error('Unknown archive mode')
+    with db() as con:
+        realm=con.execute('SELECT id,title FROM rooms WHERE id=?',(rid,)).fetchone()
+        entry=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(rid,)).fetchone()
+        env=con.execute('SELECT payload FROM room_environments WHERE room_id=?',(rid,)).fetchone()
+        objects=json.loads(entry['payload'] if entry else '[]')
+        media,models,avatars=asset_manifest(objects,con)
+    meta={'format':'solvi-realm-archive-v1','name':realm['title'],'origin':rid,
+          'objects':[] if mode=='assets' else (scene_placeholders(objects) if mode=='json' else objects),
+          'environment':json.loads(env['payload'] if env else '{}'),'mode':mode,
+          'media':[{'id':r['id'],'name':r['name'],'mime':r['mime']} for r in media],
+          'models':[{'id':r['id'],'title':r['title'],'extension':r['extension']} for r in models],
+          'avatars':[{'id':r['id'],'title':r['title']} for r in avatars]}
+    if mode=='json':
+        body=json.dumps(meta,ensure_ascii=False,indent=2).encode()
+        return send_file(io.BytesIO(body),mimetype='application/json',as_attachment=True,download_name=rid+'.realm.json')
+    try:content=archive_bytes(meta,media,models,avatars)
+    except ValueError as exc:return json_error(str(exc),413)
+    return send_file(io.BytesIO(content),mimetype='application/gzip',as_attachment=True,download_name=rid+'-'+mode+'.tar.gz')
+
+@app.post('/api/realms/import')
+def import_realm_archive():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    f=request.files.get('file')
+    if not f:return json_error('Archive missing')
+    try:meta,media_files,model_files,avatar_files=read_archive(f)
+    except (ValueError,OverflowError,OSError,UnicodeDecodeError,EOFError,tarfile.TarError) as exc:return json_error('Invalid archive: '+str(exc),400)
+    if not isinstance(meta,dict) or meta.get('format')!='solvi-realm-archive-v1':return json_error('Not a SOLVI realm archive')
+    mode=request.form.get('mode','realm')
+    if mode not in ('realm','assets'):return json_error('Invalid import mode')
+    target=request.form.get('room','') if mode=='assets' else ''
+    if mode=='assets':
+        if selected_room(target)!=target:return json_error('Target realm missing',404)
+        with db() as con:existing=con.execute('SELECT owner_id FROM rooms WHERE id=?',(target,)).fetchone()
+        if not existing or (existing['owner_id']!=user['id'] and not admin_authorized()):return json_error('Only realm owner or admin may import assets',403)
+    else:
+        target=re.sub(r'[^a-z0-9-]+','-',str(request.form.get('slug') or meta.get('name') or 'imported').lower()).strip('-')[:32] or 'imported'
+        with db() as con:
+            if con.execute('SELECT 1 FROM rooms WHERE id=?',(target,)).fetchone():target=(target[:31]+'-'+secrets.token_hex(3))[:39]
+            if con.execute('SELECT COUNT(*) AS n FROM rooms').fetchone()['n']>=100:return json_error('Realm capacity reached',409)
+    descriptors=meta.get('media',[]);models=meta.get('models',[]);avatars=meta.get('avatars',[])
+    if not isinstance(descriptors,list) or not isinstance(models,list) or not isinstance(avatars,list) or len(descriptors)+len(models)+len(avatars)>200:return json_error('Invalid asset inventory')
+    media_map={};model_map={};avatar_map={}
+    saved=[]
+    try:
+        with db() as con:
+            for desc in descriptors:
+                if not isinstance(desc,dict):continue
+                old=str(desc.get('id',''));content=media_files.get(old);mime=str(desc.get('mime',''))
+                if content is None or mime not in MEDIA_TYPES or len(content)>12*1024*1024:continue
+                signature=content[:16]
+                checks={'image/png':signature.startswith(b'\x89PNG'),'image/jpeg':signature.startswith(b'\xff\xd8'),'image/gif':signature.startswith((b'GIF87a',b'GIF89a')),'image/webp':signature.startswith(b'RIFF') and signature[8:12]==b'WEBP'}
+                if mime in checks and not checks[mime]:continue
+                user_media_bytes=con.execute('SELECT COALESCE(SUM(size),0) AS n FROM media WHERE user_id=?',(user['id'],)).fetchone()['n']
+                if user_media_bytes+len(content)>75*1024*1024:continue
+                new=str(uuid.uuid4());dest=STATE/'media'/(new+MEDIA_TYPES[mime]);dest.write_bytes(content);saved.append(dest)
+                con.execute('INSERT INTO media VALUES(?,?,?,?,?,?,?)',(new,user['id'],Path(str(desc.get('name','imported'))) .name[:120],mime,str(dest),len(content),now()))
+                media_map[old]=new
+            for desc in models:
+                if not isinstance(desc,dict):continue
+                old=str(desc.get('id',''));content=model_files.get(old);ext=str(desc.get('extension',''))
+                if content is None or ext not in ('glb','fbx') or len(content)>20*1024*1024:continue
+                if ext=='glb' and not (len(content)>=20 and content[:4]==b'glTF' and int.from_bytes(content[8:12],'little')==len(content)):continue
+                if ext=='fbx' and not (content.startswith(b'Kaydara FBX Binary  \x00\x1a\x00') or content[:256].lstrip().startswith((b'; FBX',b'FBXHeaderExtension:'))):continue
+                new=secrets.token_hex(16);dest=STATE/'scene-models'/(new+'.'+ext);dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(content);saved.append(dest)
+                con.execute('INSERT INTO scene_models VALUES(?,?,?,?,?,?,?)',(new,user['id'],str(desc.get('title','Model'))[:80],now(),str(dest),len(content),ext));model_map[old]='/api/scene/models/'+new+'.'+ext
+            for desc in avatars:
+                if not isinstance(desc,dict):continue
+                old=str(desc.get('id',''));content=avatar_files.get(old)
+                if content is None or len(content)>20*1024*1024 or len(content)<20 or content[:4]!=b'glTF' or int.from_bytes(content[8:12],'little')!=len(content):continue
+                new=secrets.token_hex(16);dest=STATE/'avatar-library'/(new+'.glb');dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(content);saved.append(dest)
+                con.execute('INSERT INTO avatar_library VALUES(?,?,?,?,?,?)',(new,user['id'],str(desc.get('title','Avatar'))[:60],now(),str(dest),len(content)))
+                avatar_map[old]='/api/avatars/'+new+'.glb'
+            if mode=='realm':
+                objects=safe_scene(meta.get('objects',[]))
+                for obj in objects:
+                    obj['owner']=user['id']
+                    if obj['kind']=='model':
+                        obj['model']=model_map.get(str(obj.get('model','')),'')
+                        if not obj['model']:obj.update(kind='cube',name='Placeholder · '+str(obj.get('name',''))[:70],primitive={'width':1,'height':1,'depth':.1});obj.pop('model',None)
+                    if obj['kind']=='media':
+                        record=obj.get('media') or {};record['id']=media_map.get(str(record.get('id','')),'')
+                        if not record['id']:obj.update(kind='cube',name='Placeholder · '+str(obj.get('name',''))[:70],primitive={'width':1,'height':1,'depth':.1});obj.pop('media',None)
+                    if obj['kind']=='robot':
+                        brain=obj.get('brain') or {};brain['portrait']=media_map.get(str(brain.get('portrait','')),'');obj['brain']=brain
+                        avatar_match=re.fullmatch(r'/api/avatars/([0-9a-f]{32})\.glb',str(obj.get('avatar','')))
+                        if avatar_match:obj['avatar']=avatar_map.get(avatar_match[1],'/assets/solvi-character.glb')
+                title=str(meta.get('name','Imported realm'))[:80]
+                con.execute('INSERT INTO rooms(id,title,created,owner_id) VALUES(?,?,?,?)',(target,title,now(),user['id']))
+                con.execute('INSERT INTO room_scenes(room_id,revision,payload) VALUES(?,?,?)',(target,0,json.dumps(objects)))
+                con.execute('INSERT INTO room_policies(room_id) VALUES(?)',(target,))
+                env=meta.get('environment') if isinstance(meta.get('environment'),dict) else {}
+                con.execute('INSERT INTO room_environments(room_id,payload) VALUES(?,?)',(target,json.dumps(env)[:20000]))
+    except BaseException:
+        for item in saved:item.unlink(missing_ok=True)
+        raise
+    return jsonify(ok=True,room=target,media=len(media_map),models=len(model_map),avatars=len(avatar_map))
 
 @app.get('/')
 def index():return send_from_directory(ROOT,'index.html')

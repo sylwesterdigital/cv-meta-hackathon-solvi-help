@@ -1,6 +1,6 @@
 # Add inside the existing HTTPS server {} block for solvi.help, leave TLS configuration untouched.
 location /api/ {
-    client_max_body_size 12m;
+    client_max_body_size 96m;  # Bounded realm archive uploads
     proxy_pass http://127.0.0.1:18765;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

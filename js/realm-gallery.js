@@ -24,7 +24,7 @@ export function makeRealmCards(rooms,active,storage=localStorage){
    if(typeof user.avatar==='string'&&(/^data:image\/(?:png|jpeg|webp);base64,/.test(user.avatar)||user.avatar.startsWith('/api/'))){const img=document.createElement('img');img.src=user.avatar;img.alt=user.name||'';avatar.append(img);}
    else avatar.textContent=(user.name||'?').slice(0,1).toUpperCase();faces.append(avatar);
   }
-  image.append(title,faces);card.append(image);const tile=document.createElement('div');tile.className='realm-card-tile';tile.append(card);grid.append(tile);
+  image.append(title,faces);card.append(image);const tile=document.createElement('div');tile.className='realm-card-tile';tile.append(card);const chooser=document.createElement('label');chooser.className='realm-selection';const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className='realm-export-check';checkbox.dataset.room=room.id;checkbox.setAttribute('aria-label','Select realm '+room.title);chooser.append(checkbox,document.createTextNode('Select'));tile.append(chooser);grid.append(tile);
   if(room.canManage){
    const controls=document.createElement('div');controls.className='realm-card-controls';
    const rename=document.createElement('button');rename.type='button';rename.className='realm-card-action';rename.dataset.action='rename';rename.dataset.room=room.id;rename.textContent='Rename';

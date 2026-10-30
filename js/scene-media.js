@@ -73,6 +73,7 @@ async function hydrateSpeakerModel(mesh,modelURL){
   }catch(error){console.warn('Speaker model unavailable',modelURL,error);}
 }
 function disposeAsset(mesh){
+  for(const name of ['mediaSourceLabel','mediaDateLabel','mediaCaptionLabel']){const old=mesh.getObjectByName(name);if(old){old.removeFromParent();old.material?.map?.dispose?.();old.material?.dispose?.();}}
   mesh.userData.mediaModelTicket=(mesh.userData.mediaModelTicket||0)+1;
   const model=mesh.getObjectByName('audioSpeakerCustomModel');if(model)mesh.remove(model);
   const prior=activeMediaObjects.get(mesh);
@@ -149,10 +150,20 @@ export function hydrateSceneMedia(mesh,world){
   }
   const materials=orb?null:ensureMaterials(mesh,media.backing||'white',world?.scene?.environment||null);
   const front=orb?mesh.material:(materials[4]||materials[0]);
-  front.color?.set?.('#ffffff');
+  front.color?.set?.(orb?(media.color||'#3c9bd2'):'#ffffff');
   for(const material of (Array.isArray(mesh.material)?mesh.material:[mesh.material])){if(material){material.transparent=false;material.opacity=1;}}
   front.map?.dispose?.();
   front.map=null;
+  if(orb&&media.orbTexture&&media.orbTexture!=='none'){
+   const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;const ctx=canvas.getContext('2d');
+   const type=media.orbTexture;
+   ctx.fillStyle='#88cee8';ctx.fillRect(0,0,256,256);
+   if(type==='checker'){ctx.fillStyle='#25597a';for(let x=0;x<4;x++)for(let y=0;y<4;y++)if((x+y)%2)ctx.fillRect(x*64,y*64,64,64);}
+   if(type==='stripes'){ctx.fillStyle='#26536e';for(let i=0;i<256;i+=32)ctx.fillRect(i,0,12,256);}
+   if(type==='dots'){ctx.fillStyle='#214f69';for(let y=20;y<256;y+=48)for(let x=20;x<256;x+=48){ctx.beginPath();ctx.arc(x,y,11,0,Math.PI*2);ctx.fill();}}
+   if(type==='gradient'){const gradient=ctx.createLinearGradient(0,0,256,256);gradient.addColorStop(0,'#80efff');gradient.addColorStop(1,'#12415f');ctx.fillStyle=gradient;ctx.fillRect(0,0,256,256);}
+   front.map=new THREE.CanvasTexture(canvas);front.map.colorSpace=THREE.SRGBColorSpace;front.needsUpdate=true;
+  }
   const kind=sceneMediaKind(media.mime);
   if(!media.id||kind==='file')return;
   if(media.width&&media.height&&kind!=='audio')applyAspect(mesh,media.width,media.height);
@@ -174,6 +185,7 @@ export function hydrateSceneMedia(mesh,world){
     return;
   }
   if(kind==='audio'){
+    if(media.author&&world?.labelSprite){const tag=world.labelSprite(media.author,'#14374b');tag.position.set(0,.85,0);tag.scale.set(1.5,.25,1);tag.name='mediaSourceLabel';mesh.add(tag);const date=world.labelSprite(new Date(media.created||Date.now()).toLocaleString(),'#14374b');date.position.set(0,.66,0);date.scale.set(1.5,.22,1);date.name='mediaDateLabel';mesh.add(date);}
     const decor=ensureSpeakerDecor(mesh,orb);
     if(media.model)hydrateSpeakerModel(mesh,media.model);
     const audio=document.createElement('audio');
@@ -266,4 +278,19 @@ export function updateSceneMedia(world,dt=0,time=performance.now()/1000){
       });
     }
   });
+}
+
+export function showSceneMediaCaptions(mesh,world,text,visible=true){
+ if(!mesh)return;
+ const existing=mesh.getObjectByName('mediaCaptionLabel');if(existing){existing.removeFromParent();existing.material?.map?.dispose?.();existing.material?.dispose?.();}
+ if(!visible||!String(text).trim())return;
+ const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=256;
+ const ctx=canvas.getContext('2d');ctx.fillStyle='rgba(11,35,50,.90)';ctx.beginPath();ctx.roundRect(5,5,1014,246,27);ctx.fill();
+ ctx.font='38px system-ui';ctx.fillStyle='#e9fcff';ctx.textBaseline='middle';
+ const words=String(text).replace(/\s+/g,' ').trim().slice(0,330).split(' ');let lines=[],line='';
+ for(const word of words){const candidate=line?line+' '+word:word;if(ctx.measureText(candidate).width>945&&line){lines.push(line);line=word;}else line=candidate;}
+ if(line)lines.push(line);lines=lines.slice(0,4);
+ lines.forEach((value,i)=>ctx.fillText(value,32,54+i*48,960));
+ const texture=new THREE.CanvasTexture(canvas),material=new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false});
+ const sprite=new THREE.Sprite(material);sprite.name='mediaCaptionLabel';sprite.scale.set(3.3,.85,1);sprite.position.set(0,-.9,0);mesh.add(sprite);
 }

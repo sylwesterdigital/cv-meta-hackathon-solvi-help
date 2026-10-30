@@ -36,10 +36,10 @@ export function initCameraBookmarks({world,api,room,getRooms,uploadFile,post,toa
  const open=async()=>{panel.hidden=false;try{await refresh();}catch(e){toast(e.message);}};
  $('bookmarksToolButton').onclick=open;$('cameraBookmarksClose').onclick=()=>{panel.hidden=true;clearImages();};
  realm.onchange=render;
- $('cameraBookmarkCapture').onclick=async()=>{
+ const captureBookmark=async({quick=false}={})=>{
   if(!api.auth())return toast('Sign in to save camera bookmarks');
   if(world.renderer.xr?.isPresenting)return toast('Capture a desktop view outside XR mode');
-  const title=prompt('Bookmark title',`View · ${new Date().toLocaleTimeString()}`);if(!title?.trim())return;
+  const title=quick?`View · ${new Date().toLocaleString()}`:prompt('Bookmark title',`View · ${new Date().toLocaleTimeString()}`);if(!title?.trim())return;
   try{const pose={position:world.camera.position.toArray(),target:world.controls.target.toArray()};
    world.renderer.render(world.scene,world.camera);
    const blob=await new Promise((resolve,reject)=>world.renderer.domElement.toBlob(b=>b?resolve(b):reject(Error('Camera screenshot failed')),'image/jpeg',0.85));
@@ -48,6 +48,9 @@ export function initCameraBookmarks({world,api,room,getRooms,uploadFile,post,toa
    realm.value=room();await refresh();toast('Saved camera bookmark');
   }catch(e){toast(e.message);}
  };
+ $('cameraBookmarkCapture').onclick=()=>captureBookmark();
+ $('cameraBookmarkQuick').onclick=()=>captureBookmark({quick:true});
+ document.addEventListener('keydown',event=>{if(event.altKey&&event.metaKey&&event.code==='KeyS'){event.preventDefault();captureBookmark({quick:true});}});
  $('cameraBookmarkExport').onclick=()=>saveFile('solvi-bookmarks-'+new Date().toISOString().slice(0,10)+'.json',{format:'solvi-camera-bookmarks-v1',bookmarks:records});
  $('cameraBookmarkImport').onchange=async event=>{const file=event.target.files?.[0];event.target.value='';if(!file)return;
   try{const data=JSON.parse(await file.text());if(data.format!=='solvi-camera-bookmarks-v1'||!Array.isArray(data.bookmarks))throw Error('Unsupported bookmark JSON');

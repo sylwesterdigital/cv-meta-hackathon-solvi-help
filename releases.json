@@ -1,6 +1,20 @@
 {
-  "currentVersion": "0.2.73",
+  "currentVersion": "0.2.74",
   "releases": [
+    {
+      "version": "0.2.74",
+      "publishedAt": "2026-10-30T04:18:40Z",
+      "changes": [
+        "Drop image, video, audio, and new primitive scene objects directly in the active camera gaze approximately 3.2m ahead rather than at a remote floor coordinate.",
+        "Add direct composer microphone, webcam, and camera-bookmark controls, a camera-bookmark SVG button beside Realms, and Option+Command+S quick camera bookmark capture.",
+        "Share actual stitched 180-degree and 360-degree robot camera panoramas in room chat, and route @Robot /eyes 180 or @Robot /eyes 360 through the same authenticated camera upload.",
+        "Add compact editable Three.js geometry dimensions and segments for cube, sphere, cylinder, plane and torus, with bounded parameters persisted in the shared scene.",
+        "Enable realm-gallery selection, portable complete tar.gz realm+assets exports, assets-only tar.gz exports, JSON placeholder exports, creation from imported archives and owner/admin-controlled asset imports.",
+        "Preserve referenced uploaded scene models, avatar GLBs and media files in full realm archives with bounded validation, safe import paths and re-mapped IDs; retain existing owner/admin-only realm deletion.",
+        "Improve audio orb with persisted creator name/date, editable colour and texture, a server-side Whisper transcription endpoint, a captions toggle and world-space caption sprites accessible from desktop and XR ray controls.",
+        "Add regression and archive safety tests and keep release and Ubuntu installer version metadata consistent."
+      ]
+    },
     {
       "version": "0.2.73",
       "publishedAt": "2026-10-30T03:23:12Z",
@@ -320,15 +334,6 @@
         "Correct valid robot voice previews that previously returned HTTP 400 because omitted rate/pitch fields were converted with float(None).",
         "Use saved voice rate and pitch as preview defaults, while accepting independent optional overrides and preserving input validation.",
         "Add backend integration regressions for speech preview defaults, individual overrides, and invalid values; preserve local and ElevenLabs robot voice options."
-      ]
-    },
-    {
-      "version": "0.2.38",
-      "publishedAt": "2026-10-28T20:19:25Z",
-      "changes": [
-        "Restore always-visible CC microphone transcription toggle directly before Send in Messages.",
-        "Repair room caption delivery status and explicit offline/auth errors.",
-        "Prevent chat icon-mode styles from hiding CC state and verify published voice transcripts."
       ]
     }
   ]

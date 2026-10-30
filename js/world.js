@@ -13,7 +13,7 @@ import {readPreferences} from './preferences.js';
 import {ENVIRONMENT_DEFAULTS,normalizeEnvironment,environmentViewLimit,createSkyDome,skyModeIndex} from './scene-environment.js';
 import {nextCameraMode,followAnchor,localOrbitOffset,cameraFromLocalOffset,chaseOffset,clampChaseDistance,zoomChaseDistance,smoothFactor} from './camera-follow.js';
 import {freeCameraAxes} from './camera-key-movement.js';
-import {updateSceneMedia,toggleSceneMediaPlayback,setSceneMediaMuted,sceneMediaMuted} from './scene-media.js';
+import {updateSceneMedia,toggleSceneMediaPlayback,setSceneMediaMuted,sceneMediaMuted,showSceneMediaCaptions} from './scene-media.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const random=(a,b)=>a+Math.random()*(b-a);
@@ -471,12 +471,12 @@ export class SolviWorld {
     // Ray-facing XR controls appear only when targeting a media object, never as permanent overlays.
     this.xrMediaControls=new THREE.Group();this.xrMediaControls.name='XR media controls';this.xrMediaControls.visible=false;
     this.xrMediaButtons=[];
-    for(const [action,label,index] of [['play','▶ / Ⅱ',0],['mute','🔈 / ×',1]]){
+    for(const [action,label,index] of [['play','▶ / Ⅱ',0],['mute','🔈 / ×',1],['cc','CC',2]]){
       const cv=document.createElement('canvas');cv.width=240;cv.height=88;
       const ctx=cv.getContext('2d');ctx.fillStyle='#152d43';ctx.beginPath();ctx.roundRect(0,0,240,88,16);ctx.fill();ctx.font='bold 36px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#a7eeff';ctx.fillText(label,120,44);
       const tex=new THREE.CanvasTexture(cv);
       const btn=new THREE.Mesh(new THREE.PlaneGeometry(.32,.13),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide,depthTest:false}));
-      btn.position.set((index-.5)*.36,0,.02);btn.userData.mediaAction=action;
+      btn.position.set((index-1)*.36,0,.02);btn.userData.mediaAction=action;
       this.xrMediaControls.add(btn);this.xrMediaButtons.push(btn);
     }
     this.scene.add(this.xrMediaControls);
@@ -496,13 +496,14 @@ export class SolviWorld {
         new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-5)]),
         new THREE.LineBasicMaterial({color:0x9fe3ff,transparent:true,opacity:.7}));
       beam.name='Teleport ray';controller.add(beam);
-      controller.addEventListener('selectstart',()=>{
+      controller.addEventListener('selectstart',async()=>{
         if(!this.renderer.xr.isPresenting)return;
         const selection=this.xrRaycast(controller);
         if(selection.menu){const action=selection.menu.userData.action;if(action==='room'){const select=document.getElementById('roomSelect');if(select&&select.options.length>1){select.selectedIndex=(select.selectedIndex+1)%select.options.length;select.dispatchEvent(new Event('change'));}}else window.solviEditor?.add(action);return;}
         const mediaTarget=selection.mediaTarget||this.xrMediaTarget;
         if((selection.mediaButton||selection.mediaTarget)&&mediaTarget){
           if(selection.mediaButton?.userData.mediaAction==='mute')setSceneMediaMuted(mediaTarget,!sceneMediaMuted(mediaTarget));
+          else if(selection.mediaButton?.userData.mediaAction==='cc'){const media=mediaTarget.userData.media||{};try{const result=media.caption?{text:media.caption}:await window.solviAPI?.req('/api/media/'+encodeURIComponent(media.id)+'/caption');if(!result?.text)return;mediaTarget.userData.captionVisible=!mediaTarget.userData.captionVisible;showSceneMediaCaptions(mediaTarget,this,result.text,mediaTarget.userData.captionVisible);}catch(error){console.warn('XR caption unavailable',error);}}
           else toggleSceneMediaPlayback(mediaTarget);
           return;
         }
@@ -560,7 +561,7 @@ export class SolviWorld {
     if(!presenting){this.teleportIndicator.visible=false;if(this.xrMediaControls)this.xrMediaControls.visible=false;this.xrMediaTarget=null;return;}
     let target=null;
     for(const input of this.xrInputs||[]){const hit=this.xrRaycast(input.controller);if(hit.mediaTarget){target=hit.mediaTarget;break;}}
-    if(target){this.xrMediaTarget=target;this.xrMediaControls.visible=true;this.xrMediaControls.position.copy(target.getWorldPosition(new THREE.Vector3()));this.xrMediaControls.position.y+=.72;
+    if(target){this.xrMediaTarget=target;this.xrMediaControls.visible=true;this.xrMediaControls.position.copy(target.getWorldPosition(new THREE.Vector3()));this.xrMediaControls.position.y+=target.userData.media?.shape==='orb'?-.72:.72;
       this.xrMediaControls.lookAt(this.renderer.xr.getCamera().getWorldPosition(new THREE.Vector3()));}
     else if(!this.xrMediaTarget?.parent){this.xrMediaControls.visible=false;this.xrMediaTarget=null;}
     else this.xrMediaControls.visible=false;

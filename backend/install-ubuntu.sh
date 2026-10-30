@@ -9,7 +9,7 @@ SERVICE=/etc/systemd/system/solvi-help.service
 TARGET=/opt/solvi-help
 STATE=/var/lib/solvi-help
 PORT=18765
-EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.73}
+EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.74}
 export SOLVI_EXPECTED_VERSION="$EXPECTED_VERSION"
 BACKUP=$(mktemp -d /root/solvi-backend-backup-XXXXXXXX)
 CHANGED=0
@@ -84,7 +84,7 @@ fi
 install -m 644 "$SRC/solvi-help.service.example" "$SERVICE"
 cat > "$SNIPPET" <<'NGINX'
 location ^~ /api/ {
-    client_max_body_size 12m;
+    client_max_body_size 96m;  # Bounded realm .tar.gz imports; ordinary media endpoints still cap uploads
     proxy_pass http://127.0.0.1:18765;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
