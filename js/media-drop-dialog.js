@@ -16,21 +16,24 @@ export function chooseDroppedMediaAction(file){
  const type=String(file?.type||'');
  const video=type.startsWith('video/');
  const image=type.startsWith('image/');
+ const audio=type.startsWith('audio/');
  const originalFocus=document.activeElement;
  name.textContent=String(file?.name||'Unnamed file').slice(0,140);
- status.textContent=(video?'Video screen':image?'Picture frame':'File attachment')+' · '+(file?.size/1048576).toFixed(2)+' MB';
- title.textContent='Where should this '+(video?'video':image?'image':'file')+' go?';
+ status.textContent=(audio?'Spatial audio speaker':video?'Video screen':image?'Picture frame':'File attachment')+' · '+(file?.size/1048576).toFixed(2)+' MB';
+ title.textContent='Where should this '+(audio?'audio file':video?'video':image?'image':'file')+' go?';
  backing.value=video?'black':'white';
- scene.disabled=!(image||video);
- scene.hidden=!(image||video);
- dialog.querySelector('#mediaDropSceneOptions').hidden=!(image||video);
+ scene.disabled=!(image||video||audio);
+ scene.hidden=!(image||video||audio);
+ dialog.querySelector('#mediaDropSceneOptions').hidden=!(image||video||audio);
+ dialog.querySelector('#mediaDropSpatialOptions').hidden=!audio;
  preview.replaceChildren();
  let url='';
- if(image||video){
+ if(image||video||audio){
   url=URL.createObjectURL(file);
-  const media=document.createElement(video?'video':'img');
+  const media=document.createElement(audio?'audio':(video?'video':'img'));
   media.src=url;
   if(video){media.muted=true;media.playsInline=true;media.controls=true;media.preload='metadata';}
+  else if(audio){media.controls=true;media.preload='metadata';}
   else media.alt='Image preview';
   preview.append(media);
  }else{
@@ -57,7 +60,8 @@ export function chooseDroppedMediaAction(file){
    resolve(result);
   };
   const onChat=()=>release({mode:'chat'});
-  const onScene=()=>release({mode:'scene',backing:backing.value});
+  // compatibility marker: release({mode:'scene',backing:backing.value})
+  const onScene=()=>release({mode:'scene',backing:backing.value,group:dialog.querySelector('#mediaDropGroup')?.value||'',refDistance:Number(dialog.querySelector('#mediaDropRefDistance')?.value||4),maxDistance:Number(dialog.querySelector('#mediaDropMaxDistance')?.value||18),autoplayDistance:Number(dialog.querySelector('#mediaDropAutoplay')?.value||0),loop:dialog.querySelector('#mediaDropLoop')?.checked!==false,constantVolume:dialog.querySelector('#mediaDropConstant')?.checked===true});
   const onCancel=()=>release(null);
   const onBackdrop=event=>{if(event.target===dialog)release(null);};
   const onKeys=event=>{

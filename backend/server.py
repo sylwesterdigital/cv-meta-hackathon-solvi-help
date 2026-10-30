@@ -183,7 +183,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.71',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.72',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1083,7 +1083,7 @@ def research_topic_sources(topic,limit=6):
     import urllib.parse
     sources=[]
     def read_json(url):
-        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.71 (public academic references)','Accept':'application/json'})
+        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.72 (public academic references)','Accept':'application/json'})
         with urlopen(req,timeout=3.5) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Large search response')
             return json.loads(response.read(180001).decode('utf-8'))
@@ -2438,7 +2438,7 @@ def set_scene():
         if o['kind']=='model' and not model_asset_exists(o.get('model')):return json_error('Unknown scene model')
         if o['kind']=='media':
             media=o.get('media',{})
-            if not isinstance(media,dict) or not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id',''))) or not str(media.get('mime','')).startswith(('image/','video/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):
+            if not isinstance(media,dict) or not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id',''))) or not str(media.get('mime','')).startswith(('image/','video/','audio/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):
                 return json_error('Invalid media surface')
             with db() as con:
                 row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone()
@@ -2491,7 +2491,7 @@ def patch_scene_object():
         if obj['kind']=='model' and not model_asset_exists(obj.get('model')):return json_error('Unknown scene model')
         if obj['kind']=='media':
             media=obj.get('media',{})
-            if not isinstance(media,dict) or not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id',''))) or not str(media.get('mime','')).startswith(('image/','video/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):return json_error('Invalid media surface')
+            if not isinstance(media,dict) or not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id',''))) or not str(media.get('mime','')).startswith(('image/','video/','audio/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):return json_error('Invalid media surface')
             with db() as con:media_row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone()
             if not media_row or media_row['mime']!=media.get('mime'):return json_error('Missing uploaded media reference')
         if obj['kind']!='model' and obj.get('model'):return json_error('Unexpected model reference')

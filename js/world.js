@@ -13,6 +13,7 @@ import {readPreferences} from './preferences.js';
 import {ENVIRONMENT_DEFAULTS,normalizeEnvironment,environmentViewLimit,createSkyDome,skyModeIndex} from './scene-environment.js';
 import {nextCameraMode,followAnchor,localOrbitOffset,cameraFromLocalOffset,chaseOffset,clampChaseDistance,zoomChaseDistance,smoothFactor} from './camera-follow.js';
 import {freeCameraAxes} from './camera-key-movement.js';
+import {updateSceneMedia} from './scene-media.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const random=(a,b)=>a+Math.random()*(b-a);
@@ -23,6 +24,8 @@ export class SolviWorld {
     this.environment={...ENVIRONMENT_DEFAULTS};this.skyClock=0;this.extentCheck=0;this.sceneExtent=0;
     this.camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.05,1500);
     this.camera.position.set(5,3.7,7.5);
+    this.audioListener=new THREE.AudioListener();
+    this.camera.add(this.audioListener);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
     this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
     this.renderer.setSize(innerWidth,innerHeight);
@@ -737,7 +740,7 @@ export class SolviWorld {
     this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.editorGizmoPointer&&cameraAllowed&&document.pointerLockElement!==this.renderer.domElement;
     this.navigateCamera(dt);
     if(!this.renderer.xr.isPresenting)this.controls.update();
-    this.updateXR();this.robotEditor?.tick(dt);this.updateFollowCamera(dt);this.updateVoiceRings(dt);
+    this.updateXR();this.robotEditor?.tick(dt);this.updateFollowCamera(dt);this.updateVoiceRings(dt);updateSceneMedia(this,dt);this.robotEditor?.updateMediaHUDPosition?.();
     if(this.onPose&&(!this.lastPose||performance.now()-this.lastPose>180)){
       this.lastPose=performance.now();const cam=this.renderer.xr.isPresenting?this.renderer.xr.getCamera():this.camera;
       const position=cam.getWorldPosition(new THREE.Vector3());

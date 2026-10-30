@@ -23,7 +23,7 @@ export function renderChatAttachment(slot,{id,url,mime,name,blob},openViewer,act
  const toggleMenu=event=>{event?.stopPropagation?.();menu.hidden=!menu.hidden;};
  menuButton.onclick=toggleMenu;
  const menuSave=document.createElement('a');menuSave.href=url;menuSave.download=label;menuSave.textContent='Save';menuSave.className='chat-attachment-menu-item';menu.append(menuSave);
- if((kind==='image'||kind==='video')&&typeof actions.addToScene==='function'){const add=document.createElement('button');add.type='button';add.textContent='Add to scene';add.className='chat-attachment-menu-item';add.onclick=event=>{event.stopPropagation();menu.hidden=true;actions.addToScene({id,url,mime,name:label,blob,kind});};menu.append(add);}
+ if((kind==='image'||kind==='video'||kind==='audio')&&typeof actions.addToScene==='function'){const add=document.createElement('button');add.type='button';add.textContent='Add to scene';add.className='chat-attachment-menu-item';add.onclick=event=>{event.stopPropagation();menu.hidden=true;actions.addToScene({id,url,mime,name:label,blob,kind});};menu.append(add);}
  slot.addEventListener('pointerdown',event=>{if(!slot.contains(event.target))menu.hidden=true;});
  document.addEventListener('pointerdown',event=>{if(slot.isConnected&&!slot.contains(event.target))menu.hidden=true;});
  if(kind==='image'){
