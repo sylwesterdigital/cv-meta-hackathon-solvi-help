@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.74",
+  "currentVersion": "0.2.75",
   "releases": [
+    {
+      "version": "0.2.75",
+      "publishedAt": "2026-10-30T04:25:08Z",
+      "changes": [
+        "Report exact Ubuntu deployment failure phase and sanitized local/HTTPS health diagnostics, while retaining rollback.",
+        "Wait for versioned local Gunicorn health before treating service start as success.",
+        "Verify HTTPS/Nginx locally with TLS/SNI and loopback hostname resolution; external public health remains verified by Mac watcher.",
+        "Retain v0.2.74 camera, panoramic robot eyes, realm archive, audio-orb and geometry enhancements."
+      ]
+    },
     {
       "version": "0.2.74",
       "publishedAt": "2026-10-30T04:18:40Z",
@@ -325,15 +335,6 @@
         "Add authenticated ElevenLabs voice catalogue in Robot Brains, with named voice selection and a real synthesize/playback status.",
         "Return sanitized provider errors for invalid API keys, inaccessible voices, insufficient quota, rate limiting and connectivity.",
         "Protect voice cache against provider key changes; test provider audio and error mapping without sending real billable requests."
-      ]
-    },
-    {
-      "version": "0.2.40",
-      "publishedAt": "2026-10-28T21:52:30Z",
-      "changes": [
-        "Correct valid robot voice previews that previously returned HTTP 400 because omitted rate/pitch fields were converted with float(None).",
-        "Use saved voice rate and pitch as preview defaults, while accepting independent optional overrides and preserving input validation.",
-        "Add backend integration regressions for speech preview defaults, individual overrides, and invalid values; preserve local and ElevenLabs robot voice options."
       ]
     }
   ]

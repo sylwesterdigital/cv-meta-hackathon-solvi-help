@@ -9,7 +9,7 @@ SERVICE=/etc/systemd/system/solvi-help.service
 TARGET=/opt/solvi-help
 STATE=/var/lib/solvi-help
 PORT=18765
-EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.74}
+EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.75}
 export SOLVI_EXPECTED_VERSION="$EXPECTED_VERSION"
 BACKUP=$(mktemp -d /root/solvi-backend-backup-XXXXXXXX)
 CHANGED=0
@@ -19,6 +19,19 @@ RESTORE_SNIPPET=0
 RESTORE_SITE=0
 RESTORE_SERVER=0
 RESTORE_REQUIREMENTS=0
+DEPLOY_PHASE='initial checks'
+# A failed SSH deployment previously reported only `Command failed (1): ssh -o`.
+# Report the failure phase without printing credentials from the environment.
+on_install_error() {
+  local status="$1" line="$2"
+  trap - ERR
+  echo "[SOLVI] INSTALL ERROR: phase=${DEPLOY_PHASE}; line=${line}; exit=${status}; expected=${EXPECTED_VERSION}" >&2
+  if [[ "$DEPLOY_PHASE" == 'local backend health' || "$DEPLOY_PHASE" == 'HTTPS proxy health' ]]; then
+    systemctl --no-pager --full status solvi-help.service 2>&1 | tail -n 18 >&2 || true
+    journalctl -u solvi-help --since '3 minutes ago' --no-pager -n 30 2>&1 | tail -n 30 >&2 || true
+  fi
+}
+trap 'on_install_error "$?" "$LINENO"' ERR
 finish() {
   rc=$?
   if (( rc != 0 && CHANGED )); then
@@ -43,6 +56,7 @@ command -v apt-get >/dev/null || { echo 'Debian/Ubuntu required' >&2; exit 1; }
 mkdir -p "$TARGET" "$STATE/media" "$STATE/models" /etc/nginx/snippets
 chown -R www-data:www-data "$STATE"
 chmod 750 "$STATE" "$STATE/media"
+DEPLOY_PHASE="install packages"
 needed=()
 for pkg in python3 python3-venv python3-pip curl ffmpeg rsync espeak-ng; do
   if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q 'install ok installed'; then needed+=("$pkg"); fi
@@ -57,6 +71,7 @@ if [[ -f "$SERVICE" ]]; then cp -a "$SERVICE" "$BACKUP/service"; RESTORE_SERVICE
 if [[ -f "$TARGET/server.py" ]]; then cp -a "$TARGET/server.py" "$BACKUP/server.py"; RESTORE_SERVER=1; fi
 if [[ -f "$TARGET/requirements.txt" ]]; then cp -a "$TARGET/requirements.txt" "$BACKUP/requirements.txt"; RESTORE_REQUIREMENTS=1; fi
 CHANGED=1
+DEPLOY_PHASE="install Python backend"
 install -m 644 "$SRC/server.py" "$TARGET/server.py"
 install -m 644 "$SRC/requirements.txt" "$TARGET/requirements.txt"
 if [[ ! -x "$TARGET/.venv/bin/python" ]]; then python3 -m venv "$TARGET/.venv"; fi
@@ -81,6 +96,7 @@ Path('/etc/solvi-help-admin-initial.txt').write_text(secret+'\n')
 Path('/etc/solvi-help-admin-initial.txt').chmod(0o600)
 PY
 fi
+DEPLOY_PHASE="write Nginx configuration"
 install -m 644 "$SRC/solvi-help.service.example" "$SERVICE"
 cat > "$SNIPPET" <<'NGINX'
 location ^~ /api/ {
@@ -104,31 +120,69 @@ location = /ws {
 }
 NGINX
 python3 "$SRC/configure-nginx.py" "$SITE"
+DEPLOY_PHASE="start backend service"
 nginx -t
 systemctl daemon-reload
 systemctl enable solvi-help.service >/dev/null
 systemctl restart solvi-help.service
-# Distinctive check stops false positives when an unrelated service occupies the port.
-for i in $(seq 1 24); do
-  if curl -fsS --max-time 2 "http://127.0.0.1:${PORT}/api/health" > "$BACKUP/health.json" 2>/dev/null; then
-    if "$TARGET/.venv/bin/python" - "$BACKUP/health.json" <<'PY'
+# Verify the actual version, not merely HTTP 200 or a spawned Gunicorn master.
+health_matches() {
+  "$TARGET/.venv/bin/python" - "$1" "$EXPECTED_VERSION" <<'PY'
 import json,sys
-x=json.load(open(sys.argv[1]));assert x.get('service')=='solvi-help-api' and x.get('version')==__import__('os').environ['SOLVI_EXPECTED_VERSION']
+try:
+    x=json.load(open(sys.argv[1],encoding='utf-8'))
+except (OSError,ValueError):
+    sys.exit(1)
+sys.exit(0 if x.get('service')=='solvi-help-api' and x.get('version')==sys.argv[2] and x.get('backend') is True else 1)
 PY
-    then break; fi
+}
+DEPLOY_PHASE='local backend health'
+printf '[SOLVI] HEALTH CHECK: local Gunicorn 127.0.0.1:%s, expecting v%s\n' "$PORT" "$EXPECTED_VERSION"
+local_ok=0
+for i in $(seq 1 35); do
+  if curl --noproxy '*' -fsS --max-time 3 "http://127.0.0.1:${PORT}/api/health" > "$BACKUP/health.json" 2>/dev/null && health_matches "$BACKUP/health.json"; then
+    local_ok=1
+    break
   fi
   sleep 1
 done
-"$TARGET/.venv/bin/python" - "$BACKUP/health.json" <<'PY'
+if (( ! local_ok )); then
+  echo '[SOLVI] HEALTH FAILED: local Gunicorn did not return the expected version within 35 attempts' >&2
+  if [[ -s "$BACKUP/health.json" ]]; then
+    "$TARGET/.venv/bin/python" - "$BACKUP/health.json" <<'PY' || true
 import json,sys
-x=json.load(open(sys.argv[1]));assert x['service']=='solvi-help-api' and x['version']==__import__('os').environ['SOLVI_EXPECTED_VERSION']
+try:
+    obj=json.load(open(sys.argv[1]))
+    print('[SOLVI] local response: service=%s version=%s backend=%s' % (obj.get('service'),obj.get('version'),obj.get('backend')),file=sys.stderr)
+except Exception:
+    print('[SOLVI] local response was not valid JSON',file=sys.stderr)
 PY
+  fi
+  false
+fi
+printf '[SOLVI] HEALTH OK: local Gunicorn v%s\n' "$EXPECTED_VERSION"
+
+DEPLOY_PHASE='reload Nginx'
+nginx -t
 systemctl reload nginx
-# Public proxy check: no passing release based solely on HTTP 200 for index.html.
-curl -fsS --max-time 15 https://solvi.help/api/health > "$BACKUP/public.json"
-"$TARGET/.venv/bin/python" - "$BACKUP/public.json" <<'PY'
-import json,sys
-x=json.load(open(sys.argv[1]));assert x['service']=='solvi-help-api' and x['version']==__import__('os').environ['SOLVI_EXPECTED_VERSION']
-PY
+DEPLOY_PHASE='HTTPS proxy health'
+# Verify Nginx + the hostname's TLS/SNI on the server's own loopback.
+# Public external health is verified *separately* by the Mac watcher.
+proxy_ok=0
+for i in $(seq 1 8); do
+  if curl --noproxy '*' -fsS --connect-timeout 3 --max-time 8 \
+      --resolve solvi.help:443:127.0.0.1 \
+      'https://solvi.help/api/health' > "$BACKUP/public.json" 2>/dev/null && \
+      health_matches "$BACKUP/public.json"; then
+    proxy_ok=1
+    break
+  fi
+  sleep 2
+done
+if (( ! proxy_ok )); then
+  echo '[SOLVI] HEALTH FAILED: local HTTPS/Nginx proxy did not return the expected backend version' >&2
+  false
+fi
+printf '[SOLVI] HEALTH OK: Nginx HTTPS proxy v%s\n' "$EXPECTED_VERSION"
 GOOD=1
 printf '[SOLVI] BACKEND LIVE: v%s | SQLite | API /api/health | WebSocket /ws\n' "$EXPECTED_VERSION"
