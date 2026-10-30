@@ -1626,3 +1626,17 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 @media(max-width:650px){#robotBrainsPanel{left:6px;right:6px;width:calc(100vw - 12px);max-height:92svh}#robotBrainsPanel .brains-scroll{padding:6px 8px}}
 
 @media(min-width:1101px){body.solvi-brain-chat-side-by-side #robotBrainsPanel{width:min(540px,calc(100vw - 466px))!important;max-width:min(540px,calc(100vw - 466px))!important;left:8px!important}}
+
+/* v0.2.71: scrollable conversation with a localized overlay hit target. */
+#chatPanel .chat-feed-shell{position:relative;display:flex;flex:1 1 auto;min-height:0;min-width:0;pointer-events:none;}
+#chatPanel .chat-feed-shell>.chat-feed{width:100%;height:100%;min-height:0!important;flex:1 1 auto!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain;scrollbar-width:thin!important;scrollbar-color:rgba(139,190,208,.38) transparent!important;}
+#chatPanel.windowed .chat-feed-shell,#chatPanel.windowed .chat-feed-shell>.chat-feed{pointer-events:auto!important;}
+#chatPanel.windowed .chat-feed-shell>.chat-feed{touch-action:pan-y!important;}
+#chatPanel .chat-feed-shell>.chat-feed:focus-visible{outline:2px solid #58d5e8;outline-offset:-2px;}
+#chatPanel .chat-page-down{position:absolute;bottom:10px;right:12px;z-index:6;width:38px!important;height:38px!important;min-width:38px!important;min-height:38px!important;padding:0!important;display:grid!important;place-items:center!important;border-radius:50%!important;background:#163b4c!important;border:1px solid #71c4d9!important;color:#f2fdff!important;font-size:23px!important;line-height:1!important;box-shadow:0 4px 16px #0007!important;pointer-events:auto!important;cursor:pointer;}
+#chatPanel .chat-page-down[hidden]{display:none!important;}
+#chatPanel .chat-page-down:hover{background:#285b6d!important;}
+#chatPanel .chat-system-line{align-self:center;flex:0 0 auto;max-width:85%;margin:1px auto;padding:3px 10px;font-size:10px;line-height:1.4;font-weight:400;color:rgba(185,206,220,.82);text-align:center;letter-spacing:.02em;pointer-events:none;user-select:text;}
+#chatPanel .chat-system-day{margin:9px auto 1px;color:rgba(221,235,248,.83);font-weight:600;}
+#chatPanel .chat-system-hour{opacity:.68;font-size:9px;}
+#chatPanel .chat-system-activity{font-style:italic;opacity:.9;}

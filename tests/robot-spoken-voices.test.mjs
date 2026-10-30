@@ -17,7 +17,10 @@ test('local voice distance attenuation decreases with distance',()=>{
 });
 test('robot speech plays only saved assistant replies, and the initial history remains silent',()=>{
  const studio=read('js/studio.js'),server=read('backend/server.py'),speech=read('js/robot-speech.js'),html=read('index.html');
- assert.match(studio,/suppressRobotSpeech=true;try\{for\(const entry of messages\)await bubble\(entry\)/);
+ assert.match(studio,/suppressRobotSpeech=true;try\{/);
+ assert.match(studio,/for\(const item of chatTimeline\(messages/);
+ assert.match(studio,/if\(item.type==='message'\)await bubble\(item.entry\)/);
+ assert.match(studio,/finally\{suppressRobotSpeech=false;renderingChat=false;\}/);
  assert.match(studio,/if\(entry.role==='assistant'\)robotSpeech\?\.speak\(entry\)/);
  assert.match(speech,/entry.role!=='assistant'/);assert.match(speech,/this.seen.has\(entry.id\)/);
  assert.match(speech,/this.context.createPanner\(\)/);assert.match(speech,/getWorldPosition/);

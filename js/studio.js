@@ -1,6 +1,7 @@
 import {makeRealmCards,captureRealmPreview} from './realm-gallery.js';
 import {mentionQuery,mentionCandidates,insertMention} from './chat-mentions.js';
 import {renderChatAttachment,ensureChatMediaViewer} from './chat-attachments.js';
+import {atChatBottom,chatNextPage,chatTimeline} from './chat-timeline.js';
 import {chooseDroppedMediaAction} from './media-drop-dialog.js';
 import {ROBOT_DEBUG_ALL_KEY,robotDebugVisible,setRobotDebug,readDebugSelection} from './robot-debug.js';
 import * as THREE from 'three';
@@ -32,7 +33,7 @@ function establishTabChannel(uid){
 }
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
-let cachedMessages=[],chatSignature='',lastBubbleEntry=null;const chatMediaURLs=new Set();const runningRobotTasks=new Map();const localBrainTrace=[];const initialRoomLoads=new Set();
+let cachedMessages=[],chatSignature='',lastBubbleEntry=null;let renderingChat=false,followChat=true;const roomActivities=new Map();const chatMediaURLs=new Set();const runningRobotTasks=new Map();const localBrainTrace=[];const initialRoomLoads=new Set();
 let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};let sessionPrompt=false;
 let robotSpeech=null;let suppressRobotSpeech=false;let currentlySpeakingRobot='';
 const robotDebugAllowed=id=>robotDebugVisible(id,sessionStorage);
@@ -143,7 +144,6 @@ async function bubble(entry){
   const speakerColor=role==='assistant'?null:(entry.speaker_color||(mine?me?.color:null));
   if(/^#[0-9a-fA-F]{6}$/.test(speakerColor||''))wrap.style.setProperty('--speaker-accent',speakerColor);
   else if(role==='assistant'){const hue=Array.from(entry.speaker||'Robot').reduce((v,c)=>(v*31+c.charCodeAt(0))%360,17);wrap.style.setProperty('--speaker-accent',`hsl(${hue} 65% 60%)`);}
-  wrap.addEventListener('wheel',event=>{event.preventDefault();feed.scrollTop+=event.deltaY;},{passive:false});
   const pic=document.createElement('span');pic.className='chat-avatar';pic.textContent=(entry.speaker||(role==='assistant'?'AI':me?.name)||'?').slice(0,2).toUpperCase();
   if(role==='assistant'){pic.title='Open robot Brains and capture portrait';pic.tabIndex=0;pic.setAttribute('role','button');
     const open=()=>{const robot=window.solviEditor?.items?.find(o=>o.userData.editorKind==='robot'&&o.name===entry.speaker);if(robot){window.solviEditor.select(robot);window.dispatchEvent(new CustomEvent('solvi:open-brains'));}};
@@ -168,10 +168,10 @@ async function bubble(entry){
     if(!slot.isConnected){URL.revokeObjectURL(info.url);return;}
     chatMediaURLs.add(info.url);
     renderChatAttachment(slot,info,detail=>ensureChatMediaViewer().showFile(detail),{addToScene:addChatMediaToScene});
-    scrollChatToLatest();
+    if(!renderingChat)scrollChatToLatest();
   }).catch(()=>{slot.textContent='Attachment unavailable';});}
  }
- lastBubbleEntry=entry;scrollChatToLatest();if(!suppressRobotSpeech&&role==='assistant'&&!entry.isBrainTrace)robotSpeech?.speak(entry);
+ lastBubbleEntry=entry;if(!renderingChat)scrollChatToLatest();if(!suppressRobotSpeech&&role==='assistant'&&!entry.isBrainTrace)robotSpeech?.speak(entry);
 }
 function clearChatAttachments(){
  const viewer=document.getElementById('chatMediaViewer');viewer?.dismiss?.();
@@ -180,7 +180,31 @@ function clearChatAttachments(){
 }
 async function uploadFile(file){if(!online||!auth)throw Error('Enable the Flask backend to store media');if(file.size>11_000_000)throw Error('File must be under 11 MB');
  const body=new FormData();body.append('file',file,file.name);const response=await api.req('/api/media',{method:'POST',body});return response.media;}
-function scrollChatToLatest(){const feed=$('chatFeed');if(!feed)return;requestAnimationFrame(()=>{feed.scrollTop=feed.scrollHeight;requestAnimationFrame(()=>{if(feed.scrollHeight-feed.scrollTop-feed.clientHeight>2)feed.scrollTop=feed.scrollHeight;});});}
+function updateChatPageDown(){
+ const feed=$('chatFeed'),button=$('chatPageDown');if(!feed||!button)return;
+ const unread=feed.scrollHeight-feed.clientHeight-feed.scrollTop;
+ button.hidden=feed.clientHeight<30||unread<=22;
+}
+function scrollChatToLatest(force=false){
+ const feed=$('chatFeed');if(!feed||(!followChat&&!force))return;
+ if(force)followChat=true;
+ requestAnimationFrame(()=>{if(!followChat)return;feed.scrollTop=feed.scrollHeight;updateChatPageDown();
+  requestAnimationFrame(()=>{if(followChat){feed.scrollTop=feed.scrollHeight;updateChatPageDown();}});});
+}
+function chatSystemLine(text,kind='activity'){
+ const line=document.createElement('div');line.className='chat-system-line chat-system-'+kind;line.setAttribute('role','note');line.textContent=text;
+ $('chatFeed').append(line);lastBubbleEntry=null;
+}
+function notePresence({id,name,action,room}){
+ if(!id||id===me?.id||!['joined','left'].includes(action))return;
+ const targetRoom=room||activeRoom;if(targetRoom!==activeRoom)return;
+ const list=roomActivities.get(targetRoom)||[];
+ const entry={id:random(),created:new Date().toISOString(),name:String(name||'Guest').slice(0,80),action};
+ list.push(entry);roomActivities.set(targetRoom,list.slice(-45));
+ const wasFollowing=followChat;chatSystemLine(entry.name+(action==='left'?' left the room':' joined the room'));
+ if(wasFollowing)scrollChatToLatest();else updateChatPageDown();
+}
+
 function updatePending(){const p=$('pendingMedia');p.replaceChildren();for(const m of pending){const badge=document.createElement('button');badge.textContent=`${m.name} ×`;badge.title='Remove attachment';badge.onclick=()=>{pending=pending.filter(x=>x!==m);updatePending();};p.append(badge);}}
 async function inspectMediaDimensions(source,mime=''){
  try{if(String(mime).startsWith('image/')){const bitmap=await createImageBitmap(source);const info={width:bitmap.width,height:bitmap.height};bitmap.close?.();return info;}
@@ -543,10 +567,17 @@ async function loadMessages(){
    const hasLoaded=initialRoomLoads.has(room);
    const newcomers=hasLoaded?messages.filter(m=>!oldIds.has(m.id)&&m.user_id!==me?.id):[];
    cachedMessages=messages;chatSignature=nextSignature;
-   const feed=$('chatFeed');clearChatAttachments();feed.replaceChildren();lastBubbleEntry=null;
-   suppressRobotSpeech=true;try{for(const entry of messages)await bubble(entry);}finally{suppressRobotSpeech=false;}
-   for(const entry of localBrainTrace.filter(x=>x.room===room&&robotDebugAllowed(x.robotId)).slice(-100))await bubble(entry);
-   scrollChatToLatest();
+   const feed=$('chatFeed'),oldScrollTop=feed.scrollTop,wasFollowing=followChat||atChatBottom(feed);
+   clearChatAttachments();feed.replaceChildren();lastBubbleEntry=null;renderingChat=true;
+   suppressRobotSpeech=true;try{
+    for(const item of chatTimeline(messages,roomActivities.get(room)||[])){
+     if(item.type==='message')await bubble(item.entry);
+     else if(item.type==='presence')chatSystemLine(item.entry.name+(item.entry.action==='left'?' left the room':' joined the room'));
+     else chatSystemLine(item.text,item.type);
+    }
+    for(const entry of localBrainTrace.filter(x=>x.room===room&&robotDebugAllowed(x.robotId)).slice(-100))await bubble(entry);
+   }finally{suppressRobotSpeech=false;renderingChat=false;}
+   if(wasFollowing)scrollChatToLatest(true);else{feed.scrollTop=oldScrollTop;followChat=false;updateChatPageDown();}
    initialRoomLoads.add(room);
    if(newcomers.length)playCue('incoming');
    for(const entry of newcomers)if(entry.role==='assistant')robotSpeech?.speak(entry);
@@ -576,7 +607,7 @@ async function configureRooms(){
    environmentAutosave?.flushAll();policyAutosave?.flushAll();
    activeRoom=select.value;window.solviRoom=activeRoom;sessionStorage.setItem('solvi-room',activeRoom);loadWorldSettings();
    $('roomChatTitle').textContent=select.selectedOptions[0]?.textContent+' · messages';
-   chatSignature='';cachedMessages=[];lastBubbleEntry=null;clearChatAttachments();$('chatFeed').replaceChildren();playCue('leave');
+   chatSignature='';cachedMessages=[];lastBubbleEntry=null;followChat=true;clearChatAttachments();$('chatFeed').replaceChildren();updateChatPageDown();playCue('leave');
    window.dispatchEvent(new CustomEvent('solvi:room-changed',{detail:{room:activeRoom}}));
  };
 }
@@ -904,6 +935,20 @@ function setupSettings(){
 }
 function setupChatPresentation(){
   const feed=$('chatFeed'),panel=$('chatPanel'),composer=panel.querySelector('.chat-composer');
+  const pageDown=$('chatPageDown');
+  feed.addEventListener('scroll',()=>{followChat=atChatBottom(feed);updateChatPageDown();},{passive:true});
+  pageDown.onclick=()=>{feed.scrollTo({top:chatNextPage(feed),behavior:'smooth'});pageDown.focus({preventScroll:true});};
+  // In overlay mode the scene stays clickable outside messages. Wheel events
+  // beside message bubbles still scroll chat, including gaps between bubbles.
+  document.addEventListener('wheel',event=>{
+   if(panel.hidden||panel.classList.contains('windowed')||event.ctrlKey||event.metaKey||!event.deltaY)return;
+   const rect=feed.getBoundingClientRect();
+   if(event.clientY<rect.top||event.clientY>rect.bottom)return;
+   const rows=[...feed.querySelectorAll('.chat-row')];
+   const nearMessages=rows.some(row=>{const r=row.getBoundingClientRect();return event.clientX>=r.left-28&&event.clientX<=r.right+28&&event.clientY>=r.top-45&&event.clientY<=r.bottom+45;});
+   if(!nearMessages)return;
+   event.preventDefault();feed.scrollTop+=event.deltaY;updateChatPageDown();
+  },{capture:true,passive:false});
   // A single always-visible bottom-left control cycles overlay → floating → hidden.
   // The third click restores overlay, so hiding chat cannot strand the user.
   let mode=panel.classList.contains('windowed')?'window':'overlay';
@@ -973,7 +1018,7 @@ function setupChatPresentation(){
   $('attachRobotOption').onclick=()=>{closeAttach();$('robotVision').click();};
   document.addEventListener('pointerdown',event=>{if(!attachments.hidden&&!attachments.contains(event.target)&&!toggle.contains(event.target))closeAttach();});
   const mobileTools=$('composerToolsButton');mobileTools.onclick=()=>toggle.click();
-  const watchSize=new ResizeObserver(()=>scrollChatToLatest());watchSize.observe(composer);watchSize.observe(feed);
+  const watchSize=new ResizeObserver(()=>{if(followChat)scrollChatToLatest();updateChatPageDown();});watchSize.observe(composer);watchSize.observe(feed);
   // Compact navigation remains horizontally scrollable on small screens; no redundant More button.
   // Multiline by default: Enter sends, Shift+Enter inserts a newline.
   const input=$('chatInput');
@@ -1145,7 +1190,7 @@ function bindUI(world){
  $('adminLogin').onclick=adminLogin;$('adminRefresh').onclick=stats;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){show('addMenu',false);show('adminBackdrop',false);if(me)show('profileBackdrop',false);}});
  window.addEventListener('solvi:auth-required',event=>needSignIn(event.detail?.reason||'Session expired.'));
- window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id)playCue(event.detail.action==='left'?'leave':'join');});
+ window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id){playCue(event.detail.action==='left'?'leave':'join');notePresence(event.detail);}});
  document.addEventListener('pointerdown',primeAudio,{once:true});
  $('debugAllRobots').checked=sessionStorage.getItem(ROBOT_DEBUG_ALL_KEY)==='1';
  $('debugAllRobots').onchange=()=>{sessionStorage.setItem(ROBOT_DEBUG_ALL_KEY,$('debugAllRobots').checked?'1':'0');window.solviEditor?.syncRobotPathDebug();chatSignature='';loadMessages();};

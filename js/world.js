@@ -12,6 +12,7 @@ import {XRHandModelFactory} from 'three/addons/webxr/XRHandModelFactory.js';
 import {readPreferences} from './preferences.js';
 import {ENVIRONMENT_DEFAULTS,normalizeEnvironment,environmentViewLimit,createSkyDome,skyModeIndex} from './scene-environment.js';
 import {nextCameraMode,followAnchor,localOrbitOffset,cameraFromLocalOffset,chaseOffset,clampChaseDistance,zoomChaseDistance,smoothFactor} from './camera-follow.js';
+import {freeCameraAxes} from './camera-key-movement.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const random=(a,b)=>a+Math.random()*(b-a);
@@ -711,16 +712,13 @@ export class SolviWorld {
     const robot=this.robotEditor?.robot();
     if(this.cameraFollowMode!=='free'&&robot){this.cameraVelocity.set(0,0,0);return;}
     if(robot&&this.robotEditor.canEdit(robot)&&this.robotEditor.controlMode==='robot'){this.cameraVelocity.set(0,0,0);return;}
-    const f=Number(this.keys.has('ArrowUp'))-Number(this.keys.has('ArrowDown'));
-    const side=Number(this.keys.has('ArrowRight'))-Number(this.keys.has('ArrowLeft'));
-    const vertical=Number(this.keys.has('PageUp'))-Number(this.keys.has('PageDown'));
+    const {forward:f,side,vertical,boost}=freeCameraAxes(this.keys);
     const desired=new THREE.Vector3();
     if(f||side||vertical){
       const look=this.camera.getWorldDirection(new THREE.Vector3());look.y=0;
       if(look.lengthSq()<.001)look.set(0,0,-1);look.normalize();
       const right=new THREE.Vector3().crossVectors(look,new THREE.Vector3(0,1,0)).normalize();
       desired.copy(look).multiplyScalar(f).addScaledVector(right,side);desired.y+=vertical;
-      const boost=this.keys.has('ShiftLeft')||this.keys.has('ShiftRight')?2.4:1;
       desired.normalize().multiplyScalar(this.cameraMoveSpeed*boost);
     }
     const response=desired.lengthSq()>.001?8:10; // 0.1–0.2s acceleration/deceleration

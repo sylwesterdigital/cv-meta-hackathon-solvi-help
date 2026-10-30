@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.70",
+  "currentVersion": "0.2.71",
   "releases": [
+    {
+      "version": "0.2.71",
+      "publishedAt": "2026-10-30T00:27:52Z",
+      "changes": [
+        "Support free-camera Shift+ArrowUp to travel forward and climb smoothly, and Shift+ArrowDown to travel backward and descend smoothly while preserving PageUp/PageDown altitude keys and inertia.",
+        "Restore reliable chat-wheel scrolling in overlay mode near message content and throughout the floating window while keeping the rest of the scene clickable.",
+        "Add a round next-page chat down-arrow at the feed bottom which hides when the latest messages are reached, without yanking readers back to the bottom on every update.",
+        "Show subtle local date and hourly separators in conversation history, plus live participant joined/left indicators from actual WebSocket presence events.",
+        "Extend JavaScript regression coverage for camera diagonal altitude, chat pagination, timeline separators, pointer interaction and WebSocket presence names."
+      ]
+    },
     {
       "version": "0.2.70",
       "publishedAt": "2026-10-30T00:08:07Z",
@@ -312,17 +323,6 @@
         "Move the single webcam launcher to the top-right of the draggable Message composer header instead of the top navigation.",
         "Keep the webcam button icon-only with accessible Open/Close labels, 28px desktop and 36px phone sizes, plus active indication.",
         "Preserve robot walk, turn, strafe, jump and go-to/sit behaviour; add regression coverage for the control and movement paths."
-      ]
-    },
-    {
-      "version": "0.2.35",
-      "publishedAt": "2026-10-28T19:17:06Z",
-      "changes": [
-        "Visual questions addressed to a robot now capture a fresh head-camera JPEG before Muse Spark responds; the exact frame is shared in chat.",
-        "Webcam is available directly in top navigation on desktop and mobile.",
-        "Front-facing 3D headshots can be saved for robot chat portraits and user profile photos.",
-        "Robot portrait references persist in scene data; existing conversation history shows robot portraits rather than user photos.",
-        "Server validates visual requests, room ownership, JPEG uploads and billing; failures never impersonate visual perception."
       ]
     }
   ]
