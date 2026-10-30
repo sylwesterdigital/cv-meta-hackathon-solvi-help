@@ -12,3 +12,11 @@ export function setRobotDebug(robotId,enabled,storage){
  const set=readDebugSelection(storage);if(enabled)set.add(robotId);else set.delete(robotId);
  storage.setItem(ROBOT_DEBUG_SELECTION_KEY,JSON.stringify([...set]));
 }
+// Distinct from chat diagnostic tracing. Per-robot path settings are independent.
+export const ROBOT_PATH_ALL_KEY='solvi-path-debug-all';
+export const ROBOT_PATH_SELECTION_KEY='solvi-path-debug-robots';
+export function readPathSelection(storage){
+ try{const names=JSON.parse(storage.getItem(ROBOT_PATH_SELECTION_KEY)||'[]');return new Set(Array.isArray(names)?names.filter(v=>typeof v==='string'):[]);}catch{return new Set();}
+}
+export function robotPathVisible(robotId,storage){return storage.getItem(ROBOT_PATH_ALL_KEY)==='1'||!!robotId&&readPathSelection(storage).has(robotId);}
+export function setRobotPath(robotId,enabled,storage){if(!robotId)return;const list=readPathSelection(storage);if(enabled)list.add(robotId);else list.delete(robotId);storage.setItem(ROBOT_PATH_SELECTION_KEY,JSON.stringify([...list]));}

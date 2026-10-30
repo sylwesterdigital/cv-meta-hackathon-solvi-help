@@ -45,7 +45,7 @@ export function setupAssetGallery(editor){
    card.onclick=async()=>{
     if(!validAssetURL(asset.url))return;
     if(replacing){if(!editor.items.includes(replacing)||!editor.canEdit(replacing)){status.textContent='The object cannot be edited. Select it again.';return;}
-     if(!await editor.replaceSceneModel(replacing,asset))return;
+     if(!(replacing.userData.editorKind==='media'?await editor.replaceSpeakerModel(replacing,asset):await editor.replaceSceneModel(replacing,asset)))return;
     }else{
      try{await loadSceneAsset(asset.url);}catch(error){status.textContent='Asset unavailable: '+error.message;return;}
      const model=editor.add('model',false);if(!model)return;model.name=asset.label;
@@ -62,8 +62,8 @@ export function setupAssetGallery(editor){
   }catch(error){collection=[];render();status.textContent='Cannot load assets: '+error.message;}
  }
  async function open({replace=null}={}){
-  replacing=replace?.userData.editorKind==='model'&&editor.canEdit(replace)?replace:null;
-  $('assetGalleryTitle').textContent=replacing?'Replace 3D model · '+replacing.name:'3D Assets';
+  replacing=['model','media'].includes(replace?.userData?.editorKind)&&editor.canEdit(replace)?replace:null;
+  $('assetGalleryTitle').textContent=replacing?'Select visual model · '+replacing.name:'3D Assets';
   $('assetGallerySearch').value='';backdrop.hidden=false;await refresh();
  }
  async function upload(file,{replace}={}){
@@ -76,7 +76,7 @@ export function setupAssetGallery(editor){
    const form=new FormData();form.append('model',file);
    const result=await window.solviAPI.req('/api/scene/models',{method:'POST',body:form});
    if(!validAssetURL(result.model?.url))throw Error('Invalid model returned by server');
-   if(replace){if(!await editor.replaceSceneModel(replace,result.model))return false;}else if(replacing){if(!await editor.replaceSceneModel(replacing,result.model))return false;}
+   if(replace){if(!(replace.userData.editorKind==='media'?await editor.replaceSpeakerModel(replace,result.model):await editor.replaceSceneModel(replace,result.model)))return false;}else if(replacing){if(!(replacing.userData.editorKind==='media'?await editor.replaceSpeakerModel(replacing,result.model):await editor.replaceSceneModel(replacing,result.model)))return false;}
    collection.unshift(result.model);
    if(!backdrop.hidden)render();
    status.textContent='Uploaded: '+result.model.label;

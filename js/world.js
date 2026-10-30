@@ -13,7 +13,7 @@ import {readPreferences} from './preferences.js';
 import {ENVIRONMENT_DEFAULTS,normalizeEnvironment,environmentViewLimit,createSkyDome,skyModeIndex} from './scene-environment.js';
 import {nextCameraMode,followAnchor,localOrbitOffset,cameraFromLocalOffset,chaseOffset,clampChaseDistance,zoomChaseDistance,smoothFactor} from './camera-follow.js';
 import {freeCameraAxes} from './camera-key-movement.js';
-import {updateSceneMedia} from './scene-media.js';
+import {updateSceneMedia,toggleSceneMediaPlayback,setSceneMediaMuted,sceneMediaMuted} from './scene-media.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const random=(a,b)=>a+Math.random()*(b-a);
@@ -468,6 +468,19 @@ export class SolviWorld {
       this.xrMenu.add(mesh);this.xrButtons.push(mesh);
     }
     this.xrMenu.visible=false;this.scene.add(this.xrMenu);
+    // Ray-facing XR controls appear only when targeting a media object, never as permanent overlays.
+    this.xrMediaControls=new THREE.Group();this.xrMediaControls.name='XR media controls';this.xrMediaControls.visible=false;
+    this.xrMediaButtons=[];
+    for(const [action,label,index] of [['play','▶ / Ⅱ',0],['mute','🔈 / ×',1]]){
+      const cv=document.createElement('canvas');cv.width=240;cv.height=88;
+      const ctx=cv.getContext('2d');ctx.fillStyle='#152d43';ctx.beginPath();ctx.roundRect(0,0,240,88,16);ctx.fill();ctx.font='bold 36px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#a7eeff';ctx.fillText(label,120,44);
+      const tex=new THREE.CanvasTexture(cv);
+      const btn=new THREE.Mesh(new THREE.PlaneGeometry(.32,.13),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide,depthTest:false}));
+      btn.position.set((index-.5)*.36,0,.02);btn.userData.mediaAction=action;
+      this.xrMediaControls.add(btn);this.xrMediaButtons.push(btn);
+    }
+    this.scene.add(this.xrMediaControls);
+
     // Ring indicates controller/hand teleport destination on the floor.
     this.teleportIndicator=new THREE.Mesh(new THREE.RingGeometry(.17,.27,36),
       new THREE.MeshBasicMaterial({color:0x72e7ff,side:THREE.DoubleSide,depthTest:false}));
@@ -487,6 +500,12 @@ export class SolviWorld {
         if(!this.renderer.xr.isPresenting)return;
         const selection=this.xrRaycast(controller);
         if(selection.menu){const action=selection.menu.userData.action;if(action==='room'){const select=document.getElementById('roomSelect');if(select&&select.options.length>1){select.selectedIndex=(select.selectedIndex+1)%select.options.length;select.dispatchEvent(new Event('change'));}}else window.solviEditor?.add(action);return;}
+        const mediaTarget=selection.mediaTarget||this.xrMediaTarget;
+        if((selection.mediaButton||selection.mediaTarget)&&mediaTarget){
+          if(selection.mediaButton?.userData.mediaAction==='mute')setSceneMediaMuted(mediaTarget,!sceneMediaMuted(mediaTarget));
+          else toggleSceneMediaPlayback(mediaTarget);
+          return;
+        }
         this.xrInputs[i].selecting=true;
         this.xrInputs[i].landing=selection.floor?.point.clone()||null;
       });
@@ -514,8 +533,14 @@ export class SolviWorld {
     controller.updateWorldMatrix(true,false);
     this.raycaster.setFromXRController(controller);
     const menu=this.raycaster.intersectObjects(this.xrButtons,false)[0]?.object;
+    const mediaButton=this.xrMediaControls?.visible?this.raycaster.intersectObjects(this.xrMediaButtons,false)[0]?.object:null;
     const floor=this.raycaster.intersectObject(this.floor,false)[0];
-    return {menu,floor:floor&&validTeleport(floor.point.x,floor.point.z,Math.max(16,this.environment.floorSize/2-1))?floor:null};
+    const media=this.robotEditor?.items?.filter(o=>o.userData.editorKind==='media')||[];
+    const mediaHit=this.raycaster.intersectObjects(media,true)[0];
+    let mediaTarget=mediaHit?.object;
+    while(mediaTarget&&!mediaTarget.userData?.editorKind)mediaTarget=mediaTarget.parent;
+    if(mediaHit&&floor&&mediaHit.distance>floor.distance)mediaTarget=null;
+    return {menu,mediaButton,mediaTarget,floor:floor&&validTeleport(floor.point.x,floor.point.z,Math.max(16,this.environment.floorSize/2-1))?floor:null};
   }
   teleportTo(landing){
     const session=this.renderer.xr.getSession();
@@ -532,7 +557,14 @@ export class SolviWorld {
   updateXR(){
     const presenting=this.renderer.xr.isPresenting;
     this.xrMenu.visible=presenting;
-    if(!presenting){this.teleportIndicator.visible=false;return;}
+    if(!presenting){this.teleportIndicator.visible=false;if(this.xrMediaControls)this.xrMediaControls.visible=false;this.xrMediaTarget=null;return;}
+    let target=null;
+    for(const input of this.xrInputs||[]){const hit=this.xrRaycast(input.controller);if(hit.mediaTarget){target=hit.mediaTarget;break;}}
+    if(target){this.xrMediaTarget=target;this.xrMediaControls.visible=true;this.xrMediaControls.position.copy(target.getWorldPosition(new THREE.Vector3()));this.xrMediaControls.position.y+=.72;
+      this.xrMediaControls.lookAt(this.renderer.xr.getCamera().getWorldPosition(new THREE.Vector3()));}
+    else if(!this.xrMediaTarget?.parent){this.xrMediaControls.visible=false;this.xrMediaTarget=null;}
+    else this.xrMediaControls.visible=false;
+
     if(!this.xrMenuPlaced){
       const eye=this.renderer.xr.getCamera();
       const pos=eye.getWorldPosition(new THREE.Vector3());

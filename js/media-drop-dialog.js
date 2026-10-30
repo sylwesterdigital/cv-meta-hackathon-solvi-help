@@ -53,7 +53,7 @@ export function chooseDroppedMediaAction(file){
    scene.removeEventListener('click',onScene);
    cancel.removeEventListener('click',onCancel);
    dismiss.removeEventListener('click',onCancel);
-   preview.querySelector('video')?.pause();
+   preview.querySelector('video,audio')?.pause();
    preview.replaceChildren();
    if(url)URL.revokeObjectURL(url);
    if(originalFocus?.isConnected&&typeof originalFocus.focus==='function')originalFocus.focus();

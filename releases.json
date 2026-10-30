@@ -1,6 +1,20 @@
 {
-  "currentVersion": "0.2.72",
+  "currentVersion": "0.2.73",
   "releases": [
+    {
+      "version": "0.2.73",
+      "publishedAt": "2026-10-30T03:23:12Z",
+      "changes": [
+        "Unify compact Settings folder contrast, button sizing, field spacing, and visual density across expanded sections.",
+        "Validate Meta API models, ElevenLabs account/voices, Tripo3D credits, and Whisper installation without billable generation calls; keep keys transient or session-scoped.",
+        "Save, load, export, import and delete user theme presets in JSON, backed by authenticated SQLite storage.",
+        "Add reviewed chat media recording with microphone meter, elapsed duration, Stop/Cancel, inline preview and optional audio/video scene orb.",
+        "Add user-scoped camera bookmark gallery with JPEG screenshots, per-realm filtering, save, delete confirmations, JSON import/export, chat sharing and teleport links.",
+        "Separate chat diagnostic events from robot floor-path display at per-robot and all-robot levels.",
+        "Add opt-in, browser-session robot follow, observation and periodic discussion routines with stop controls.",
+        "Add Shift+Up / Shift+Down chat draft history and XR ray-targeted media play/mute interaction."
+      ]
+    },
     {
       "version": "0.2.72",
       "publishedAt": "2026-10-30T01:44:50Z",
@@ -315,16 +329,6 @@
         "Restore always-visible CC microphone transcription toggle directly before Send in Messages.",
         "Repair room caption delivery status and explicit offline/auth errors.",
         "Prevent chat icon-mode styles from hiding CC state and verify published voice transcripts."
-      ]
-    },
-    {
-      "version": "0.2.37",
-      "publishedAt": "2026-10-28T19:49:43Z",
-      "changes": [
-        "Convert Cybert and other robots\u2019 natural-language turn/roll/walk/jump instructions into permission-checked scene commands instead of conversational-only replies.",
-        "Implement smooth turn-in-place and turn-then-walk missions with bounded distance, turn-speed setting, scene persistence, and actual movement completion events.",
-        "Route explicit named-object destinations such as chair1o to scene-based navigation, and leave ambiguous \u201cthat way\u201d references for clarification.",
-        "Add backend command routing and actual-frame stepping regressions, keeping existing chat, vision, avatars, and multiplayer features."
       ]
     }
   ]

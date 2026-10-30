@@ -134,6 +134,9 @@ def init_db():
         con.execute('CREATE TABLE IF NOT EXISTS robot_reactions (message_id TEXT NOT NULL,robot_id TEXT NOT NULL,created TEXT NOT NULL,PRIMARY KEY(message_id,robot_id))')
         con.execute('CREATE TABLE IF NOT EXISTS robot_discussions (message_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, user_id TEXT NOT NULL, topic TEXT NOT NULL, participants TEXT NOT NULL, sources TEXT NOT NULL, created TEXT NOT NULL)')
         con.execute('CREATE TABLE IF NOT EXISTS robot_discussion_turns (message_id TEXT NOT NULL, step_index INTEGER NOT NULL, robot_id TEXT NOT NULL, reply_id TEXT NOT NULL, created TEXT NOT NULL, PRIMARY KEY(message_id,step_index))')
+        con.execute('CREATE TABLE IF NOT EXISTS user_theme_presets (user_id TEXT NOT NULL,name TEXT NOT NULL,payload TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(user_id,name))')
+        con.execute('CREATE TABLE IF NOT EXISTS camera_bookmarks (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,room_id TEXT NOT NULL,title TEXT NOT NULL,media_id TEXT NOT NULL,pose TEXT NOT NULL,created TEXT NOT NULL)')
+        con.execute('CREATE INDEX IF NOT EXISTS camera_bookmarks_user_room ON camera_bookmarks(user_id,room_id,created)')
         con.execute('CREATE INDEX IF NOT EXISTS messages_room_created ON messages(room_id,created)')
 init_db()
 
@@ -183,7 +186,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.72',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.73',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -598,6 +601,131 @@ MEDIA_TYPES={'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/
              'audio/webm':'.webm','audio/ogg':'.ogg','audio/wav':'.wav','audio/mpeg':'.mp3','audio/mp4':'.m4a',
              'video/webm':'.webm','video/mp4':'.mp4','video/quicktime':'.mov',
              'application/pdf':'.pdf','text/plain':'.txt'}
+
+# Account read-only checks: do not perform billable inference/generation, persist keys,
+# return upstream secrets or confuse usage estimates with actual account balances.
+def provider_get(url, headers):
+    try:
+        req=Request(url,headers={**headers,'Accept':'application/json','User-Agent':'SOLVI-help-account-check/1.0'})
+        with urlopen(req, timeout=8) as response:
+            data=json.loads(response.read(262144))
+            return data if isinstance(data,dict) else {}, None
+    except HTTPError as exc:
+        return {}, ('Provider rejected the key (HTTP '+str(exc.code)+')' if exc.code in (401,403) else 'Provider service returned HTTP '+str(exc.code))
+    except (URLError,TimeoutError,OSError,ValueError,json.JSONDecodeError):
+        return {}, 'Provider account check temporarily unavailable'
+
+@app.post('/api/integrations/check')
+def check_integration():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    body=request.get_json(silent=True) or {}
+    provider=str(body.get('provider',''))
+    key=str(body.get('key','')).strip()
+    if provider not in ('meta','elevenlabs','tripo'):return json_error('Unknown provider')
+    if not key or len(key)>512 or not all(32<=ord(c)<127 for c in key):return json_error('Enter a valid key')
+    if provider=='meta':
+        data,error=provider_get('https://api.meta.ai/v1/models',{'Authorization':'Bearer '+key})
+        if error:return json_error(error,502)
+        models=[str(v.get('id',''))[:120] for v in data.get('data',[]) if isinstance(v,dict) and v.get('id')][:40]
+        return jsonify(valid=True,provider=provider,models=models,balance=None,balance_note='Meta API account balance is not available through this read-only check')
+    if provider=='elevenlabs':
+        data,error=provider_get('https://api.elevenlabs.io/v1/user/subscription',{'xi-api-key':key})
+        if error:return json_error(error,502)
+        voices,v_error=provider_get('https://api.elevenlabs.io/v2/voices?page_size=25',{'xi-api-key':key})
+        available=[{'id':str(v.get('voice_id',''))[:80],'name':str(v.get('name',''))[:90]} for v in voices.get('voices',[]) if isinstance(v,dict)] if not v_error else []
+        remaining=None
+        try:remaining=max(0,int(data.get('character_limit') or 0)-int(data.get('character_count') or 0))
+        except (TypeError,ValueError):pass
+        return jsonify(valid=True,provider=provider,tier=data.get('tier'),remaining_credits=remaining,voices=available,voices_note=v_error)
+    data,error=provider_get('https://openapi.tripo3d.ai/v3/account/balance',{'Authorization':'Bearer '+key})
+    if error:return json_error(error,502)
+    if data.get('code') not in (0,None):return json_error('Tripo rejected this key or balance request',502)
+    balance=data.get('data') or {}
+    return jsonify(valid=True,provider=provider,credits=balance.get('balance'),frozen=balance.get('frozen'))
+
+@app.get('/api/integrations/whisper')
+def check_whisper():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    return jsonify(ready=whisper_ready(),binary=Path(STT_BIN).is_file(),model=Path(STT_MODEL).is_file(),ffmpeg=bool(shutil.which('ffmpeg')),test='Read-only dependency check; no recording or transcription charge')
+
+@app.route('/api/theme-presets',methods=['GET','POST'])
+def theme_presets():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    if request.method=='GET':
+        with db() as con:rows=con.execute('SELECT name,payload,updated FROM user_theme_presets WHERE user_id=? ORDER BY updated DESC',(user['id'],)).fetchall()
+        return jsonify(presets=[{'name':row['name'],'theme':json.loads(row['payload']),'updated':row['updated']} for row in rows])
+    body=request.get_json(silent=True) or {}
+    name=str(body.get('name','')).strip()[:60];preset=body.get('theme')
+    if not name or not isinstance(preset,dict) or len(json.dumps(preset))>4000:return json_error('Invalid theme preset')
+    allowed={'accent','theme','opacity','backgrounds','borders','group','sounds','flipHead','labelMode','uiScale','fontTheme','customFont','flatButtons','noShadows','noBlur'}
+    preset={key:value for key,value in preset.items() if key in allowed and isinstance(value,(str,bool,int,float))}
+    with db() as con:
+        if con.execute('SELECT COUNT(*) AS n FROM user_theme_presets WHERE user_id=?',(user['id'],)).fetchone()['n']>=35 and not con.execute('SELECT 1 FROM user_theme_presets WHERE user_id=? AND name=?',(user['id'],name)).fetchone():return json_error('Maximum 35 saved themes')
+        con.execute('INSERT OR REPLACE INTO user_theme_presets VALUES(?,?,?,?)',(user['id'],name,json.dumps(preset),now()))
+    return jsonify(saved=True,name=name)
+
+@app.delete('/api/theme-presets/<name>')
+def delete_theme_preset(name):
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:con.execute('DELETE FROM user_theme_presets WHERE user_id=? AND name=?',(user['id'],name))
+    return jsonify(deleted=True)
+
+
+def bookmark_payload(obj):
+    if not isinstance(obj,dict):return None
+    try:
+        pos=obj['position'];target=obj['target']
+        if not isinstance(pos,list) or not isinstance(target,list) or len(pos)!=3 or len(target)!=3:return None
+        if any(not isinstance(v,(int,float)) or not math.isfinite(v) or abs(v)>1500 for v in pos+target):return None
+        return {'position':list(map(float,pos)),'target':list(map(float,target))}
+    except (KeyError,TypeError,ValueError):return None
+
+@app.route('/api/bookmarks',methods=['GET','POST'])
+def camera_bookmarks():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    if request.method=='GET':
+        with db() as con:rows=con.execute('SELECT id,room_id,title,media_id,pose,created FROM camera_bookmarks WHERE user_id=? ORDER BY created DESC LIMIT 300',(user['id'],)).fetchall()
+        return jsonify(bookmarks=[{'id':r['id'],'room':r['room_id'],'title':r['title'],'media_id':r['media_id'],'pose':json.loads(r['pose']),'created':r['created']} for r in rows])
+    body=request.get_json(silent=True) or {}
+    room_id=str(body.get('room',''))[:80];title=str(body.get('title','')).strip()[:90];media_id=str(body.get('media_id',''))
+    pose=bookmark_payload(body.get('pose'))
+    if not title or not pose or not re.fullmatch(r'[a-f0-9-]{36}',media_id):return json_error('Invalid bookmark data')
+    with db() as con:
+        if not con.execute('SELECT 1 FROM rooms WHERE id=?',(room_id,)).fetchone():return json_error('Realm not found')
+        asset=con.execute('SELECT mime FROM media WHERE id=? AND user_id=?',(media_id,user['id'])).fetchone()
+        if not asset or asset['mime']!='image/jpeg':return json_error('Bookmark requires an owned JPEG screenshot')
+        bid=str(uuid.uuid4())
+        con.execute('INSERT INTO camera_bookmarks VALUES(?,?,?,?,?,?,?)',(bid,user['id'],room_id,title,media_id,json.dumps(pose),now()))
+    return jsonify(bookmark={'id':bid,'room':room_id,'title':title,'media_id':media_id,'pose':pose})
+
+@app.get('/api/bookmarks/<bid>')
+def camera_bookmark(bid):
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:row=con.execute('SELECT id,room_id,title,media_id,pose,created FROM camera_bookmarks WHERE id=?',(bid,)).fetchone()
+    if not row:return json_error('Bookmark not found',404)
+    return jsonify(bookmark={'id':row['id'],'room':row['room_id'],'title':row['title'],'media_id':row['media_id'],'pose':json.loads(row['pose']),'created':row['created']})
+
+@app.delete('/api/bookmarks/<bid>')
+def delete_camera_bookmark(bid):
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:con.execute('DELETE FROM camera_bookmarks WHERE id=? AND user_id=?',(bid,user['id']))
+    return jsonify(deleted=True)
+
+@app.delete('/api/bookmarks')
+def clear_camera_bookmarks():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    room_id=request.args.get('room','')
+    if not room_id:return json_error('Specify the realm to clear')
+    with db() as con:con.execute('DELETE FROM camera_bookmarks WHERE user_id=? AND room_id=?',(user['id'],room_id))
+    return jsonify(deleted=True)
 
 @app.post('/api/media')
 def upload():
@@ -1083,7 +1211,7 @@ def research_topic_sources(topic,limit=6):
     import urllib.parse
     sources=[]
     def read_json(url):
-        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.72 (public academic references)','Accept':'application/json'})
+        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.73 (public academic references)','Accept':'application/json'})
         with urlopen(req,timeout=3.5) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Large search response')
             return json.loads(response.read(180001).decode('utf-8'))

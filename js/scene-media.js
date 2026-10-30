@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import {clone as cloneSkeleton} from 'three/addons/utils/SkeletonUtils.js';
+import {loadSceneAsset,isSceneModelURL} from './scene-models.js';
 
 const loaders=new Map();
 const activeMediaObjects=new WeakMap();
@@ -36,27 +38,43 @@ function cleanupDecorations(mesh){
   group.traverse(node=>{node.geometry?.dispose?.();if(Array.isArray(node.material))node.material.forEach(m=>m?.dispose?.());else node.material?.dispose?.();});
   mediaDecorations.delete(mesh);
 }
-function ensureSpeakerDecor(mesh){
+function ensureSpeakerDecor(mesh,orb=false){
   cleanupDecorations(mesh);
   const group=new THREE.Group();group.name='mediaSpeakerDecor';
-  const shell=new THREE.Mesh(new THREE.BoxGeometry(0.96,1.12,0.08),new THREE.MeshStandardMaterial({color:'#121a23',roughness:.88,metalness:.12}));
-  shell.position.z=0.041;group.add(shell);
+  if(!orb){const shell=new THREE.Mesh(new THREE.BoxGeometry(0.96,1.12,0.08),new THREE.MeshStandardMaterial({color:'#121a23',roughness:.88,metalness:.12}));shell.position.z=0.041;group.add(shell);}
   const cone=(radius,y)=>{
     const outer=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,0.022,40),new THREE.MeshStandardMaterial({color:'#2a3440',roughness:.72,metalness:.18}));
     outer.rotation.x=Math.PI/2;outer.position.set(0,y,0.082);group.add(outer);
     const inner=new THREE.Mesh(new THREE.CylinderGeometry(radius*0.56,radius*0.16,0.03,40),new THREE.MeshStandardMaterial({color:'#56687a',roughness:.48,metalness:.24}));
     inner.rotation.x=Math.PI/2;inner.position.set(0,y,0.09);group.add(inner);
   };
-  cone(0.26,0.24);cone(0.18,-0.21);
+  if(!orb){cone(0.26,0.24);cone(0.18,-0.21);}
   const rings=[];
   for(let i=0;i<3;i++){
     const ring=new THREE.Mesh(new THREE.RingGeometry(0.31+i*0.08,0.33+i*0.08,48),new THREE.MeshBasicMaterial({color:'#76efff',transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false}));
-    ring.position.set(0,0.02,0.13+i*0.005);group.add(ring);rings.push(ring);
+    ring.position.set(0,0.02,(orb?.48:.13)+i*0.005);group.add(ring);rings.push(ring);
   }
   mesh.add(group);mediaDecorations.set(mesh,group);
   return {group,rings};
 }
+async function hydrateSpeakerModel(mesh,modelURL){
+  if(!isSceneModelURL(modelURL))return;
+  const ticket=mesh.userData.mediaModelTicket;
+  try{
+    const asset=await loadSceneAsset(modelURL);
+    if(ticket!==mesh.userData.mediaModelTicket||!mesh.parent)return;
+    const clone=cloneSkeleton(asset);clone.name='audioSpeakerCustomModel';
+    const bounds=new THREE.Box3().setFromObject(clone),size=bounds.getSize(new THREE.Vector3());
+    if(!bounds.isEmpty()&&Math.max(size.x,size.y,size.z)>0){const factor=1.4/Math.max(size.x,size.y,size.z);clone.scale.multiplyScalar(factor);const center=bounds.getCenter(new THREE.Vector3());clone.position.set(-center.x*factor,-center.y*factor,-center.z*factor);}
+    const prior=mesh.getObjectByName('audioSpeakerCustomModel');if(prior)mesh.remove(prior);
+    mesh.add(clone);
+    const decor=mediaDecorations.get(mesh);if(decor){for(const child of decor.children){if(child.geometry?.type!=='RingGeometry')child.visible=false;}}
+    const materials=Array.isArray(mesh.material)?mesh.material:[mesh.material];for(const material of materials){if(material){material.transparent=true;material.opacity=0;material.needsUpdate=true;}}
+  }catch(error){console.warn('Speaker model unavailable',modelURL,error);}
+}
 function disposeAsset(mesh){
+  mesh.userData.mediaModelTicket=(mesh.userData.mediaModelTicket||0)+1;
+  const model=mesh.getObjectByName('audioSpeakerCustomModel');if(model)mesh.remove(model);
   const prior=activeMediaObjects.get(mesh);
   if(prior?.video){try{prior.video.pause();prior.video.removeAttribute('src');prior.video.load();}catch{}}
   if(prior?.audioEl){try{prior.audioEl.pause();prior.audioEl.removeAttribute('src');prior.audioEl.load();}catch{}}
@@ -124,10 +142,15 @@ export function hydrateSceneMedia(mesh,world){
   const media=mesh.userData.media;
   disposeAsset(mesh);
   activeMediaMeshes.add(mesh);
-  const materials=ensureMaterials(mesh,media.backing||'white',world?.scene?.environment||null);
-  const front=materials[4]||materials[0];
+  const orb=media.shape==='orb'&&(sceneMediaKind(media.mime)==='audio'||sceneMediaKind(media.mime)==='video');
+  if(orb){
+    if(!mesh.geometry?.type?.includes('Sphere')){mesh.geometry?.dispose?.();mesh.geometry=new THREE.SphereGeometry(.42,24,18);}
+    if(Array.isArray(mesh.material)){mesh.material.forEach(m=>m?.dispose?.());mesh.material=new THREE.MeshStandardMaterial({color:'#3c9bd2',roughness:.38,metalness:.12});}
+  }
+  const materials=orb?null:ensureMaterials(mesh,media.backing||'white',world?.scene?.environment||null);
+  const front=orb?mesh.material:(materials[4]||materials[0]);
   front.color?.set?.('#ffffff');
-  front.transparent=false;
+  for(const material of (Array.isArray(mesh.material)?mesh.material:[mesh.material])){if(material){material.transparent=false;material.opacity=1;}}
   front.map?.dispose?.();
   front.map=null;
   const kind=sceneMediaKind(media.mime);
@@ -151,7 +174,8 @@ export function hydrateSceneMedia(mesh,world){
     return;
   }
   if(kind==='audio'){
-    const decor=ensureSpeakerDecor(mesh);
+    const decor=ensureSpeakerDecor(mesh,orb);
+    if(media.model)hydrateSpeakerModel(mesh,media.model);
     const audio=document.createElement('audio');
     audio.crossOrigin='anonymous';audio.preload='metadata';audio.playsInline=true;audio.loop=media.loop!==false;audio.muted=media.muted===true;
     const sound=world?.audioListener?new THREE.PositionalAudio(world.audioListener):null;
@@ -174,10 +198,13 @@ export function hydrateSceneMedia(mesh,world){
   }).catch(error=>console.warn('Media video load failed',mediaId,error));
   video.addEventListener('loadedmetadata',()=>{if(mesh.parent)applyAspect(mesh,video.videoWidth,video.videoHeight);});
   const texture=new THREE.VideoTexture(video);texture.colorSpace=THREE.SRGBColorSpace;
-  front.map=texture;front.needsUpdate=true;mediaTextures.set(mesh,texture);activeMediaObjects.set(mesh,{video});
+  if(!orb){front.map=texture;front.needsUpdate=true;mediaTextures.set(mesh,texture);}else{texture.dispose();ensureSpeakerDecor(mesh,true);}
+  const sound=orb&&world?.audioListener?new THREE.PositionalAudio(world.audioListener):null;
+  if(sound){try{sound.setMediaElementSource(video);mesh.add(sound);video.muted=false;}catch(error){console.warn('Video orb audio source failed',error);}}
+  activeMediaObjects.set(mesh,{video,sound});
 }
 
-export function disposeSceneMedia(mesh){disposeAsset(mesh);if(Array.isArray(mesh?.material))mesh.material.forEach(material=>{material.map?.dispose?.();material.dispose?.();});mesh?.geometry?.dispose?.();}
+export function disposeSceneMedia(mesh){disposeAsset(mesh);const materials=Array.isArray(mesh?.material)?mesh.material:[mesh?.material];materials.forEach(material=>{material?.map?.dispose?.();material?.dispose?.();});mesh?.geometry?.dispose?.();}
 
 export function setSceneMediaBacking(mesh,backing='white',world){
   if(!mesh?.userData?.media)return;
@@ -187,7 +214,7 @@ export function setSceneMediaBacking(mesh,backing='white',world){
 }
 export function toggleSceneMediaPlayback(mesh){
   const current=activeMediaObjects.get(mesh);const mediaEl=current?.video||current?.audioEl;if(!mediaEl)return false;
-  if(mediaEl.paused){mediaEl.play().catch(()=>{});return true;}
+  if(mediaEl.paused){current.sound?.context?.resume?.().catch(()=>{});mediaEl.play().catch(()=>{});return true;}
   mediaEl.pause();return false;
 }
 export function setSceneMediaMuted(mesh,muted=true){

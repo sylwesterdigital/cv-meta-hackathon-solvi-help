@@ -16,6 +16,10 @@ import {playCue,primeAudio} from './audio-cues.js';
 import {RobotSpeech} from './robot-speech.js';
 import {ENVIRONMENT_DEFAULTS,normalizeEnvironment} from './scene-environment.js';
 import {createRoomAutosave} from './room-settings-autosave.js';
+import {initCameraBookmarks} from './camera-bookmarks.js';
+import {initExtendedSettings} from './settings-extended.js';
+import {initRobotRoutines} from './robot-routines.js';
+import {ROBOT_PATH_ALL_KEY,robotPathVisible,setRobotPath,readPathSelection} from './robot-debug.js';
 
 const $=id=>document.getElementById(id);
 const random=()=>crypto.randomUUID();
@@ -41,7 +45,7 @@ const debugRobotSelected=()=>window.solviEditor?.selected?.userData.editorKind==
 function syncRobotDebugUI(){
  const id=debugRobotSelected(),box=$('debugSelectedRobot');if(!box)return;
  box.disabled=!id;box.checked=!!id&&readDebugSelection(sessionStorage).has(id);
- const all=$('debugAllRobots');if(all)all.checked=sessionStorage.getItem(ROBOT_DEBUG_ALL_KEY)==='1';
+ const all=$('debugAllRobots');if(all)all.checked=sessionStorage.getItem(ROBOT_DEBUG_ALL_KEY)==='1';const path=$('pathSelectedRobot');if(path){path.disabled=!id;path.checked=!!id&&readPathSelection(sessionStorage).has(id);}
 }
 
 function saveRealmView(room=activeRoom){
@@ -159,6 +163,9 @@ async function bubble(entry){
   wrap.append(pic,panel);feed.append(wrap);
  }else{panel.querySelector('time').textContent=safeTime(entry.created);}
  const content=document.createElement('div');content.className='chat-body chat-message-item';content.dataset.messageId=entry.id||'';content.textContent=entry.text||'';panel.append(content);
+ const marker=String(entry.text||'').match(/#bookmark=([0-9a-f-]{36})/i);
+ if(marker){const teleport=document.createElement('button');teleport.type='button';teleport.className='chat-bookmark-teleport';teleport.textContent='Teleport to camera view';teleport.onclick=()=>window.dispatchEvent(new CustomEvent('solvi:bookmark-teleport',{detail:{id:marker[1]}}));content.append(document.createTextNode(' '),teleport);}
+
  let mids=[];try{mids=typeof entry.media==='string'?JSON.parse(entry.media):entry.media||[];}catch{}
  const mediaContainer=mids.length>1?document.createElement('div'):panel;
  if(mids.length>1){mediaContainer.className='chat-media-grid';mediaContainer.setAttribute('aria-label',mids.length+' attachments');panel.append(mediaContainer);}
@@ -431,21 +438,45 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
  }catch(e){playCue('error');$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
  finally{$('sendChat').disabled=false;}
 }
+let recordingCancelled=false,recordingFile=null,recordingUrl='',recordingSeconds=0,recordTick=null,recordingAudioContext=null,recordAnalyser=null,recordAnimation=0;
+function recordingUIVisible(on){const panel=$('composerRecorderPanel');if(panel)panel.hidden=!on;}
+function cleanupRecording(){clearTimeout(recTimer);clearInterval(recordTick);recordTick=null;cancelAnimationFrame(recordAnimation);recordAnimation=0;recordStream?.getTracks().forEach(t=>t.stop());recordStream=null;recordingAudioContext?.close().catch(()=>{});recordingAudioContext=null;recordAnalyser=null;}
+function discardRecording(){if(recorder?.state==='recording'){recordingCancelled=true;recorder.stop();}cleanupRecording();recordingFile=null;if(recordingUrl)URL.revokeObjectURL(recordingUrl);recordingUrl='';$('composerRecorderPlayer')?.replaceChildren();recordingUIVisible(false);}
+function formatRecordingTime(seconds){const s=Math.max(0,Math.floor(seconds));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
 async function startRecording(video,forIntro=false){if(recorder?.state==='recording'){recorder.stop();return;}
- if(!online){toast('Recording upload needs the backend');return;}
- try{recordStream=await navigator.mediaDevices.getUserMedia({video, audio:true});
-  const mime=['video/webm;codecs=vp9,opus','video/webm','audio/webm;codecs=opus','audio/webm'].find(m=>MediaRecorder.isTypeSupported(m) && (video?m.startsWith('video'):m.startsWith('audio')))||'';
+ if(!online){toast('Recording requires a connected backend');return;}
+ if(recordingFile)discardRecording();
+ try{recordStream=await navigator.mediaDevices.getUserMedia({video,audio:true});recordingCancelled=false;
+  const preferences=video?['video/webm;codecs=vp8,opus','video/webm','video/mp4']:['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus'];
+  const mime=preferences.find(m=>MediaRecorder.isTypeSupported(m))||'';
   const chunks=[];recorder=new MediaRecorder(recordStream,mime?{mimeType:mime}:{});recKind=forIntro?'intro':video?'video':'audio';
-  recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onstop=async()=>{
-   clearTimeout(recTimer);recordStream?.getTracks().forEach(t=>t.stop());recordStream=null;
-   const type=recorder.mimeType.split(';')[0]||(video?'video/webm':'audio/webm');const file=new File([new Blob(chunks,{type})],`${recKind}-${Date.now()}.${video?'webm':'webm'}`,{type});
-   try{const m=await uploadFile(file);if(recKind==='intro'){
-      const out=await api.req('/api/profile/intro',{method:'POST',body:JSON.stringify({id:m.id})});$('profileStatus').textContent='Intro video saved; 12 fps, 1.5-second GIF';const img=$('introPreview');img.src=await api.mediaBlob(out.media.id);img.hidden=false;
-    }else{pending.push(m);updatePending();toast('Recording attached');}}
-   catch(e){toast(e.message);}finally{recorder=null;}
+  recordingSeconds=0;$('composerRecorderTime').textContent='00:00';$('composerRecorderLive').textContent=video?'● Recording video':'● Recording audio';
+  $('composerRecorderPreview').hidden=true;$('composerRecorderStop').hidden=false;
+  recordingUIVisible(true);
+  recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+  recorder.onstop=async()=>{
+   const type=recorder.mimeType.split(';')[0]||(video?'video/webm':'audio/webm');const extension=type.includes('mp4')?'mp4':type.includes('ogg')?'ogg':'webm';
+   const file=new File([new Blob(chunks,{type})],`${recKind}-${Date.now()}.${extension}`,{type});
+   cleanupRecording();recorder=null;
+   if(recordingCancelled){recordingUIVisible(false);return;}
+   if(recKind==='intro'){try{const m=await uploadFile(file);const out=await api.req('/api/profile/intro',{method:'POST',body:JSON.stringify({id:m.id})});$('profileStatus').textContent='Intro video saved';$('introPreview').src=await api.mediaBlob(out.media.id);$('introPreview').hidden=false;}catch(e){toast(e.message);}recordingUIVisible(false);return;}
+   recordingFile=file;recordingUrl=URL.createObjectURL(file);const player=document.createElement(video?'video':'audio');player.src=recordingUrl;player.controls=true;player.preload='metadata';if(video){player.playsInline=true;player.style.maxHeight='145px';}const mount=$('composerRecorderPlayer');mount.replaceChildren(player);
+   $('composerRecorderDuration').textContent=`${formatRecordingTime(recordingSeconds)} recorded · ${(file.size/1048576).toFixed(2)} MB · ${type}`;
+   $('composerRecorderPreview').hidden=false;$('composerRecorderStop').hidden=true;
   };
-  recorder.start(250);toast(video?'Recording video · max 15s':'Recording audio · max 15s');recTimer=setTimeout(()=>recorder?.state==='recording'&&recorder.stop(),15000);
- }catch(e){toast(e.message);}
+  recorder.start(250);
+  const began=performance.now();recordTick=setInterval(()=>{recordingSeconds=(performance.now()-began)/1000;$('composerRecorderTime').textContent=formatRecordingTime(recordingSeconds);},150);
+  try{recordingAudioContext=new AudioContext();const source=recordingAudioContext.createMediaStreamSource(recordStream);recordAnalyser=recordingAudioContext.createAnalyser();recordAnalyser.fftSize=256;source.connect(recordAnalyser);const samples=new Uint8Array(recordAnalyser.fftSize);const meter=()=>{if(!recordAnalyser)return;recordAnalyser.getByteTimeDomainData(samples);const rms=Math.sqrt(samples.reduce((sum,value)=>sum+((value-128)/128)**2,0)/samples.length);$('composerRecorderLevel').value=Math.min(1,rms*5);recordAnimation=requestAnimationFrame(meter);};meter();}catch{}
+  recTimer=setTimeout(()=>{if(recorder?.state==='recording')recorder.stop();},45000);
+ }catch(e){cleanupRecording();recordingUIVisible(false);toast(e.message);}
+}
+function setupRecordingControls(){
+ $('composerRecorderStop').onclick=()=>recorder?.state==='recording'&&recorder.stop();
+ $('composerRecorderCancel').onclick=discardRecording;
+ $('composerRecorderDiscard').onclick=discardRecording;
+ $('composerRecorderAttach').onclick=async()=>{if(!recordingFile)return;try{const m=await uploadFile(recordingFile);pending.push(m);pending=pending.slice(-3);updatePending();discardRecording();toast('Recording attached to chat — press Send');}catch(e){toast(e.message);}};
+ $('composerRecorderScene').onclick=async()=>{if(!recordingFile)return;try{const m=await uploadFile(recordingFile);const editor=window.solviEditor;if(!editor)throw Error('Scene editor unavailable');editor.addSceneMedia(m,{shape:'orb',loop:false,autoplayDistance:0});discardRecording();toast('Recorded media orb added to the scene');}catch(e){toast(e.message);}};
+ window.addEventListener('pagehide',()=>{recordingCancelled=true;if(recorder?.state==='recording')recorder.stop();cleanupRecording();});
 }
 // Profile photo and intro GIF deliberately use the same visible, video-only webcam.
 // A user explicitly sees and controls the captured frame; permission failures are surfaced.
@@ -901,8 +932,11 @@ function setupSettings(){
  $('metaApiKey').placeholder=sessionStorage.getItem('solvi-meta-session-key')?'Session key configured (hidden)':'Optional session Meta API key';
  $('saveMetaKey').onclick=async()=>{
    const key=$('metaApiKey').value.trim();if(!key){$('metaKeyStatus').textContent='Enter a key to apply it.';return;}
+   try{const verified=await api.req('/api/integrations/check',{method:'POST',body:JSON.stringify({provider:'meta',key})});
+    $('metaKeyStatus').textContent=`Meta key verified · ${verified.models?.length||0} models accessible. Account balance unavailable.`;
+   }catch(error){$('metaKeyStatus').textContent='Key not saved: '+error.message;return;}
    if($('metaKeyStorage').value==='session'){
-     sessionStorage.setItem('solvi-meta-session-key',key);$('metaApiKey').value='';$('metaKeyStatus').textContent='Key held in sessionStorage for this tab only. Vulnerable to malicious scripts; do not use a privileged key.';
+     sessionStorage.setItem('solvi-meta-session-key',key);$('metaApiKey').value='';$('metaKeyStatus').textContent+=' Session-only key stored in this browser tab.';
    }else{
      try{const response=await api.req('/api/ai/config',{method:'POST',headers:{'X-Solvi-Admin':adminToken||''},body:JSON.stringify({key})});
        $('metaApiKey').value='';$('metaKeyStatus').textContent=response.notice;
@@ -1066,9 +1100,13 @@ function setupRobotVoiceSettings(){
  enabled.onchange=()=>{localStorage.setItem('solvi-robot-speech',enabled.checked?'1':'0');robotSpeech?.stop();};
  volume.oninput=()=>localStorage.setItem('solvi-robot-speech-volume',volume.value);
  status.textContent=sessionStorage.getItem('solvi-elevenlabs-key')?'Voice session key loaded.':'Local voice available without a key.';
- $('saveElevenLabsKey').onclick=()=>{
+ $('saveElevenLabsKey').onclick=async()=>{
   const key=input.value.trim();if(key&&(!/^[\x21-\x7e]{16,256}$/.test(key))){status.textContent='Invalid voice key.';return;}
-  if(key)sessionStorage.setItem('solvi-elevenlabs-key',key);else sessionStorage.removeItem('solvi-elevenlabs-key');input.value='';status.textContent=key?'Voice key saved for this browser session.':'Browser voice key cleared.';
+  if(!key){sessionStorage.removeItem('solvi-elevenlabs-key');status.textContent='Browser voice key cleared.';return;}
+  status.textContent='Checking ElevenLabs account (read-only)…';
+  try{const data=await api.req('/api/integrations/check',{method:'POST',body:JSON.stringify({provider:'elevenlabs',key})});
+   sessionStorage.setItem('solvi-elevenlabs-key',key);input.value='';status.textContent=`Key verified · ${data.tier||'unknown'} tier · ${data.voices?.length||0} voice(s) returned`;const voices=$('brainsElevenVoiceList');if(voices&&data.voices?.length)voices.replaceChildren(...data.voices.map(v=>new Option(v.name,v.id)));
+  }catch(error){status.textContent='Key not saved: '+error.message;}
  };
  window.addEventListener('solvi:test-robot-voice',e=>robotSpeech?.test(e.detail));
  window.addEventListener('solvi:session-lost',()=>robotSpeech?.stop());
@@ -1096,6 +1134,11 @@ function bindUI(world){
   };follow();
  });
  const editor=new SceneEditor(world,toast);setupChatMentions();robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
+ initCameraBookmarks({world,api,room:()=>activeRoom,getRooms:()=>[...$('roomSelect').options].filter(o=>o.value).map(o=>({id:o.value,title:o.textContent})),uploadFile,toast,post:async body=>{const out=await api.req('/api/message',{method:'POST',body:JSON.stringify(body)});await bubble(out.message);return out;},switchRoom:async target=>{const select=$('roomSelect');if(![...select.options].some(o=>o.value===target))throw Error('Realm is not accessible');select.value=target;select.dispatchEvent(new Event('change'));}});
+ initRobotRoutines({editor,room:()=>activeRoom,toast,
+  captureObservation:async(robot,target)=>{const frame=await captureRobotView(world,robot);if(frame?.size)rememberRobotObservationFrame(robot.userData.editorId,frame,`Routine observation of ${target.name} · local frame, no model analysis`);},
+  postDiscussion:async(robot,target,subject)=>{if(target.userData.editorKind!=='robot')return;const message=`@${robot.name} @${target.name} discuss ${subject}; compare evidence, pros and cons and respond to each other.`;const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:message,media:[]})});await bubble(response.message);await reactToRobotMessage(response.message);}});
+
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
  window.addEventListener('solvi:robot-route',event=>{const d=event.detail||{};if(robotDebugAllowed(d.robotId))emitBrainTrace(d.robotId,d.name||'Robot',d.status==='planned'?'ROUTE ACCEPTED':'ROUTE BLOCKED',`${d.waypoints||0} computed A* waypoints · ${d.obstacles||0} obstacle footprints · planned length ${Number(d.plannedMeters||0).toFixed(2)} m · start ${JSON.stringify(d.start)} · destination ${d.target||'unknown'} ${JSON.stringify(d.destination)} · task ${d.taskId||'?'}. Green is the planner route; cyan is observed movement.`);if(robotDebugAllowed(d.robotId)&&d.plan)emitBrainTrace(d.robotId,d.name||'Robot','PLANNER ACTUAL GEOMETRY',d.plan);});
@@ -1156,8 +1199,22 @@ function bindUI(world){
    try{const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:caption,media:[]})});await bubble(response.message);try{await reactToRobotMessage(response.message);}catch(error){$('chatStatus').textContent='Caption published; robot reaction failed: '+error.message;}}
    catch(error){toast('Captions not sent: '+error.message);throw error;}
  };
- $('sendChat').onclick=send;$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
- $('chatFile').onchange=e=>attach(e.target.files[0]);$('recordAudio').onclick=()=>startRecording(false);
+ const chatDraftHistory=[];let draftIndex=-1,draftBeforeHistory='';
+ $('sendChat').onclick=send;$('chatInput').addEventListener('keydown',e=>{
+  if(e.shiftKey&&(e.key==='ArrowUp'||e.key==='ArrowDown')&&!e.altKey&&!e.ctrlKey&&!e.metaKey&&$('chatMentions').hidden){
+   e.preventDefault();const input=$('chatInput');
+   if(e.key==='ArrowUp'){
+    if(draftIndex<0){draftBeforeHistory=input.value;draftIndex=chatDraftHistory.length;}
+    draftIndex=Math.max(0,draftIndex-1);
+   }else{if(draftIndex<0)return;draftIndex=Math.min(chatDraftHistory.length,draftIndex+1);}
+   input.value=draftIndex>=chatDraftHistory.length?draftBeforeHistory:(chatDraftHistory[draftIndex]||'');
+   input.dispatchEvent(new Event('input'));input.setSelectionRange(input.value.length,input.value.length);
+   if(draftIndex>=chatDraftHistory.length)draftIndex=-1;
+   return;
+  }
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();const value=$('chatInput').value.trim();if(value&&chatDraftHistory.at(-1)!==value){chatDraftHistory.push(value);if(chatDraftHistory.length>70)chatDraftHistory.shift();}draftIndex=-1;send();}
+ });
+ $('chatFile').onchange=e=>attach(e.target.files[0]);$('recordAudio').onclick=()=>startRecording(false);setupRecordingControls();
  const composer=$('chatComposer')||document.querySelector('.chat-composer');
  const dragAttachOn=()=>composer?.classList.add('drag-attach'),dragAttachOff=()=>composer?.classList.remove('drag-attach');
  composer?.addEventListener('dragenter',e=>{if([...e.dataTransfer?.items||[]].some(i=>i.kind==='file')){e.preventDefault();dragAttachOn();}});
@@ -1167,12 +1224,12 @@ function bindUI(world){
  window.solviHandleWorldFileDrop=async(file,detail={})=>{
   try{const choice=await chooseDroppedMediaAction(file);if(!choice)return false;
    if(choice.mode==='chat')return await postDroppedMediaToChat(file);
-   if(!file.type.startsWith('image/')&&!file.type.startsWith('video/'))return await attach(file);
+   if(!file.type.startsWith('image/')&&!file.type.startsWith('video/')&&!file.type.startsWith('audio/'))return await attach(file);
    const media=await uploadFile(file);
    const dims=await inspectMediaDimensions(file,file.type);
    const editor=window.solviEditor;if(!editor)throw Error('The scene editor is not ready');
    editor.lastPointer={x:Number.isFinite(detail.x)?detail.x:innerWidth/2,y:Number.isFinite(detail.y)?detail.y:innerHeight/2};
-   editor.addSceneMedia({...media,width:dims.width,height:dims.height},{backing:choice.backing||'white',width:dims.width,height:dims.height});
+   editor.addSceneMedia({...media,width:dims.width,height:dims.height},{backing:choice.backing||'white',width:dims.width,height:dims.height,loop:choice.loop!==false,refDistance:choice.refDistance||4,maxDistance:choice.maxDistance||18,autoplayDistance:choice.autoplayDistance||0,constantVolume:choice.constantVolume===true,group:choice.group||''});
    toast((file.type.startsWith('video/')?'Video screen':'Picture frame')+' added to the realm');
    return true;
   }catch(error){toast(error.message);return false;}
@@ -1193,11 +1250,14 @@ function bindUI(world){
  window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id){playCue(event.detail.action==='left'?'leave':'join');notePresence(event.detail);}});
  document.addEventListener('pointerdown',primeAudio,{once:true});
  $('debugAllRobots').checked=sessionStorage.getItem(ROBOT_DEBUG_ALL_KEY)==='1';
- $('debugAllRobots').onchange=()=>{sessionStorage.setItem(ROBOT_DEBUG_ALL_KEY,$('debugAllRobots').checked?'1':'0');window.solviEditor?.syncRobotPathDebug();chatSignature='';loadMessages();};
- $('debugSelectedRobot').onchange=()=>{const id=debugRobotSelected();setRobotDebug(id,$('debugSelectedRobot').checked,sessionStorage);window.solviEditor?.syncRobotPathDebug();chatSignature='';loadMessages();};
+ $('debugAllRobots').onchange=()=>{sessionStorage.setItem(ROBOT_DEBUG_ALL_KEY,$('debugAllRobots').checked?'1':'0');chatSignature='';loadMessages();};
+ $('pathAllRobots').checked=sessionStorage.getItem(ROBOT_PATH_ALL_KEY)==='1';
+ $('pathAllRobots').onchange=()=>{sessionStorage.setItem(ROBOT_PATH_ALL_KEY,$('pathAllRobots').checked?'1':'0');window.solviEditor?.syncRobotPathDebug();};
+ $('pathSelectedRobot').onchange=()=>{const id=debugRobotSelected();setRobotPath(id,$('pathSelectedRobot').checked,sessionStorage);window.solviEditor?.syncRobotPathDebug();};
+ $('debugSelectedRobot').onchange=()=>{const id=debugRobotSelected();setRobotDebug(id,$('debugSelectedRobot').checked,sessionStorage);chatSignature='';loadMessages();};
  window.addEventListener('solvi:properties-robot-selected',syncRobotDebugUI);
  syncRobotDebugUI();
- setupChatPresentation();setupSettings();setupRobotVoiceSettings();setupWorldSettings();setupNewRoom();configureRooms();configureDragging();initRobotBrains(world,api,()=>activeRoom,toast);begin();
+ setupChatPresentation();setupSettings();setupRobotVoiceSettings();initExtendedSettings({api,toast});setupWorldSettings();setupNewRoom();configureRooms();configureDragging();initRobotBrains(world,api,()=>activeRoom,toast);begin();
  // Autonomic, private head-camera perception. A room-scoped server reservation
  // avoids duplicate billable work across tabs; frames are sent transiently and
  // stored only as short evidence-labelled memories, not published as chat images.
