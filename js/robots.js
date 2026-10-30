@@ -141,6 +141,13 @@ export function tickRobots(items,dt,onMove=()=>{}){
             const point={x:robot.position.x+Math.sin(angle)*distance,z:robot.position.z+Math.cos(angle)*distance};
             if(onMove.navigate?.(robot,point)!==false){robot.userData.robotArrived=false;onMove(robot,false);}continue;
           }
+          if(mission.partialStop){
+            const partial=mission.partialStop;
+            robot.userData.robotMission=null;
+            window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,
+              status:'partial',progress:partial.progress,remainingMeters:partial.remainingMeters}}));
+            continue;
+          }
           const clip=mission.kind==='go_sit'?sittingClip(robot.userData.robotAvailableActions):null;
           if(mission.kind==='go_sit'){
             robot.userData.robotSeated=true;
@@ -157,7 +164,13 @@ export function tickRobots(items,dt,onMove=()=>{}){
         const travel=Math.min(distance,speed*Math.max(0,Number(robot.userData.robotSpeed??1.8))*dt);const nx=robot.position.x+delta.x*travel,nz=robot.position.z+delta.z*travel;
         const staticBlock=robot.userData.robotPathObstacles&&pathBlocked(nx,nz,robot.userData.robotPathObstacles,.25);
         // Occupied robot footprints are dynamic. Replan with a refreshed scene index.
-        const neighbour=items.some(other=>other!==robot&&other.userData.editorKind==='robot'&&Math.hypot(other.position.x-nx,other.position.z-nz)<.66);
+        const neighbour=items.some(other=>{
+          if(other===robot||other.userData.editorKind!=='robot')return false;
+          const before=Math.hypot(other.position.x-robot.position.x,other.position.z-robot.position.z);
+          const after=Math.hypot(other.position.x-nx,other.position.z-nz);
+          // If already overlapping, moving AWAY is a safe way to resolve it.
+          return after<.66&&after<before+0.0001;
+        });
         if(staticBlock||neighbour){
           if(onMove.recover?.(robot,staticBlock?'scene obstacle':'occupied by robot')){onMove(robot,false);continue;}
           const mission=robot.userData.robotMission;robot.userData.robotGoal=null;robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;robot.userData.robotMission=null;robot.userData.robotMode='idle';mode='idle';
@@ -189,7 +202,7 @@ export function setRobotDestination(robot,point,run=false){
 }
 export function robotHeadCameraPose(robot,options={}){
  if(!robot||robot.userData.editorKind!=='robot')throw Error('Robot head camera requires a robot.');
- const camera=new THREE.PerspectiveCamera(72,1,.04,110);
+ const camera=new THREE.PerspectiveCamera(72,1,.04,1500);
  robot.add(camera);camera.position.set(0,1.62,0);camera.rotation.order='YXZ';
  camera.rotation.y=Math.PI+(Number(options.yawOffset)||0);
  camera.rotation.x=THREE.MathUtils.degToRad(Math.max(-70,Math.min(70,Number(options.pitchDegrees)||0)));
@@ -199,7 +212,7 @@ export function robotHeadCameraPose(robot,options={}){
 }
 export async function captureRobotView(world,robot,options={}){
   if(!robot||robot.userData.editorKind!=='robot')throw Error('Select a robot in Objects first.');
-  const camera=new THREE.PerspectiveCamera(72,1,.04,110);robot.add(camera);
+  const camera=new THREE.PerspectiveCamera(72,1,.04,Math.max(1500,Number(world?.camera?.far)||1500));robot.add(camera);
   camera.position.set(0,1.62,0);camera.rotation.order='YXZ';camera.rotation.y=Math.PI+(Number(options.yawOffset)||0); // forward head view plus scan direction
   camera.rotation.x=THREE.MathUtils.degToRad(Math.max(-70,Math.min(70,Number(options.pitchDegrees)||0))); // negative tilt points downward
   const rt=new THREE.WebGLRenderTarget(512,512),renderer=world.renderer,old=renderer.getRenderTarget();

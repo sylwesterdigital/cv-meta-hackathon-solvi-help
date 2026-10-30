@@ -9,7 +9,7 @@ import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneMode
 import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,toggleSceneMediaPlayback,setSceneMediaMuted,setSceneMediaLoop,setSceneMediaSpatial,syncSceneMediaGroup,sceneMediaMuted,sceneMediaPlaying,sceneMediaKind,showSceneMediaCaptions} from './scene-media.js';
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive} from './primitive-properties.js';
-import {planRobotPath,pathBlocked} from './robot-pathfinding.js';
+import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
 import {robotPathVisible} from './robot-debug.js';
 import {plannedRouteLength,newMovementTelemetry,sampleMovementTelemetry,missionMovementEvidence,shouldRejectClaimedArrival} from './robot-telemetry.js';
@@ -103,7 +103,7 @@ export class SceneEditor{
     if(robot){const audit=missionMovementEvidence(robot.userData.robotTelemetry,robot,robot.userData.robotDebugRoute,detail.status);
       if(audit){detail.routeTelemetry=audit;if(shouldRejectClaimedArrival(audit,detail.status))detail.status='failed';}
       robot.userData.robotTelemetry=null;}
-    if(id&&['arrived','failed','blocked','sitting','procedural-sitting','coffee-visit'].includes(detail.status)){finishRobotPathDebug(this.world,id);if(robot?.userData?.robotDebugRoute)robot.userData.robotDebugRoute.finished=true;this.updateRobotDebugStatus?.();}});
+    if(id&&['arrived','partial','failed','blocked','sitting','procedural-sitting','coffee-visit'].includes(detail.status)){finishRobotPathDebug(this.world,id);if(robot?.userData?.robotDebugRoute)robot.userData.robotDebugRoute.finished=true;this.updateRobotDebugStatus?.();}});
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
@@ -784,19 +784,25 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   navigationObstacles(robot){
     this.world.scene.updateMatrixWorld(true);
     return this.items.filter(o=>o!==robot&&o.visible&&!['light','plane','points','curve'].includes(o.userData.editorKind)).map(o=>{
+      // Human-like glTF bounds can swell with animation and accessories. Use a
+      // stable feet-centred capsule footprint for other robots instead.
+      if(o.userData.editorKind==='robot')return {minX:o.position.x-.38,maxX:o.position.x+.38,minZ:o.position.z-.38,maxZ:o.position.z+.38,name:o.name||'Robot',kind:'robot',id:o.userData.editorId};
       const b=new THREE.Box3().setFromObject(o);
-      if(b.isEmpty())return {minX:o.position.x-.33,maxX:o.position.x+.33,minZ:o.position.z-.33,maxZ:o.position.z+.33};
+      if(b.isEmpty())return {minX:o.position.x-.33,maxX:o.position.x+.33,minZ:o.position.z-.33,maxZ:o.position.z+.33,name:o.name||'Unnamed object',kind:o.userData.editorKind||'object',id:o.userData.editorId};
       if(b.max.y<robot.position.y+.10||b.min.y>robot.position.y+1.7)return null;
       if(b.max.x-b.min.x>28||b.max.z-b.min.z>28)return null;
-      return {minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z};
+      return {minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z,name:o.name||'Unnamed object',kind:o.userData.editorKind||'object',id:o.userData.editorId};
     }).filter(Boolean);
   }
   routeRobot(robot,point){
     const {preserveMission=false,quiet=false}=arguments[2]||{};
     if(!robot||!point)return false;
-    const obstacles=this.navigationObstacles(robot);
-    // Short bounded A* windows prevent clipped 100m+ goals and missed obstacles.
+    const allObstacles=this.navigationObstacles(robot);
+    // A robot already standing within another robot's clearance zone must be
+    // allowed to depart. Runtime collision still prevents moving further into
+    // that robot; all geometry and non-overlapping robots remain obstacles.
     const start={x:robot.position.x,z:robot.position.z};
+    const obstacles=allObstacles.filter(o=>o.kind!=='robot'||!pathBlocked(start.x,start.z,[o],.30));
     const distance=Math.hypot(point.x-start.x,point.z-start.z);
     if(distance>600){this.toast('Robot route exceeds 600 m safety limit');return false;}
     const steps=Math.max(1,Math.ceil(distance/18));
@@ -811,8 +817,10 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
       robot.userData.robotDebugRoute={start,waypoints:[],obstacles,destination:{x:point.x,z:point.z},blocked:true};
       if(typeof this.robotPathDebugVisible==='function'&&this.robotPathDebugVisible(robot))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
       this.updateRobotDebugStatus?.();
+      const nearby=obstacles.map(o=>({name:o.name||'Unknown geometry',kind:o.kind||'object',distance:+Math.hypot((o.minX+o.maxX)/2-start.x,(o.minZ+o.maxZ)/2-start.z).toFixed(2)})).sort((a,b)=>a.distance-b.distance).slice(0,8);
       window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'blocked',target:robot.userData.robotMission?.targetName||'',obstacles:obstacles.length,waypoints:0,start,destination:{x:point.x,z:point.z},
-      taskId:robot.userData.robotMission?.taskId||'',plan:{waypoints:[],obstacles}}}));
+      taskId:robot.userData.robotMission?.taskId||'',reason:'planner could not find a collision-free path to the requested approach point',nearby_obstacles:nearby,
+      plan:{waypoints:[],obstacles}}}));
       if(preserveMission)return false;
       robot.userData.robotGoal=null;robot.userData.robotMode='idle';
       const mission=robot.userData.robotMission;robot.userData.robotMission=null;
@@ -936,16 +944,39 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     const bounds=new THREE.Box3().setFromObject(target);
     const center=bounds.isEmpty()?target.position.clone():bounds.getCenter(new THREE.Vector3());
     const size=bounds.isEmpty()?new THREE.Vector3(1,1,1):bounds.getSize(new THREE.Vector3());
-    // Approach the footprint edge. No claim of obstacle avoidance or 3D seat geometry.
-    const dx=robot.position.x-center.x,dz=robot.position.z-center.z;
-    const dist=Math.hypot(dx,dz),radius=Math.max(.65,Math.min(4,Math.max(size.x,size.z)*.5+.60));
-    const ux=dist>.1?dx/dist:Math.sin(robot.rotation.y),uz=dist>.1?dz/dist:Math.cos(robot.rotation.y);
-    const approach=target.userData.editorKind==='robot'?Math.max(radius,1.2):radius;
-    const point={x:center.x+ux*approach,z:center.z+uz*approach};
+    // Probe real A* paths to several stand-off points around the target. An
+    // occupied near side is not evidence that all other sides are blocked.
+    const start={x:robot.position.x,z:robot.position.z};
+    const bounds2d={minX:center.x-size.x/2,maxX:center.x+size.x/2,minZ:center.z-size.z/2,maxZ:center.z+size.z/2};
+    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot'||!pathBlocked(start.x,start.z,[o],.30));
+    const approach=planRobotApproach(start,bounds2d,obstacles);
+    const partial=!approach?planRobotPartialApproach(start,bounds2d,obstacles):null;
     robot.userData.robotMission={kind:command.kind,taskId:command.id,targetName:target.name,targetId:target.userData.editorId,
       origin:{x:robot.position.x,z:robot.position.z},leg:0,lastTargetCheck:0};
-    if(!this.routeRobot(robot,point))return false;
-    this.toast(robot.name+' → '+target.name+' (obstacle-aware route)');
+    if(!approach&&!partial){
+      const nearby=obstacles.map(o=>({name:o.name||'Unknown object',kind:o.kind||'object',distance:+Math.hypot((o.minX+o.maxX)/2-start.x,(o.minZ+o.maxZ)/2-start.z).toFixed(2)})).sort((a,b)=>a.distance-b.distance).slice(0,8);
+      robot.userData.robotDebugRoute={start,waypoints:[],obstacles,destination:{x:center.x,z:center.z},blocked:true};
+      if(this.robotPathDebugVisible(robot))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
+      window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'blocked',target:target.name,reason:'No reachable safe approach from any tested side',nearby_obstacles:nearby,obstacles:obstacles.length,waypoints:0,start,destination:{x:center.x,z:center.z},taskId:command.id}}));
+      const mission=robot.userData.robotMission;robot.userData.robotMission=null;
+      robot.userData.robotGoal=null;robot.userData.robotMode='idle';
+      window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked',reason:'No reachable approach point'}}));
+      this.toast(robot.name+': no safe route to any side of '+target.name);return false;
+    }
+    if(partial){
+      const straight=Math.hypot(center.x-start.x,center.z-start.z);
+      const progress=Math.max(0,Math.min(1,partial.progress));
+      // The task-result API records this as partial, not arrived or seated.
+      robot.userData.robotMission.partialStop={target:target.name,progress,remainingMeters:partial.remainingMeters};
+      if(!this.routeRobot(robot,partial.point))return false;
+      this.toast(`${robot.name}: safe partial route toward ${target.name} (${Math.round(progress*100)}% direct progress; stopping short)`);
+      window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'partial',target:target.name,
+       start,destination:{x:center.x,z:center.z},safeStop:partial.point,progress,remainingMeters:partial.remainingMeters,
+       taskId:command.id,reason:'Exact target approach occupied: safely advancing toward the nearest reachable stand-off point'}}));
+      return true;
+    }
+    if(!this.routeRobot(robot,approach.point))return false;
+    this.toast(robot.name+' → '+target.name+' (A* chose a reachable approach from multiple sides)');
     return true;
   }
   robot(){return this.selected?.userData.editorKind==='robot'?this.selected:null;}

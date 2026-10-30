@@ -18,7 +18,7 @@ export function renderChatAttachment(slot,{id,url,mime,name,blob},openViewer,act
  slot.replaceChildren();
  const title=document.createElement('small');title.className='chat-attachment-title';title.textContent=label;
  const download=document.createElement('a');download.href=url;download.download=label;download.textContent='Save';download.className='chat-attachment-save';download.setAttribute('aria-label','Save '+label);
- const menuButton=document.createElement('button');menuButton.type='button';menuButton.className='chat-attachment-more';menuButton.textContent='⋮';menuButton.setAttribute('aria-label','More actions for '+label);
+ const menuButton=document.createElement('button');menuButton.type='button';menuButton.className='chat-attachment-more';menuButton.textContent='More';menuButton.setAttribute('aria-label','More actions for '+label);
  const menu=document.createElement('div');menu.className='chat-attachment-menu';menu.hidden=true;
  const toggleMenu=event=>{event?.stopPropagation?.();menu.hidden=!menu.hidden;};
  menuButton.onclick=toggleMenu;
@@ -29,7 +29,7 @@ export function renderChatAttachment(slot,{id,url,mime,name,blob},openViewer,act
  if(kind==='image'){
   const button=document.createElement('button');button.type='button';button.className='chat-image-open';button.setAttribute('aria-label','Enlarge image '+label);
   const img=document.createElement('img');img.src=url;img.alt=label;img.loading='lazy';img.decoding='async';button.append(img);
-  button.onclick=()=>openViewer({kind,url,label});slot.append(button,menuButton,menu,title,download);
+  button.onclick=()=>openViewer({kind,url,label});slot.append(button,title,menuButton,menu,download);
  }else if(kind==='audio'||kind==='video'){
   const media=document.createElement(kind);media.src=url;media.controls=true;media.preload='metadata';
   if(kind==='video')media.playsInline=true;

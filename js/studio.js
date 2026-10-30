@@ -169,12 +169,23 @@ async function bubble(entry){
  let mids=[];try{mids=typeof entry.media==='string'?JSON.parse(entry.media):entry.media||[];}catch{}
  const mediaContainer=mids.length>1?document.createElement('div'):panel;
  if(mids.length>1){mediaContainer.className='chat-media-grid';mediaContainer.setAttribute('aria-label',mids.length+' attachments');panel.append(mediaContainer);}
- for(const id of mids){
-  const slot=document.createElement('div');slot.className='chat-attachment';slot.textContent='Loading attachment…';mediaContainer.append(slot);
+ const slots=[];
+ for(const [index,id] of mids.entries()){
+  const slot=document.createElement('div');slot.className='chat-attachment';slot.textContent='Loading attachment…';mediaContainer.append(slot);slots.push(slot);
   if(online&&auth){api.mediaBlobInfo(id).then(info=>{
     if(!slot.isConnected){URL.revokeObjectURL(info.url);return;}
     chatMediaURLs.add(info.url);
     renderChatAttachment(slot,info,detail=>ensureChatMediaViewer().showFile(detail),{addToScene:info=>addChatMediaToScene({...info,author:entry.speaker,created:entry.created})});
+    // A robot 360/180 scan includes the stitched panorama plus its source
+    // frames. Keep the large panorama visible but collapse its camera frames.
+    if(index===0&&role==='assistant'&&mids.length>=4&&/^robot-panorama-(?:180|360)/i.test(info.name||'')){
+      mediaContainer.classList.add('chat-panorama-attachment');
+      const details=document.createElement('details');details.className='chat-camera-source-frames';
+      const summary=document.createElement('summary');summary.textContent=`View ${mids.length-1} camera source frames`;
+      const grid=document.createElement('div');grid.className='chat-media-grid';
+      for(const extra of slots.slice(1))grid.append(extra);
+      details.append(summary,grid);mediaContainer.append(details);
+    }
     if(!renderingChat)scrollChatToLatest();
   }).catch(()=>{slot.textContent='Attachment unavailable';});}
  }
@@ -601,12 +612,14 @@ async function loadMessages(){
    const feed=$('chatFeed'),oldScrollTop=feed.scrollTop,wasFollowing=followChat||atChatBottom(feed);
    clearChatAttachments();feed.replaceChildren();lastBubbleEntry=null;renderingChat=true;
    suppressRobotSpeech=true;try{
-    for(const item of chatTimeline(messages,roomActivities.get(room)||[])){
+    const debugEntries=localBrainTrace.filter(x=>x.room===room&&robotDebugAllowed(x.robotId)).slice(-100);
+    // Persistent chat, presence and local debug events belong to ONE timeline.
+    // Appending traces after history made older debug events appear at the bottom.
+    for(const item of chatTimeline([...messages,...debugEntries],roomActivities.get(room)||[])){
      if(item.type==='message')await bubble(item.entry);
      else if(item.type==='presence')chatSystemLine(item.entry.name+(item.entry.action==='left'?' left the room':' joined the room'));
      else chatSystemLine(item.text,item.type);
     }
-    for(const entry of localBrainTrace.filter(x=>x.room===room&&robotDebugAllowed(x.robotId)).slice(-100))await bubble(entry);
    }finally{suppressRobotSpeech=false;renderingChat=false;}
    if(wasFollowing)scrollChatToLatest(true);else{feed.scrollTop=oldScrollTop;followChat=false;updateChatPageDown();}
    initialRoomLoads.add(room);
@@ -1167,7 +1180,7 @@ function bindUI(world){
 
  window.addEventListener('solvi:room-changed',async()=>{await loadMessages();editor.revision=0;editor.apply([]);await editor.load();});
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
- window.addEventListener('solvi:robot-route',event=>{const d=event.detail||{};if(robotDebugAllowed(d.robotId))emitBrainTrace(d.robotId,d.name||'Robot',d.status==='planned'?'ROUTE ACCEPTED':'ROUTE BLOCKED',`${d.waypoints||0} computed A* waypoints · ${d.obstacles||0} obstacle footprints · planned length ${Number(d.plannedMeters||0).toFixed(2)} m · start ${JSON.stringify(d.start)} · destination ${d.target||'unknown'} ${JSON.stringify(d.destination)} · task ${d.taskId||'?'}. Green is the planner route; cyan is observed movement.`);if(robotDebugAllowed(d.robotId)&&d.plan)emitBrainTrace(d.robotId,d.name||'Robot','PLANNER ACTUAL GEOMETRY',d.plan);});
+ window.addEventListener('solvi:robot-route',event=>{const d=event.detail||{};if(robotDebugAllowed(d.robotId))emitBrainTrace(d.robotId,d.name||'Robot',d.status==='planned'?'ROUTE ACCEPTED':'ROUTE BLOCKED',`${d.waypoints||0} computed A* waypoints · ${d.obstacles||0} obstacle footprints · planned length ${Number(d.plannedMeters||0).toFixed(2)} m · start ${JSON.stringify(d.start)} · destination ${d.target||'unknown'} ${JSON.stringify(d.destination)} · task ${d.taskId||'?'}. ${d.reason||''} Green is the planner route; cyan is observed movement.`);if(robotDebugAllowed(d.robotId)&&d.plan)emitBrainTrace(d.robotId,d.name||'Robot','PLANNER ACTUAL GEOMETRY',d.plan);if(robotDebugAllowed(d.robotId)&&d.nearby_obstacles?.length)emitBrainTrace(d.robotId,d.name||'Robot','NEARBY OBSTACLE FOOTPRINTS (NOT PROVEN BLOCKERS)',d.nearby_obstacles);});
  window.addEventListener('solvi:robot-recovery',event=>{
    const d=event.detail||{};const bot=editor.items.find(o=>o.userData.editorId===d.robotId);
    emitBrainTrace(d.robotId,d.name,'AUTONOMOUS REPLAN',`Attempt ${d.attempt}/3: ${d.reason}. Refreshing physical scene footprints and routing around obstacles.`);
@@ -1177,7 +1190,7 @@ function bindUI(world){
  window.addEventListener('solvi:robot-task-update',e=>{
    const d=e.detail||{};
    $('chatStatus').textContent=`${d.robot} · ${d.status} · ${d.target}`;
-   emitBrainTrace(d.robotId,d.robot,'MOVEMENT COMPLETE',d.routeTelemetry||`${d.status} at ${d.target}`);
+   emitBrainTrace(d.robotId,d.robot,d.status==='partial'?'PARTIAL APPROACH — NOT ARRIVED':'MOVEMENT RESULT',d.routeTelemetry||`${d.status} at ${d.target}`);
    if(d.taskId){const run=runningRobotTasks.get(d.robotId);if(run&&!run.cancelled&&run.command.id===d.taskId){runningRobotTasks.delete(d.robotId);reportRobotTask(run.command,d.status);}}
  });
  window.addEventListener('solvi:brain-trace',e=>{

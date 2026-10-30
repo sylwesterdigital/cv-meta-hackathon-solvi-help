@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.76",
+  "currentVersion": "0.2.78",
   "releases": [
+    {
+      "version": "0.2.78",
+      "publishedAt": "2026-10-30T05:37:02Z",
+      "changes": [
+        "Render robot head-camera JPEGs with the same far-distance nebula and star sky shader as the interactive world instead of clipping the sky to black.",
+        "Merge per-robot debug and persisted chat messages into one timestamp-sorted timeline, preserving chronological position and date/hour markers.",
+        "Let robots already overlapping another robot move safely away from it, while still blocking any new penetration or collision.",
+        "Add verified partial approaches when no collision-free exact route exists; try up to 95 percent of the direct route, and report stopped-short rather than arrived or seated.",
+        "Repair the Flask integration trace assertion to find the named parser result instead of relying on its historic list position.",
+        "Add regression coverage for safe partial stopping, camera sky visibility, timestamped debug sorting, and parser trace compatibility."
+      ]
+    },
     {
       "version": "0.2.76",
       "publishedAt": "2026-10-30T05:00:11Z",
@@ -323,18 +335,6 @@
         "Repair backend integration test expecting a four-direction SAM search after the vision search was expanded to eight directions.",
         "Assert the actual eight-direction task-result response and include HTTP status/body on future mismatches.",
         "Keep all v0.2.44 compact Properties, robot eyes, voice selection, and obstacle-aware navigation unchanged; advance release versions for the strict deployment watcher."
-      ]
-    },
-    {
-      "version": "0.2.42",
-      "publishedAt": "2026-10-28T22:28:54Z",
-      "changes": [
-        "Browse local system voices filtered by spoken language, with device voice assignment per robot and automatic Polish detection.",
-        "Browse and paginate ElevenLabs account voices with reported verified languages and accents; reject known mismatched voice-language combinations.",
-        "Capture eight direction-labelled robot-eye JPEGs for a real 360-degree scan; capture an actual downward-tilted view for look-down commands.",
-        "Send the entire camera batch with conversation, personality, goals and memories in one Muse Spark request, displaying all captured frames in chat and Brains.",
-        "Enable opt-in proactive visual observation (five images, one model request) with short-lived single-use authorization and a multiuser cooldown; report grounded suggestions without unapproved movement.",
-        "Expand SAM scene-object search to eight directions and add regression checks for camera plans, voice matching, authorization and usage."
       ]
     }
   ]

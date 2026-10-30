@@ -188,7 +188,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.76',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.78',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1161,6 +1161,52 @@ def robot_handle_mentions(text,robots):
         if len(candidates)==1 and all(r.get('id')!=candidates[0].get('id') for r in found):found.append(candidates[0])
     return found
 
+
+def robot_command_clause(text,robot,robots):
+    """For separate @robot commands, parse only this robot's assigned clause.
+
+    Group commands (@All) and adjacent multi-mentions sharing one instruction
+    retain the original text; normal conversation is not split into commands.
+    """
+    raw=str(text or '')
+    if re.search(r'(?<![\w@])@all(?![\w-])',raw,re.I):return raw
+    matches=list(re.finditer(r'(?<![\w@])@([\w-]+)',raw,re.I))
+    if len(matches)<2:return raw
+    # A mention that is the object of 'go to @Jessica' is not the start of a
+    # second directive; keep the text intact for command targeting.
+    for i in range(1,len(matches)):
+        earlier=raw[matches[i-1].end():matches[i].start()]
+        if re.search(r'\b(?:to|toward|towards|near|with|find|ask|tell|meet|follow|approach|help|join)\s*$',earlier,re.I):
+            return raw
+    first=matches[0]
+    # A clause is assigned only if its handle uniquely matches a robot.
+    addressed=[]
+    for match in matches:
+        token=match.group(1).casefold()
+        candidates=[r for r in robots if str(r.get('name','')).casefold()==token]
+        if not candidates:candidates=[r for r in robots if str(r.get('name','')).split(' ')[0].casefold()==token]
+        addressed.append(candidates[0] if len(candidates)==1 else None)
+    index=next((i for i,r in enumerate(addressed) if r and r.get('id')==robot.get('id')),-1)
+    if index<0:return raw
+    spans=[]
+    for i,match in enumerate(matches):
+        begin=match.end()
+        identity=addressed[i]
+        if identity:
+            full=str(identity.get('name',''))
+            first_name=full.split(' ')[0]
+            suffix=full[len(first_name):]
+            if suffix and raw[begin:].casefold().startswith(suffix.casefold()):begin+=len(suffix)
+        end=matches[i+1].start() if i+1<len(matches) else len(raw)
+        spans.append(raw[begin:end].strip())
+    # '@Elox @Jessica discuss X' is shared; no content belongs to Elox alone.
+    if all(not s for s in spans[:index+1]):return raw
+    clause=spans[index]
+    if not clause:return raw
+    clause=re.sub(r'\s*(?:,|\band\b|\bthen\b)\s*$', '', clause,flags=re.I).strip()
+    return clause or raw
+
+
 MAX_ROBOT_TURNS=6
 
 def robot_recipient_queue(text,robots,from_robot=False,speaker_id=None):
@@ -1239,7 +1285,7 @@ def research_topic_sources(topic,limit=6):
     import urllib.parse
     sources=[]
     def read_json(url):
-        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.76 (public academic references)','Accept':'application/json'})
+        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.78 (public academic references)','Accept':'application/json'})
         with urlopen(req,timeout=3.5) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Large search response')
             return json.loads(response.read(180001).decode('utf-8'))
@@ -2083,7 +2129,8 @@ def robot_react():
         publish({'type':'scene-changed','revision':revision,'room':room_id,'by':user['id'],'action':'upsert','id':robot['id'],'object':updated,'reason':'robot-preference'},room_id=room_id)
         publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
         return jsonify(triggered=True,responded=True,answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'robot-settings','text':reply,'media':'[]','created':ts},trace=[{'step':'identity','result':label+' = '+value,'source':'explicit authorized user request'}])
-    command,ack=plan_robot_command(text,robot,objects) if tagged and not from_robot else (None,None)
+    command_text=robot_command_clause(text,robot,robots) if tagged and not from_robot else text
+    command,ack=plan_robot_command(command_text,robot,objects) if tagged and not from_robot else (None,None)
     # Perception is part of conversation. A missing/stale visual memory means
     # ordinary chat can request one real frame without a magic command phrase.
     last_visual=latest_robot_visual_memory(room_id,robot['id'])
@@ -2124,6 +2171,7 @@ def robot_react():
     if ack is not None:
         source='SAM camera scan + scene raycast' if command and command['kind']=='vision_search' else 'scene object index' if command else 'command parser'
         trace=[{'step':'address','result':robot['name'],'source':'@mention, CC name or trigger'},
+               {'step':'directed-text','result':command_text[:400],'source':'recipient-scoped user instruction'},
                {'step':'parse','result':command['kind'] if command else 'target-not-found','source':'explicit rule parser; not LLM'},
                {'step':'target','result':command.get('target_name',command.get('target_phrase','')) if command else 'none','source':source}]
         if command and not may_edit(user['id'],robot,room_policy(room_id)):
@@ -2135,7 +2183,7 @@ def robot_react():
             try:
                 notes={k:str(brain.get(k,''))[:limit] for k,limit in [('personality',700),('history',1200),('beliefs',700)]}
                 instruction=('Speak as the fictional 3D-world character named '+robot['name'][:70]+'. '
-                    'Write ONE concise, concrete, first-person plan (under 230 characters) grounded ONLY in the following confirmed operation. '
+                    'Write ONE concise, factual first-person execution plan (under 130 characters) grounded ONLY in the confirmed operation. No jokes, slogans, fictional digressions or invented locations unless the user explicitly requests them. '
                     'Do not claim the robot already sees, found or reached anything. No invented locations. '
                     'The command is executed separately from your text. Character notes: '+json.dumps(notes,ensure_ascii=False)[:2700])
                 plan_prompt='Human message: '+text[:500]+'\nConfirmed operation: '+json.dumps(command,ensure_ascii=False)[:450]+'\nScene evidence: '+source
@@ -2263,7 +2311,7 @@ def robot_task_result():
     data=request.get_json(silent=True) or {}
     task_id=str(data.get('task_id',''))
     state=str(data.get('status',''))
-    allowed={'not-found','no-mesh','vision-unavailable','arrived','sitting','procedural-sitting','coffee-visit','stopped','failed','blocked'}
+    allowed={'not-found','no-mesh','vision-unavailable','arrived','partial','sitting','procedural-sitting','coffee-visit','stopped','failed','blocked'}
     if state not in allowed:return json_error('Unknown task result',400)
     with robot_task_lock:
         task=ROBOT_TASKS.get(task_id)
@@ -2276,6 +2324,7 @@ def robot_task_result():
       'no-mesh':f'SAM detected {target}, but I could not map the detected pixels onto a reachable 3D scene object.',
       'vision-unavailable':f'I could not complete visual search for {target}; the vision service or camera failed.',
       'arrived':f'I completed the requested route for {target}.',
+      'partial':f'I approached {target} along a collision-checked route but stopped safely short because the final approach is occupied. I have not reached or sat on the target.',
       'sitting':f'I reached {target} and played my Sit animation.',
       'procedural-sitting':f'I reached {target} and am using an approximate seated pose (no Sit clip available).',
       'coffee-visit':f'I visited {target} and returned to my starting spot. Coffee preparation and delivery require object interaction that is not yet implemented.',

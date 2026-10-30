@@ -1668,3 +1668,18 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 .primitive-properties-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 8px;padding:7px}.primitive-properties-fields label{display:flex;flex-direction:column;gap:3px;font-size:.77rem;opacity:.9}.primitive-properties-fields input{width:100%;min-height:29px;padding:4px 6px}.primitive-properties[hidden]{display:none}
 
 .realm-gallery-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.realm-gallery-actions>*{min-height:32px}.realm-gallery-actions #realmArchiveStatus{flex-basis:100%;opacity:.78}.realm-selection{display:flex;align-items:center;gap:7px;padding:4px 10px;font-size:.78rem}.realm-selection input{width:16px;height:16px}
+
+/* Media cards: keep their photographs clean; actions live *below* the image. */
+#chatFeed .chat-attachment .chat-image-open::before,
+#chatFeed .chat-attachment .chat-attachment-more::before{display:none!important;content:none!important}
+#chatFeed .chat-attachment .chat-image-open{font-size:0!important;line-height:0!important;min-width:0!important;min-height:0!important;padding:0!important;box-shadow:none!important;border:0!important}
+#chatFeed .chat-attachment .chat-attachment-more{position:static!important;display:inline-flex!important;align-self:flex-start;min-width:0!important;width:auto!important;height:auto!important;min-height:0!important;line-height:1.2;padding:2px 5px!important;margin:0!important;font-size:10px!important;color:#bcd3df!important;background:transparent!important;border:0!important;border-radius:4px;z-index:auto}
+#chatFeed .chat-attachment .chat-attachment-menu{top:auto;bottom:20px;right:4px;z-index:6}
+#chatFeed .chat-media-grid .chat-attachment{align-content:start}
+
+#chatFeed .chat-panorama-attachment>.chat-attachment-image:first-child{grid-column:1/-1;width:100%;max-width:320px}
+#chatFeed .chat-panorama-attachment>.chat-attachment-image:first-child .chat-image-open{aspect-ratio:auto;max-height:170px}
+#chatFeed .chat-panorama-attachment>.chat-attachment-image:first-child .chat-image-open img{width:100%;max-height:170px;object-fit:contain}
+#chatFeed .chat-camera-source-frames{grid-column:1/-1;min-width:0;padding:3px 0}
+#chatFeed .chat-camera-source-frames>summary{font-size:11px;color:#adc7d6;cursor:pointer;padding:3px 5px}
+#chatFeed .chat-camera-source-frames>.chat-media-grid{margin-top:5px}

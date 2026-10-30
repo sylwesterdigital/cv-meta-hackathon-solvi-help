@@ -18,6 +18,14 @@ for _module in _local_imports:
 assert "DEPLOY_PHASE='Python backend import preflight'" in _installer
 print('PASS: local backend modules deployed, rollback protected and import preflight configured')
 from server import app
+from server import robot_command_clause
+_multiples=[{'id':'e','name':'Elox'},{'id':'c','name':'Cybert'}]
+_split='@Elox go to Black Sofa and @Cybert please follow Elox'
+assert robot_command_clause(_split,_multiples[0],_multiples)=='go to Black Sofa'
+assert robot_command_clause(_split,_multiples[1],_multiples)=='please follow Elox'
+assert robot_command_clause('@Elox go to @Cybert and stop nearby',_multiples[0],_multiples)=='@Elox go to @Cybert and stop nearby'
+assert robot_command_clause('@All go to Red Shere',_multiples[0],_multiples)=='@All go to Red Shere'
+print('PASS: independent multi-robot commands and shared/group intentions stay correctly scoped')
 
 c=app.test_client()
 # Regression: do not collide with Flask's built-in static endpoint.
@@ -491,7 +499,7 @@ with patch('server.active_model_key',return_value=''):
 assert vision_task.status_code==200,(vision_task.status_code,vision_task.data)
 visual=vision_task.get_json()
 assert visual['command']['kind']=='vision_search' and visual['command']['target_phrase']=='red sofa' and visual['command']['sit'] is True
-assert visual['trace'][1]['result']=='vision_search'
+assert any(step.get('step')=='parse' and step.get('result')=='vision_search' for step in visual['trace']),visual['trace']
 assert visual['command']['id']
 failed=c.post('/api/robots/task-result',headers=headers,json={'room':'lab','task_id':visual['command']['id'],'status':'not-found'})
 assert failed.status_code==200 and 'scanned six directions' in failed.get_json()['answer']['text'], (failed.status_code, failed.data)

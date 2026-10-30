@@ -59,7 +59,7 @@ export function iconForButton(button){
 export function decorateButtons(root=document){
  const nodes=[];if(root.matches?.('button'))nodes.push(root);
  if(root.querySelectorAll)nodes.push(...root.querySelectorAll('button, label.icon-btn'));
- for(const b of nodes){if(b.id==='composerMove')continue;if(b.classList.contains('theme-swatch')||b.classList.contains('theme-preset'))continue;
+ for(const b of nodes){if(b.id==='composerMove'||b.closest?.('.chat-attachment'))continue;if(b.classList.contains('theme-swatch')||b.classList.contains('theme-preset'))continue;
   const name=(b.id==='minimizeScenePanel'?(document.getElementById('scenePanel')?.classList.contains('minimized')?'opened':'minified'):b.id==='toolboxMinimize'?(document.getElementById('editorToolbox')?.classList.contains('minimized')?'opened':'minified'):iconForButton(b));if(!name)continue;
   const label=(b.getAttribute('aria-label')||b.title||b.textContent||'').trim();
   if(!b.title&&label)b.title=label.slice(0,140);

@@ -69,6 +69,81 @@ export function planRobotPath(start,end,obstacles=[],options={}){
   result.push(p);
  }
  const final={x:end.x,z:end.z};
- if(!pathBlocked(final.x,final.z,obstacles,clearance)&&Math.hypot(result.at(-1)?.x-final.x||0,result.at(-1)?.z-final.z||0)<cell*1.9)result[result.length-1]=final;
+ // A* operates on grid centres. Snapping the final centre directly to an exact
+ // target without checking the intervening segment can cut an obstacle corner.
+ const tail=result.at(-1)||start;
+ const segmentClear=(a,b)=>{
+   const distance=Math.hypot(b.x-a.x,b.z-a.z);
+   for(let i=1,n=Math.max(1,Math.ceil(distance/(cell*.17)));i<=n;i++){
+     const f=i/n;
+     if(pathBlocked(a.x+(b.x-a.x)*f,a.z+(b.z-a.z)*f,obstacles,clearance))return false;
+   }
+   return true;
+ };
+ if(!pathBlocked(final.x,final.z,obstacles,clearance)&&Math.hypot(tail.x-final.x,tail.z-final.z)<cell*1.9&&segmentClear(tail,final))result[result.length-1]=final;
+ // Verify all compressed line segments against the true (non-grid) footprints.
+ // A path that grazes geometry is a failed plan, not evidence of arrival.
+ let previous=start;
+ for(const waypoint of result){if(!segmentClear(previous,waypoint))return null;previous=waypoint;}
  return result;
+}
+
+// Choose a safe stand-off position by checking the *entire navigable route* to
+// several sides of a target. A single nearest-edge goal often lies behind
+// another robot or a couch: that is not proof that the target is unreachable.
+export function planRobotApproach(start,bounds,obstacles=[],options={}){
+ if(![start?.x,start?.z,bounds?.minX,bounds?.maxX,bounds?.minZ,bounds?.maxZ].every(Number.isFinite))return null;
+ const cx=(bounds.minX+bounds.maxX)/2,cz=(bounds.minZ+bounds.maxZ)/2;
+ const hx=Math.max(.18,(bounds.maxX-bounds.minX)/2),hz=Math.max(.18,(bounds.maxZ-bounds.minZ)/2);
+ const initialAngle=Math.atan2(start.z-cz,start.x-cx);
+ const directions=[initialAngle,...Array.from({length:16},(_,i)=>i*Math.PI/8)];
+ const clearance=Number(options.clearance)||.30;
+ let best=null,attempted=0,free=0;
+ for(const gap of [.70,1.05,1.50,2.20]){
+  for(const angle of directions){
+   const ux=Math.cos(angle),uz=Math.sin(angle);
+   const extent=Math.min(hx/Math.max(Math.abs(ux),1e-5),hz/Math.max(Math.abs(uz),1e-5));
+   const point={x:cx+ux*(extent+gap),z:cz+uz*(extent+gap)};
+   attempted++;
+   if(pathBlocked(point.x,point.z,obstacles,clearance))continue;
+   free++;
+   const path=planRobotPath(start,point,obstacles);
+   if(!path?.length||Math.hypot(path.at(-1).x-point.x,path.at(-1).z-point.z)>.14)continue;
+   // Choose shortest actual A* path, not the closest straight-line destination.
+   let length=0,previous=start;
+   for(const p of path){length+=Math.hypot(p.x-previous.x,p.z-previous.z);previous=p;}
+   const score=length+gap*.08;
+   if(!best||score<best.score)best={point,waypoints:path,score,attempted,free};
+  }
+  // A useful reachable near-target candidate is preferable to far-off guesses.
+  if(best)break;
+ }
+ return best?{...best,attempted,free}:null;
+}
+
+// When all sides of a target are obstructed, try a safe *partial* trip.
+// This never declares arrival. First probe 95% along the straight-line direction,
+// then smaller fractions and lateral offsets to avoid other robots/furniture.
+// Progress is a geometrical fraction along the original direction, not a
+// promise that the path length matches direct distance.
+export function planRobotPartialApproach(start,bounds,obstacles=[],options={}){
+ if(![start?.x,start?.z,bounds?.minX,bounds?.maxX,bounds?.minZ,bounds?.maxZ].every(Number.isFinite))return null;
+ const cx=(bounds.minX+bounds.maxX)/2,cz=(bounds.minZ+bounds.maxZ)/2;
+ const dx=cx-start.x,dz=cz-start.z,length=Math.hypot(dx,dz);
+ if(length<1.8)return null;
+ const ux=dx/length,uz=dz/length,clearance=Number(options.clearance)||.3;
+ let best=null;
+ for(const fraction of [.95,.92,.88,.84,.80,.75,.68,.60]){
+  for(const offset of [0,.40,-.40,.8,-.8,1.3,-1.3]){
+   const point={x:start.x+dx*fraction-uz*offset,z:start.z+dz*fraction+ux*offset};
+   if(pathBlocked(point.x,point.z,obstacles,clearance))continue;
+   const path=planRobotPath(start,point,obstacles,options);
+   if(!path?.length||Math.hypot(path.at(-1).x-point.x,path.at(-1).z-point.z)>.14)continue;
+   const remaining=Math.hypot(cx-point.x,cz-point.z);
+   const candidate={point,waypoints:path,progress:fraction,remainingMeters:remaining};
+   if(!best||candidate.progress>best.progress||(candidate.progress===best.progress&&candidate.remainingMeters<best.remainingMeters))best=candidate;
+  }
+  if(best)break;
+ }
+ return best;
 }
