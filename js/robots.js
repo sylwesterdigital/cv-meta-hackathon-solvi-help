@@ -4,6 +4,7 @@ import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MotionController,computeMode} from './animations.js';
 import {pathBlocked} from './robot-pathfinding.js';
 import {footfallRate,combatPhase} from './robot-combat.js';
+import {permittedRobotLocomotion} from './robot-contact.js';
 
 const loader=new GLTFLoader();
 const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');loader.setDRACOLoader(draco);
@@ -289,6 +290,9 @@ export function animateRobots(items,dt,onImpact=()=>{}){
         else if(contact)data.robotContactAction=null;
       }
     }
+    // Only this robot's own local/remote command or mission can start its
+    // locomotion. Contact displacement is animated separately above.
+    if(!permittedRobotLocomotion(data,mode,now))mode='idle';
     // Do not walk in place against an immovable wall or stair riser.
     if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode)&&data.robotActualSpeed<.06&&!data.robotContactAction)mode='idle';
     const animator=data.robotAnimator;

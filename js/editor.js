@@ -988,10 +988,13 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     const robot=this.robot(),canControl=this.controlMode==='robot'&&robot&&this.canEdit(robot);
     const input=canControl?{...intent(this.robotKeys),s:robot.userData.robotSpeed??1.8,q:robot.userData.robotStrafeSpeed??2.5,u:robot.userData.robotTurnSpeed??4,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1.8,q:2.5,u:4,j:0};
     const now=performance.now();
+    // Motion intent belongs to a particular robot, not every avatar in the room.
+    for(const item of this.items){if(item.userData.editorKind==='robot')item.userData.robotLocalMotion=false;}
     if(canControl){
       const motion=stepRobotMotion({x:robot.position.x,z:robot.position.z,yaw:robot.rotation.y,velocity:robot.userData.robotVelocity||0,steer:robot.userData.robotSteer||0,lateral:robot.userData.robotLateral||0},input,dt);
       robot.position.x=motion.x;robot.position.z=motion.z;robot.rotation.y=motion.yaw;
       robot.userData.robotVelocity=motion.velocity;robot.userData.robotSteer=motion.steer;robot.userData.robotLateral=motion.lateral;
+      robot.userData.robotLocalMotion=active(input)||Math.abs(motion.velocity)>.04||Math.abs(motion.lateral)>.04;
       const walking=Math.abs(motion.velocity)>.04;const strafing=Math.abs(motion.lateral)>.04;
       if(input.f||input.t||input.j)interruptRobotMission(robot);
       if(!robot.userData.robotJumpActive&&robot.userData.jumpVel===undefined&&!robot.userData.physicsAirborne){
@@ -1013,9 +1016,10 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     // Remote robots integrate the same acceleration and turn-rate equations.
     for(const [id,remote] of this.remoteInput){
       const other=this.items.find(o=>o.userData.editorId===id);
-      if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotMode='idle';other.userData.robotVelocity=0;other.userData.robotSteer=0;other.userData.robotLateral=0;}continue;}
+      if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotRemoteMotion=false;other.userData.robotMode='idle';other.userData.robotVelocity=0;other.userData.robotSteer=0;other.userData.robotLateral=0;}continue;}
       const next=stepRobotMotion({x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0,steer:other.userData.robotSteer||0,lateral:other.userData.robotLateral||0},remote,dt);
       other.position.x=next.x;other.position.z=next.z;other.rotation.y=next.yaw;other.userData.robotVelocity=next.velocity;other.userData.robotSteer=next.steer;other.userData.robotLateral=next.lateral;
+      other.userData.robotRemoteMotion=Boolean(remote.f||remote.t||Math.abs(next.velocity)>.04||Math.abs(next.lateral)>.04);
       if(!other.userData.robotJumpActive&&other.userData.jumpVel===undefined&&!other.userData.physicsAirborne){other.userData.robotMode=Math.abs(next.velocity)<.04?(Math.abs(next.lateral)>.04?(next.lateral>0?'strafeLeft':'strafeRight'):'idle'):next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
     }
     // Smooth server-authoritative corrections without reloading the avatar mesh.

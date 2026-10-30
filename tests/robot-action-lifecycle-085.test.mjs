@@ -4,15 +4,16 @@ import {readFileSync} from 'node:fs';
 import {combatTimeline,combatPhase,combatClip} from '../js/robot-combat.js';
 import {pushedWalkState} from '../js/robot-push.js';
 import {MotionController} from '../js/animations.js';
+import {permittedRobotLocomotion} from '../js/robot-contact.js';
 const src=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const robotSource=src('js/robots.js');
 function harness(){
  const body=robotSource.split('export function animateRobots(items,dt,onImpact=()=>{}){')[1]?.split('\n}')[0];
  assert.ok(body?.length>200);
- const anim=new Function('combatPhase','footfallRate',`return function animateRobots(items,dt,onImpact=()=>{}){${body}\n}`)(combatPhase,(s)=>Math.max(.9,Math.min(2.3,s/1.25)));
+ const anim=new Function('combatPhase','footfallRate','permittedRobotLocomotion',`return function animateRobots(items,dt,onImpact=()=>{}){${body}\n}`)(combatPhase,(s)=>Math.max(.9,Math.min(2.3,s/1.25)),permittedRobotLocomotion);
  const calls=[];
  const animator={clipDuration:()=>2,play(mode){calls.push(['play',mode]);},playOnce(mode,timing){calls.push(['once',mode,timing.rate]);},setPlaybackSpeed(speed){calls.push(['rate',speed]);},update(dt){calls.push(['update',dt]);}};
- const bot={children:[],userData:{editorKind:'robot',robotMode:'walk',robotActualSpeed:1.8,robotAnimator:animator}};
+ const bot={children:[],userData:{editorKind:'robot',robotMode:'walk',robotActualSpeed:1.8,robotLocalMotion:true,robotAnimator:animator}};
  return {anim,bot,calls};
 }
 test('walking cadence uses current resolved speed, no contact push for fixed obstacles',()=>{

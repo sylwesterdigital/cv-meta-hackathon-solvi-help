@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.86",
+  "currentVersion": "0.2.87",
   "releases": [
+    {
+      "version": "0.2.87",
+      "publishedAt": "2026-10-30T21:26:59Z",
+      "changes": [
+        "Isolate running and walking animation per robot identity: an idle robot cannot inherit a nearby robot\u2019s stale Run/Walk state or movement packets.",
+        "Permit a pushed robot to play temporary backward, forward, or lateral steps only while a measured, physically applied displacement is current; return to Idle after contact.",
+        "Require close, approaching capsule contact at a comparable floor height before automatic robot-to-robot pushing, rather than broad model proximity.",
+        "Accept compact multiplayer robot-impact events only when attacker and victim remain within realistic push/strike reach; only the target owner applies displacement.",
+        "Add five regression tests for independent animations, contact approach, stale modes, per-robot multiplayer packet scope, and impact validation."
+      ]
+    },
     {
       "version": "0.2.86",
       "publishedAt": "2026-10-30T21:10:27Z",
@@ -333,19 +344,6 @@
         "Replace redundant Hide chat and chat-panel Close controls with a reliable Overlay \u2192 Window \u2192 Hidden \u2192 Overlay cycle on the persistent bottom-left chat mode button.",
         "Add browser-local settings for borderless controls, disabled interface shadows, backdrop blur and opt-out object-deletion confirmation; require confirmation across object list, Properties and keyboard.",
         "Remove unused sceneModelPath text and unconfigured AI model selector, associate key fields with forms, add favicon and keep navigation/button labels on one line."
-      ]
-    },
-    {
-      "version": "0.2.53",
-      "publishedAt": "2026-10-29T11:55:33Z",
-      "changes": [
-        "Compact Properties XYZ inputs while retaining full-width context slider and reset alignment; enlarge accepted server-side transforms for big scenes.",
-        "Make scene file-drop overlay explicitly cancellable, dismiss on Escape, blur, drag exit, drop and stale OS drag state.",
-        "Show the release log only for newly unviewed published versions; move Dev log control into top-right navigation between map and settings.",
-        "Replace the realm dropdown with a navigable realm-card gallery, locally captured room thumbnails and Create empty realm action.",
-        "Remove obsolete mobile More button; keep icon-only labels consistent, use a blank accessible composer drag handle and a webcam-shaped icon.",
-        "Hide unconfigured Meta model chooser; standardize close buttons and show Map, Settings and Profile labels in icon+text mode.",
-        "Support per-robot local Brain trace debugging from Properties and Brains, plus global debugging from Chat & sound Settings."
       ]
     }
   ]

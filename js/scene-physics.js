@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {physicsOptions} from './physics-options.js';
 import {CHARACTER,characterMotion,resolveCharacterMotion,easedRemotePose} from './character-physics.js';
 import {robotPushVector,pushedWalkState} from './robot-push.js';
+import {approachingRobotContact,ROBOT_CONTACT_DISTANCE} from './robot-contact.js';
 import {combatReach,combatDirection,impactImpulse} from './robot-combat.js';
 
 // Bodies live for the lifetime of the scene object; movement never re-creates a GLB.
@@ -190,6 +191,7 @@ export class ScenePhysics{
  tryPushRobot(actor,target,actorNext,dt,maxStep=.14){
   if(!this.enabled||!this.world||actor===target||target.userData.robotMission||target.userData.robotGoal)return false;
   if(actor.userData.editorKind!=='robot'||target.userData.editorKind!=='robot')return false;
+  if(!this.owns(actor)||!approachingRobotContact(actor.position,target.position,actorNext))return false;
   if(!this.owns(target)){
    // The attacker's client cannot directly edit someone else's capsule.
    // Request one small impact event so the victim's owner resolves it with
@@ -293,6 +295,12 @@ export class ScenePhysics{
   const target=this.editor.items.find(item=>item.userData.editorId===packet.target&&item.userData.editorKind==='robot');
   const actor=this.editor.items.find(item=>item.userData.editorId===packet.id&&item.userData.editorKind==='robot');
   if(!target||!actor||target===actor||target.userData.robotMission)return false;
+  // A network message cannot animate or move an unrelated robot. Verify an
+  // actual overlapping push or a reachable combat strike at the victim.
+  const separation=Math.hypot(target.position.x-actor.position.x,target.position.z-actor.position.z);
+  if(Math.abs(target.position.y-actor.position.y)>1.55)return false;
+  if(packet.kind==='push'&&separation>ROBOT_CONTACT_DISTANCE+.22)return false;
+  if(packet.kind!=='push'&&separation>combatReach(packet.kind)+.45)return false;
   const force=Math.max(.5,Math.min(20,Number(packet.force)||5));
   const dx=target.position.x-actor.position.x,dz=target.position.z-actor.position.z;
   const distance=Math.hypot(dx,dz),yaw=actor.rotation.y;
@@ -301,7 +309,7 @@ export class ScenePhysics{
   // No teleport. Capsule motion is consumed by driveRobot using Rapier's
   // obstacle-aware character controller on subsequent frames.
   const speed=Math.min(5.5,.65+force*.22);
-  target.userData.robotImpactVelocity={x:direction.x*speed,z:direction.z*speed};
+  if(this.owns(target))target.userData.robotImpactVelocity={x:direction.x*speed,z:direction.z*speed};
   if(packet.kind!=='push'){
    const head=packet.kind==='kick'&&force>10;
    const severe=force>=18;
@@ -365,7 +373,7 @@ export class ScenePhysics{
   if(wantJump)delete object.userData.jumpVel; // one-shot; Rapier owns subsequent vertical frames
   const delta=characterMotion({...p,verticalSpeed:state.verticalSpeed},desired,dt,jump);
   state.verticalSpeed=delta.verticalSpeed;
-  if(Math.hypot(delta.x,delta.z)>.003&&Math.hypot(delta.x,delta.z)<.32){
+  if(this.owns(object)&&Math.hypot(delta.x,delta.z)>.003&&Math.hypot(delta.x,delta.z)<.32){
    for(const target of this.editor.items){
     if(target===object||target.userData.editorKind!=='robot')continue;
     this.tryPushRobot(object,target,{x:desired.x,z:desired.z},dt);
