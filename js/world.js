@@ -520,7 +520,7 @@ export class SolviWorld {
       controller.addEventListener('selectstart',async()=>{
         if(!this.renderer.xr.isPresenting)return;
         const selection=this.xrRaycast(controller);
-        if(selection.liftButton){if(selection.liftButton.userData.portalButton)this.robotEditor?.activatePortalButton(selection.liftButton);else this.robotEditor?.activateLiftButton(selection.liftButton);return;}
+        if(selection.liftButton){if(selection.liftButton.userData.transportButton)this.robotEditor?.activateTransportButton(selection.liftButton);else if(selection.liftButton.userData.portalButton)this.robotEditor?.activatePortalButton(selection.liftButton);else this.robotEditor?.activateLiftButton(selection.liftButton);return;}
         if(selection.menu){const action=selection.menu.userData.action;if(action==='room'){const select=document.getElementById('roomSelect');if(select&&select.options.length>1){select.selectedIndex=(select.selectedIndex+1)%select.options.length;select.dispatchEvent(new Event('change'));}}else window.solviEditor?.add(action);return;}
         const mediaTarget=selection.mediaTarget||this.xrMediaTarget;
         if((selection.mediaButton||selection.mediaTarget)&&mediaTarget){
@@ -577,7 +577,7 @@ export class SolviWorld {
       if(!['static','kinematic','dynamic'].includes(mode))continue;
       root.traverse(child=>{
         if(!child.isMesh||!child.visible||!child.geometry?.attributes?.position)return;
-        if(child.userData.transportMarker||child.userData.liftButton||child.userData.portalButton)return;
+        if(child.userData.transportMarker||child.userData.liftButton||child.userData.transportButton||child.userData.portalButton)return;
         const walkable=(mode==='static'||mode==='kinematic')&&(kind!=='stairs'||Boolean(child.userData.stairTread));
         this.xrMeshWalkability.set(child,walkable);
         objects.push(child);
@@ -615,7 +615,7 @@ export class SolviWorld {
   xrRaycast(controller){
     controller.updateWorldMatrix(true,false);
     this.raycaster.setFromXRController(controller);
-    const liftButton=this.robotEditor?.hitLiftButton?.(this.raycaster)||this.robotEditor?.hitPortalButton?.(this.raycaster)||null;
+    const liftButton=this.robotEditor?.hitLiftButton?.(this.raycaster)||this.robotEditor?.hitTransportButton?.(this.raycaster)||this.robotEditor?.hitPortalButton?.(this.raycaster)||null;
     const menu=this.raycaster.intersectObjects(this.xrButtons,false)[0]?.object;
     const mediaButton=this.xrMediaControls?.visible?this.raycaster.intersectObjects(this.xrMediaButtons,false)[0]?.object:null;
     const landing=this.xrLanding(this.raycaster);

@@ -155,6 +155,44 @@ function liftCabin(group,s){
  group.userData.liftFootprint={width:w,depth};
  updateLiftPanel(group);
 }
+// Two identical stations mounted alongside the walkway/escalator. Buttons
+// are deliberately *not* stairStructure/stairTread, so Rapier leaves them non-solid.
+function conveyorControls(group,s,segments){
+ if(!s.transport.controlsEnabled||!segments.length||s.points.length<2)return;
+ const side=s.transport.controlsSide==='left'?1:-1;
+ const trim=material({color:'#303c44',opacity:1,texture:'none',material:'metal'},{metal:true});
+ const actions=[['start','▶',0x248d56],['stop','■',0xb83c42],['reverse','⇄',0xe1a43a]];
+ for(const end of [0,1]){
+  const segment=end===0?segments[0]:segments.at(-1);
+  const pathA=end===0?s.points[0]:s.points.at(-2),pathB=end===0?s.points[1]:s.points.at(-1);
+  const angle=Math.atan2(pathB[1]-pathA[1],pathB[0]-pathA[0]);
+  const edge=side*(s.width/2+.17);
+  const station=new THREE.Group();station.position.set(segment.x-Math.sin(angle)*edge,segment.top+.68,segment.z+Math.cos(angle)*edge);
+  station.rotation.y=-angle;station.name=end?'Walkway end controls':'Walkway start controls';group.add(station);
+  box(station,{x:0,y:0,z:0,width:.60,height:.22,depth:.13},trim,'transportHousing');
+  for(let i=0;i<actions.length;i++){
+   const [action,symbol,color]=actions[i],x=(i-1)*.19;
+   const key=new THREE.Mesh(new THREE.BoxGeometry(.135,.135,.055),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.2,roughness:.4}));
+   key.position.set(x,0,-.088);key.userData.transportButton=true;key.userData.transportAction=action;key.name='Conveyor '+action;station.add(key);
+   const canvas=document.createElement('canvas');canvas.width=canvas.height=64;
+   const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.font='bold 43px sans-serif';ctx.textBaseline='middle';ctx.textAlign='center';ctx.fillText(symbol,32,34);
+   const texture=new THREE.CanvasTexture(canvas);
+   const label=new THREE.Mesh(new THREE.PlaneGeometry(.085,.085),new THREE.MeshBasicMaterial({map:texture,transparent:true,depthWrite:false,side:THREE.DoubleSide}));
+   label.position.set(x,0,-.118);label.userData.transportButton=true;label.userData.transportAction=action;label.userData.transportLabel=true;station.add(label);
+  }
+ }
+ updateConveyorControls(group);
+}
+export function updateConveyorControls(group){
+ const transport=group?.userData?.stairs?.transport;if(!transport)return;
+ group.traverse(obj=>{
+  if(!obj.userData.transportButton||obj.userData.transportLabel||!obj.material?.emissive)return;
+  const action=obj.userData.transportAction;
+  const active=action==='start'?transport.enabled:action==='stop'?!transport.enabled:transport.direction===-1;
+  const intensity=active?.6:.14;
+  if(obj.material.emissiveIntensity!==intensity)obj.material.emissiveIntensity=intensity;
+ });
+}
 export function rebuildOfficeStairs(group,params={}){
  const s=sanitiseStairs(params);
  for(const child of [...group.children]){group.remove(child);child.traverse(node=>{node.userData.liftReadout?.texture?.dispose();node.geometry?.dispose?.();node.material?.dispose?.();});}

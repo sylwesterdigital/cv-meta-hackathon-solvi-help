@@ -12,7 +12,7 @@ import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive} from './primitive-properties.js';
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
-import {makeOfficeStairs,rebuildOfficeStairs,updateLiftPanel,sanitiseStairs,stairSegments} from './office-stairs.js';
+import {makeOfficeStairs,rebuildOfficeStairs,updateLiftPanel,updateConveyorControls,sanitiseStairs,stairSegments} from './office-stairs.js';
 import {tickStairTransport,startLift,stopLift} from './stair-transport.js';
 import {liftHeightAt,liftBaseY,legacyLiftBaseY,safeLiftMotion} from './lift-sync.js';
 import {attachControlSwitcherDrag} from './control-switcher-drag.js';
@@ -451,7 +451,7 @@ export class SceneEditor{
  setupWallControls(){
   const field=id=>byId(id),panel=field('wallPanel');if(!panel)return;
   field('wallConvertStatic').onclick=()=>this.convertWallToCuttableCubes();
-  const extraIds=['stairRailEnabled','stairRailSide','stairRailRods','stairRailHeight','stairRailWidth','stairRailEvery','stairRailMaterial','stairRailTexture','stairRailColor','stairRailOpacity','stairRoofEnabled','stairRoofWalls','stairRoofHeight','stairRoofThickness','stairRoofTexture','stairRoofColor','stairRoofOpacity','stairSupportEnabled','stairSupportSide','stairSupportEvery','stairSupportWidth','stairSupportTexture','stairSupportColor','stairSupportOpacity','stairSurfaceTexture','stairSurfaceMaterial','stairSurfaceColor','stairSurfaceOpacity','stairTransportEnabled','stairTransportSpeed','stairTransportDirection','stairLiftLevels','stairLiftLevelHeight','stairLiftCabinHeight','stairLiftCallButtons','stairLiftCallSide'];
+  const extraIds=['stairRailEnabled','stairRailSide','stairRailRods','stairRailHeight','stairRailWidth','stairRailEvery','stairRailMaterial','stairRailTexture','stairRailColor','stairRailOpacity','stairRoofEnabled','stairRoofWalls','stairRoofHeight','stairRoofThickness','stairRoofTexture','stairRoofColor','stairRoofOpacity','stairSupportEnabled','stairSupportSide','stairSupportEvery','stairSupportWidth','stairSupportTexture','stairSupportColor','stairSupportOpacity','stairSurfaceTexture','stairSurfaceMaterial','stairSurfaceColor','stairSurfaceOpacity','stairTransportEnabled','stairTransportSpeed','stairTransportDirection','stairTransportControlsEnabled','stairTransportControlsSide','stairLiftLevels','stairLiftLevelHeight','stairLiftCabinHeight','stairLiftCallButtons','stairLiftCallSide'];
   this.stairExtraIds=extraIds;
   const ranges={wallWidth:[.05,4,.01,'m'],wallHeight:[.2,10,.1,'m'],wallOpacity:[.08,1,.02,'']};
   let active='wallHeight';
@@ -545,7 +545,7 @@ export class SceneEditor{
    rail:{enabled:get('stairRailEnabled'),side:get('stairRailSide'),rods:get('stairRailRods'),every:get('stairRailEvery'),height:get('stairRailHeight'),width:get('stairRailWidth'),material:get('stairRailMaterial'),texture:get('stairRailTexture'),color:get('stairRailColor'),opacity:get('stairRailOpacity')},
    roof:{enabled:get('stairRoofEnabled'),walls:get('stairRoofWalls'),height:get('stairRoofHeight'),thickness:get('stairRoofThickness'),texture:get('stairRoofTexture'),color:get('stairRoofColor'),opacity:get('stairRoofOpacity')},
    supports:{enabled:get('stairSupportEnabled'),side:get('stairSupportSide'),every:get('stairSupportEvery'),width:get('stairSupportWidth'),texture:get('stairSupportTexture'),color:get('stairSupportColor'),opacity:get('stairSupportOpacity')},
-   transport:{enabled:get('stairTransportEnabled'),speed:get('stairTransportSpeed'),direction:get('stairTransportDirection')==='-1'?-1:1},
+   transport:{enabled:get('stairTransportEnabled'),speed:get('stairTransportSpeed'),direction:get('stairTransportDirection')==='-1'?-1:1,controlsEnabled:get('stairTransportControlsEnabled'),controlsSide:get('stairTransportControlsSide'),changedAt:this.wallEditTarget?.userData.stairs?.transport?.changedAt||0},
    lift:{levels:get('stairLiftLevels'),levelHeight:get('stairLiftLevelHeight'),cabinHeight:get('stairLiftCabinHeight'),callButtons:get('stairLiftCallButtons'),callSide:get('stairLiftCallSide'),target:this.wallEditTarget?.userData.stairs?.lift?.target||0,currentHeight:this.wallEditTarget?.userData.stairs?.lift?.currentHeight||0,...(this.wallEditTarget?.userData.stairs?.lift?.motion?{motion:this.wallEditTarget.userData.stairs.lift.motion}:{})}
   });
  }
@@ -585,12 +585,13 @@ export class SceneEditor{
   byId('stairAdvancedFolds').hidden=!stair||variant==='standard';
   byId('stairTransportFold').hidden=!['escalator','walkway','lift'].includes(variant);
   byId('stairLiftFold').hidden=variant!=='lift';
+  byId('stairConveyorControls').hidden=!['walkway','escalator'].includes(variant);
   if(stair){
    const map={stairRailEnabled:config.rail.enabled,stairRailSide:config.rail.side,stairRailRods:config.rail.rods,stairRailHeight:config.rail.height,stairRailWidth:config.rail.width,stairRailEvery:config.rail.every,stairRailMaterial:config.rail.material,stairRailTexture:config.rail.texture,stairRailColor:config.rail.color,stairRailOpacity:config.rail.opacity,
     stairRoofEnabled:config.roof.enabled,stairRoofWalls:config.roof.walls,stairRoofHeight:config.roof.height,stairRoofThickness:config.roof.thickness,stairRoofTexture:config.roof.texture,stairRoofColor:config.roof.color,stairRoofOpacity:config.roof.opacity,
     stairSupportEnabled:config.supports.enabled,stairSupportSide:config.supports.side,stairSupportEvery:config.supports.every,stairSupportWidth:config.supports.width,stairSupportTexture:config.supports.texture,stairSupportColor:config.supports.color,stairSupportOpacity:config.supports.opacity,
     stairSurfaceTexture:config.surface.texture,stairSurfaceMaterial:config.surface.material,stairSurfaceColor:config.surface.color,stairSurfaceOpacity:config.surface.opacity,
-    stairTransportEnabled:config.transport.enabled,stairTransportSpeed:config.transport.speed,stairTransportDirection:config.transport.direction,
+    stairTransportEnabled:config.transport.enabled,stairTransportSpeed:config.transport.speed,stairTransportDirection:config.transport.direction,stairTransportControlsEnabled:config.transport.controlsEnabled,stairTransportControlsSide:config.transport.controlsSide,
     stairLiftLevels:config.lift.levels,stairLiftLevelHeight:config.lift.levelHeight,stairLiftCabinHeight:config.lift.cabinHeight,stairLiftCallButtons:config.lift.callButtons,stairLiftCallSide:config.lift.callSide};
    for(const [id,value] of Object.entries(map)){const input=byId(id);if(input.type==='checkbox')input.checked=value;else input.value=value;}
    this.refreshLiftLevels();if(variant==='lift')byId('stairLiftTarget').value=String(Math.min(config.lift.target,config.lift.levels-1));
@@ -776,6 +777,41 @@ export class SceneEditor{
   return hit.object;
  }
  activatePortalButton(button){return activatePortalButton(this,button);}
+ hitTransportButton(raycaster){
+  const buttons=[];
+  for(const device of this.items)if(device.userData.editorKind==='stairs'&&['walkway','escalator'].includes(device.userData.stairs?.variant))device.traverse(part=>{if(part.userData.transportButton)buttons.push(part);});
+  if(!buttons.length)return null;
+  const hit=raycaster.intersectObjects(buttons,false)[0];if(!hit)return null;
+  const front=raycaster.intersectObjects(this.items,true).find(result=>result.object.visible&&!result.object.userData.transportLabel&&!result.object.userData.transportButton);
+  if(front&&front.distance<hit.distance-.025&&!front.object.userData.transportHousing)return null;
+  return hit.object;
+ }
+ activateTransportButton(button){
+  if(!button?.userData.transportButton)return false;
+  let device=button.parent;while(device&&device.userData.editorKind!=='stairs')device=device.parent;
+  if(!device||!this.items.includes(device)||!this.canEdit(device))return false;
+  const action=button.userData.transportAction,transport=device.userData.stairs?.transport;
+  if(!['walkway','escalator'].includes(device.userData.stairs?.variant)||!transport||!['start','stop','reverse'].includes(action))return false;
+  if(action==='start')transport.enabled=true;
+  else if(action==='stop')transport.enabled=false;
+  else transport.direction=transport.direction===-1?1:-1;
+  transport.changedAt=Date.now();updateConveyorControls(device);
+  window.solviRoomSocket?.send({type:'conveyor-control',id:device.userData.editorId,action,changedAt:transport.changedAt});
+  this.queueSave(device);
+  if(this.wallEditTarget===device){byId('stairTransportEnabled').checked=transport.enabled;byId('stairTransportDirection').value=String(transport.direction);}
+  return true;
+ }
+ applyRemoteTransportControl(packet){
+  const device=this.items.find(o=>o.userData.editorId===packet?.id&&['walkway','escalator'].includes(o.userData.stairs?.variant));
+  const transport=device?.userData.stairs?.transport;
+  if(!transport||!['start','stop','reverse'].includes(packet.action)||!Number.isFinite(packet.changedAt)||packet.changedAt<=(transport.changedAt||0))return false;
+  if(packet.action==='start')transport.enabled=true;
+  else if(packet.action==='stop')transport.enabled=false;
+  else transport.direction=transport.direction===-1?1:-1;
+  transport.changedAt=packet.changedAt;updateConveyorControls(device);
+  if(this.wallEditTarget===device){byId('stairTransportEnabled').checked=transport.enabled;byId('stairTransportDirection').value=String(transport.direction);}
+  return true;
+ }
  hitLiftButton(raycaster){
   const buttons=[];
   for(const lift of this.items){
@@ -838,7 +874,7 @@ export class SceneEditor{
    if(e.button!==0||this.wallDrawing||this.faceDrawing||this.curveDrawing)return;
    this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
    this.raycaster.setFromCamera(this.pointer,this.world.camera);
-   const button=this.hitLiftButton(this.raycaster)||this.hitPortalButton(this.raycaster);
+   const button=this.hitLiftButton(this.raycaster)||this.hitTransportButton(this.raycaster)||this.hitPortalButton(this.raycaster);
    if(!button)return;
    liftPress={id:e.pointerId,x:e.clientX,y:e.clientY};
    this.world.controls.enabled=false;e.preventDefault();e.stopImmediatePropagation();
@@ -849,8 +885,8 @@ export class SceneEditor{
    if(Math.hypot(e.clientX-initial.x,e.clientY-initial.y)<12){
     this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
     this.raycaster.setFromCamera(this.pointer,this.world.camera);
-    const button=this.hitLiftButton(this.raycaster)||this.hitPortalButton(this.raycaster);
-    if(button)(button.userData.portalButton?this.activatePortalButton(button):this.activateLiftButton(button));
+    const button=this.hitLiftButton(this.raycaster)||this.hitTransportButton(this.raycaster)||this.hitPortalButton(this.raycaster);
+    if(button)(button.userData.transportButton?this.activateTransportButton(button):button.userData.portalButton?this.activatePortalButton(button):this.activateLiftButton(button));
    }
    e.solviObjectPicked=true;e.preventDefault();e.stopImmediatePropagation();
   },true);
@@ -1153,7 +1189,15 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   const liftBefore=incomingLift&&!isNew?obj.userData.stairRuntime:null;
   const priorLiftBaseY=liftBefore?.baseY;
   if(!preserveRobotPose){obj.position.fromArray(entry.position);obj.rotation.fromArray(entry.rotation);}
-  obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'){if(stairGeometryKey(obj.userData.stairs)!==stairGeometryKey(entry.stairs))rebuildOfficeStairs(obj,entry.stairs||{});else if(entry.stairs)obj.userData.stairs=structuredClone(entry.stairs);}if(incomingLift){
+  // Live transport commands take priority over slower scene revision/checkpoint
+  // messages. Never rewind a new Start/Stop/Reverse to an older saved snapshot.
+  let incomingStairs=entry.stairs;
+  if(entry.kind==='stairs'&&!isNew&&['walkway','escalator'].includes(entry.stairs?.variant)){
+   const previous=obj.userData.stairs?.transport,latest=Number(previous?.changedAt)||0;
+   if(latest>(Number(entry.stairs?.transport?.changedAt)||0))
+    incomingStairs={...entry.stairs,transport:structuredClone(previous)};
+  }
+  obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'){if(stairGeometryKey(obj.userData.stairs)!==stairGeometryKey(incomingStairs))rebuildOfficeStairs(obj,incomingStairs||{});else if(incomingStairs)obj.userData.stairs=structuredClone(incomingStairs);if(['walkway','escalator'].includes(incomingStairs?.variant))updateConveyorControls(obj);}if(incomingLift){
    const cfg=obj.userData.stairs?.lift;const motion=safeLiftMotion(cfg?.motion);
    const height=Number(cfg?.currentHeight)||0;
    const oldMotion=liftBefore?.motion;

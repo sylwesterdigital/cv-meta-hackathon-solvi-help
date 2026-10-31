@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.115",
+  "currentVersion": "0.2.116",
   "releases": [
+    {
+      "version": "0.2.116",
+      "publishedAt": "2026-10-31T19:28:47Z",
+      "changes": [
+        "WebXR headset standing on a moving walkway or escalator is carried by the actual tread displacement, including X/Z travel and stair elevation; spectators outside the treads are not moved",
+        "Optional compact Start, Stop and Reverse controls at both walkway/escalator endpoints, with selectable left/right side positioning and mouse/WebXR controller-ray interaction",
+        "Server-authorized conveyor-control WebSocket messages synchronize direction and running state, and a saved command timestamp prevents older scene snapshots from reversing newer controls",
+        "Preserve the original robot rider, lifts, teleportation, and procedural-stair geometry; add tests for XR carrying, switch actions, state validation, and backwards compatibility"
+      ]
+    },
     {
       "version": "0.2.115",
       "publishedAt": "2026-10-31T19:22:04Z",
@@ -316,19 +326,6 @@
         "Relay compact, permission-checked robot-impact events for cross-owner robot collisions and attacks, and let Rapier character colliders integrate the victim displacement.",
         "Increase compact live movement input frequency and merge incoming scene revisions in place without destroying remote avatar mixers or rewinding currently predicted positions.",
         "Add eight regression tests for physics jump height, falling/landing animation clip resolution, combat impulse timing, network pose preservation, contact events, and recovery."
-      ]
-    },
-    {
-      "version": "0.2.85",
-      "publishedAt": "2026-10-30T20:34:11Z",
-      "changes": [
-        "Prevent static walls, floors and stair trimeshes from triggering a Push animation: contact now requires a nearby movable dynamic body or actual robot-to-robot displacement.",
-        "Animate only after Rapier resolves movement so walking cadence follows current-frame displacement; prevent slow in-place limping when blocked by fixed scenery.",
-        "Keep Jump animation active until the character controller records actual airborne movement and subsequent landing, regardless of keyboard movement or stair autostep.",
-        "Give Punch/Kick/Throw one-shot Mixamo clip playback with clipped intro/outro, action-length scaling and a once-only mid-clip Rapier impulse instead of a key-down impact.",
-        "Drive pushed robot forward, backward or lateral step animations from actual capsule displacement with frame-limited motion; preserve remote action packets and owner-simulated dynamic bodies.",
-        "Use collider world bounds rather than pivot distance for combat hits on spheres and furniture; keep physics impulses limited to movable bodies.",
-        "Add six executable animation lifecycle tests and retain existing movement and backend route regression coverage."
       ]
     }
   ]

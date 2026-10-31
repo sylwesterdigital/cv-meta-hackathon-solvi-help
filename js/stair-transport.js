@@ -6,7 +6,7 @@ import {updateLiftPanel} from './office-stairs.js';
 import {liftChime} from './lift-chimes.js';
 import {liftHeightAt,liftMotionFinished,motionSnapshot,liftBaseY,safeLiftMotion} from './lift-sync.js';
 import {canCarryLiftRider} from './lift-rider.js';
-import {conveyorSupport,xrCabinSupport,conveyorPhase} from './transport-support.js';
+import {conveyorSupport,xrCabinSupport,conveyorPhase,conveyorStep,xrConveyorFoot} from './transport-support.js';
 const vec=new THREE.Vector3();
 function surfaceHeight(segments,along,total){
  if(!segments.length)return 0;
@@ -18,6 +18,7 @@ function surfaceHeight(segments,along,total){
 export function tickStairTransport(editor,dt){
  if(!Number.isFinite(dt)||dt<=0)return;
  const step=Math.min(.05,dt),world=editor.world,phys=editor.physics;
+ let xrCarried=false;
  // Expire last frame's tread support unless real contact is rediscovered.
  for(const actor of editor.items)if(actor.userData.editorKind==='robot')delete actor.userData.conveyorRide;
  for(const device of editor.items){
@@ -30,7 +31,7 @@ export function tickStairTransport(editor,dt){
    if(plan){runtime.motion=plan;runtime.target=plan.target;runtime.commanded=true;runtime.moving=plan.active;runtime.baseY=liftBaseY(device.position.y,cfg.lift.currentHeight);}
   }
   const speed=Math.min(2.5,Math.max(.05,transport.speed||.5));
-  runtime.phase=conveyorPhase(speed,transport.direction);
+  if(transport.enabled!==false)runtime.phase=conveyorPhase(speed,transport.direction);
   // Classify passengers against the OLD cabin pose, before changing its height.
   // This prevents remote commands and direction reversals from leaving riders behind.
   device.updateMatrixWorld(true);
@@ -66,7 +67,7 @@ export function tickStairTransport(editor,dt){
    const headset=world.renderer.xr.getCamera();
    const headLocal=headset?headset.getWorldPosition(new THREE.Vector3()).applyMatrix4(before):null;
    const footprint=device.userData.liftFootprint||{width:cfg.width,depth:cfg.width*1.25};
-   if(xrCabinSupport(headLocal,footprint,cfg.lift.cabinHeight))world.shiftXRViewer({x:0,y:carry.y,z:0});
+   if(xrCabinSupport(headLocal,footprint,cfg.lift.cabinHeight))xrCarried=world.shiftXRViewer({x:0,y:carry.y,z:0})||xrCarried;
   }
   if(variant==='lift')for(const child of device.children)if(child.userData.stairShaft)child.position.y=-runtime.height;
   if(variant==='lift')updateLiftPanel(device);
@@ -84,6 +85,26 @@ export function tickStairTransport(editor,dt){
   device.updateMatrixWorld(true);
   const inv=device.matrixWorld.clone().invert();
   const transformPoint=p=>vec.copy(p).applyMatrix4(inv).clone();
+  // WebXR viewers have no scene object or Rapier body. Move their reference
+  // space by the same tread displacement, using the *standing* surface rather
+  // than the height of the tracked eyes. This also works on raised walkways.
+  if(variant!=='lift'&&!xrCarried&&world?.renderer?.xr?.isPresenting){
+   const headset=world.renderer.xr.getCamera();
+   const head=headset?.getWorldPosition(new THREE.Vector3());
+   const foot=xrConveyorFoot(head,world.xrStandingSurfaceY);
+   if(foot){
+    const localFoot=new THREE.Vector3(foot.x,foot.y,foot.z).applyMatrix4(inv);
+    const stepOnTread=conveyorStep(localFoot,cfg,segments,step);
+    if(stepOnTread){
+     const start=device.localToWorld(localFoot.clone());
+     const finish=device.localToWorld(localFoot.clone().add(new THREE.Vector3(stepOnTread.x,stepOnTread.y,stepOnTread.z)));
+     const movement=finish.sub(start);
+     if(movement.lengthSq()>1e-10&&movement.length()<.25){
+      xrCarried=world.shiftXRViewer({x:movement.x,y:movement.y,z:movement.z})||xrCarried;
+     }
+    }
+   }
+  }
   const entryTotal=pts.length>=2?projectPath(pts,pts[0][0],pts[0][1])?.total||0:0;
   for(const item of editor.items){
    if(item===device||(!phys?.owns(item)&&!(variant==='lift'&&item.userData.editorKind==='robot'))||!['robot','cube','sphere','cylinder','model'].includes(item.userData.editorKind))continue;

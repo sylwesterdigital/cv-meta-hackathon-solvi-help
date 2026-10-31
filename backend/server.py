@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.115',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.116',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3077,7 +3077,8 @@ def valid_office_stairs(stairs):
     if not structured('rail',('enabled','side','height','width','rods','every','color','opacity','material','texture'),(('height',.35,2),('width',.02,.25),('rods',1,5),('every',1,8),('opacity',.15,1)),(('side',('both','left','right')),('material',('metal','wood','glass')),('texture',('none','concrete','bricks','plaster','metal'))),('enabled',)):return False
     if not structured('roof',('enabled','height','thickness','walls','color','opacity','texture'),(('height',1.75,5),('thickness',.03,.4),('opacity',.1,1)),(('texture',('none','concrete','bricks','plaster','metal')),),('enabled','walls')):return False
     if not structured('supports',('enabled','side','every','width','color','opacity','texture'),(('every',1,16),('width',.04,.65),('opacity',.1,1)),(('side',('both','left','right','center')),('texture',('none','concrete','bricks','plaster','metal'))),('enabled',)):return False
-    if not structured('transport',('speed','direction','enabled'),(('speed',.05,2.5),),(('direction',(-1,1)),),('enabled',)):return False
+    if not structured('transport',tuple(stairs['transport']),(('speed',.05,2.5),('changedAt',0,4102444800000)) if 'changedAt' in stairs['transport'] else (('speed',.05,2.5),),(('direction',(-1,1)),('controlsSide',('left','right'))) if 'controlsSide' in stairs['transport'] else (('direction',(-1,1)),),('enabled','controlsEnabled') if 'controlsEnabled' in stairs['transport'] else ('enabled',)):return False
+    if set(stairs['transport'])-{'speed','direction','enabled','controlsEnabled','controlsSide','changedAt'} or not {'speed','direction','enabled'}.issubset(stairs['transport']):return False
     lift=stairs.get('lift')
     # Legacy rooms may have the original five lift fields. Never accept arbitrary
     # extras; new stations are opt-in and side must be left or right.
@@ -3476,6 +3477,18 @@ def websocket(ws):
                 publish({'type':'lift-motion','room':room_id,'by':uid,'id':identifier,'target':target,
                          'fromHeight':round(from_height,4),'startedAt':started_at,
                          'speed':round(speed,3),'active':active},except_id=uid,room_id=room_id)
+            elif msg.get('type')=='conveyor-control':
+                identifier=str(msg.get('id',''));action=msg.get('action');stamp=msg.get('changedAt')
+                if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier) or action not in ('start','stop','reverse'):continue
+                if type(stamp) not in (int,float) or not math.isfinite(stamp) or abs(stamp-time.time()*1000)>15000:continue
+                with db() as con:
+                    row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+                    objects=json.loads(row['payload']) if row else []
+                    device=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='stairs' and
+                                 isinstance(o.get('stairs'),dict) and o['stairs'].get('variant') in ('walkway','escalator')),None)
+                if not device or not may_edit(uid,device,room_policy(room_id),ws_admin_enabled()):continue
+                publish({'type':'conveyor-control','room':room_id,'by':uid,'id':identifier,
+                         'action':action,'changedAt':int(stamp)},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-motion':
                 identifier=str(msg.get('id',''))
                 position=msg.get('position');rotation=msg.get('rotation');mode=msg.get('mode','idle')
