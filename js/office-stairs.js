@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {sanitiseStairs,stairSegments} from './office-stairs-math.js';
 import {cleanStairExtras} from './stair-extensions.js';
+import {liftPanelState,LIFT_BUTTON_COLORS} from './lift-panel-state.js';
 import {wallPresetTexture} from './office-walls.js';
 export {sanitiseStairs,stairSegments} from './office-stairs-math.js';
 const cachedTextures=new Map();
@@ -57,6 +58,49 @@ function stairDecoration(group,s,segments){
   }
  }}
 }
+const floorGlyphTextures=new Map();
+function floorGlyph(level){
+ if(!floorGlyphTextures.has(level)){
+  const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,128,128);ctx.font='bold 84px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#f5ffe8';ctx.fillText(String(level),64,67);
+  const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;floorGlyphTextures.set(level,tex);
+ }
+ return floorGlyphTextures.get(level);
+}
+function liftControlColumn(group,s,side,inside){
+ const count=s.lift.levels,spacing=Math.min(.205,(s.lift.cabinHeight-.55)/count),height=count*spacing+.17;
+ const x=side*(s.width/2+(inside?-.10:.14)),z=-Math.max(.30,s.width*.31);
+ const housing=material({color:'#30373c',opacity:1,material:'metal',texture:'none'},{metal:true});
+ box(group,{x,y:.48+height/2,z,width:.065,height,depth:.28},housing,'liftControlHousing');
+ const faceDirection=inside?-side:side;
+ for(let level=0;level<count;level++){
+  const size=Math.min(.15,spacing*.78),y=.58+level*spacing;
+  const key=new THREE.Mesh(new THREE.BoxGeometry(.065,size,size),new THREE.MeshStandardMaterial({color:LIFT_BUTTON_COLORS.idle,roughness:.36,metalness:.25,emissive:LIFT_BUTTON_COLORS.idle,emissiveIntensity:.22}));
+  key.position.set(x+faceDirection*.055,y,z);key.userData.liftLevel=level;key.userData.liftButton=true;key.userData.liftButtonInside=inside;key.userData.liftColor='idle';
+  key.name='Lift level '+(level+1);group.add(key);
+  // The digit faces the user on the visible side of each physical switch.
+  const label=new THREE.Mesh(new THREE.PlaneGeometry(size*.86,size*.86),new THREE.MeshBasicMaterial({map:floorGlyph(level+1),transparent:true,side:THREE.DoubleSide,depthWrite:false}));
+  label.rotation.y=faceDirection*Math.PI/2;label.position.set(x+faceDirection*.092,y,z);label.userData.liftDecoration=true;label.userData.liftButton=true;label.userData.liftLabel=true;label.userData.liftLevel=level;group.add(label);
+ }
+}
+function liftFloorReadout(group,s){
+ const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;
+ const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+ const dark=new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide});
+ const digit=new THREE.Mesh(new THREE.PlaneGeometry(.68,.68),dark);
+ digit.position.set(-s.width/2+.11,Math.min(1.6,s.lift.cabinHeight-.45),0);
+ digit.rotation.y=Math.PI/2;digit.userData.liftReadout={canvas,texture,last:''};digit.name='Lift floor display';group.add(digit);
+}
+export function updateLiftPanel(group){
+ const lift=group?.userData?.stairs?.lift;if(!lift)return;
+ const state=liftPanelState(lift,group.userData.stairRuntime||{height:lift.currentHeight,target:lift.target,moving:false});
+ for(const child of group.children){
+  if(child.userData.liftButton&&!child.userData.liftLabel){const status=state.colors[child.userData.liftLevel];if(child.userData.liftColor!==status){const color=LIFT_BUTTON_COLORS[status];child.material.color.setHex(color);child.material.emissive.setHex(color);child.userData.liftColor=status;}}
+  if(child.userData.liftReadout){const display=String(state.display);if(child.userData.liftReadout.last===display)continue;
+   const {canvas,texture}=child.userData.liftReadout,ctx=canvas.getContext('2d');ctx.fillStyle='#14262b';ctx.fillRect(0,0,256,256);ctx.strokeStyle='#6b9c88';ctx.lineWidth=10;ctx.strokeRect(6,6,244,244);ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#cbffda';ctx.font='bold 188px system-ui';ctx.fillText(display,128,133);texture.needsUpdate=true;child.userData.liftReadout.last=display;
+  }
+ }
+}
 function liftCabin(group,s){
  const {lift}=s,mat=material(s.surface),trim=material(s.rail,{metal:true});const w=s.width,depth=Math.max(1.25,Math.min(3.5,s.width*1.25)),h=lift.cabinHeight;
  // Open front and back: entrance at one end; exit at the destination level.
@@ -66,6 +110,10 @@ function liftCabin(group,s){
   for(const end of [-1,1])box(group,{x:side*(w/2-.04),y:h/2,z:end*(depth/2-.04),width:.08,height:h,depth:.08},trim);
  }
  box(group,{x:0,y:h,z:0,width:w,height:.1,depth},mat);
+ // Floor keys remain attached to the moving cabin: one inside, one outside.
+ liftControlColumn(group,s,1,false);
+ liftControlColumn(group,s,1,true);
+ liftFloorReadout(group,s);
  // Static landing frames at each stop. The runner cancels the cabin's vertical
  // transform on this child, keeping every landing at a fixed world elevation.
  const shaft=new THREE.Group();shaft.name='Lift landings';shaft.userData.stairShaft=true;
@@ -80,10 +128,11 @@ function liftCabin(group,s){
  for(const side of [-1,1])for(const end of [-1,1])box(shaft,{x:side*w/2,y:total/2,z:end*depth/2,width:.045,height:total+.1,depth:.045},trim);
  group.add(shaft);
  group.userData.liftFootprint={width:w,depth};
+ updateLiftPanel(group);
 }
 export function rebuildOfficeStairs(group,params={}){
  const s=sanitiseStairs(params);
- for(const child of [...group.children]){group.remove(child);child.geometry?.dispose();child.material?.dispose?.();}
+ for(const child of [...group.children]){group.remove(child);child.traverse(node=>{node.userData.liftReadout?.texture?.dispose();node.geometry?.dispose?.();node.material?.dispose?.();});}
  group.userData.stairs=s;
  if(s.variant==='lift'){
   liftCabin(group,s);

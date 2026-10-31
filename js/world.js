@@ -518,6 +518,7 @@ export class SolviWorld {
       controller.addEventListener('selectstart',async()=>{
         if(!this.renderer.xr.isPresenting)return;
         const selection=this.xrRaycast(controller);
+        if(selection.liftButton){this.robotEditor?.activateLiftButton(selection.liftButton);return;}
         if(selection.menu){const action=selection.menu.userData.action;if(action==='room'){const select=document.getElementById('roomSelect');if(select&&select.options.length>1){select.selectedIndex=(select.selectedIndex+1)%select.options.length;select.dispatchEvent(new Event('change'));}}else window.solviEditor?.add(action);return;}
         const mediaTarget=selection.mediaTarget||this.xrMediaTarget;
         if((selection.mediaButton||selection.mediaTarget)&&mediaTarget){
@@ -552,6 +553,7 @@ export class SolviWorld {
   xrRaycast(controller){
     controller.updateWorldMatrix(true,false);
     this.raycaster.setFromXRController(controller);
+    const liftButton=this.robotEditor?.hitLiftButton?.(this.raycaster)||null;
     const menu=this.raycaster.intersectObjects(this.xrButtons,false)[0]?.object;
     const mediaButton=this.xrMediaControls?.visible?this.raycaster.intersectObjects(this.xrMediaButtons,false)[0]?.object:null;
     const floor=this.raycaster.intersectObject(this.floor,false)[0];
@@ -560,7 +562,7 @@ export class SolviWorld {
     let mediaTarget=mediaHit?.object;
     while(mediaTarget&&!mediaTarget.userData?.editorKind)mediaTarget=mediaTarget.parent;
     if(mediaHit&&floor&&mediaHit.distance>floor.distance)mediaTarget=null;
-    return {menu,mediaButton,mediaTarget,floor:floor&&validTeleport(floor.point.x,floor.point.z,Math.max(16,this.environment.floorSize/2-1))?floor:null};
+    return {liftButton,menu,mediaButton,mediaTarget,floor:floor&&validTeleport(floor.point.x,floor.point.z,Math.max(16,this.environment.floorSize/2-1))?floor:null};
   }
   teleportTo(landing){
     const session=this.renderer.xr.getSession();

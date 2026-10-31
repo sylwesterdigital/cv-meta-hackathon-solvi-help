@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import {projectPath,pathAt,liftTargetHeight} from './stair-extensions.js';
 import {stairSegments} from './office-stairs-math.js';
 import {moveTransportRider} from './transport-rider.js';
+import {updateLiftPanel} from './office-stairs.js';
+import {liftChime} from './lift-chimes.js';
 const vec=new THREE.Vector3();
 function surfaceHeight(segments,along,total){
  if(!segments.length)return 0;
@@ -25,6 +27,7 @@ export function tickStairTransport(editor,dt){
   if(variant==='lift'){
    runtime.baseY??=device.position.y-runtime.height;
    if(runtime.moving){
+    const wasMoving=runtime.moving;
     const target=liftTargetHeight(cfg.lift,runtime.target),diff=target-runtime.height;
     const delta=Math.sign(diff)*Math.min(Math.abs(diff),step*speed);
     if(Math.abs(diff)<=.005||Math.abs(delta)<.005){runtime.height=target;runtime.moving=false;}
@@ -32,11 +35,13 @@ export function tickStairTransport(editor,dt){
     device.position.y=runtime.baseY+runtime.height;
     if(cfg.lift)cfg.lift.currentHeight=runtime.height;
     carry.y=device.position.y-oldY;
+    if(wasMoving&&!runtime.moving)liftChime('arrival');
     if(phys?.enabled){const body=phys.bodies.get(device.userData.editorId);if(body){const next={x:device.position.x,y:device.position.y,z:device.position.z};body.setTranslation(next,true);body.setNextKinematicTranslation(next);}}
     if(!runtime.moving||performance.now()-runtime.lastSave>1100){runtime.lastSave=performance.now();if(editor.canEdit(device))editor.queueSave(device);}
    }
   }
   if(variant==='lift')for(const child of device.children)if(child.userData.stairShaft)child.position.y=-runtime.height;
+  if(variant==='lift')updateLiftPanel(device);
   if(variant==='lift'&&editor.wallEditTarget===device){const status=document.getElementById('stairLiftState');if(status)status.textContent=runtime.moving?'Travelling to level '+(runtime.target+1):'Stopped · '+runtime.height.toFixed(2)+' m';}
   const segments=variant==='lift'?[]:stairSegments(cfg);
   const pts=cfg.points||[];
@@ -94,7 +99,10 @@ export function startLift(device,target){
  if(config?.variant!=='lift')return false;
  const runtime=device.userData.stairRuntime||={height:config.lift.currentHeight||0,target:config.lift.target||0,moving:false};
  runtime.baseY??=device.position.y-runtime.height;
- runtime.target=Math.max(0,Math.min(config.lift.levels-1,Math.round(Number(target)||0)));config.lift.target=runtime.target;
+ runtime.target=Math.max(0,Math.min(config.lift.levels-1,Math.round(Number(target)||0)));runtime.commanded=true;config.lift.target=runtime.target;
  runtime.moving=Math.abs(runtime.height-liftTargetHeight(config.lift,runtime.target))>.005;
- device.userData.stairRuntime=runtime;return runtime.moving;
+ device.userData.stairRuntime=runtime;
+ if(runtime.moving)liftChime('start');
+ updateLiftPanel(device);
+ return runtime.moving;
 }

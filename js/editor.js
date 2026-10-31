@@ -14,6 +14,7 @@ import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive} from './primitive-pro
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
 import {makeOfficeStairs,rebuildOfficeStairs,sanitiseStairs,stairSegments} from './office-stairs.js';
 import {tickStairTransport,startLift} from './stair-transport.js';
+import {liftButtonRequest} from './lift-panel-state.js';
 import {stairGeometryKey} from './stair-extensions.js';
 import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
@@ -475,7 +476,7 @@ export class SceneEditor{
   for(const id of ['wallTexture','wallSmooth','wallPhysics','wallPreviewMode','wallCeilingHeight','stairStepMode','stairCount','stairTread','stairRiser','stairFloating'])field(id).addEventListener('change',rerender);
   for(const id of extraIds){field(id).addEventListener('change',rerender);if(['number','color'].includes(field(id).type))field(id).addEventListener('input',rerender);}
   field('stairLiftLevels').addEventListener('change',()=>this.refreshLiftLevels());
-  field('stairLiftStart').onclick=()=>{const o=this.wallEditTarget;if(!o||o.userData.stairs?.variant!=='lift'||!this.canEdit(o))return;const before=this.snapshot(o);rebuildOfficeStairs(o,this.readStairOptions(o.userData.stairs?.points));o.userData.physics=physicsOptions({mode:'kinematic'});this.physics.sync(o);this.recordEdit(before,this.snapshot(o));this.queueSave(o);startLift(o,Number(field('stairLiftTarget').value));field('stairLiftState').textContent='Travelling to level '+(Number(field('stairLiftTarget').value)+1);};
+  field('stairLiftStart').onclick=()=>{const o=this.wallEditTarget;if(!o||o.userData.stairs?.variant!=='lift'||!this.canEdit(o))return;const level=Number(field('stairLiftTarget').value);this.activateLiftButton({parent:o,userData:{liftButton:true,liftLevel:level}});};
   field('stairLiftStop').onclick=()=>{const o=this.wallEditTarget;if(o?.userData.stairRuntime){o.userData.stairRuntime.moving=false;field('stairLiftState').textContent='Stopped';}};
   field('wallColor').addEventListener('input',rerender); // Input, not change: update while native colour picker is open.
   for(const id of ['stairCount','stairTread','stairRiser','wallCeilingHeight'])field(id).addEventListener('input',rerender);
@@ -761,6 +762,38 @@ export class SceneEditor{
   this.skipNextWallPanel=true;this.select(wall);this.skipNextWallPanel=false;
   this.refreshList();this.recordEdit(null,this.snapshot(wall));this.queueSave(wall);this.toast('Office wall created');
  }
+ hitLiftButton(raycaster){
+  const buttons=[];
+  for(const lift of this.items){
+   if(lift.userData.editorKind==='stairs'&&lift.userData.stairs?.variant==='lift'){
+    for(const part of lift.children)if(part.userData.liftButton)buttons.push(part);
+   }
+  }
+  if(!buttons.length)return null;
+  // Only actual switches are interactive; decorations and cabin surfaces cannot steal clicks.
+  const hit=raycaster.intersectObjects(buttons,false)[0];
+  if(!hit)return null;
+  // Do not operate controls through another solid object or through the lift wall.
+  const front=raycaster.intersectObjects(this.items,true)[0];
+  if(front&&front.distance<hit.distance-.02&&!front.object.userData.liftDecoration)return null;
+  return hit.object;
+ }
+ activateLiftButton(button){
+  if(!button?.userData.liftButton)return false;
+  let device=button.parent;
+  while(device&&device.userData.editorKind!=='stairs')device=device.parent;
+  if(!device||!this.items.includes(device)||!this.canEdit(device))return false;
+  const target=liftButtonRequest(device.userData.stairs?.lift,button);
+  if(target===null)return false;
+  const started=startLift(device,target);
+  // Destination changes are saved as a compact object update, not a geometry rebuild.
+  this.queueSave(device);
+  if(this.wallEditTarget===device){
+   const destination=byId('stairLiftTarget');if(destination)destination.value=String(target);
+   const status=byId('stairLiftState');if(status)status.textContent=started?'Travelling to level '+(target+1):'At level '+(target+1);
+  }
+  return true;
+ }
  events(){
   const canvas=this.world.renderer.domElement;let startX,startY;
   window.addEventListener('keydown',e=>{if(!byId('wallPanel')||byId('wallPanel').hidden)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.code==='KeyZ'){e.preventDefault();e.stopImmediatePropagation();e.shiftKey?this.redoWall():this.undoWall();return;}if(cmd&&e.code==='KeyY'){e.preventDefault();e.stopImmediatePropagation();this.redoWall();return;}if(!this.wallDrawing)return;if(e.key==='Escape'){e.preventDefault();this.endWallDrawing();}else if(e.key==='Enter'&&!e.target?.closest?.('input,select,textarea')){e.preventDefault();this.finishWallStroke();}},true);
@@ -768,6 +801,29 @@ export class SceneEditor{
   canvas.addEventListener('dblclick',e=>{if(this.wallDrawing){e.preventDefault();e.stopPropagation();this.finishWallStroke();}},true);
   const orbitGesture=new OrbitGesture();
   this.lastPointer={x:innerWidth/2,y:innerHeight/2};window.addEventListener('pointermove',e=>{if(!document.pointerLockElement)this.lastPointer={x:e.clientX,y:e.clientY};},{passive:true});
+  // In-world lift buttons must capture a click before orbit or object selection.
+  let liftPress=null;
+  canvas.addEventListener('pointerdown',e=>{
+   if(e.button!==0||this.wallDrawing||this.faceDrawing||this.curveDrawing)return;
+   this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
+   this.raycaster.setFromCamera(this.pointer,this.world.camera);
+   const button=this.hitLiftButton(this.raycaster);
+   if(!button)return;
+   liftPress={id:e.pointerId,x:e.clientX,y:e.clientY};
+   this.world.controls.enabled=false;e.preventDefault();e.stopImmediatePropagation();
+  },true);
+  canvas.addEventListener('pointerup',e=>{
+   if(!liftPress||e.pointerId!==liftPress.id)return;
+   const initial=liftPress;liftPress=null;
+   if(Math.hypot(e.clientX-initial.x,e.clientY-initial.y)<12){
+    this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
+    this.raycaster.setFromCamera(this.pointer,this.world.camera);
+    const button=this.hitLiftButton(this.raycaster);
+    if(button)this.activateLiftButton(button);
+   }
+   e.solviObjectPicked=true;e.preventDefault();e.stopImmediatePropagation();
+  },true);
+  canvas.addEventListener('pointercancel',()=>{liftPress=null;},true);
   canvas.addEventListener('pointerdown',e=>{
    startX=e.clientX;startY=e.clientY;
    // The first press owns the gesture. Moving over a gizmo cannot steal a camera drag,

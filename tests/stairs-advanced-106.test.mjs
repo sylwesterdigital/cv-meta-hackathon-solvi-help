@@ -39,7 +39,7 @@ test('Add menu and editor expose all transport types and their collapsible field
  const e=read('js/editor.js'),html=read('index.html');
  for(const name of ["stairs advanced","escalator","moving walkway","lift"])assert.ok(e.includes(`'${name}'`),name);
  for(const id of ['stairAdvancedFolds','stairRailEnabled','stairRailRods','stairRoofEnabled','stairRoofWalls','stairSupportEnabled','stairSupportSide','stairSurfaceColor','stairLiftStart','stairLiftStop','stairLiftTarget','stairTransportSpeed','stairTransportDirection'])assert.ok(html.includes(`id="${id}"`),id);
- assert.match(e,/tickStairTransport\(this,dt\)/);assert.match(e,/startLift\(o,Number\(field\('stairLiftTarget'\)/);
+ assert.match(e,/tickStairTransport\(this,dt\)/);assert.match(e,/activateLiftButton\(\{parent:o,userData:\{liftButton:true,liftLevel:level\}\}\)/);
 });
 test('Transport and advanced geometry survive scene serializer and server validation',()=>{
  const e=read('js/editor.js'),server=read('backend/server.py'),archive=read('backend/realm_archives.py'),transport=read('js/stair-transport.js');

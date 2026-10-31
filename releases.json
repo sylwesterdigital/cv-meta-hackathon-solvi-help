@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.107",
+  "currentVersion": "0.2.108",
   "releases": [
+    {
+      "version": "0.2.108",
+      "publishedAt": "2026-10-31T15:20:15Z",
+      "changes": [
+        "Add two small in-world lift control columns (inside and outside cabin) with numbered switches for each configured level.",
+        "Use green idle, red requested destination, and orange passing-floor feedback, plus a continuously updated large floor digit inside the cabin.",
+        "Allow ordinary pointer clicking and WebXR controller-ray selection, routing both through owner/permission-checked lift transport and scene persistence.",
+        "Play quiet synthetic Web Audio start and arrival jingles after an activated button press; no external audio downloads.",
+        "Update only controls/display textures and colours during lift movement; preserve riders, existing kinematic collision and lift settings."
+      ]
+    },
     {
       "version": "0.2.107",
       "publishedAt": "2026-10-31T15:05:45Z",
@@ -330,16 +341,6 @@
         "Backup and restore backend helper modules on rollback so failed upgrades do not leave mixed Python module versions behind.",
         "Preflight importing the deployed backend with isolated temporary SQLite data before restarting the systemd service, failing with a named installer phase if startup imports are broken.",
         "Add backend integration and JavaScript regression checks enforcing local Python module deployment for future releases."
-      ]
-    },
-    {
-      "version": "0.2.75",
-      "publishedAt": "2026-10-30T04:25:08Z",
-      "changes": [
-        "Report exact Ubuntu deployment failure phase and sanitized local/HTTPS health diagnostics, while retaining rollback.",
-        "Wait for versioned local Gunicorn health before treating service start as success.",
-        "Verify HTTPS/Nginx locally with TLS/SNI and loopback hostname resolution; external public health remains verified by Mac watcher.",
-        "Retain v0.2.74 camera, panoramic robot eyes, realm archive, audio-orb and geometry enhancements."
       ]
     }
   ]
