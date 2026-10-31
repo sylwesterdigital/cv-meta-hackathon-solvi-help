@@ -1987,3 +1987,13 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #controlSwitcher .robot-face-choice small{max-width:50px!important;font-size:9px!important}
 #controlSwitcher #controlModeButton{pointer-events:auto!important;max-width:100%!important;font-size:11px!important}
 @media(max-width:750px){#controlSwitcher.control-switcher{left:118px!important;bottom:calc(102px + env(safe-area-inset-bottom))!important;max-width:calc(100vw - 130px)!important}}
+
+/* Advanced stairs use compact, independent collapsible groups. */
+#wallPanel #stairAdvancedFolds{display:grid;gap:4px}
+#wallPanel #stairAdvancedFolds[hidden],#wallPanel .stair-fold[hidden]{display:none!important}
+#wallPanel .stair-fold{border:1px solid color-mix(in srgb,var(--ui-fg,#fff) 15%,transparent);border-radius:7px;overflow:hidden}
+#wallPanel .stair-fold>summary{cursor:pointer;font-size:11px;padding:7px 9px;font-weight:650;user-select:none}
+#wallPanel .stair-fold-body{display:grid;gap:6px;padding:2px 8px 8px}
+#wallPanel .stair-fold .wall-check{display:flex;align-items:center;gap:5px}
+#wallPanel .stair-fold input[type=color]{height:28px;width:100%;min-width:0;padding:2px}
+#wallPanel .stair-fold button{font-size:11px;min-height:28px;padding:4px 6px}

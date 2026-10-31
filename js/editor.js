@@ -13,6 +13,8 @@ import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive} from './primitive-properties.js';
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
 import {makeOfficeStairs,rebuildOfficeStairs,sanitiseStairs,stairSegments} from './office-stairs.js';
+import {tickStairTransport,startLift} from './stair-transport.js';
+import {stairGeometryKey} from './stair-extensions.js';
 import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
 import {robotPathVisible} from './robot-debug.js';
@@ -123,12 +125,12 @@ export class SceneEditor{
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','escalator','moving walkway','lift']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';const head=document.createElement('div');head.className='add-fixed-head';head.append(bar);const content=document.createElement('div');content.className='add-scroll-content';menu.append(head,content);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';head.append(search);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
   search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
-   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else if(k==='media frame'){this.add('media');}else if(k==='walls'){this.startWallDrawing('wall');}else if(k==='closed room'){this.startWallDrawing('wall',true);}else if(k==='stairs'){this.startWallDrawing('stairs');}else if(k==='draw curve in 3d'){this.startCurveDrawing();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}content.append(group);}
+   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else if(k==='media frame'){this.add('media');}else if(k==='walls'){this.startWallDrawing('wall');}else if(k==='closed room'){this.startWallDrawing('wall',true);}else if(k==='stairs'){this.startWallDrawing('stairs');}else if(k==='stairs advanced'){this.startWallDrawing('stairs',false,'advanced');}else if(k==='escalator'){this.startWallDrawing('stairs',false,'escalator');}else if(k==='moving walkway'){this.startWallDrawing('stairs',false,'walkway');}else if(k==='lift'){this.addLift();}else if(k==='draw curve in 3d'){this.startCurveDrawing();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}content.append(group);}
   this.setupWallControls();this.setupSpatialTools();this.setupTextGeometryControls();
   const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton','assetsButton'])toolbox.append(byId(id));
   byId('importModelButton').onclick=()=>byId('modelImportFile').click();byId('quickModelImport').onclick=()=>byId('modelImportFile').click();
@@ -441,6 +443,8 @@ export class SceneEditor{
  setupWallControls(){
   const field=id=>byId(id),panel=field('wallPanel');if(!panel)return;
   field('wallConvertStatic').onclick=()=>this.convertWallToCuttableCubes();
+  const extraIds=['stairRailEnabled','stairRailSide','stairRailRods','stairRailHeight','stairRailWidth','stairRailEvery','stairRailMaterial','stairRailTexture','stairRailColor','stairRailOpacity','stairRoofEnabled','stairRoofWalls','stairRoofHeight','stairRoofThickness','stairRoofTexture','stairRoofColor','stairRoofOpacity','stairSupportEnabled','stairSupportSide','stairSupportEvery','stairSupportWidth','stairSupportTexture','stairSupportColor','stairSupportOpacity','stairSurfaceTexture','stairSurfaceMaterial','stairSurfaceColor','stairSurfaceOpacity','stairTransportEnabled','stairTransportSpeed','stairTransportDirection','stairLiftLevels','stairLiftLevelHeight','stairLiftCabinHeight'];
+  this.stairExtraIds=extraIds;
   const ranges={wallWidth:[.05,4,.01,'m'],wallHeight:[.2,10,.1,'m'],wallOpacity:[.08,1,.02,'']};
   let active='wallHeight';
   const setActive=id=>{active=id;const input=field(id),slider=field('wallValueSlider'),[min,max,step,unit]=ranges[id];
@@ -469,6 +473,10 @@ export class SceneEditor{
   }
   field('wallValueSlider').addEventListener('input',e=>{field(active).value=e.target.value;setActive(active);rerender();});
   for(const id of ['wallTexture','wallSmooth','wallPhysics','wallPreviewMode','wallCeilingHeight','stairStepMode','stairCount','stairTread','stairRiser','stairFloating'])field(id).addEventListener('change',rerender);
+  for(const id of extraIds){field(id).addEventListener('change',rerender);if(['number','color'].includes(field(id).type))field(id).addEventListener('input',rerender);}
+  field('stairLiftLevels').addEventListener('change',()=>this.refreshLiftLevels());
+  field('stairLiftStart').onclick=()=>{const o=this.wallEditTarget;if(!o||o.userData.stairs?.variant!=='lift'||!this.canEdit(o))return;const before=this.snapshot(o);rebuildOfficeStairs(o,this.readStairOptions(o.userData.stairs?.points));o.userData.physics=physicsOptions({mode:'kinematic'});this.physics.sync(o);this.recordEdit(before,this.snapshot(o));this.queueSave(o);startLift(o,Number(field('stairLiftTarget').value));field('stairLiftState').textContent='Travelling to level '+(Number(field('stairLiftTarget').value)+1);};
+  field('stairLiftStop').onclick=()=>{const o=this.wallEditTarget;if(o?.userData.stairRuntime){o.userData.stairRuntime.moving=false;field('stairLiftState').textContent='Stopped';}};
   field('wallColor').addEventListener('input',rerender); // Input, not change: update while native colour picker is open.
   for(const id of ['stairCount','stairTread','stairRiser','wallCeilingHeight'])field(id).addEventListener('input',rerender);
   for(const id of ['wallSnap','wallGridStep','wallAngleStep'])field(id).addEventListener('change',()=>this.drawWallPreview());
@@ -521,17 +529,37 @@ export class SceneEditor{
   }).catch(()=>{this.wallPreviewTextureId='';});
  }
  readWallOptions(points=[]){return sanitiseWall({points,closed:!!(this.wallDrawing?.closed||this.wallEditTarget?.userData?.wall?.closed||byId('wallDrawMode').value==='closed'),width:byId('wallWidth').value,height:byId('wallHeight').value,opacity:byId('wallOpacity').value,texture:byId('wallTexture').value==='custom'&&!this.wallTextureMediaId?'plaster':byId('wallTexture').value,textureMediaId:this.wallTextureMediaId,color:byId('wallColor').value,smooth:byId('wallSmooth').checked});}
- readStairOptions(points=[]){return sanitiseStairs({points,width:byId('wallWidth').value,height:byId('wallHeight').value,opacity:byId('wallOpacity').value,color:byId('wallColor').value,stepMode:byId('stairStepMode').value,steps:Number(byId('stairCount').value),treadMm:Number(byId('stairTread').value),riserMm:Number(byId('stairRiser').value),floating:byId('stairFloating').checked});}
+ readStairOptions(points=[]){
+  const get=id=>{const e=byId(id);return e.type==='checkbox'?e.checked:e.type==='number'?Number(e.value):e.value;};
+  return sanitiseStairs({points,width:get('wallWidth'),height:get('wallHeight'),opacity:get('wallOpacity'),color:get('wallColor'),stepMode:get('stairStepMode'),steps:get('stairCount'),treadMm:get('stairTread'),riserMm:get('stairRiser'),floating:get('stairFloating'),
+   variant:this.wallDrawing?.variant||this.wallEditTarget?.userData.stairs?.variant||'standard',
+   surface:{texture:get('stairSurfaceTexture'),material:get('stairSurfaceMaterial'),color:get('stairSurfaceColor'),opacity:get('stairSurfaceOpacity')},
+   rail:{enabled:get('stairRailEnabled'),side:get('stairRailSide'),rods:get('stairRailRods'),every:get('stairRailEvery'),height:get('stairRailHeight'),width:get('stairRailWidth'),material:get('stairRailMaterial'),texture:get('stairRailTexture'),color:get('stairRailColor'),opacity:get('stairRailOpacity')},
+   roof:{enabled:get('stairRoofEnabled'),walls:get('stairRoofWalls'),height:get('stairRoofHeight'),thickness:get('stairRoofThickness'),texture:get('stairRoofTexture'),color:get('stairRoofColor'),opacity:get('stairRoofOpacity')},
+   supports:{enabled:get('stairSupportEnabled'),side:get('stairSupportSide'),every:get('stairSupportEvery'),width:get('stairSupportWidth'),texture:get('stairSupportTexture'),color:get('stairSupportColor'),opacity:get('stairSupportOpacity')},
+   transport:{enabled:get('stairTransportEnabled'),speed:get('stairTransportSpeed'),direction:get('stairTransportDirection')==='-1'?-1:1},
+   lift:{levels:get('stairLiftLevels'),levelHeight:get('stairLiftLevelHeight'),cabinHeight:get('stairLiftCabinHeight'),target:this.wallEditTarget?.userData.stairs?.lift?.target||0,currentHeight:this.wallEditTarget?.userData.stairs?.lift?.currentHeight||0}
+  });
+ }
+ refreshLiftLevels(){const select=byId('stairLiftTarget');if(!select)return;const previous=select.value;select.replaceChildren();const count=Math.max(2,Math.min(12,Number(byId('stairLiftLevels').value)||2));for(let i=0;i<count;i++){const option=document.createElement('option');option.value=String(i);option.textContent='Level '+(i+1);select.append(option);}select.value=Number(previous)<count?previous:'0';}
+ addLift(){
+  const lift=objectFor('stairs');const point=this.cameraDropPosition(3.2);
+  lift.position.set(point.x,0,point.z);lift.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
+  rebuildOfficeStairs(lift,{variant:'lift',points:[[0,0],[0,2]],width:1.6,height:3,rail:{enabled:false}});
+  lift.name='Lift';lift.userData.physics=physicsOptions({mode:'kinematic'});
+  this.items.push(lift);this.world.scene.add(lift);this.physics.sync(lift);this.select(lift);byId('addMenu').hidden=true;this.refreshList();this.recordEdit(null,this.snapshot(lift));this.queueSave(lift);
+ }
+
  wallSessionState(){
-  return {points:this.wallDrawing?.points.map(p=>({...p}))||null,finished:this.wallDrawing?.finished||false,closed:this.wallDrawing?.closed||false,mode:this.wallDrawing?.mode||'single',
-   values:Object.fromEntries(['wallDrawMode','wallWidth','wallHeight','wallOpacity','wallColor','wallTexture','wallPhysics','wallPreviewMode','wallCeilingHeight','wallSnap','wallGridStep','wallAngleStep','wallSmooth','wallSmoothStrength','stairStepMode','stairCount','stairTread','stairRiser','stairFloating'].map(id=>[id,byId(id).type==='checkbox'?byId(id).checked:byId(id).value])),
+  return {points:this.wallDrawing?.points.map(p=>({...p}))||null,finished:this.wallDrawing?.finished||false,closed:this.wallDrawing?.closed||false,mode:this.wallDrawing?.mode||'single',variant:this.wallDrawing?.variant||'standard',
+   values:Object.fromEntries(['wallDrawMode','wallWidth','wallHeight','wallOpacity','wallColor','wallTexture','wallPhysics','wallPreviewMode','wallCeilingHeight','wallSnap','wallGridStep','wallAngleStep','wallSmooth','wallSmoothStrength','stairStepMode','stairCount','stairTread','stairRiser','stairFloating',...this.stairExtraIds].map(id=>[id,byId(id).type==='checkbox'?byId(id).checked:byId(id).value])),
    textureMediaId:this.wallTextureMediaId,wallPoints:!this.wallDrawing&&this.wallEditTarget?.userData.editorKind==='wall'?structuredClone(this.wallEditTarget.userData.wall?.points):null};
  }
  trackWallState(){if(this.wallRestoring||byId('wallPanel').hidden)return;const next=this.wallSessionState();if(this.wallStateLast)this.wallSessionHistory.push(this.wallStateLast,next);this.wallStateLast=next;}
  restoreWallSessionState(state){if(!state)return;this.wallRestoring=true;
   for(const [id,value] of Object.entries(state.values)){const input=byId(id);if(input.type==='checkbox')input.checked=value;else input.value=value;}
   this.wallTextureMediaId=state.textureMediaId||'';
-  if(this.wallDrawing){Object.assign(this.wallDrawing,{points:state.points||[],finished:state.finished,closed:state.closed,mode:state.mode,cursor:null});this.drawWallPreview();}
+  if(this.wallDrawing){Object.assign(this.wallDrawing,{points:state.points||[],finished:state.finished,closed:state.closed,mode:state.mode,variant:state.variant||'standard',cursor:null});this.drawWallPreview();}
   else if(this.wallEditTarget){const obj=this.wallEditTarget;if(obj.userData.editorKind==='stairs')rebuildOfficeStairs(obj,this.readStairOptions(obj.userData.stairs?.points));else rebuildOfficeWall(obj,this.readWallOptions(state.wallPoints||obj.userData.wall?.points));this.physics.sync(obj);}
   this.wallSetActiveSlider?.('wallHeight');this.wallStateLast=state;this.wallRestoring=false;
  }
@@ -542,9 +570,25 @@ export class SceneEditor{
   if(this.wallEditTarget&&this.wallEditTarget!==wall)this.endWallDrawing();
   const panel=byId('wallPanel');panel.hidden=false;this.wallEditTarget=wall;
   const stair=wall?.userData?.editorKind==='stairs'||this.wallDrawing?.kind==='stairs';
-  const config=stair?sanitiseStairs(wall?.userData?.stairs||{}):sanitiseWall(wall?.userData?.wall||{});
-  panel.querySelector('.panel-title strong').textContent=stair?'Office Space · Stairs':'Office Space · Walls';
-  byId('wallStairOptions').hidden=!stair;byId('wallMaterialOptions').hidden=stair;byId('wallSmoothingOptions').hidden=stair;
+  const config=stair?sanitiseStairs(wall?.userData?.stairs||{variant:this.wallDrawing?.variant||'standard'}):sanitiseWall(wall?.userData?.wall||{});
+  const variant=stair?config.variant:'standard';
+  const title={standard:'Stairs',advanced:'Stairs advanced',escalator:'Escalator',walkway:'Moving walkway',lift:'Lift'}[variant]||'Stairs';
+  panel.querySelector('.panel-title strong').textContent=stair?'Office Space · '+title:'Office Space · Walls';
+  byId('stairAdvancedFolds').hidden=!stair||variant==='standard';
+  byId('stairTransportFold').hidden=!['escalator','walkway','lift'].includes(variant);
+  byId('stairLiftFold').hidden=variant!=='lift';
+  if(stair){
+   const map={stairRailEnabled:config.rail.enabled,stairRailSide:config.rail.side,stairRailRods:config.rail.rods,stairRailHeight:config.rail.height,stairRailWidth:config.rail.width,stairRailEvery:config.rail.every,stairRailMaterial:config.rail.material,stairRailTexture:config.rail.texture,stairRailColor:config.rail.color,stairRailOpacity:config.rail.opacity,
+    stairRoofEnabled:config.roof.enabled,stairRoofWalls:config.roof.walls,stairRoofHeight:config.roof.height,stairRoofThickness:config.roof.thickness,stairRoofTexture:config.roof.texture,stairRoofColor:config.roof.color,stairRoofOpacity:config.roof.opacity,
+    stairSupportEnabled:config.supports.enabled,stairSupportSide:config.supports.side,stairSupportEvery:config.supports.every,stairSupportWidth:config.supports.width,stairSupportTexture:config.supports.texture,stairSupportColor:config.supports.color,stairSupportOpacity:config.supports.opacity,
+    stairSurfaceTexture:config.surface.texture,stairSurfaceMaterial:config.surface.material,stairSurfaceColor:config.surface.color,stairSurfaceOpacity:config.surface.opacity,
+    stairTransportEnabled:config.transport.enabled,stairTransportSpeed:config.transport.speed,stairTransportDirection:config.transport.direction,
+    stairLiftLevels:config.lift.levels,stairLiftLevelHeight:config.lift.levelHeight,stairLiftCabinHeight:config.lift.cabinHeight};
+   for(const [id,value] of Object.entries(map)){const input=byId(id);if(input.type==='checkbox')input.checked=value;else input.value=value;}
+   this.refreshLiftLevels();if(variant==='lift')byId('stairLiftTarget').value=String(Math.min(config.lift.target,config.lift.levels-1));
+  }
+
+  byId('wallStairOptions').hidden=!stair||variant==='lift';byId('wallMaterialOptions').hidden=stair;byId('wallSmoothingOptions').hidden=stair;
   byId('wallPreviewModeRow').hidden=!!wall;byId('wallCeilingRow').hidden=stair;byId('wallDrawMode').querySelector('option[value=closed]').hidden=stair;
   this.wallTextureMediaId=config.textureMediaId||'';
   this.wallEditOriginal=wall?{object:wall,before:this.snapshot(wall),wall:wall.userData.wall?structuredClone(wall.userData.wall):null,stairs:wall.userData.stairs?structuredClone(wall.userData.stairs):null,physics:structuredClone(wall.userData.physics)}:null;
@@ -553,10 +597,10 @@ export class SceneEditor{
   if(stair){byId('stairStepMode').value=config.stepMode;byId('stairCount').value=config.steps;byId('stairTread').value=config.treadMm;byId('stairRiser').value=config.riserMm;byId('stairFloating').checked=config.floating;}
   byId('wallDrawMode').value=stair?'single':config.closed?'closed':'single';
   byId('wallWidth').min=stair?'0.4':'0.05';byId('wallWidth').max=stair?'4':'1.5';byId('wallHeight').min=stair?'0.2':'0.3';
-  byId('wallPhysics').value=wall?.userData?.physics?.mode||'static';byId('wallDrawMode').disabled=!!wall;
+  byId('wallPhysics').value=['escalator','walkway'].includes(variant)?'static':variant==='lift'?'kinematic':(wall?.userData?.physics?.mode||'static');byId('wallPhysics').disabled=['escalator','walkway','lift'].includes(variant);byId('wallDrawMode').disabled=!!wall;
   byId('wallFinish').hidden=!!wall;byId('wallUndo').hidden=false;byId('wallRedo').hidden=false;
   byId('wallSmoothNow').disabled=!wall&&!this.wallDrawing?.points?.length;
-  byId('wallConfirm').disabled=!wall;byId('wallConfirm').textContent=wall?'Save wall':'Create wall';
+  byId('wallConfirm').disabled=!wall;byId('wallConfirm').textContent=wall?'Save '+(stair?'stairs':'wall'):'Create '+(stair?'stairs':'wall');
   byId('wallConvertStatic').hidden=!wall||stair;byId('wallConvertStatic').disabled=!!wall&&!this.canEdit(wall);
   byId('wallStatus').textContent=wall?'Editing selected geometry':'Move pointer over floor to begin';
   byId('wallCloseLoop').hidden=stair||!!wall;this.wallSessionHistory.clear();this.wallStateLast=this.wallSessionState();
@@ -604,9 +648,9 @@ export class SceneEditor{
   this.disposeObject(wall);this.select(parts[0]);this.refreshList();
   this.toast(`${parts.length} static wall section(s) · select a face and press O to cut`);
  }
- startWallDrawing(kind='wall',closed=false){
+ startWallDrawing(kind='wall',closed=false,variant='standard'){
   this.endWallDrawing();byId('addMenu').hidden=true;
-  this.wallDrawing={kind,points:[],cursor:null,mode:closed?'closed':'single',closed,drawing:false,finished:false};
+  this.wallDrawing={kind,variant,points:[],cursor:null,mode:closed?'closed':'single',closed,drawing:false,finished:false};
   this.openWallPanel();byId('wallDrawMode').value=closed?'closed':'single';this.wallDrawing.mode=byId('wallDrawMode').value;this.wallStateLast=this.wallSessionState();
   this.world.controls.enabled=false;this.transform.detach();
  }
@@ -700,7 +744,7 @@ export class SceneEditor{
    const before=this.wallEditOriginal?.before||this.snapshot(target);
    if(target.userData.editorKind==='stairs')rebuildOfficeStairs(target,this.readStairOptions(target.userData.stairs?.points));
    else rebuildOfficeWall(target,this.readWallOptions(target.userData.wall?.points));
-   target.userData.physics=physicsOptions({mode:byId('wallPhysics').value});this.physics.sync(target);
+   target.userData.physics=physicsOptions({mode:target.userData.stairs?.variant==='lift'?'kinematic':['escalator','walkway'].includes(target.userData.stairs?.variant)?'static':byId('wallPhysics').value});this.physics.sync(target);
    this.wallEditOriginal=null;this.recordEdit(before,this.snapshot(target));this.queueSave(target);
    this.endWallDrawing();this.toast('Wall updated');return;
   }
@@ -710,9 +754,9 @@ export class SceneEditor{
   if(points.length<2)return this.toast('Draw at least two points');
   const local=wallWorldToLocal(points);const stairs=draft.kind==='stairs';const options=stairs?this.readStairOptions(local.points):this.readWallOptions(local.points);
   if(!stairs)options.closed=draft.closed;const wall=objectFor(stairs?'stairs':'wall');
-  wall.position.set(local.origin.x,0,local.origin.z);wall.name=stairs?'Office stairs':options.closed?'Closed room':'Office wall';
+  wall.position.set(local.origin.x,0,local.origin.z);wall.name=stairs?({advanced:'Stairs advanced',escalator:'Escalator',walkway:'Moving walkway',lift:'Lift'}[options.variant]||'Office stairs'):options.closed?'Closed room':'Office wall';
   wall.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
-  wall.userData.physics=physicsOptions({mode:byId('wallPhysics').value});if(stairs)rebuildOfficeStairs(wall,options);else rebuildOfficeWall(wall,options);
+  wall.userData.physics=physicsOptions({mode:stairs&&options.variant==='lift'?'kinematic':stairs&&['escalator','walkway'].includes(options.variant)?'static':byId('wallPhysics').value});if(stairs)rebuildOfficeStairs(wall,options);else rebuildOfficeWall(wall,options);
   this.items.push(wall);this.world.scene.add(wall);this.physics.sync(wall);this.endWallDrawing();
   this.skipNextWallPanel=true;this.select(wall);this.skipNextWallPanel=false;
   this.refreshList();this.recordEdit(null,this.snapshot(wall));this.queueSave(wall);this.toast('Office wall created');
@@ -1012,7 +1056,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     (this.controlMode==='robot'&&this.selected===obj&&this.canEdit(obj))||
     Boolean(obj.userData.robotImpactVelocity));
   if(!preserveRobotPose){obj.position.fromArray(entry.position);obj.rotation.fromArray(entry.rotation);}
-  obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'&&JSON.stringify(obj.userData.stairs)!==JSON.stringify(entry.stairs))rebuildOfficeStairs(obj,entry.stairs||{});if(entry.kind==='curve'&&JSON.stringify(obj.userData.curve)!==JSON.stringify(cleanCurve(entry.curve))){obj.userData.curve=cleanCurve(entry.curve);obj.geometry.dispose();obj.geometry=buildCurveGeometry(obj.userData.curve);}if(entry.kind==='text'&&(isNew||JSON.stringify(obj.userData.text)!==JSON.stringify(cleanText(entry.text))))rebuildText(obj,entry.text,()=>{if(this.items.includes(obj))this.physics.sync(obj);});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive),holes=entry.kind==='cube'?cleanOpenings(entry.openings):[];if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)||JSON.stringify(obj.userData.openings||[])!==JSON.stringify(holes)){const prior=obj.geometry;obj.geometry=entry.kind==='cube'?cutCubeGeometry(next,holes):buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;if(entry.kind==='cube')obj.userData.openings=holes;}
+  obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'){if(stairGeometryKey(obj.userData.stairs)!==stairGeometryKey(entry.stairs))rebuildOfficeStairs(obj,entry.stairs||{});else if(entry.stairs)obj.userData.stairs=structuredClone(entry.stairs);}if(entry.kind==='curve'&&JSON.stringify(obj.userData.curve)!==JSON.stringify(cleanCurve(entry.curve))){obj.userData.curve=cleanCurve(entry.curve);obj.geometry.dispose();obj.geometry=buildCurveGeometry(obj.userData.curve);}if(entry.kind==='text'&&(isNew||JSON.stringify(obj.userData.text)!==JSON.stringify(cleanText(entry.text))))rebuildText(obj,entry.text,()=>{if(this.items.includes(obj))this.physics.sync(obj);});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive),holes=entry.kind==='cube'?cleanOpenings(entry.openings):[];if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)||JSON.stringify(obj.userData.openings||[])!==JSON.stringify(holes)){const prior=obj.geometry;obj.geometry=entry.kind==='cube'?cutCubeGeometry(next,holes):buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;if(entry.kind==='cube')obj.userData.openings=holes;}
   if(entry.color&&entry.kind!=='model'&&entry.kind!=='media'){obj.traverse(node=>{if(node.material?.color&&node.userData.editorKind!=='robot'){
    if(node.isMesh&&!node.userData.robotPlaceholder&&entry.kind==='robot')return;
    if(node.material.color.getHexString()!==entry.color.slice(1))node.material.color.set(entry.color);
@@ -1225,7 +1269,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
         o.userData.lastMissionSave=now;this.queueSave(o);
       }
     },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot)}));
-    this.physics.tick(dt);this.updateMountedMedia();
+    this.physics.tick(dt);tickStairTransport(this,dt);this.updateMountedMedia();
     for(const r of this.items){if(r.userData.editorKind!=='robot')continue;const previous=previousRobotPositions.get(r.userData.editorId);if(!previous)continue;const distance=Math.hypot(r.position.x-previous.x,r.position.z-previous.z);r.userData.robotActualSpeed=distance/Math.max(.016,dt);}
     animateRobots(this.items,dt,(actor,kind,force,remote)=>{
       const hits=this.physics.applyCombat(actor,kind,force,remote);

@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.105',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.106',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3047,7 +3047,7 @@ def valid_office_wall(wall):
     return isinstance(wall.get('smooth',False),bool) and isinstance(wall.get('closed',False),bool)
 
 def valid_office_stairs(stairs):
-    if not isinstance(stairs,dict) or len(stairs)>12:return False
+    if not isinstance(stairs,dict) or len(stairs)>18:return False
     pts=stairs.get('points')
     if not isinstance(pts,list) or not 2<=len(pts)<=80:return False
     if any(not isinstance(p,list) or len(p)!=2 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or abs(v)>500 for v in p) for p in pts):return False
@@ -3055,7 +3055,32 @@ def valid_office_stairs(stairs):
     for key,lo,hi in (('width',.4,4),('height',.2,10),('steps',1,80),('treadMm',35,800),('riserMm',60,280),('opacity',.08,1)):
         v=stairs.get(key)
         if not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not lo<=v<=hi:return False
-    return stairs.get('stepMode') in ('fixed','count') and isinstance(stairs.get('floating'),bool) and isinstance(stairs.get('color'),str) and re.fullmatch(r'#[0-9a-fA-F]{6}',stairs['color']) is not None
+    if stairs.get('stepMode') not in ('fixed','count') or not isinstance(stairs.get('floating'),bool) or not isinstance(stairs.get('color'),str) or re.fullmatch(r'#[0-9a-fA-F]{6}',stairs['color']) is None:return False
+    if 'variant' not in stairs:return True  # Existing saved stairs from earlier releases.
+    if stairs['variant'] not in ('standard','advanced','escalator','walkway','lift'):return False
+    # Reject unsupported nested keys: geometry costs are bounded by validated counts.
+    def structured(name,keys,nums,choices,flags=()):
+        value=stairs.get(name)
+        if not isinstance(value,dict) or set(value)!=set(keys):return False
+        for key,low,high in nums:
+            v=value.get(key)
+            if isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or not low<=v<=high:return False
+        for key,allowed in choices:
+            if value.get(key) not in allowed:return False
+        for key in flags:
+            if not isinstance(value.get(key),bool):return False
+        for key in keys:
+            if key.endswith('color') or key=='color':
+                if not isinstance(value.get(key),str) or not re.fullmatch(r'#[a-fA-F0-9]{6}',value[key]):return False
+        return True
+    if not structured('surface',('texture','color','opacity','material'),(('opacity',.08,1),),(('texture',('none','concrete','bricks','plaster','tiles','metal')),('material',('matte','metal','glass')))):return False
+    if not structured('rail',('enabled','side','height','width','rods','every','color','opacity','material','texture'),(('height',.35,2),('width',.02,.25),('rods',1,5),('every',1,8),('opacity',.15,1)),(('side',('both','left','right')),('material',('metal','wood','glass')),('texture',('none','concrete','bricks','plaster','metal'))),('enabled',)):return False
+    if not structured('roof',('enabled','height','thickness','walls','color','opacity','texture'),(('height',1.75,5),('thickness',.03,.4),('opacity',.1,1)),(('texture',('none','concrete','bricks','plaster','metal')),),('enabled','walls')):return False
+    if not structured('supports',('enabled','side','every','width','color','opacity','texture'),(('every',1,16),('width',.04,.65),('opacity',.1,1)),(('side',('both','left','right','center')),('texture',('none','concrete','bricks','plaster','metal'))),('enabled',)):return False
+    if not structured('transport',('speed','direction','enabled'),(('speed',.05,2.5),),(('direction',(-1,1)),),('enabled',)):return False
+    if not structured('lift',('levels','levelHeight','target','cabinHeight','currentHeight'),(('levels',2,12),('levelHeight',1.8,8),('target',0,11),('cabinHeight',1.8,4),('currentHeight',0,96)),()):return False
+    if stairs['variant']=='lift' and stairs['lift']['target']>=stairs['lift']['levels']:return False
+    return True
 
 def valid_curve_geometry(curve):
     if not isinstance(curve,dict) or len(curve)>9:return False

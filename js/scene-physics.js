@@ -1,6 +1,7 @@
 import {landingAnimationKind,easedStepOffset} from './animation-tuning.js';
 import * as THREE from 'three';
 import {physicsOptions} from './physics-options.js';
+import {stairGeometryKey} from './stair-extensions.js';
 import {CHARACTER,characterMotion,resolveCharacterMotion,easedRemotePose} from './character-physics.js';
 import {robotPushVector,pushedWalkState} from './robot-push.js';
 import {approachingRobotContact,ROBOT_CONTACT_DISTANCE} from './robot-contact.js';
@@ -122,7 +123,7 @@ export class ScenePhysics{
   if(!isRobot&&opts.mode==='off'){this.remove(id);return;}
   const owner=this.owns(object);
   const type=isRobot?'avatar':opts.mode==='dynamic'&&!owner?'remote-dynamic':opts.mode;
-  const signature=`${kind}|${type}|${JSON.stringify(opts)}|${kind==='wall'?JSON.stringify(object.userData.wall):kind==='stairs'?JSON.stringify(object.userData.stairs):kind==='cube'?JSON.stringify(object.userData.openings):kind==='curve'?JSON.stringify(object.userData.curve):''}|${object.scale.toArray().join(',')}|${kind==='model'?(object.userData.modelUrl||'')+':'+Boolean(object.userData.modelReady):''}`;
+  const signature=`${kind}|${type}|${JSON.stringify(opts)}|${kind==='wall'?JSON.stringify(object.userData.wall):kind==='stairs'?stairGeometryKey(object.userData.stairs):kind==='cube'?JSON.stringify(object.userData.openings):kind==='curve'?JSON.stringify(object.userData.curve):''}|${object.scale.toArray().join(',')}|${kind==='model'?(object.userData.modelUrl||'')+':'+Boolean(object.userData.modelReady):''}`;
   const existing=this.bodies.get(id);
   if(existing&&this.settings.get(id)===signature){
    // A remote object may be edited in place without allocating a new collider.
@@ -149,7 +150,7 @@ export class ScenePhysics{
    // Compound collider, one capsule-safe box per segment. Do not use a single
    // enclosing AABB that incorrectly blocks an open room / U-shaped wall.
    for(const segment of object.children){
-    if(!segment.userData.wallSegment&&!segment.userData.stairTread)continue;
+    if(!segment.userData.wallSegment&&!segment.userData.stairTread&&!(segment.userData.stairStructure&&segment.geometry?.type==='BoxGeometry'&&kind==='stairs'&&['advanced','escalator','walkway'].includes(object.userData.stairs?.variant)))continue;
     const size=segment.geometry.parameters;
     const scale=object.scale;
     const halfX=Math.max(.025,size.width*Math.abs(scale.x)/2),halfY=Math.max(.025,size.height*Math.abs(scale.y)/2),halfZ=Math.max(.025,size.depth*Math.abs(scale.z)/2);
