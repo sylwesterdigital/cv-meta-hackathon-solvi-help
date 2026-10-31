@@ -5,8 +5,8 @@ import {CAMERA_FOLLOW_MODES,nextCameraMode,followAnchor,rotateByYaw,localOrbitOf
 const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 const near=(a,b,epsilon=1e-8)=>assert.ok(Math.abs(a-b)<epsilon,`${a} ≠ ${b}`);
 test('bottom button cycles free -> inertial chase -> orbit follow -> free',()=>{
- assert.deepEqual(CAMERA_FOLLOW_MODES,['free','chase','orbit']);
- assert.equal(nextCameraMode('free'),'chase');assert.equal(nextCameraMode('chase'),'orbit');assert.equal(nextCameraMode('orbit'),'free');
+ assert.deepEqual(CAMERA_FOLLOW_MODES,['free','chase','chase-smart','orbit']);
+ assert.equal(nextCameraMode('free'),'chase');assert.equal(nextCameraMode('chase'),'chase-smart');assert.equal(nextCameraMode('chase-smart'),'orbit');assert.equal(nextCameraMode('orbit'),'free');
  assert.match(read('index.html'),/id="cameraFollowButton"[^>]+data-mode="free"/);
  assert.match(read('js/world.js'),/followButton\.addEventListener\('click',\(\)=>this\.setCameraFollowMode\(nextCameraMode\(this\.cameraFollowMode\)\)\)/);
 });
@@ -42,7 +42,7 @@ test('chase inertia is frame-rate independent and XR is excluded',()=>{
 test('manual numpad camera views remain active in orbit-follow rather than being overwritten',()=>{
  const code=read('js/world.js');
  assert.match(code,/syncFollowAfterManualView\(\)/);
- assert.match(code,/if\(this\.cameraFollowMode==='chase'\)this\.setCameraFollowMode\('orbit'\)/);
+ assert.match(code,/if\(\['chase','chase-smart'\]\.includes\(this\.cameraFollowMode\)\)this\.setCameraFollowMode\('orbit'\)/);
  assert.match(code,/this\.camera\.lookAt\(center\);this\.controls\.update\(\);this\.syncFollowAfterManualView\(\)/);
 });
 test('follow status persists locally and does not add any websocket payload',()=>{

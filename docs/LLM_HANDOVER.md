@@ -1,7 +1,9 @@
+> **v0.2.96 addendum (31 October 2026):** New Camera Chase Smart with angular threshold and smooth heading catch-up; draggable default-minimized World Tools; per-profile last-realm restoration and stale-scene-load guards; media blob request deduplication and viewport-lazy attachment loading; an admin-only full-room transcript export then exactly confirmed per-room chat flush (chat media/scene files retained). The screenshots showed a browser RESULT_CODE_HUNG and hundreds of blob requests, but live performance gains are not established without browser verification. The deployment watcher must run Flask tests before publishing.
+
 # SOLVI.help — Master Project Handover for the Next LLM / Developer
 
 **Document status:** Engineering handover prepared 31 October 2026.  
-**Latest source prepared in this handover:** v0.2.95, **Profile-based, application-wide administrator session**.  
+**Latest source prepared in this handover:** v0.2.96, **Profile-based, application-wide administrator session**.  
 **Previous distributed release:** v0.2.94, `SOLVI_RELEASE_v0.2.94_FLASK_SCENE_REVISION_TEST_FIX.zip`.  
 **Production warning:** The latest **explicitly confirmed successful** deployment in the available conversation was **v0.2.79**, at 2026-10-30 12:40:09 UTC. Many later releases were prepared and tested, but **do not infer production deployment from an artifact link**. v0.2.93 explicitly failed backend tests and did not deploy. Request a fresh watcher log or `/api/health` result to establish the actual live version. A deployment ZIP is not deployment evidence.
 

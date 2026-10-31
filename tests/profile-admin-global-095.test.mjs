@@ -33,7 +33,7 @@ test('Backend verifies admin for protected operations, offers revocation, and ma
 
 test('Versioned browser modules include the updated runtime and handover is packaged',()=>{
  const html=read('index.html');
- for(const js of ['studio.js','avatar-gallery.js','asset-gallery.js','editor.js'])assert.ok(html.includes('./js/'+js+'?v=0.2.95'));
+ for(const js of ['studio.js','avatar-gallery.js','asset-gallery.js','editor.js'])assert.ok(html.includes('./js/'+js+'?v='+JSON.parse(read('package.json')).version));
  assert.match(read('docs/LLM_HANDOVER.md'),/Master Project Handover/);
 });
 

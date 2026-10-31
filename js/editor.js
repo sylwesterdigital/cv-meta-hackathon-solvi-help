@@ -174,16 +174,16 @@ export class SceneEditor{
 
   const toolsPanel=byId('editorToolbox'),toolsLauncher=byId('toolsToggleButton');
   const showTools=visible=>{
-    toolsPanel.hidden=!visible;toolsPanel.classList.remove('minimized');
+    toolsPanel.hidden=false;toolsPanel.classList.toggle('minimized',!visible);localStorage.setItem('solvi-tools-minimized',visible?'0':'1');
     toolsLauncher.setAttribute('aria-expanded',String(visible));
     toolsLauncher.setAttribute('aria-label',visible?'Hide world tools':'Open world tools');
     toolsLauncher.title=visible?'Hide world tools':'Open world tools';
   };
-  toolsLauncher.onclick=()=>showTools(toolsPanel.hidden);
+  toolsLauncher.onclick=()=>showTools(toolsPanel.classList.contains('minimized'));
   byId('toolboxMinimize').textContent='';
-  byId('toolboxMinimize').onclick=()=>showTools(false);
+  byId('toolboxMinimize').onclick=()=>showTools(toolsPanel.classList.contains('minimized'));
   // Old persisted minimize state must not leave a stray title or icon on screen.
-  toolsPanel.classList.remove('minimized');toolsPanel.hidden=true;
+  showTools(localStorage.getItem('solvi-tools-minimized')==='0');
 
   const openMenu=(x,y)=>{menu.hidden=false;menu.style.right='auto';menu.style.left=Math.max(8,Math.min(innerWidth-275,x))+'px';menu.style.top=Math.max(54,Math.min(innerHeight-370,y))+'px';search.value='';for(const b of menu.querySelectorAll('.add-group button'))b.hidden=false;};
   this.showAddMenu=openMenu;
@@ -927,7 +927,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   try{
    const room=window.solviRoom||'main';
    const data=await api.req('/api/scene?room='+encodeURIComponent(room));
-   this.revision=data.revision;
+   if(room!==(window.solviRoom||'main'))return;this.revision=data.revision;
    if(this.lastLoadedRoom===room&&this.items.length){
     // Merge revisions without destroying every GLB and its animation mixer.
     const next=new Set((data.objects||[]).map(o=>o.id));

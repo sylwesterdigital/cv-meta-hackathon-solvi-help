@@ -31,6 +31,7 @@ export class LiveRoom{
         if(m.type==='room-policy'&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:world-policy',{detail:m}));
         if(m.type==='room-environment'&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:room-environment',{detail:m}));
         if(m.type==='chat-created'&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:chat-updated'));
+        if(m.type==='chat_cleared'&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:room-chat-cleared',{detail:m}));
         if(m.type==='scene-changed'&&(m.by!==this.id||m.reason==='robot-preference')&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:scene-changed',{detail:m}));
       }catch(e){console.warn('Invalid room message',e);}
     };

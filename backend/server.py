@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.95',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.96',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -825,6 +825,44 @@ def messages():
     for m in items:
         if m['role']=='assistant' and m.get('speaker') in portraits:m['avatar']=portraits[m['speaker']]
     return jsonify(messages=items)
+
+# Room-scoped administrator transcript tools. Export precedes any destructive action.
+@app.get('/api/admin/room-chat/export')
+def admin_room_chat_export():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    if not admin_authorized():return json_error('Administrator unlock required',403)
+    room_id=selected_room(request.args.get('room','main'))
+    if not room_id:return json_error('Unknown realm',404)
+    with db() as con:
+        rows=con.execute("SELECT m.id,m.room_id,m.role,m.model,m.text,m.media,m.created,m.latency_ms,m.speaker_override,m.user_id,u.name AS author FROM messages m JOIN users u ON m.user_id=u.id WHERE m.room_id=? ORDER BY m.created,m.id",(room_id,)).fetchall()
+        title=con.execute('SELECT title FROM rooms WHERE id=?',(room_id,)).fetchone()
+    # Media IDs are preserved, but media binaries are not bundled in a chat transcript.
+    return jsonify(format='solvi-room-transcript-v1',room=room_id,title=title['title'] if title else room_id,exported=now(),count=len(rows),messages=[dict(row) for row in rows])
+
+@app.post('/api/admin/room-chat/clear')
+def admin_room_chat_clear():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    if not admin_authorized():return json_error('Administrator unlock required',403)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room',''))
+    if not room_id:return json_error('Unknown realm',404)
+    with db() as con:
+        title=con.execute('SELECT title FROM rooms WHERE id=?',(room_id,)).fetchone()
+        if not title:return json_error('Unknown realm',404)
+        # Exact realm name + explicit confirmation prevents accidental global deletion.
+        if data.get('confirm') is not True or data.get('exact_name')!=title['title']:
+            return json_error('Type the exact realm name and confirm before clearing chat',400)
+        ids=[r['id'] for r in con.execute('SELECT id FROM messages WHERE room_id=?',(room_id,)).fetchall()]
+        con.execute('DELETE FROM robot_discussion_turns WHERE message_id IN (SELECT message_id FROM robot_discussions WHERE room_id=?)',(room_id,))
+        con.execute('DELETE FROM robot_discussions WHERE room_id=?',(room_id,))
+        # Scoped deletes for any associated chat reaction rows.
+        for identifier in ids:con.execute('DELETE FROM robot_reactions WHERE message_id=?',(identifier,))
+        con.execute('DELETE FROM messages WHERE room_id=?',(room_id,))
+    publish({'type':'chat_cleared','room':room_id},room_id=room_id)
+    audit_event('admin-chat-cleared',room=room_id,count=len(ids))
+    return jsonify(ok=True,room=room_id,deleted=len(ids))
 
 MEDIA_TYPES={'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/gif':'.gif',
              'audio/webm':'.webm','audio/ogg':'.ogg','audio/wav':'.wav','audio/mpeg':'.mp3','audio/mp4':'.m4a',

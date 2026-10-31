@@ -1,5 +1,5 @@
 /** Pure camera geometry helpers; Three.js and the renderer stay in world.js. */
-export const CAMERA_FOLLOW_MODES=Object.freeze(['free','chase','orbit']);
+export const CAMERA_FOLLOW_MODES=Object.freeze(['free','chase','chase-smart','orbit']);
 export function nextCameraMode(mode){
   const i=CAMERA_FOLLOW_MODES.indexOf(mode);
   return CAMERA_FOLLOW_MODES[(i+1)%CAMERA_FOLLOW_MODES.length];
@@ -38,3 +38,14 @@ export function chaseOffset(distance){
 export function smoothFactor(dt,response){
   return 1-Math.exp(-Math.max(0,dt)*Math.max(0,response));
 }
+
+/** Hold the orbit azimuth during minor turns, follow larger headings smoothly. */
+export function wrapAngle(a){return Math.atan2(Math.sin(a),Math.cos(a));}
+export function chaseSmartStep(previous,heading,thresholdDeg=35,dt=1/60,engaged=false){
+ const error=wrapAngle(heading-previous);
+ const threshold=Math.max(5,Math.min(120,Number(thresholdDeg)||35))*Math.PI/180;
+ const following=engaged?Math.abs(error)>.025:Math.abs(error)>threshold;
+ return {yaw:following?wrapAngle(previous+error*smoothFactor(dt,3.2)):previous,engaged:following};
+}
+export function chaseSmartYaw(previous,heading,thresholdDeg=35,dt=1/60){return chaseSmartStep(previous,heading,thresholdDeg,dt).yaw;}
+

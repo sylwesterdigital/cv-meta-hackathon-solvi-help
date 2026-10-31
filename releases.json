@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.95",
+  "currentVersion": "0.2.96",
   "releases": [
+    {
+      "version": "0.2.96",
+      "publishedAt": "2026-10-31T02:45:14Z",
+      "changes": [
+        "Add Camera: Chase Smart with a user-adjustable heading threshold (5\u2013120\u00b0, default 35\u00b0); a small turn leaves the camera heading steady, a substantial turn triggers smooth inertial follow.",
+        "Keep World Tools on screen as a draggable minimized title bar by default, with one-click restore, saved location and prior minimize state.",
+        "Remember the last accessible realm per profile across refreshes; update the selected realm title immediately and reject stale scene loads after fast realm switches.",
+        "Avoid blocking first scene render on chat history; deduplicate authenticated portrait and attachment downloads and lazy-load only chat media near the visible viewport.",
+        "Give globally unlocked administrators full-room chat export (not just the latest 80), followed by exact-realm-name confirmed chat clearing; server enforces admin session and room scope, keeps scene assets and other realms, and notifies connected clients."
+      ]
+    },
     {
       "version": "0.2.95",
       "publishedAt": "2026-10-31T02:16:30Z",
@@ -327,17 +338,6 @@
       "changes": [
         "Reissue the complete scene media, drag-and-drop chat and video-screen release under v0.2.63 because the deployment watcher had already recorded v0.2.62 as deployed and rejects duplicate version numbers.",
         "Preserve all v0.2.62 scene-media and HLS endpoint code unchanged; update frontend, backend, installer, release catalog and manifest version in lockstep."
-      ]
-    },
-    {
-      "version": "0.2.62",
-      "publishedAt": "2026-10-29T17:17:25Z",
-      "changes": [
-        "Let dragged image/video files be routed either into Messages as attachments or into the 3D realm as scene media surfaces, while preserving existing GLB/FBX drag-import.",
-        "Add a new media scene object type for picture-frame and TV-style panels: uploaded images map to the front face, and uploaded videos render as playable screen textures.",
-        "Provide configurable media-surface back sides (white, black or mirror) plus in-Properties Play/Pause, Mute/Unmute and direct-vs-HLS source controls for video surfaces.",
-        "Support authenticated backend HLS generation for uploaded videos when FFmpeg is available, while keeping direct-file playback as the default fallback.",
-        "Allow chat-composer drag-and-drop attachments directly, and add regression coverage for release metadata plus the new media-surface editor/backend integration points."
       ]
     }
   ]

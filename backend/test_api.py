@@ -1080,6 +1080,28 @@ assert len(c.get('/api/avatars',headers=headers).get_json()['avatars'])>=1
 
 print('PASS: speech endpoint authentication, STT health and valid GLB avatar upload')
 
+# Admin transcript endpoints export all messages, not only the 80-row chat view,
+# and clear only the exact selected realm after administrator unlock.
+from server import sha as _admin_sha
+with db() as con:
+    con.execute('INSERT OR REPLACE INTO admin_sessions(token_hash,expires) VALUES(?,?)',(_admin_sha('chat-admin-test-token'),float('4102444800')))
+chat_admin={**headers,'X-Solvi-Admin':'chat-admin-test-token'}
+assert c.get('/api/admin/room-chat/export?room=main',headers=headers).status_code==403
+assert c.post('/api/admin/room-chat/clear',headers=headers,json={'room':'main','exact_name':'Main realm','confirm':True}).status_code==403
+before_export=c.get('/api/admin/room-chat/export?room=main',headers=chat_admin)
+assert before_export.status_code==200,(before_export.status_code,before_export.data)
+assert before_export.get_json()['format']=='solvi-room-transcript-v1'
+main_before=len(before_export.get_json()['messages'])
+lab_before=c.get('/api/admin/room-chat/export?room=lab',headers=chat_admin).get_json()['count']
+assert c.post('/api/admin/room-chat/clear',headers=chat_admin,json={'room':'main','confirm':True,'exact_name':'incorrect'}).status_code==400
+assert c.post('/api/admin/room-chat/clear',headers=chat_admin,json={'room':'main','confirm':False,'exact_name':'Main realm'}).status_code==400
+cleared=c.post('/api/admin/room-chat/clear',headers=chat_admin,json={'room':'main','confirm':True,'exact_name':'Main realm'})
+assert cleared.status_code==200,(cleared.status_code,cleared.data)
+assert cleared.get_json()['deleted']==main_before
+assert c.get('/api/messages?room=main',headers=headers).get_json()['messages']==[]
+assert c.get('/api/admin/room-chat/export?room=lab',headers=chat_admin).get_json()['count']==lab_before
+print('PASS: admin transcript exports complete room chat, exact-name flush, unrelated rooms unaffected')
+
 # Logging out revokes the token server-side; the same browser tab cannot use it again.
 assert c.post('/api/logout',headers=headers,json={}).status_code==200
 assert c.get('/api/me',headers=headers).status_code==401

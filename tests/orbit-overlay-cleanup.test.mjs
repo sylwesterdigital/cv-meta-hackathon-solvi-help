@@ -20,14 +20,14 @@ test('overlay chat hit-testing passes empty areas to 3D canvas, not active messa
  assert.match(css,/#chatPanel:not\(\.windowed\),#chatPanel:not\(\.windowed\) \.chat-feed\{pointer-events:none!important\}/);
  assert.match(css,/#chatPanel:not\(\.windowed\) \.chat-row.*pointer-events:auto!important/s);
 });
-test('world tool launcher replaces orphaned minimized panels and is visible in compact nav',()=>{
+test('world tools remain a draggable minimized toolbar and are visible in compact nav',()=>{
  assert.ok(html.includes('id="toolsToggleButton"'));
  assert.ok(html.includes('id="editorToolbox" class="editor-toolbox" hidden'));
  assert.ok(html.includes('id="scenePanel" class="scene-panel" hidden'));
  assert.ok(css.includes(':not(#realmGalleryButton):not(#devLogNavButton):not(#webcamButton)'));
- assert.match(editor,/toolsLauncher\.onclick=\(\)=>showTools\(toolsPanel\.hidden\)/);
+ assert.match(editor,/toolsLauncher\.onclick=\(\)=>showTools\(toolsPanel\.classList\.contains\('minimized'\)\)/);
  assert.match(editor,/byId\('minimizeScenePanel'\)\.onclick=\(\)=>\{/);
- assert.match(css,/#editorToolbox\.minimized,#scenePanel\.minimized\{display:none!important\}/);
+ assert.match(css,/#editorToolbox\.editor-toolbox\.minimized\{display:block!important/);
 });
 test('scene orbit stays independent from robot follow and is available at canvas pointerdown',()=>{
  assert.match(world,/this\.setCameraFollowMode\('free'\)/);
