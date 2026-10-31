@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.94",
+  "currentVersion": "0.2.95",
   "releases": [
+    {
+      "version": "0.2.95",
+      "publishedAt": "2026-10-31T02:16:30Z",
+      "changes": [
+        "Move application-wide Administrator login, active status, dashboard and Lock Admin into the signed-in Profile drawer; remove duplicate inline password entry from Avatar Edit.",
+        "Share a short-lived server-verified administrator session across authenticated API requests and protected WebSocket robot events, Realms, Avatar/Asset libraries, AI settings, diagnostics and scene ownership checks.",
+        "Add server-side POST /api/admin/logout to revoke the temporary administrator token without signing out the ordinary profile; keep admin tokens in tab memory only and expire after the server window.",
+        "Refresh editor and gallery permission controls when administrator access changes, while maintaining all server-side protection and permanent-delete confirmations.",
+        "Include extensive LLM_HANDOVER.md covering SOLVI architecture, operations, history, deployment/test failures, security, UX/physics priorities and future context transfer."
+      ]
+    },
     {
       "version": "0.2.94",
       "publishedAt": "2026-10-31T02:06:22Z",
@@ -327,19 +338,6 @@
         "Provide configurable media-surface back sides (white, black or mirror) plus in-Properties Play/Pause, Mute/Unmute and direct-vs-HLS source controls for video surfaces.",
         "Support authenticated backend HLS generation for uploaded videos when FFmpeg is available, while keeping direct-file playback as the default fallback.",
         "Allow chat-composer drag-and-drop attachments directly, and add regression coverage for release metadata plus the new media-surface editor/backend integration points."
-      ]
-    },
-    {
-      "version": "0.2.61",
-      "publishedAt": "2026-10-29T16:33:49Z",
-      "changes": [
-        "Show chat images as compact thumbnails, automatically grouped into a responsive grid for multi-image messages; full-size click-through previews and attachment Save remain available.",
-        "Add @All to robot @mention suggestions and verify the broadcast against robots present in the same realm, capped at six recipients in scene order.",
-        "Route multiple explicitly addressed @robots sequentially in the written order, with per-message/per-robot persistent deduplication instead of dropping all but the first recipient.",
-        "Queue conversational handoffs breadth-first with a strict 2-hop model-to-model relay depth and a total turn cap, never allowing model messages to directly command another robot\u2019s movement.",
-        "Wait for ongoing robot speech before presenting the next robot turn; allow user-initiated voice interruption and provide that context to the interrupted robot for a natural, bounded response.",
-        "Allow an individual robot to decline an irrelevant group response via [PASS], guided by recent chat, its own identity and mission context to avoid repetitive chatter.",
-        "Expand test coverage for mention order, @All limits, per-robot delivery and deduplication, optional silence, compact image previews, and turn taking."
       ]
     }
   ]

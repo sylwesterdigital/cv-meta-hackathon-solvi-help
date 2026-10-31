@@ -10,12 +10,11 @@ const safe=a=>typeof a?.url==='string'&&(a.url.startsWith('./assets/')||/^\/api\
 export function setupAvatarGallery(editor){
  const backdrop=$('avatarGalleryBackdrop'),grid=$('avatarGalleryGrid'),status=$('avatarGalleryStatus');
  const search=$('avatarGallerySearch'),edit=$('avatarGalleryEdit'),bulk=$('avatarGalleryBulk'),count=$('avatarGallerySelected');
- const selected=new Set();const notice=$('avatarGalleryNotice'),adminPanel=$('avatarGalleryAdmin'),adminStatus=$('avatarGalleryAdminStatus');let editing=false,collection=[],renderGeneration=0,previewObserver=null,lanes=[Promise.resolve(),Promise.resolve()],nextLane=0;
+ const selected=new Set();const notice=$('avatarGalleryNotice');let editing=false,collection=[],renderGeneration=0,previewObserver=null,lanes=[Promise.resolve(),Promise.resolve()],nextLane=0;
  const enqueue=task=>{const lane=nextLane++%lanes.length;lanes[lane]=lanes[lane].catch(()=>{}).then(task);};
  const available=()=>filterLibrary(collection.filter(safe),search.value);
  function selection(){return available().filter(a=>selected.has(a.url));}
- function buttons(){const n=selection().length;count.textContent=n+' selected';$('avatarGalleryExport').disabled=!n;$('avatarGalleryDelete').disabled=!n;bulk.hidden=!editing;edit.setAttribute('aria-pressed',String(editing));edit.textContent=editing?'Done':'Edit';adminPanel.hidden=!(editing&&(!window.solviLibraryAdminToken?.()||selection().some(a=>a.bundled)));
-  adminStatus.textContent=window.solviLibraryAdminToken?.()?'Administrator unlocked for this session.':'Server-wide deletion of bundled avatars requires Admin unlock.';}
+ function buttons(){const n=selection().length;count.textContent=n+' selected';$('avatarGalleryExport').disabled=!n;$('avatarGalleryDelete').disabled=!n;bulk.hidden=!editing;edit.setAttribute('aria-pressed',String(editing));edit.textContent=editing?'Done':'Edit';}
  function inform(message,error=false){notice.textContent=message;notice.hidden=!message;notice.classList.toggle('error',error);status.textContent=message;}
  async function refreshAfterChange(){
   const listing=await window.solviAPI.req('/api/avatars',{headers:window.solviLibraryAdminToken?.()?{'X-Solvi-Admin':window.solviLibraryAdminToken()}:{}});
@@ -89,24 +88,12 @@ export function setupAvatarGallery(editor){
  search.addEventListener('input',()=>{selected.clear();render();});
  $('avatarGallerySelectAll').onclick=()=>{for(const avatar of available().filter(a=>a.id!=='solvi-character').slice(0,40))selected.add(avatar.url);render();};
  $('avatarGalleryExport').onclick=async()=>{try{status.textContent='Preparing selected avatars…';await downloadLibrarySelection('avatars',selection());status.textContent='Avatar ZIP downloaded.';}catch(error){status.textContent=error.message;}};
- $('avatarGalleryAdminUnlock').onclick=async()=>{
-  const password=$('avatarGalleryAdminPassword').value;
-  try{
-   adminStatus.textContent='Checking administrator access…';
-   await window.solviLibraryUnlockAdmin(password);
-   $('avatarGalleryAdminPassword').value='';
-   adminStatus.textContent='Administrator unlocked.';
-   inform('Administrator access unlocked. Select avatars and choose Delete selected.');
-   await refreshAfterChange();
-  }catch(error){adminStatus.textContent='Admin unlock failed: '+error.message;inform(adminStatus.textContent,true);}
-  finally{buttons();}
- };
  $('avatarGalleryDelete').onclick=async()=>{
   const chosen=selection();if(!chosen.length)return;
   const blocked=chosen.filter(a=>a.bundled&&!window.solviLibraryAdminToken?.());
   if(blocked.length){
-   adminPanel.hidden=false;inform('Deleting bundled avatars requires the administrator password, not just an ordinary account login. Unlock Admin above, then retry.',true);
-   $('avatarGalleryAdminPassword').focus();return;
+   inform('Administrator access required. Open Profile → Administrator access, unlock, then retry.',true);
+   window.solviOpenAdminProfile?.();return;
   }
   if(!window.confirm(selectionPrompt(chosen,'avatars')))return;
   const button=$('avatarGalleryDelete');button.disabled=true;
@@ -124,6 +111,7 @@ export function setupAvatarGallery(editor){
   const message=`${removed} of ${chosen.length} avatars permanently deleted from the server.`+(replacedRobots?` ${replacedRobots} realm robots retained with the default SOLVI avatar.`:'')+(failures.length?' Not deleted: '+failures.join(' | '):'');
   inform(message,failures.length>0);button.disabled=false;buttons();
  };
+ window.addEventListener('solvi:admin-changed',()=>{if(!backdrop.hidden)void refreshAfterChange();});
  $('avatarsButton').onclick=open;$('openAvatarGallery').onclick=open;
  $('uploadRobotAvatar').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;
   if(!file.name.toLowerCase().endsWith('.glb')||file.size>20_000_000||file.size<100){status.textContent='Select a GLB under 20 MB';return;}

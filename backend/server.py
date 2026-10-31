@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.94',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.95',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -714,7 +714,9 @@ def room_policy(room_id):
         row=con.execute('SELECT objects,robots,physics FROM room_policies WHERE room_id=?',(room_id,)).fetchone()
     return dict(row) if row else {'objects':'open','robots':'open','physics':0}
 
-def may_edit(user_id,obj,policy):
+def may_edit(user_id,obj,policy,ws_admin=False):
+    # HTTP admin header or separately validated WebSocket admin session; never a role flag.
+    if ws_admin or (has_request_context() and admin_authorized()):return True
     key='robots' if obj.get('kind')=='robot' else 'objects'
     return policy.get(key,'open')!='owned' or not obj.get('owner') or obj['owner']==user_id
 
@@ -3060,6 +3062,15 @@ def admin_login():
     with db() as con:con.execute('INSERT INTO admin_sessions VALUES (?,?)',(sha(token),time.time()+1800))
     return jsonify(token=token,expires_in=1800)
 
+@app.post('/api/admin/logout')
+def admin_logout():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    token=request.headers.get('X-Solvi-Admin','')
+    if not admin_authorized():return json_error('Admin authentication required',403)
+    with db() as con:con.execute('DELETE FROM admin_sessions WHERE token_hash=?',(sha(token),))
+    return jsonify(ok=True,admin=False)
+
 @app.get('/api/admin/stats')
 def admin_stats():
     user,msg,status=actor()
@@ -3088,6 +3099,11 @@ def publish(message,except_id=None,room_id=None):
 def websocket(ws):
     if request.headers.get('Origin') not in ALLOWED_ORIGINS:ws.close();return
     uid=None;room_id=None
+    ws_admin_token=''
+    def ws_admin_enabled():
+        if not ws_admin_token:return False
+        with db() as con:r=con.execute('SELECT expires FROM admin_sessions WHERE token_hash=?',(sha(ws_admin_token),)).fetchone()
+        return bool(r and r['expires']>time.time())
     try:
         first=json.loads(ws.receive() or '{}')
         if first.get('type')!='join':return
@@ -3100,6 +3116,8 @@ def websocket(ws):
             ws.send(json.dumps({'type':'auth-required','reason':'Session expired or this profile is active in another window.'}))
             return
         uid=user['id'];name=user['name']
+        supplied=first.get('admin','')
+        ws_admin_token=supplied if isinstance(supplied,str) and 16<=len(supplied)<=200 else ''
         with room_lock:
             if uid in room or len(room)>100:return
             peers=[{'id':key,'name':val['name'],'state':val['state']} for key,val in room.items() if val['room']==room_id]
@@ -3114,6 +3132,12 @@ def websocket(ws):
             if raw is None:break
             if len(raw)>32768:break
             msg=json.loads(raw)
+            if msg.get('type')=='admin-auth':
+                # Token is accepted only after authenticating the regular user and
+                # checked against SQLite on each privileged WS operation.
+                supplied=msg.get('token','')
+                ws_admin_token=supplied if isinstance(supplied,str) and 16<=len(supplied)<=200 else ''
+                continue
             if msg.get('type')=='object-edit':
                 identifier=str(msg.get('id',''))
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
@@ -3121,7 +3145,7 @@ def websocket(ws):
                     record=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
                     objects=json.loads(record['payload']) if record else []
                 obj=next((o for o in objects if o.get('id')==identifier),None)
-                if obj and may_edit(uid,obj,room_policy(room_id)):
+                if obj and may_edit(uid,obj,room_policy(room_id),ws_admin_enabled()):
                     publish({'type':'object-edit','id':identifier,'by':uid,'name':name,'editing':msg.get('editing') is True,'room':room_id},except_id=uid,room_id=room_id)
             elif msg.get('type')=='state' and time.monotonic()-last>.10:
                 last=time.monotonic();pose=msg.get('state',{})
@@ -3167,7 +3191,7 @@ def websocket(ws):
                     itemrow=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
                     objects=json.loads(itemrow['payload']) if itemrow else []
                     controlled=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
-                if not controlled or not may_edit(uid,controlled,room_policy(room_id)):continue
+                if not controlled or not may_edit(uid,controlled,room_policy(room_id),ws_admin_enabled()):continue
                 publish({'type':'robot-motion','room':room_id,'by':uid,'id':identifier,'position':position,'rotation':rotation,'mode':mode},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-impact':
                 # Compact victim impulse event; authority is tied to the attacking
@@ -3184,7 +3208,7 @@ def websocket(ws):
                     objects=json.loads(row['payload']) if row else []
                     attacker=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
                     victim=next((o for o in objects if o.get('id')==target and o.get('kind')=='robot'),None)
-                if not attacker or not victim or not may_edit(uid,attacker,room_policy(room_id)):continue
+                if not attacker or not victim or not may_edit(uid,attacker,room_policy(room_id),ws_admin_enabled()):continue
                 publish({'type':'robot-impact','room':room_id,'by':uid,'id':identifier,
                          'target':target,'kind':kind,'force':round(strength,2),'seq':seq},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-action':
@@ -3201,7 +3225,7 @@ def websocket(ws):
                     row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
                     objects=json.loads(row['payload']) if row else []
                     actor_object=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
-                if not actor_object or not may_edit(uid,actor_object,room_policy(room_id)):continue
+                if not actor_object or not may_edit(uid,actor_object,room_policy(room_id),ws_admin_enabled()):continue
                 publish({'type':'robot-action','room':room_id,'by':uid,'id':identifier,
                          'action':action,'force':round(strength,2),'seq':seq},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-input':
@@ -3217,7 +3241,7 @@ def websocket(ws):
                     row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
                     objects=json.loads(row['payload']) if row else []
                     controlled=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
-                if not controlled or not may_edit(uid,controlled,room_policy(room_id)):continue
+                if not controlled or not may_edit(uid,controlled,room_policy(room_id),ws_admin_enabled()):continue
                 publish({'type':'robot-input','room':room_id,'by':uid,'id':identifier,
                         'f':f,'t':t,'r':r,'b':reverse,'m':moving,'x':round(x,2),'y':round(y,2),
                         'z':round(z,2),'yaw':round(yaw,3),'s':round(speed,2),'q':round(strafe,2),'u':round(turn,2),'j':jump,'seq':max(0,min(2147483647,seq))},except_id=uid,room_id=room_id)

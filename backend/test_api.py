@@ -155,6 +155,16 @@ with _Temp() as scratch:
         assert c.get('/api/avatars',headers=adm).get_json()['bundled']==[]
 print('PASS: permanent bundled-avatar deletion, admin permission, catalog and redeploy tombstones')
 print('PASS: library bulk management, action counts, protected deletion and ZIP export')
+# Administrator is a separate, short-lived, revocable permission on the same signed-in user.
+assert c.post('/api/admin/logout',headers=headers,json={}).status_code==403
+with db() as con:con.execute('INSERT OR REPLACE INTO admin_sessions(token_hash,expires) VALUES(?,?)',(_sha('profile-admin-token'),float('4102444800')))
+admin_headers={**headers,'X-Solvi-Admin':'profile-admin-token'}
+assert c.get('/api/admin/stats',headers=admin_headers).status_code==200
+assert c.post('/api/admin/logout',headers=admin_headers,json={}).get_json()=={'ok':True,'admin':False}
+assert c.get('/api/admin/stats',headers=admin_headers).status_code==403
+assert c.post('/api/admin/logout',headers=admin_headers,json={}).status_code==403
+print('PASS: global Profile administrator session can unlock server operations and revoke without logging out user')
+
 assert c.get('/api/me',headers=headers).status_code==200
 # v0.2.57: favorite chat color persists, is validated, and flows into messages.
 color_response=c.put('/api/profile',headers=headers,json={'name':name,'color':'#eb6f8a'})

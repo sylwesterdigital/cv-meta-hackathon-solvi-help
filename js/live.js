@@ -14,7 +14,7 @@ export class LiveRoom{
     this.attempts++;
     const protocol=location.protocol==='https:'?'wss:':'ws:';
     const ws=this.ws=new WebSocket(`${protocol}//${location.host}/ws`);
-    ws.onopen=()=>{this.attempts=0;this.send({type:'join',token:auth.token,tab:auth.tab,room:window.solviRoom||'main'});this.updateStatus(true,'Shared room connected');};
+    ws.onopen=()=>{this.attempts=0;this.send({type:'join',token:auth.token,tab:auth.tab,room:window.solviRoom||'main',admin:window.solviLibraryAdminToken?.()||''});this.updateStatus(true,'Shared room connected');};
     ws.onmessage=(event)=>{
       try {const m=JSON.parse(event.data);
         if(m.type==='auth-required'){this.close();window.dispatchEvent(new CustomEvent('solvi:auth-required',{detail:{reason:m.reason||'Please sign in again.'}}));return;}

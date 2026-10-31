@@ -28,7 +28,7 @@ test('live robot input stays compact when side-stepping',()=>{
 });
 test('room settings persist policy per room and guard robot movement',()=>{
  const backend=read('backend/server.py');
- for(const token of ["CREATE TABLE IF NOT EXISTS room_policies", "@app.get('/api/room/settings')", "@app.put('/api/room/settings')", 'def may_edit(',"not may_edit(uid,controlled,room_policy(room_id))"])
+ for(const token of ["CREATE TABLE IF NOT EXISTS room_policies", "@app.get('/api/room/settings')", "@app.put('/api/room/settings')", 'def may_edit(',"not may_edit(uid,controlled,room_policy(room_id),ws_admin_enabled())"])
    assert.ok(backend.includes(token),token);
  const live=read('js/live.js');assert.ok(live.includes('room-policy'));assert.ok(live.includes('object-edit'));
 });

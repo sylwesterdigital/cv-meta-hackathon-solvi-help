@@ -50,7 +50,7 @@ test('multiplayer input is sent frequently; scene merge keeps animation mixers a
  assert.match(editor,/this\.applyObjectPatch\(\{action:'upsert',object:entry\}\)/);
  assert.match(live,/m\.type==='robot-impact'/);
  assert.match(backend,/elif msg\.get\('type'\)=='robot-impact'/);
- assert.match(backend,/may_edit\(uid,attacker,room_policy\(room_id\)\)/);
+ assert.match(backend,/may_edit\(uid,attacker,room_policy\(room_id\),ws_admin_enabled\(\)\)/);
  assert.doesNotMatch(backend,/publish\(\{'type':'robot-impact'.*position:/);
 });
 test('fall or combat reactions have one-shot ownership and return to idle',()=>{

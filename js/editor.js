@@ -701,7 +701,7 @@ export class SceneEditor{
   window.addEventListener('blur',()=>{this.robotKeys.clear();this.broadcastEdit(false);});
  }
  canTransform(obj){return mayTransform(obj,this.canEdit(obj));}
- canEdit(obj){if(!obj)return false;const policy=window.solviRoomPolicy||{objects:'open',robots:'open'};const type=obj.userData.editorKind==='robot'?'robots':'objects';if(policy[type]!=='owned')return true;const uid=window.solviAPI?.auth()?.profile?.id;return !obj.userData.ownerId||obj.userData.ownerId===uid;}
+ canEdit(obj){if(!obj)return false;const policy=window.solviRoomPolicy||{objects:'open',robots:'open'};const type=obj.userData.editorKind==='robot'?'robots':'objects';if(policy[type]!=='owned')return true;if(window.solviIsAdmin?.())return true;const uid=window.solviAPI?.auth()?.profile?.id;return !obj.userData.ownerId||obj.userData.ownerId===uid;}
  duplicate(){
   if(!this.selected)return;if(!this.canEdit(this.selected))return this.toast('Owner only');const source=this.selected,entry=this.snapshot(source);if(!entry)return;
   const duplicate=objectFor(entry.kind);if(PRIMITIVE_FIELDS[entry.kind]){duplicate.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);duplicate.geometry.dispose();duplicate.geometry=buildPrimitive(entry.kind,duplicate.userData.primitive);}duplicate.name=nextDuplicateName(source.name,this.items.map(x=>x.name));duplicate.position.copy(source.position);duplicate.quaternion.copy(source.quaternion);duplicate.scale.copy(source.scale);

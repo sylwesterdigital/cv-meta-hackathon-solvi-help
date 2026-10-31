@@ -1799,3 +1799,15 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 .library-admin-inline span{flex:1 1 100%;overflow-wrap:anywhere}
 #avatarGalleryBackdrop .avatar-gallery{overflow-y:auto;max-height:min(92vh,1000px)}
 #avatarGalleryBackdrop .library-management-notice,#avatarGalleryBackdrop .library-admin-inline{position:relative;z-index:1}
+
+/* v0.2.95: single application-wide administrator login lives in Profile. */
+.profile-admin-section{border:1px solid var(--solvi-border,#40536b);border-radius:10px;margin:14px 0 8px;padding:11px;display:grid;gap:8px;background:rgba(54,91,116,.12)}
+.profile-admin-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.profile-admin-heading strong{font-size:12px}
+.profile-admin-badge{font-size:10px;color:var(--solvi-muted,#a6b6c8)}
+.profile-admin-badge.active{color:#70dcb6;font-weight:700}
+.profile-admin-login-row,.profile-admin-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
+.profile-admin-login-row input{flex:1 1 165px;min-width:0;max-width:100%;font-size:12px;padding:8px 10px;border-radius:7px}
+.profile-admin-login-row button,.profile-admin-actions button{flex:0 0 auto;padding:8px 11px}
+.profile-admin-section small{font-size:10px;color:var(--solvi-muted,#b4c4d6);line-height:1.4}
+@media(max-width:410px){.profile-admin-login-row input{flex-basis:100%}}

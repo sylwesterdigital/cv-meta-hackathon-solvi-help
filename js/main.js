@@ -24,6 +24,7 @@ world.onPose=pose=>room.state(pose);
 // Test explicitly with https://solvi.help/?live=1
 window.addEventListener('solvi:authenticated',()=>{if(window.solviAPI?.online){room.stopped=false;room.attempts=0;room.connect();}});
 window.addEventListener('solvi:session-lost',()=>room.close());
+window.addEventListener('solvi:admin-changed',()=>room.send({type:'admin-auth',token:window.solviLibraryAdminToken?.()||''}));
 const buttons=[];
 for(const btn of buttons){btn.addEventListener('click',()=>{
   const mode=btn.id==='autoButton'?'auto':btn.dataset.motion;

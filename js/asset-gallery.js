@@ -87,7 +87,7 @@ export function setupAssetGallery(editor){
  $('assetGalleryDelete').onclick=async()=>{
   const chosen=selection();if(!chosen.length||!window.confirm(selectionPrompt(chosen,'models')))return;
   try{
-   if(chosen.some(asset=>asset.canManage!==true))throw Error('Only the uploader or administrator can delete a model. Export is available for all.');
+   if(chosen.some(asset=>asset.canManage!==true)&&!window.solviIsAdmin?.())throw Error('Only the uploader or administrator can delete a model. Unlock administrator access in Profile, then retry.');
    await deleteLibrarySelection('models',chosen);collection=collection.filter(asset=>!selected.has(asset.id));selected.clear();render();status.textContent='Selected unused assets deleted.';
   }catch(error){status.textContent='Delete failed: '+error.message;}
  };
@@ -105,6 +105,7 @@ export function setupAssetGallery(editor){
    if(backdrop.hidden)editor.toast?.('3D asset uploaded · '+result.model.label);return true;
   }catch(error){status.textContent='Upload failed: '+error.message;editor.toast?.(status.textContent);return false;}
  }
+ window.addEventListener('solvi:admin-changed',()=>{if(!backdrop.hidden)void refresh();});
  $('assetsButton').onclick=()=>open();$('refreshAssetGallery').onclick=refresh;
  $('assetGallerySearch').addEventListener('input',()=>{page=0;selected.clear();render();});
  $('assetGalleryUpload').onchange=async e=>{const file=e.target.files?.[0];e.target.value='';if(file)await upload(file);};

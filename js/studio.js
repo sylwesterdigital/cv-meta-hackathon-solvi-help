@@ -36,7 +36,7 @@ function establishTabChannel(uid){
   tabChannel.postMessage({type:'HELLO',page:pageNonce});
 }
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
-let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null;
+let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null,adminExpiresAt=0;
 let cachedMessages=[],chatSignature='',lastBubbleEntry=null;let renderingChat=false,followChat=true;const roomActivities=new Map();const chatMediaURLs=new Set();const runningRobotTasks=new Map();const localBrainTrace=[];const initialRoomLoads=new Set();
 let activeRoom=sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};let sessionPrompt=false;
 let robotSpeech=null;let suppressRobotSpeech=false;let currentlySpeakingRobot='';
@@ -60,6 +60,43 @@ function saveRealmView(room=activeRoom){
 }
 const toast=text=>{const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5200);};
 const show=(id,yes=true)=>{$(id).hidden=!yes;};
+
+function clearAdminSession(){
+ const wasAdmin=!!adminToken;adminToken=null;adminExpiresAt=0;
+ refreshProfileAdminUI();if(wasAdmin)window.dispatchEvent(new Event('solvi:admin-changed'));
+}
+function activeAdminToken(){
+ if(adminToken&&Date.now()>=adminExpiresAt){clearAdminSession();return null;}
+ return adminToken;
+}
+function refreshProfileAdminUI(){
+ const section=$('profileAdminSection');if(!section)return;
+ section.hidden=!me||!auth;const active=!!adminToken&&Date.now()<adminExpiresAt;
+ $('profileAdminLoginRow').hidden=active;$('profileAdminActions').hidden=!active;
+ $('profileAdminBadge').textContent=active?'Administrator':'Standard account';
+ $('profileAdminBadge').classList.toggle('active',active);
+ if(active)$('profileAdminStatus').textContent='Admin rights active across SOLVI in this tab until session expiry or Lock Admin.';
+ else if(!$('profileAdminStatus').dataset.error)$('profileAdminStatus').textContent='Administrator password required for server-wide operations.';
+}
+async function unlockAdmin(password){
+ if(!auth||!me)throw Error('Sign in to your SOLVI profile first.');
+ if(!password)throw Error('Enter the separate administrator password.');
+ const data=await api.req('/api/admin/login',{method:'POST',body:JSON.stringify({password})});
+ if(typeof data.token!=='string'||!data.token)throw Error('Invalid administrator session response.');
+ adminToken=data.token;
+ adminExpiresAt=Date.now()+Math.max(1,Math.min(1800,Number(data.expires_in)||1800))*1000;
+ $('profileAdminStatus').dataset.error='';refreshProfileAdminUI();
+ window.dispatchEvent(new Event('solvi:admin-changed'));
+ return true;
+}
+async function lockAdmin(){
+ const token=activeAdminToken();let error='';
+ if(token){try{await api.req('/api/admin/logout',{method:'POST',headers:{'X-Solvi-Admin':token},body:'{}'});}catch(e){error='Server revocation could not be confirmed: '+e.message;}}
+ clearAdminSession();$('profileAdminPassword').value='';
+ $('profileAdminStatus').dataset.error=error?'1':'';
+ $('profileAdminStatus').textContent=error||'Administrator access locked. Normal profile remains signed in.';
+}
+
 const stored=()=>{try{return JSON.parse(localStorage.getItem('solvi-profile')||'null');}catch{return null;}};
 const saveLocal=(o)=>localStorage.setItem('solvi-profile',JSON.stringify(o));
 function needSignIn(message='Session expired. Sign in to continue.'){
@@ -67,7 +104,7 @@ function needSignIn(message='Session expired. Sign in to continue.'){
   sessionPrompt=true;
   const previous=stored();
   if(previous){delete previous.token;saveLocal(previous);}
-  auth=null;me=null;adminToken=null;
+  auth=null;me=null;clearAdminSession();
   window.dispatchEvent(new Event('solvi:session-lost'));
   fillProfile(previous);
   $('profileBackdrop').classList.remove('profile-drawer-mode');$('profileStatus').textContent=message+' Enter your name and press Save / Sign in to reconnect.';
@@ -83,6 +120,8 @@ const api={
  async req(url,options={}){
   const headers={...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...(options.headers||{})};
   if(auth?.token)headers.Authorization='Bearer '+auth.token;
+  const sessionAdmin=activeAdminToken();
+  if(sessionAdmin&&url.startsWith('/api/'))headers['X-Solvi-Admin']=sessionAdmin;
   headers['X-Solvi-Tab']=tab;
   if(['/api/models','/api/chat','/api/robots/react','/api/robots/discussion/step','/api/robots/discussion/start','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
     const key=sessionStorage.getItem('solvi-meta-session-key');if(key)headers['X-Solvi-Model-Key']=key;
@@ -90,7 +129,7 @@ const api={
   const res=await fetch(url,{...options,headers,cache:'no-store'});
   const data=await res.json().catch(()=>({error:'Invalid server response'}));
   if(!res.ok){if((res.status===401||(res.status===409&&/active (?:in another|session|tab)|session.*(?:expired|conflict)|signed in elsewhere/i.test(data.error||'')))&&auth)needSignIn(data.error||'Session expired or active in another window.');
-    if(res.status===403&&url.includes('/api/admin/stats')){adminToken=null;show('adminBackdrop',true);$('adminStats').textContent='Admin session expired. Enter the administrator password again.';}
+    if(res.status===403&&url.includes('/api/admin/stats')){clearAdminSession();$('adminStats').textContent='Admin session expired. Unlock from Profile again.';}
     throw Error(data.error||`${res.status} ${res.statusText}`);}
   return data;
  },
@@ -98,13 +137,12 @@ const api={
  async mediaBlob(id){return (await this.mediaBlobInfo(id)).url;}
 };
 window.solviAPI=api;
-// Shared library admin deletion requires an explicitly unlocked admin session.
-window.solviLibraryAdminToken=()=>adminToken;
-window.solviLibraryUnlockAdmin=async password=>{
- if(!password)throw Error('Enter your administrator password. Ordinary sign-in does not grant server-wide deletion rights.');
- const data=await api.req('/api/admin/login',{method:'POST',body:JSON.stringify({password})});
- adminToken=data.token;
- return true;
+// One short-lived administrator session is shared by Profile, Realms, Libraries and Settings.
+window.solviLibraryAdminToken=activeAdminToken;
+window.solviIsAdmin=()=>Boolean(activeAdminToken());
+window.solviOpenAdminProfile=()=>{
+ $('profileButton').click();
+ $('profileAdminPassword').focus();
 };
 function profileFields(){return {name:$('profileName').value.trim(),email:$('profileEmail').value.trim(),bio:$('profileBio').value.trim(),links:$('profileLinks').value.trim(),color:$('profileColor').value};}
 function fillProfile(o){$('profileName').value=o?.name||'';$('profileEmail').value=o?.email||'';$('profileBio').value=o?.bio||'';$('profileLinks').value=o?.links||'';$('profileColor').value=o?.color||'#69c5e5';$('profileIdentity').textContent=o?.id||'New profile';}
@@ -121,7 +159,7 @@ function identity(){const text=me?.name||'Guest';$('profilePanelTitle').textCont
  if(me?.avatar?.startsWith('data:image/')){for(const id of ['profilePhotoBadge','profileButton']){const el=$(id);el.replaceChildren();const img=document.createElement('img');img.src=me.avatar;img.alt='';el.append(img);}}
  if(me?.avatar&&online&&auth){api.mediaBlob(me.avatar).then(url=>{if(!me||!document.getElementById('profilePhotoBadge'))return;for(const id of ['profilePhotoBadge','profileButton']){const el=$(id);el.replaceChildren();const img=document.createElement('img');img.src=url;img.alt='';img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';el.append(img);}}).catch(()=>{});}
  if(me?.intro&&online&&auth){api.mediaBlob(me.intro).then(url=>{if(me?.intro){$('introPreview').src=url;$('introPreview').hidden=false;const badge=$('profilePhotoBadge');badge.replaceChildren();const photo=document.createElement('img');photo.src=url;photo.alt='Profile animated GIF';badge.append(photo);}}).catch(()=>{});}
- $('profileLogout').hidden=!me;$('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;}
+ $('profileLogout').hidden=!me;$('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;refreshProfileAdminUI();}
 async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
  try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();select.hidden=true;
   select.add(new Option('World chat · people',''));
@@ -583,7 +621,7 @@ async function logoutProfile(){
  catch(error){$('profileStatus').textContent='Server logout failed: '+error.message;return;}
  closeProfileCamera();tabChannel?.close();tabChannel=null;
  window.dispatchEvent(new Event('solvi:session-lost'));
- auth=null;me=null;adminToken=null;sessionPrompt=false;
+ auth=null;me=null;clearAdminSession();sessionPrompt=false;
  localStorage.removeItem('solvi-profile');sessionStorage.removeItem('solvi-tab');sessionStorage.removeItem('solvi-room');
  sessionStorage.removeItem('solvi-meta-session-key');sessionStorage.removeItem('solvi-elevenlabs-key');sessionStorage.removeItem(ROBOT_DEBUG_ALL_KEY);sessionStorage.removeItem('solvi-brain-debug-robots');
  // Reload clears existing room messages, object lists, media blobs and peer states.
@@ -602,9 +640,9 @@ async function importProfile(file){try{const data=JSON.parse(await file.text());
   me=null;auth=null;saveLocal(data);fillProfile(data);$('profileLogout').hidden=true;$('profileStatus').textContent='Profile loaded. Select Save / Sign in to claim this session.';
   show('profileBackdrop',true);
  }catch(e){$('profileStatus').textContent=e.message;}}
-async function adminLogin(){try{const data=await api.req('/api/admin/login',{method:'POST',body:JSON.stringify({password:$('adminPassword').value})});adminToken=data.token;$('adminPassword').value='';await stats();}
+async function adminLogin(){try{await unlockAdmin($('adminPassword').value);$('adminPassword').value='';await stats();}
  catch(e){$('adminStats').textContent=e.message;}}
-async function stats(){if(!adminToken)return;try{const data=await api.req('/api/admin/stats',{headers:{'X-Solvi-Admin':adminToken}});$('adminStats').textContent=JSON.stringify(data,null,2);}catch(e){$('adminStats').textContent=e.message;}}
+async function stats(){const token=activeAdminToken();if(!token)return;try{const data=await api.req('/api/admin/stats',{headers:{'X-Solvi-Admin':token}});$('adminStats').textContent=JSON.stringify(data,null,2);}catch(e){$('adminStats').textContent=e.message;}}
 async function loadMessages(){
  if(!online||!auth)return;
  try{
@@ -856,7 +894,7 @@ function setupNewRoom(){
  async function openGallery(){
   // No forced renderer.render(), no per-card WebGL contexts, no room-switch screenshots.
   saveRealmView(activeRoom);
-  try{if(online&&auth)window.solviRoomCards=(await api.req('/api/rooms',{headers:adminToken?{'X-Solvi-Admin':adminToken}:{}})).rooms||window.solviRoomCards;}
+  try{if(online&&auth)window.solviRoomCards=(await api.req('/api/rooms')).rooms||window.solviRoomCards;}
   catch(error){toast(error.message);}
   holder.replaceChildren(makeRealmCards(window.solviRoomCards||[{id:'main',title:'Main realm'}],activeRoom));
   updateRealmActions();show('realmGalleryBackdrop',true);
@@ -906,7 +944,7 @@ function setupNewRoom(){
  $('realmRenameButton').onclick=async()=>{
   const card=selectedCard();if(!card?.canManage)return;
   const title=window.prompt('New realm name',card.title);if(!title||title.trim()===card.title)return;
-  try{await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'PATCH',headers:adminToken?{'X-Solvi-Admin':adminToken}:{},body:JSON.stringify({title:title.trim()})});await refreshRealms();}
+  try{await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'PATCH',body:JSON.stringify({title:title.trim()})});await refreshRealms();}
   catch(e){$('realmArchiveStatus').textContent=e.message;toast(e.message);}
  };
  $('realmDeleteButton').onclick=async()=>{
@@ -914,7 +952,7 @@ function setupNewRoom(){
   if(!window.confirm(`Permanently delete realm "${card.title}" and its objects, messages and settings? This cannot be undone.`))return;
   const exact=window.prompt(`Second confirmation: type exactly "${card.title}" to delete it.`);
   if(exact!==card.title){toast('Deletion cancelled: realm name did not match.');return;}
-  try{await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'DELETE',headers:adminToken?{'X-Solvi-Admin':adminToken}:{},body:JSON.stringify({confirm_title:exact})});
+  try{await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'DELETE',body:JSON.stringify({confirm_title:exact})});
    try{localStorage.removeItem('solvi-realm-preview-v1-'+card.id);}catch{}
    if(activeRoom===card.id){activeRoom='main';window.solviRoom='main';}
    await refreshRealms();$('realmArchiveStatus').textContent='Deleted realm '+card.title;
@@ -997,7 +1035,7 @@ function setupSettings(){
    if($('metaKeyStorage').value==='session'){
      sessionStorage.setItem('solvi-meta-session-key',key);$('metaApiKey').value='';$('metaKeyStatus').textContent+=' Session-only key stored in this browser tab.';
    }else{
-     try{const response=await api.req('/api/ai/config',{method:'POST',headers:{'X-Solvi-Admin':adminToken||''},body:JSON.stringify({key})});
+     try{const response=await api.req('/api/ai/config',{method:'POST',headers:{'X-Solvi-Admin':activeAdminToken()||''},body:JSON.stringify({key})});
        $('metaApiKey').value='';$('metaKeyStatus').textContent=response.notice;
      }catch(e){$('metaKeyStatus').textContent=e.message;return;}
    }
@@ -1013,18 +1051,18 @@ function setupSettings(){
  $('diagnosticsButton').onclick=()=>{$('diagnosticsPanel').hidden=false;$('refreshDiagnostics').click();};
  $('closeDiagnostics').onclick=()=>{$('diagnosticsPanel').hidden=true;};
  $('refreshDiagnostics').onclick=async()=>{try{
-   const data=await api.req('/api/ai/logs',{headers:{'X-Solvi-Admin':adminToken||''}});
+   const data=await api.req('/api/ai/logs',{headers:{'X-Solvi-Admin':activeAdminToken()||''}});
    $('diagnosticsOutput').textContent=data.scope+'\n'+JSON.stringify(data.logs,null,2);
- }catch(e){$('diagnosticsOutput').textContent=e.message+'\nUnlock the Admin dashboard in Settings, then retry.';}};
+ }catch(e){$('diagnosticsOutput').textContent=e.message+'\nUnlock Administrator access from Profile, then retry.';}};
  $('analyzeDiagnostics').onclick=async()=>{
-   if(!adminToken){$('diagnosticsOutput').textContent='Unlock Admin dashboard first.';return;}
+   if(!activeAdminToken()){$('diagnosticsOutput').textContent='Unlock Administrator access in Profile first.';return;}
    if(!window.confirm('Send the sanitized backend event metadata to the Meta Model API for analysis? This incurs API charges.'))return;
    $('diagnosticsOutput').textContent='Requesting Meta diagnostic analysis…';
    try{const response=await api.req('/api/ai/analyze-logs',{method:'POST',headers:{'X-Solvi-Admin':adminToken},body:JSON.stringify({confirm:true})});
      $('diagnosticsOutput').textContent=(response.analysis||'No analysis text returned')+'\n\nEstimated cost: US$'+Number(response.usage?.estimated_usd||0).toFixed(6);
    }catch(e){$('diagnosticsOutput').textContent=e.message;}
  };
- $('exportChatSettings').onclick=()=>exportMessages('md');$('exportChatSettingsJson').onclick=()=>exportMessages('json');$('openAdminSettings').onclick=()=>{settings.hidden=true;show('adminBackdrop',true);};
+ $('exportChatSettings').onclick=()=>exportMessages('md');$('exportChatSettingsJson').onclick=()=>exportMessages('json');$('openAdminSettings').onclick=()=>{settings.hidden=true;if(!activeAdminToken())window.solviOpenAdminProfile();else{show('adminBackdrop',true);void stats();}};
 }
 function setupChatPresentation(){
   const feed=$('chatFeed'),panel=$('chatPanel'),composer=panel.querySelector('.chat-composer');
@@ -1233,8 +1271,15 @@ function bindUI(world){
  });
  window.addEventListener('solvi:chat-updated',loadMessages);
  $('chatButton').onclick=()=>window.solviSetChatMode?.('overlay');
- $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?.name||'Sign in';$('profilePanelNote').textContent=me?'Profile & media':'Create profile';show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
+ $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?.name||'Sign in';$('profilePanelNote').textContent=me?'Profile & media':'Create profile';refreshProfileAdminUI();show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
  $('closeProfile').onclick=()=>{closeProfileCamera();if(me&&auth)show('profileBackdrop',false);else{$('profileStatus').textContent='Sign in to continue.';$('profileName').focus();}};
+ $('profileAdminUnlock').onclick=async()=>{
+  try{$('profileAdminStatus').dataset.error='';await unlockAdmin($('profileAdminPassword').value);$('profileAdminPassword').value='';toast('Administrator unlocked for this session.');}
+  catch(e){$('profileAdminStatus').dataset.error='1';$('profileAdminStatus').textContent='Admin login failed: '+e.message;}
+ };
+ $('profileAdminPassword').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('profileAdminUnlock').click();}});
+ $('profileAdminLock').onclick=lockAdmin;
+ $('profileAdminDashboard').onclick=()=>{show('profileBackdrop',false);show('adminBackdrop',true);void stats();};
  $('saveProfile').onclick=submitProfile;$('exportProfile').onclick=exportProfile;
  $('importProfile').onchange=e=>importProfile(e.target.files[0]);
  window.addEventListener('pagehide',closeProfileCamera);
@@ -1319,6 +1364,7 @@ function bindUI(world){
  $('closeAdmin').onclick=()=>show('adminBackdrop',false);
  $('adminLogin').onclick=adminLogin;$('adminRefresh').onclick=stats;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){show('addMenu',false);show('adminBackdrop',false);if(me)show('profileBackdrop',false);}});
+ window.addEventListener('solvi:admin-changed',()=>{window.solviEditor?.updateInspector?.();window.solviEditor?.refreshList?.();if(!$('realmGalleryBackdrop').hidden)void refreshRealms();});
  window.addEventListener('solvi:auth-required',event=>needSignIn(event.detail?.reason||'Session expired.'));
  window.addEventListener('solvi:presence-change',event=>{if(event.detail.id!==me?.id){playCue(event.detail.action==='left'?'leave':'join');notePresence(event.detail);}});
  document.addEventListener('pointerdown',primeAudio,{once:true});
