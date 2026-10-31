@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.100",
+  "currentVersion": "0.2.101",
   "releases": [
+    {
+      "version": "0.2.101",
+      "publishedAt": "2026-10-31T05:02:32Z",
+      "changes": [
+        "Capture O/U and freehand pointer drags on a full-view transparent drawing layer so SOLVI HUDs cannot intercept the gesture; keep the camera locked until the tool ends.",
+        "Replace the large surface popup and unnecessary Confirm button with a passive compact instruction hint. Drag directly, release to preview, press Enter to keep, or Escape/click elsewhere to discard.",
+        "Show a filled translucent rectangle and bright border during opening and media drags; show the real cut-through cube immediately on release before saving, with restoration on cancel.",
+        "Ensure media frame stays visible after release until Enter opens realm chat attachments; add interaction tests for preview, commit and unsaved cancellation."
+      ]
+    },
     {
       "version": "0.2.100",
       "publishedAt": "2026-10-31T04:48:45Z",
@@ -335,17 +345,6 @@
         "Log the deterministic movement parser decision, scene target and coordinates, planned route geometry/length, and actual measured robot route completion telemetry.",
         "Require route endpoint proximity for actual arrival reporting; a chat plan or exhausted waypoint list is not independently proof of mission success.",
         "Keep robot eye-camera request evidence as labelled frame metadata and text prompts, and reduce Brains panel paddings, camera display height, and excessive window width."
-      ]
-    },
-    {
-      "version": "0.2.68",
-      "publishedAt": "2026-10-29T23:27:07Z",
-      "changes": [
-        "Recognise natural relative movement commands such as \"go further 10 meters\" and \"continue another 5 m\" as executable, permission-checked walk-forward missions instead of conversational plans.",
-        "Resolve misspelled named scene destinations only when a unique near-exact object match exists, with exact colour and number matching; ambiguous names require clarification.",
-        "Render real computed A* floor paths as legible wide ribbons and show the measured robot travel trail in cyan, so Debug can distinguish planned waypoints from actual motion.",
-        "Emit authentic route-accepted or route-blocked debug events with waypoint and obstacle counts, and never imply a chat-only statement proves movement.",
-        "Preserve existing visual autonomy, chat-to-scene media and task ownership; add dedicated regression coverage for real command routing and path telemetry."
       ]
     }
   ]

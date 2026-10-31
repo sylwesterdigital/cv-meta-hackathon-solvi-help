@@ -1889,3 +1889,12 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 .chat-media-thumb img{max-width:100%;max-height:100%;object-fit:contain}
 .chat-media-name{font-size:11px;overflow-wrap:anywhere;max-height:44px;overflow:hidden}
 @media(max-width:600px){.spatial-tool-window{top:65px;left:8px}.chat-media-results{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v0.2.101 — drag-first surface workflow. The hit layer is in front of HUDs
+   but behind the small non-interactive status; it receives one whole gesture. */
+#spatialDrawShield:not([hidden]){position:fixed!important;inset:0!important;display:block!important;z-index:119!important;pointer-events:auto!important;touch-action:none!important;cursor:crosshair!important;background:transparent!important;user-select:none!important;-webkit-user-select:none!important}
+#spatialDrawShield[hidden]{display:none!important}
+#surfaceDrawPanel.spatial-tool-status:not([hidden]){position:fixed!important;z-index:121!important;left:50%!important;bottom:max(22px,env(safe-area-inset-bottom))!important;top:auto!important;transform:translateX(-50%)!important;display:flex!important;align-items:center!important;flex-wrap:wrap!important;gap:7px 12px!important;width:max-content!important;max-width:calc(100vw - 24px)!important;min-height:0!important;max-height:none!important;padding:9px 14px!important;border:1px solid #557d8d!important;border-radius:10px!important;background:rgba(12,35,48,.92)!important;box-shadow:0 4px 18px #0005!important;font-size:12px!important;color:#eaf6fc!important;pointer-events:none!important;user-select:none!important}
+#surfaceDrawPanel.spatial-tool-status strong{white-space:nowrap;font-size:12px}
+#surfaceDrawPanel.spatial-tool-status span{color:#c6dfe9;font-size:12px}
+@media(max-width:650px){#surfaceDrawPanel.spatial-tool-status:not([hidden]){left:8px!important;right:8px!important;transform:none!important;width:auto!important;bottom:12px!important}}

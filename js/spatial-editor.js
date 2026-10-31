@@ -18,8 +18,6 @@ export function setupSpatialTools(){
   d.plane=sketchPlane(this.world.camera,$('curvePlane').value,+$('curveDepth').value,+$('curveElevation').value,d.object?.position);
   $('curveDepth').disabled=$('curvePlane').value!=='screen';$('curveElevation').disabled=$('curvePlane').value!=='floor';
  };
- $('surfaceCancel').onclick=()=>this.cancelSpatialDrawing();
- $('surfaceConfirm').onclick=()=>commitFace(this);
  $('chatMediaClose').onclick=()=>hideMediaPicker(this);
  $('chatMediaPicker').addEventListener('pointerdown',event=>{if(event.target===$('chatMediaPicker'))hideMediaPicker(this);});
  $('chatMediaSearch').oninput=()=>{for(const node of $('chatMediaResults').children)node.hidden=!node.dataset.search.includes($('chatMediaSearch').value.toLowerCase());};
@@ -51,7 +49,7 @@ export function renderCurveControls(obj){
 export function startCurveDrawing(existing=null){
  this.cancelSpatialDrawing();const obj=existing?.userData.editorKind==='curve'?existing:null;
  const plane=sketchPlane(this.world.camera,$('curvePlane').value,+$('curveDepth').value,+$('curveElevation').value,obj?.position);
- this.curveDrawing={object:obj,points:[],cursor:null,drawing:false,plane};$('curveDrawPanel').hidden=false;$('addMenu').hidden=true;this.transform.detach();this.world.controls.enabled=false;
+ this.curveDrawing={object:obj,points:[],cursor:null,drawing:false,plane};$('curveDrawPanel').hidden=false;$('addMenu').hidden=true;this.transform.detach();this.world.controls.enabled=false;$('spatialDrawShield').hidden=false;
  $('curveDepth').disabled=$('curvePlane').value!=='screen';$('curveElevation').disabled=$('curvePlane').value!=='floor';
  $('curveDrawingStatus').textContent='Drag on the scene to sketch; release to preview · Enter saves · Esc cancels';drawCurvePreview(this);
 }
@@ -79,7 +77,7 @@ export function startFaceDrawing(mode){
  const obj=this.selected;
  if(!obj||!this.canEdit(obj)||!['cube','plane'].includes(obj.userData.editorKind)||(mode==='opening'&&obj.userData.editorKind!=='cube'))return this.toast('Select an editable cube for a cutout, or cube/plane for media');
  this.cancelSpatialDrawing();this.faceDrawing={mode,object:obj,start:null,end:null,axis:null,side:null,phase:'drawing',previewGeometry:null,originalGeometry:null,pendingOpening:null,mount:null};$('surfaceDrawPanel').hidden=false;
- $('surfaceDrawTitle').textContent=mode==='opening'?'Cut rectangular opening · O':'Attach chat media · U';$('surfaceDrawStatus').textContent='Drag a rectangle on the face of '+obj.name; $('surfaceConfirm').disabled=true;this.transform.detach();this.world.controls.enabled=false;
+ $('surfaceDrawTitle').textContent=mode==='opening'?'Cut rectangular opening · O':'Attach chat media · U';$('surfaceDrawStatus').textContent='Drag on '+obj.name+' · release to preview · Enter saves · Esc cancels';this.transform.detach();this.world.controls.enabled=false;$('spatialDrawShield').hidden=false;
 }
 function surfaceHit(editor,e,first=false){
  const st=editor.faceDrawing,obj=st.object,rect=editor.world.renderer.domElement.getBoundingClientRect();
@@ -99,7 +97,13 @@ function drawFacePreview(editor){
  const [loU,hiU]=[Math.min(uvA[0],uvB[0]),Math.max(uvA[0],uvB[0])],[loV,hiV]=[Math.min(uvA[1],uvB[1]),Math.max(uvA[1],uvB[1])];
  const pt=(u,v)=>obj.localToWorld(coordinates(axis,u,v,axis==='x'?(obj.userData.primitive?.width||1)/2*side:axis==='y'?(obj.userData.primitive?.height||1)/2*side:obj.userData.editorKind==='plane'?0:(obj.userData.primitive?.depth||1)/2*side).addScaledVector(new THREE.Vector3(axis==='x'?side:0,axis==='y'?side:0,axis==='z'?side:0),.025));
  const points=[pt(loU,loV),pt(hiU,loV),pt(hiU,hiV),pt(loU,hiV),pt(loU,loV)];
- const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:st.mode==='opening'?'#ffcf67':'#62f3ff',depthTest:false,transparent:true,opacity:1}));line.renderOrder=999;editor.facePreview=line;editor.world.scene.add(line);
+ const group=new THREE.Group();
+ const fillGeometry=new THREE.BufferGeometry();const corners=[points[0],points[1],points[2],points[0],points[2],points[3]];
+ fillGeometry.setAttribute('position',new THREE.Float32BufferAttribute(corners.flatMap(p=>p.toArray()),3));
+ const fill=new THREE.Mesh(fillGeometry,new THREE.MeshBasicMaterial({color:st.mode==='opening'?'#ffcf67':'#66e6ff',side:THREE.DoubleSide,depthTest:false,depthWrite:false,transparent:true,opacity:.23}));
+ fill.renderOrder=998;group.add(fill);
+ const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:st.mode==='opening'?'#ffcf67':'#62f3ff',depthTest:false,transparent:true,opacity:1}));line.renderOrder=999;group.add(line);
+ editor.facePreview=group;editor.world.scene.add(group);
 }
 function previewFace(editor){const st=editor.faceDrawing;if(!st?.start||!st.end)return;const obj=st.object;
  const rect=rectangleFromSurface(st.axis,st.start,st.end),p=obj.userData.primitive||{};
@@ -116,14 +120,14 @@ function previewFace(editor){const st=editor.faceDrawing;if(!st?.start||!st.end)
   const replacement=cutCubeGeometry(obj.userData.primitive,holes);st.previewGeometry=replacement;
   st.originalGeometry=obj.geometry;obj.geometry=replacement;st.pendingOpening=holes; // real visible through-hole immediately, but not saved yet
   disposePreview(editor,'facePreview');
-  $('surfaceDrawStatus').textContent='Hole preview visible · Enter / Confirm to keep · Esc or click scene to discard';
+  $('surfaceDrawStatus').textContent='Hole preview · Enter to keep · Esc or click elsewhere to undo';
  }else{
   const local=coordinates(st.axis,rect.u,rect.v,st.axis==='x'?(p.width||1)/2*st.side:st.axis==='y'?(p.height||1)/2*st.side:obj.userData.editorKind==='plane'?0:(p.depth||1)/2*st.side);
   const normal=new THREE.Vector3(st.axis==='x'?st.side:0,st.axis==='y'?st.side:0,st.axis==='z'?st.side:0);
   st.mount={target:obj.userData.editorId,localPoint:local.toArray(),localNormal:normal.toArray(),width:rect.width,height:rect.height};
-  $('surfaceDrawStatus').textContent='Media frame preview ready · Enter / Confirm to select chat media · Esc or click scene to discard';
+  $('surfaceDrawStatus').textContent='Frame preview · Enter to choose chat media · Esc or click elsewhere to undo';
  }
- st.phase='preview';$('surfaceConfirm').disabled=false;
+ st.phase='preview';
 }
 function commitFace(editor){const st=editor.faceDrawing;if(st?.phase!=='preview')return;
  const obj=st.object;
@@ -138,20 +142,26 @@ function commitFace(editor){const st=editor.faceDrawing;if(st?.phase!=='preview'
  if(st.mode==='media'&&st.mount){const mount=structuredClone(st.mount);editor.cancelSpatialDrawing();editor.openChatMediaPicker(mount);}
 }
 export function spatialPointer(event){
- const canvas=this.world.renderer.domElement;
- // Captured drag events keep arriving after the pointer crosses the canvas boundary.
- if(event.target!==canvas&&!canvas.contains(event.target))return false;
+ const canvas=this.world.renderer.domElement,shield=$('spatialDrawShield');
+ // A dedicated viewport hit layer captures drags even over SOLVI HUD elements.
+ // Retain canvas support for tests and legacy callers.
+ const inputTarget=event.target===shield?shield:event.target===canvas||canvas.contains(event.target)?canvas:null;
+ if(!inputTarget)return false;
+ if(event.type==='pointercancel'){
+  if(this.faceDrawing||this.curveDrawing)this.cancelSpatialDrawing();
+  return true;
+ }
  const pointFromEvent=()=>{const box=canvas.getBoundingClientRect();this.pointer.set((event.clientX-box.left)/box.width*2,1-(event.clientY-box.top)/box.height*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);return strokePoint(this.raycaster.ray,this.curveDrawing.plane);};
  if(this.curveDrawing){
   const d=this.curveDrawing;
   if(event.type==='pointerdown'&&event.button===0){
    const p=pointFromEvent();if(!p)return true;
-   d.points=[];d.drawing=true;d.cursor=p;appendStrokePoint(d.points,p);canvas.setPointerCapture?.(event.pointerId);drawCurvePreview(this);
+   d.points=[];d.drawing=true;d.cursor=p;appendStrokePoint(d.points,p);inputTarget.setPointerCapture?.(event.pointerId);drawCurvePreview(this);
   }else if(event.type==='pointermove'&&d.drawing){
    const p=pointFromEvent();if(p){d.cursor=p;appendStrokePoint(d.points,p);drawCurvePreview(this);}
   }else if(event.type==='pointerup'&&d.drawing){
    const p=pointFromEvent();appendStrokePoint(d.points,p);d.cursor=null;d.drawing=false;
-   if(canvas.hasPointerCapture?.(event.pointerId))canvas.releasePointerCapture(event.pointerId);
+   if(inputTarget.hasPointerCapture?.(event.pointerId))inputTarget.releasePointerCapture(event.pointerId);
    drawCurvePreview(this);
   }
   return true;
@@ -161,12 +171,12 @@ export function spatialPointer(event){
   if(st.phase==='preview'){this.cancelSpatialDrawing();return true;} // click anywhere to dismiss an unconfirmed sketch
   if(event.button!==0)return true;
   const p=surfaceHit(this,event,true);if(!p){$('surfaceDrawStatus').textContent='Start drawing directly on the selected object face';return true;}
-  st.start=p;st.end=p;canvas.setPointerCapture?.(event.pointerId);drawFacePreview(this);return true;
+  st.start=p;st.end=p;inputTarget.setPointerCapture?.(event.pointerId);drawFacePreview(this);return true;
  }
  if(event.type==='pointermove'&&st.start&&st.phase==='drawing'){st.end=surfaceHit(this,event)||st.end;drawFacePreview(this);return true;}
  if(event.type==='pointerup'&&st.start&&st.phase==='drawing'){
   st.end=surfaceHit(this,event)||st.end;
-  if(canvas.hasPointerCapture?.(event.pointerId))canvas.releasePointerCapture(event.pointerId);
+  if(inputTarget.hasPointerCapture?.(event.pointerId))inputTarget.releasePointerCapture(event.pointerId);
   drawFacePreview(this);previewFace(this);return true;
  }
  return true;
@@ -175,6 +185,7 @@ export function cancelSpatialDrawing(){
  const face=this.faceDrawing;
  if(face?.previewGeometry){face.object.geometry=face.originalGeometry;face.previewGeometry.dispose();face.previewGeometry=null;face.originalGeometry=null;}
  this.curveDrawing=null;this.faceDrawing=null;disposePreview(this,'curvePreview');disposePreview(this,'facePreview');
+ if($('spatialDrawShield'))$('spatialDrawShield').hidden=true;
  if($('curveDrawPanel'))$('curveDrawPanel').hidden=true;if($('surfaceDrawPanel'))$('surfaceDrawPanel').hidden=true;
  this.world.controls.enabled=true;
  if(this.selected&&this.canTransform(this.selected)&&this.selected.userData.editorKind!=='robot')this.transform.attach(this.selected);

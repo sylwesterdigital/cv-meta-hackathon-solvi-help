@@ -628,7 +628,7 @@ export class SceneEditor{
  events(){
   const canvas=this.world.renderer.domElement;let startX,startY;
   window.addEventListener('keydown',e=>{if(!byId('wallPanel')||byId('wallPanel').hidden)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.code==='KeyZ'){e.preventDefault();e.stopImmediatePropagation();e.shiftKey?this.redoWall():this.undoWall();return;}if(cmd&&e.code==='KeyY'){e.preventDefault();e.stopImmediatePropagation();this.redoWall();return;}if(!this.wallDrawing)return;if(e.key==='Escape'){e.preventDefault();this.endWallDrawing();}else if(e.key==='Enter'&&!e.target?.closest?.('input,select,textarea')){e.preventDefault();this.finishWallStroke();}},true);
-  for(const type of ['pointerdown','pointermove','pointerup'])document.addEventListener(type,e=>{if(this.spatialPointer(e)){e.preventDefault();e.stopImmediatePropagation();return;}if(this.wallPointer(e)){e.preventDefault();e.stopPropagation();}},true);
+  for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])document.addEventListener(type,e=>{if(this.spatialPointer(e)){e.preventDefault();e.stopImmediatePropagation();return;}if(this.wallPointer(e)){e.preventDefault();e.stopPropagation();}},true);
   canvas.addEventListener('dblclick',e=>{if(this.wallDrawing){e.preventDefault();e.stopPropagation();this.finishWallStroke();}},true);
   const orbitGesture=new OrbitGesture();
   this.lastPointer={x:innerWidth/2,y:innerHeight/2};window.addEventListener('pointermove',e=>{if(!document.pointerLockElement)this.lastPointer={x:e.clientX,y:e.clientY};},{passive:true});
@@ -648,7 +648,7 @@ export class SceneEditor{
    if(!force&&event.pointerType!=='touch'&&event.buttons===0&&!orbitGesture.has(event.pointerId))force=true;
    if(force)orbitGesture.cancel();else orbitGesture.release(event.pointerId);
    this.world.cameraOrbitGesture=orbitGesture.pointers.size?orbitGesture.orbiting:null;
-   this.world.controls.enabled=!this.world.editorDragging&&!this.world.renderer.xr.isPresenting&&document.pointerLockElement!==canvas;
+   this.world.controls.enabled=!(this.curveDrawing||this.faceDrawing)&&!this.world.editorDragging&&!this.world.renderer.xr.isPresenting&&document.pointerLockElement!==canvas;
    if(!orbitGesture.pointers.size){
     // Never re-enable orbit on idle hover, including the release frame.
     queueMicrotask(()=>{

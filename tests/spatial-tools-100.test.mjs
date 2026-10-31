@@ -74,7 +74,7 @@ test('cutout is a preview until confirmation; cancel restores geometry and does 
  assert.match(text,/face\.object\.geometry=face\.originalGeometry/);
  assert.match(text,/if\(st\.phase==='preview'\)\{this\.cancelSpatialDrawing\(\)/);
  assert.match(text,/editor\.physics\.sync\(obj\);editor\.recordEdit/);
- assert.match(text,/canvas\.setPointerCapture\?\./);
+ assert.match(text,/inputTarget\.setPointerCapture\?\./);
  assert.match(text,/editor\.openChatMediaPicker\(mount\)/);
 });
 test('mounted media target is embedded before initial scene snapshot and is followed in world',()=>{
