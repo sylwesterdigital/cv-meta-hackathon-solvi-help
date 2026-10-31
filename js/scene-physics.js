@@ -2,6 +2,7 @@ import {landingAnimationKind,easedStepOffset} from './animation-tuning.js';
 import * as THREE from 'three';
 import {physicsOptions} from './physics-options.js';
 import {stairGeometryKey} from './stair-extensions.js';
+import {supportedLiftRobot} from './lift-rider.js';
 import {CHARACTER,characterMotion,resolveCharacterMotion,easedRemotePose} from './character-physics.js';
 import {robotPushVector,pushedWalkState} from './robot-push.js';
 import {approachingRobotContact,ROBOT_CONTACT_DISTANCE} from './robot-contact.js';
@@ -371,6 +372,24 @@ export class ScenePhysics{
    impact.x*=friction;impact.z*=friction;
    if(Math.hypot(impact.x,impact.z)<.06)delete object.userData.robotImpactVelocity;
   }
+  // While a robot stands inside a lift its vertical movement is carried by
+  // the cabin.  Never integrate gravity against the previous floor collider:
+  // on remote downward runs that turns a passenger into an apparent fall.
+  const support=supportedLiftRobot(object,this.editor);
+  if(support){
+   state.verticalSpeed=0;state.grounded=true;state.airStartY=null;state.airStartAt=0;
+   state.jumpStarted=false;state.wasAirborne=false;
+   object.userData.physicsAirborne=false;object.userData.robotFallActive=false;
+   const requested={x:desired.x-p.x,y:0,z:desired.z-p.z};
+   this.characterController.computeColliderMovement(collider,requested);
+   const resolved=this.characterController.computedMovement();
+   const next={x:p.x+(Number(resolved.x)||0),y:object.position.y,z:p.z+(Number(resolved.z)||0)};
+   body.setTranslation(next,true);body.setNextKinematicTranslation(next);
+   body.setNextKinematicRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
+   object.position.set(next.x,next.y,next.z);
+   return;
+  }
+  if(object.userData.liftRide)delete object.userData.liftRide;
   const wantJump=Number.isFinite(object.userData.jumpVel)&&object.userData.jumpVel>0;
   const canJump=state.grounded||p.y<=.07;
   const jump=wantJump&&canJump;

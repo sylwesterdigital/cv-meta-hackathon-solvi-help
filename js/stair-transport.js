@@ -5,6 +5,7 @@ import {moveTransportRider} from './transport-rider.js';
 import {updateLiftPanel} from './office-stairs.js';
 import {liftChime} from './lift-chimes.js';
 import {liftHeightAt,liftMotionFinished,motionSnapshot,liftBaseY,safeLiftMotion} from './lift-sync.js';
+import {canCarryLiftRider} from './lift-rider.js';
 const vec=new THREE.Vector3();
 function surfaceHeight(segments,along,total){
  if(!segments.length)return 0;
@@ -27,6 +28,10 @@ export function tickStairTransport(editor,dt){
   }
   const speed=Math.min(2.5,Math.max(.05,transport.speed||.5));
   runtime.phase=(runtime.phase+step*speed*(transport.direction===-1?-1:1))%1;
+  // Classify passengers against the OLD cabin pose, before changing its height.
+  // This prevents remote commands and direction reversals from leaving riders behind.
+  device.updateMatrixWorld(true);
+  const before=device.matrixWorld.clone().invert();
   const oldY=device.position.y;
   let carry={x:0,y:0,z:0};
   if(variant==='lift'){
@@ -71,7 +76,8 @@ export function tickStairTransport(editor,dt){
   const entryTotal=pts.length>=2?projectPath(pts,pts[0][0],pts[0][1])?.total||0:0;
   for(const item of editor.items){
    if(item===device||(!phys?.owns(item)&&!(variant==='lift'&&item.userData.editorKind==='robot'))||!['robot','cube','sphere','cylinder','model'].includes(item.userData.editorKind))continue;
-   if(item.userData.editorKind==='robot'&&(item.userData.robotJumpActive||item.userData.physicsAirborne))continue;
+   if(item.userData.editorKind==='robot'&&item.userData.robotJumpActive){if(item.userData.liftRide?.id===device.userData.editorId)delete item.userData.liftRide;continue;}
+   if(variant!=='lift'&&item.userData.editorKind==='robot'&&item.userData.physicsAirborne)continue;
    const local=transformPoint(item.position);
    // Robots have a foot-origin; ordinary primitives have a centred pivot.
    if(item.userData.editorKind!=='robot'&&item.isMesh){
@@ -80,8 +86,25 @@ export function tickStairTransport(editor,dt){
    }
    if(variant==='lift'){
     const dim=device.userData.liftFootprint||{width:cfg.width,depth:cfg.width*1.25};
-    if(Math.abs(local.x)>dim.width/2-.1||Math.abs(local.z)>dim.depth/2-.1||Math.abs(local.y-.14)>.38||Math.abs(carry.y)<.0001)continue;
-    transfer(editor,item,{x:0,y:carry.y,z:0});continue;
+    const attached=item.userData.editorKind==='robot'&&item.userData.liftRide?.id===device.userData.editorId;
+    // The lift has already moved by carry.y.  Use the PREVIOUS pose to
+    // discover passengers; otherwise descending floors appear to leave the
+    // capsule suspended and the gravity controller marks it airborne.
+    const oldLocal=vec.copy(item.position).applyMatrix4(before).clone();
+    if(!canCarryLiftRider(oldLocal,dim,{attached,jumping:!!item.userData.robotJumpActive,offset:item.userData.liftRide?.offset})){
+     if(attached)delete item.userData.liftRide;
+     continue;
+    }
+    if(item.userData.editorKind==='robot'){
+     item.userData.liftRide={id:device.userData.editorId,offset:attached?item.userData.liftRide.offset:oldLocal.y};
+     // A cabin is support, not a free-fall animation.  Only a deliberate
+     // jump or exiting the footprint can make the robot airborne again.
+     item.userData.physicsAirborne=false;
+     item.userData.robotFallActive=false;
+     delete item.userData.liftRemoteTargetY;
+    }
+    if(Math.abs(carry.y)>.000001)transfer(editor,item,{x:0,y:carry.y,z:0});
+    continue;
    }
    if(!entryTotal)continue;
    const projected=projectPath(pts,local.x,local.z);

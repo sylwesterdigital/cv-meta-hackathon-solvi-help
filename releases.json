@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.111",
+  "currentVersion": "0.2.112",
   "releases": [
+    {
+      "version": "0.2.112",
+      "publishedAt": "2026-10-31T17:13:23Z",
+      "changes": [
+        "Lift passengers no longer enter airborne gravity when a different client commands downward or reverse travel",
+        "The lift carries both the robot transform and Rapier body before running character physics and maintains grounded support while aboard",
+        "Remote lift start packets wait for the rider-aware transport tick; remote y corrections cannot fight the active cabin",
+        "Robots can still jump or walk out of the cabin, releasing the support attachment"
+      ]
+    },
     {
       "version": "0.2.111",
       "publishedAt": "2026-10-31T16:44:37Z",
@@ -330,16 +340,6 @@
         "Freehand smoothing button and adjustable smoothing strength using curve-preserving corner rounding, plus optional automatic freehand smoothing on create.",
         "Allow PNG/JPEG/WebP wall texture upload via authenticated scene media, persist image metadata across reloads and include/remap referenced images in realm archives.",
         "Add regression tests for wall snapping, freehand smoothing, editor in-place updates, cancellation, server validation and custom-image persistence."
-      ]
-    },
-    {
-      "version": "0.2.80",
-      "publishedAt": "2026-10-30T12:51:58Z",
-      "changes": [
-        "Fix the live Add menu using a stale editor.js even though v0.2.79 was deployed, by cache-busting all first-party ES modules through a release-specific import map.",
-        "Version the main.js entrypoint and styles.css URL to prevent stale top-level scripts/styles on browser reload.",
-        "Retain procedural Office Space > Walls directly after Torus, robot pushing, wall editing and v0.2.79 scene features.",
-        "Add two tests checking Office Space menu registration and versioned module resolution across all first-party imports."
       ]
     }
   ]

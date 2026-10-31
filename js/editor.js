@@ -818,12 +818,11 @@ export class SceneEditor{
    runtime.baseY??=liftBaseY(device.position.y,runtime.height);
    // Avoid rebasing the same timeline after a slower scene revision arrives.
    runtime.motion=incoming;runtime.target=incoming.target;runtime.moving=incoming.active;runtime.commanded=true;runtime.authority=false;
-   runtime.height=liftHeightAt(incoming,device.userData.stairs.lift.levelHeight,device.userData.stairs.lift.levels);
+   // Let the next transport tick apply the complete height change WITH the riders.
+   // Moving the cabin here without its passengers would introduce an instant fall.
    device.userData.stairRuntime=runtime;device.userData.stairs.lift.motion=incoming;
-   device.userData.stairs.lift.target=incoming.target;device.userData.stairs.lift.currentHeight=runtime.height;
-   device.position.y=runtime.baseY+runtime.height;
-   const body=this.physics?.bodies?.get(device.userData.editorId);if(body){const p=device.position;body.setTranslation({x:p.x,y:p.y,z:p.z},true);body.setNextKinematicTranslation({x:p.x,y:p.y,z:p.z});}
-   for(const child of device.children)if(child.userData.stairShaft)child.position.y=-runtime.height;
+   device.userData.stairs.lift.target=incoming.target;
+   // The transport tick advances position, body, readout and riders atomically.
    updateLiftPanel(device);return true;
   }
  events(){
@@ -1384,12 +1383,15 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
         o.userData.lastMissionSave=now;this.queueSave(o);
       }
     },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot)}));
+    // Move kinematic transport platforms and cabin riders before evaluating
+    // character gravity, on both the lift operator and the robot owner's tab.
+    tickStairTransport(this,dt);
     this.physics.tick(dt);
-    for(const bot of this.items){const y=bot.userData.liftRemoteTargetY;if(bot.userData.editorKind!=='robot'||!Number.isFinite(y)||this.physics.owns(bot))continue;
+    for(const bot of this.items){const y=bot.userData.liftRemoteTargetY;if(bot.userData.editorKind!=='robot'||!Number.isFinite(y)||this.physics.owns(bot)||bot.userData.liftRide)continue;
      const delta=Math.max(-.16,Math.min(.16,(y-bot.position.y)*Math.min(1,dt*12)));if(Math.abs(delta)>.001){bot.position.y+=delta;const body=this.physics.bodies.get(bot.userData.editorId);if(body){const p=body.translation(),next={x:p.x,y:p.y+delta,z:p.z};body.setTranslation(next,true);body.setNextKinematicTranslation(next);}}
      if(Math.abs(y-bot.position.y)<.02)delete bot.userData.liftRemoteTargetY;
     }
-    tickStairTransport(this,dt);tickPortals(this,dt);this.updateMountedMedia();
+    tickPortals(this,dt);this.updateMountedMedia();
     for(const r of this.items){if(r.userData.editorKind!=='robot')continue;const previous=previousRobotPositions.get(r.userData.editorId);if(!previous)continue;const distance=Math.hypot(r.position.x-previous.x,r.position.z-previous.z);r.userData.robotActualSpeed=distance/Math.max(.016,dt);}
     animateRobots(this.items,dt,(actor,kind,force,remote)=>{
       const hits=this.physics.applyCombat(actor,kind,force,remote);
@@ -1455,7 +1457,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
    if(state.mode==='lift'){const robot=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===state.id);
     const y=state.position?.[1];if(robot&&!this.physics.owns(robot)&&typeof y==='number'&&Number.isFinite(y)){
      // Vertical transport is absent from the 2D robot input correction path.
-     robot.userData.liftRemoteTargetY=y;
+     if(!robot.userData.liftRide)robot.userData.liftRemoteTargetY=y;
     }
    }
   }
