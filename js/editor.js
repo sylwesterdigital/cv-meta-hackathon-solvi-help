@@ -1,3 +1,4 @@
+import {airStep,autoRunAfterHold} from './robot-air-control.js';
 import {confirmAction} from './app-dialogs.js';
 import * as THREE from 'three';
 import {setupAvatarGallery} from './avatar-gallery.js';
@@ -699,7 +700,7 @@ export class SceneEditor{
    else if(this.selected&&['Delete','Backspace'].includes(e.key)){e.preventDefault();this.remove();}
   });
   window.addEventListener('keyup',e=>{this.robotKeys.delete(e.code);});
-  window.addEventListener('blur',()=>{this.robotKeys.clear();this.broadcastEdit(false);});
+  window.addEventListener('blur',()=>{this.robotKeys.clear();this.walkHeldSince=null;this.broadcastEdit(false);});
  }
  canTransform(obj){return mayTransform(obj,this.canEdit(obj));}
  canEdit(obj){if(!obj)return false;const policy=window.solviRoomPolicy||{objects:'open',robots:'open'};const type=obj.userData.editorKind==='robot'?'robots':'objects';if(policy[type]!=='owned')return true;if(window.solviIsAdmin?.())return true;const uid=window.solviAPI?.auth()?.profile?.id;return !obj.userData.ownerId||obj.userData.ownerId===uid;}
@@ -764,20 +765,21 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  renderPrimitiveControls(obj){
   const section=byId('primitiveProperties'),grid=byId('primitivePropertiesFields'),fields=PRIMITIVE_FIELDS[obj?.userData?.editorKind];
   section.hidden=!fields;grid.replaceChildren();if(!fields)return;
-  const config=sanitisePrimitive(obj.userData.editorKind,obj.userData.primitive||{});
-  obj.userData.primitive=config;
-  for(const [key,[initial,min,max]] of Object.entries(fields)){
-   const label=document.createElement('label');label.textContent=key.replace(/([A-Z])/g,' $1');
-   const input=document.createElement('input');input.type='number';input.min=String(min);input.max=String(max);input.step=key.endsWith('Segments')?'1':'0.05';input.value=String(config[key]);input.disabled=!this.canEdit(obj);
-   input.onchange=()=>{if(!this.canEdit(obj))return;const before=this.snapshot(obj);
-    const next=sanitisePrimitive(obj.userData.editorKind,{...obj.userData.primitive,[key]:input.value});
-    const geom=buildPrimitive(obj.userData.editorKind,next);if(!geom)return;
-    const old=obj.geometry;obj.geometry=geom;old?.dispose();obj.userData.primitive=next;
-    this.physics.sync(obj);this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);input.value=String(next[key]);
-   };
-   label.append(input);grid.append(label);
-  }
+  const kind=obj.userData.editorKind,config=sanitisePrimitive(kind,obj.userData.primitive||{});obj.userData.primitive=config;
+  const keys=Object.keys(fields),select=document.createElement('select'),number=document.createElement('input');
+  select.className='primitive-property-select';select.setAttribute('aria-label','Geometry property');
+  number.type='number';number.className='primitive-property-value';number.setAttribute('aria-label','Selected geometry value');
+  const range=document.createElement('input');range.type='range';range.className='primitive-property-range';range.setAttribute('aria-label','Adjust selected geometry property');
+  for(const key of keys){const option=document.createElement('option');option.value=key;option.textContent=key.replace(/([A-Z])/g,' $1');select.append(option);}
+  let editStart=null;
+  const refresh=()=>{editStart=null;const key=select.value,[initial,min,max]=fields[key],value=obj.userData.primitive?.[key]??initial;number.min=range.min=String(min);number.max=range.max=String(max);number.step=range.step=key.toLowerCase().includes('segment')?'1':'0.05';number.value=range.value=String(value);number.disabled=range.disabled=!this.canEdit(obj);};
+  const apply=(value,commit)=>{if(!this.canEdit(obj))return;if(!editStart)editStart=this.snapshot(obj);const key=select.value,before=editStart;const next=sanitisePrimitive(kind,{...obj.userData.primitive,[key]:value});const geom=buildPrimitive(kind,next);if(!geom)return;
+   const old=obj.geometry;obj.geometry=geom;old?.dispose();obj.userData.primitive=next;number.value=range.value=String(next[key]);this.physics.sync(obj);if(commit){this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);editStart=null;}};
+  select.onchange=refresh;number.oninput=()=>apply(number.value,false);number.onchange=()=>apply(number.value,true);
+  range.oninput=()=>apply(range.value,false);range.onchange=()=>{apply(range.value,true);};
+  grid.append(select,number,range);refresh();
  }
+
  syncTransformLockControls(obj){
   const locked=isTransformLocked(obj),permitted=this.canEdit(obj);
   if(locked&&this.transform.object===obj)this.transform.detach();
@@ -1041,12 +1043,17 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     if(this.lightHelper&&byId('propertiesPanel').hidden)this.clearLightHelper();
     const previousRobotPositions=new Map(this.items.filter(o=>o.userData.editorKind==='robot').map(o=>[o.userData.editorId,{x:o.position.x,z:o.position.z}]));
     const robot=this.robot(),canControl=this.controlMode==='robot'&&robot&&this.canEdit(robot);
-    const input=canControl?{...intent(this.robotKeys),s:robot.userData.robotSpeed??1.8,q:robot.userData.robotStrafeSpeed??2.5,u:robot.userData.robotTurnSpeed??4,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1.8,q:2.5,u:4,j:0};
+    const rawIntent=intent(this.robotKeys);
     const now=performance.now();
+    if(canControl&&rawIntent.f>0){this.walkHeldSince??=now;}else this.walkHeldSince=null;
+    const autoRun=autoRunAfterHold(this.walkHeldSince===null?0:now-this.walkHeldSince,{walking:rawIntent.f>0,airborne:!!(robot?.userData.robotJumpActive||robot?.userData.physicsAirborne),shift:!!rawIntent.r});
+    const input=canControl?{...rawIntent,r:Number(autoRun),s:robot.userData.robotSpeed??1.8,q:robot.userData.robotStrafeSpeed??2.5,u:robot.userData.robotTurnSpeed??4,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1.8,q:2.5,u:4,j:0};
     // Motion intent belongs to a particular robot, not every avatar in the room.
     for(const item of this.items){if(item.userData.editorKind==='robot')item.userData.robotLocalMotion=false;}
     if(canControl){
-      const motion=stepRobotMotion({x:robot.position.x,z:robot.position.z,yaw:robot.rotation.y,velocity:robot.userData.robotVelocity||0,steer:robot.userData.robotSteer||0,lateral:robot.userData.robotLateral||0},input,dt);
+      const state={x:robot.position.x,z:robot.position.z,yaw:robot.rotation.y,velocity:robot.userData.robotVelocity||0,steer:robot.userData.robotSteer||0,lateral:robot.userData.robotLateral||0};
+      const jumping=!!(robot.userData.robotJumpActive||robot.userData.physicsAirborne);
+      const motion=jumping&&robot.userData.robotAirPlan?airStep(state,robot.userData.robotAirPlan,dt):stepRobotMotion(state,input,dt);
       robot.position.x=motion.x;robot.position.z=motion.z;robot.rotation.y=motion.yaw;
       robot.userData.robotVelocity=motion.velocity;robot.userData.robotSteer=motion.steer;robot.userData.robotLateral=motion.lateral;
       robot.userData.robotLocalMotion=active(input)||Math.abs(motion.velocity)>.04||Math.abs(motion.lateral)>.04;
@@ -1072,7 +1079,8 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     for(const [id,remote] of this.remoteInput){
       const other=this.items.find(o=>o.userData.editorId===id);
       if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotRemoteMotion=false;other.userData.robotMode='idle';other.userData.robotVelocity=0;other.userData.robotSteer=0;other.userData.robotLateral=0;}continue;}
-      const next=stepRobotMotion({x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0,steer:other.userData.robotSteer||0,lateral:other.userData.robotLateral||0},remote,dt);
+      const state={x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0,steer:other.userData.robotSteer||0,lateral:other.userData.robotLateral||0};
+      const next=(other.userData.robotJumpActive||other.userData.physicsAirborne)&&other.userData.robotAirPlan?airStep(state,other.userData.robotAirPlan,dt):stepRobotMotion(state,remote,dt);
       other.position.x=next.x;other.position.z=next.z;other.rotation.y=next.yaw;other.userData.robotVelocity=next.velocity;other.userData.robotSteer=next.steer;other.userData.robotLateral=next.lateral;
       other.userData.robotRemoteMotion=Boolean(remote.f||remote.t||Math.abs(next.velocity)>.04||Math.abs(next.lateral)>.04);
       if(!other.userData.robotJumpActive&&other.userData.jumpVel===undefined&&!other.userData.physicsAirborne){other.userData.robotMode=Math.abs(next.velocity)<.04?(Math.abs(next.lateral)>.04?(next.lateral>0?'strafeLeft':'strafeRight'):'idle'):next.velocity<0?'walkBackward':(remote.r&&next.velocity>1.4?'run':'walk');}
@@ -1082,7 +1090,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
       const obj=this.items.find(o=>o.userData.editorId===id);
       if(!obj){this.remoteCorrections.delete(id);continue;}
       const next=applyRemoteCorrection({x:obj.position.x,z:obj.position.z,yaw:obj.rotation.y},correction,dt);
-      obj.position.x=next.x;obj.position.z=next.z;obj.rotation.y=next.yaw;
+      obj.position.x=next.x;obj.position.z=next.z;if(!obj.userData.robotJumpActive&&!obj.userData.physicsAirborne)obj.rotation.y=next.yaw;
       if(next.done)this.remoteCorrections.delete(id);else this.remoteCorrections.set(id,next.residual);
     }
     tickRobots(this.items,dt,Object.assign((o,arrived)=>{

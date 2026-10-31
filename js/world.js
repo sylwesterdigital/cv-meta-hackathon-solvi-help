@@ -225,6 +225,10 @@ export class SolviWorld {
     window.addEventListener('blur',()=>{this.keys.clear();this.cameraOrbitGesture=null;this.editorGizmoPointer=false;this.controls.enabled=false;});
     let dragX=0,dragY=0;
     this.renderer.domElement.addEventListener('pointerdown',e=>{dragX=e.clientX;dragY=e.clientY;});
+    this.renderer.domElement.addEventListener('pointermove',e=>{
+      if(!e.buttons||!['chase','chase-smart'].includes(this.cameraFollowMode)||this.editorDragging||this.editorGizmoPointer||this.renderer.xr.isPresenting)return;
+      if((e.buttons&1)&&Math.hypot(e.clientX-dragX,e.clientY-dragY)>6)this.syncFollowAfterManualView();
+    });
     this.renderer.domElement.addEventListener('pointerup',e=>{
       // Let OrbitControls receive pointerup even when the editor selected a mesh.
       if(e.solviObjectPicked)return;
@@ -601,7 +605,7 @@ export class SolviWorld {
     button.setAttribute('aria-label',label+'. Click to switch camera mode.');
     button.title='Cycle: Free → Chase → Chase Smart → Orbit follow (V). Adjust follow distance via slider or wheel/trackpad.';
     const control=document.getElementById('chaseDistanceControl');
-    if(control)control.hidden=!['chase','chase-smart','orbit'].includes(this.cameraFollowMode);const smart=document.getElementById('smartChaseAngleControl');if(smart)smart.hidden=this.cameraFollowMode!=='chase-smart';
+    if(control)control.hidden=!['chase','chase-smart','orbit'].includes(this.cameraFollowMode);const smart=document.getElementById('smartChaseAngleControl');if(smart)smart.hidden=this.cameraFollowMode!=='chase-smart'||!this.robotEditor?.robot();
     this.updateChaseDistanceUI();
   }
   updateChaseDistanceUI(){

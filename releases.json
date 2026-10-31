@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.97",
+  "currentVersion": "0.2.98",
   "releases": [
+    {
+      "version": "0.2.98",
+      "publishedAt": "2026-10-31T03:56:23Z",
+      "changes": [
+        "Repair chat attachment observer/cache ReferenceError; correct admin chat clear request exact-name, invalidate cleared room and prevent pre-clear transcript replay.",
+        "Lock airborne robot heading and horizontal velocity from takeoff until physics confirms landing, including remote prediction; shift into Run after two seconds of continuous forward input.",
+        "Move Chase Smart angle threshold control into selected Robot Properties and switch Chase/Chase Smart to Orbit Follow on intentional camera drag.",
+        "Add S/M/L responsive grid size switchers to Avatar and Asset galleries, persisted per-browser.",
+        "Replace primitive geometry steppers with a single property selector, numeric value and shared live range slider; unify inspector styling.",
+        "Emit once-per-missing-clip diagnostic for avatar actions to local Brain debug events; add regression tests for chat, gallery, air-motion and controls."
+      ]
+    },
     {
       "version": "0.2.97",
       "publishedAt": "2026-10-31T03:32:32Z",
@@ -330,17 +342,6 @@
         "Preserve uploaded media aspect ratio using real image/video dimensions so picture frames and screens are no longer squeezed into an incorrect ratio.",
         "Render per-robot navigation debug overlays on the floor, including planned routes, obstacle outlines and a target visibility sector when robot debug is enabled.",
         "Keep world-drop media uploads and scene-media persistence aligned with stored width/height metadata."
-      ]
-    },
-    {
-      "version": "0.2.64",
-      "publishedAt": "2026-10-29T18:57:44Z",
-      "changes": [
-        "Replace the native browser text prompt for dropped image and video destinations with an accessible SOLVI-themed modal featuring a local preview, one-click Post to chat and Add to scene actions.",
-        "Offer white, black and mirror back-side options directly in the scene-add dialog, remember the drop point and upload only after the user selects an action. Posting to chat publishes the attachment immediately without sending an existing chat draft.",
-        "Replace the misleading Drop 3D model overlay text with a general file-drop hint covering chat attachments, 3D media surfaces and GLB/FBX import.",
-        "Prevent duplicate file attachments caused by the chat composer drop handler and the document-wide drop handler both handling one drop.",
-        "Support Escape, cancel, backdrop dismiss, keyboard focus containment and preview URL cleanup; add release regression tests."
       ]
     }
   ]

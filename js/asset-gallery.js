@@ -1,3 +1,4 @@
+import {setupLibraryCardSize} from './library-card-size.js';
 import {confirmAction} from './app-dialogs.js';
 import * as THREE from 'three';
 import {clone as cloneSkeleton} from 'three/addons/utils/SkeletonUtils.js';
@@ -11,6 +12,7 @@ export function setupAssetGallery(editor){
  const edit=$('assetGalleryEdit'),bulk=$('assetGalleryBulk'),selectedCount=$('assetGallerySelected');
  let collection=[],replacing=null,renderSerial=0,observer=null,previewQueue=Promise.resolve(),editing=false,page=0;
  const PAGE_SIZE=12;
+ setupLibraryCardSize(backdrop,grid,'assets');
  const selected=new Set();
  const filtered=()=>visibleAssets(collection,$('assetGallerySearch').value);
  const selection=()=>filtered().filter(a=>selected.has(a.id));

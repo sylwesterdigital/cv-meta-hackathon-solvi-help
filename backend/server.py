@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.97',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.98',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -860,9 +860,10 @@ def admin_room_chat_clear():
         # Scoped deletes for any associated chat reaction rows.
         for identifier in ids:con.execute('DELETE FROM robot_reactions WHERE message_id=?',(identifier,))
         con.execute('DELETE FROM messages WHERE room_id=?',(room_id,))
-    publish({'type':'chat_cleared','room':room_id},room_id=room_id)
+    clear_time=now()
+    publish({'type':'chat_cleared','room':room_id,'cleared_at':clear_time},room_id=room_id)
     audit_event('admin-chat-cleared',room=room_id,count=len(ids))
-    return jsonify(ok=True,room=room_id,deleted=len(ids))
+    return jsonify(ok=True,room=room_id,deleted=len(ids),cleared_at=clear_time)
 
 MEDIA_TYPES={'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/gif':'.gif',
              'audio/webm':'.webm','audio/ogg':'.ogg','audio/wav':'.wav','audio/mpeg':'.mp3','audio/mp4':'.m4a',

@@ -1,3 +1,4 @@
+import {setupLibraryCardSize} from './library-card-size.js';
 import {confirmAction} from './app-dialogs.js';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
@@ -11,7 +12,8 @@ const safe=a=>typeof a?.url==='string'&&(a.url.startsWith('./assets/')||/^\/api\
 export function setupAvatarGallery(editor){
  const backdrop=$('avatarGalleryBackdrop'),grid=$('avatarGalleryGrid'),status=$('avatarGalleryStatus');
  const search=$('avatarGallerySearch'),edit=$('avatarGalleryEdit'),bulk=$('avatarGalleryBulk'),count=$('avatarGallerySelected');
- const selected=new Set();const notice=$('avatarGalleryNotice');let editing=false,collection=[],renderGeneration=0,previewObserver=null,lanes=[Promise.resolve(),Promise.resolve()],nextLane=0;
+ const selected=new Set();
+ setupLibraryCardSize(backdrop,grid,'avatars');const notice=$('avatarGalleryNotice');let editing=false,collection=[],renderGeneration=0,previewObserver=null,lanes=[Promise.resolve(),Promise.resolve()],nextLane=0;
  const enqueue=task=>{const lane=nextLane++%lanes.length;lanes[lane]=lanes[lane].catch(()=>{}).then(task);};
  const available=()=>filterLibrary(collection.filter(safe),search.value);
  function selection(){return available().filter(a=>selected.has(a.url));}

@@ -44,7 +44,9 @@ function invalidateChatRoom(room,{dropTraces=false}={}){
  if(dropTraces){for(let i=localBrainTrace.length-1;i>=0;i--)if(localBrainTrace[i].room===room)localBrainTrace.splice(i,1);roomActivities.delete(room);}
  if(room===activeRoom){releaseChatAttachments();$('chatFeed').replaceChildren();updateChatPageDown();}
 }
+let chatAttachmentObserver=null;const chatAttachmentCache=new Map();
 const roomActivities=new Map();const chatMediaURLs=new Set();const sharedPortraits=new Map();
+const chatClearCutoffs=new Map();
 function clearPortraitCache(){for(const value of sharedPortraits.values())if(value.url)URL.revokeObjectURL(value.url);sharedPortraits.clear();}
 const runningRobotTasks=new Map();const localBrainTrace=[];const initialRoomLoads=new Set();
 let activeRoom=localStorage.getItem('solvi-last-realm')||sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};let sessionPrompt=false;
@@ -248,7 +250,7 @@ async function bubble(entry){
       details.append(summary,grid);mediaContainer.append(details);
     }
     if(!renderingChat)scrollChatToLatest();
-  }).catch(()=>{if(slot.isConnected)slot.textContent='Attachment unavailable';}));
+  }).catch(()=>{if(slot.isConnected&&roomAtBubble===activeRoom&&renderEpoch===chatEpoch)slot.textContent='Attachment unavailable';}));
  }
  lastBubbleEntry=entry;if(!renderingChat)scrollChatToLatest();if(!suppressRobotSpeech&&role==='assistant'&&!entry.isBrainTrace)robotSpeech?.speak(entry);
 }
@@ -679,7 +681,8 @@ async function loadMessages(){
    if(chatClearingRoom===room)return;
    const data=await api.req('/api/messages?room='+encodeURIComponent(room));
    if(room!==activeRoom||epoch!==chatEpoch||request!==chatLoadSerial||chatClearingRoom===room)return;
-   const messages=data.messages||[];
+   const cutoff=chatClearCutoffs.get(room);
+   const messages=(data.messages||[]).filter(m=>!cutoff||String(m.created||'')>cutoff);
    const nextSignature=room+':'+messages.map(m=>m.id+':'+m.text).join('|')+':'+readPreferences().group;
    if(nextSignature===chatSignature)return;
    const oldIds=new Set(cachedMessages.map(m=>m.id));
@@ -734,9 +737,12 @@ async function clearAllRoomChat(){
  if(!exportedChatRooms.has(room))return toast('Export the full realm chat transcript before clearing it.');
  if(!await exactNameAction(`Permanently remove ALL chat messages from "${title}"? A full transcript export is required. Other realms, scene objects and uploaded media are unaffected.`,title,{title:'Clear realm conversation',confirmLabel:'Delete realm chat'}))return;
  const status=$('adminChatStatus');status.textContent='Deleting messages…';chatClearingRoom=room;chatLoadSerial++;
- try{const result=await api.req('/api/admin/room-chat/clear',{method:'POST',body:JSON.stringify({room,exact_name:exact,confirm:true})});
-  status.textContent=`Deleted ${result.deleted} messages in ${title}.`;exportedChatRooms.delete(room);invalidateChatRoom(room,{dropTraces:true});
- }catch(e){status.textContent='Delete failed: '+e.message;}
+ // Immediately detach stale rows while the server performs the irreversible clear.
+ invalidateChatRoom(room,{dropTraces:true});
+ try{const result=await api.req('/api/admin/room-chat/clear',{method:'POST',body:JSON.stringify({room,exact_name:title,confirm:true})});
+  status.textContent=`Deleted ${result.deleted} messages in ${title}.`;exportedChatRooms.delete(room);
+  chatClearCutoffs.set(room,String(result.cleared_at||new Date().toISOString()));invalidateChatRoom(room,{dropTraces:true});
+ }catch(e){status.textContent='Delete failed: '+e.message;invalidateChatRoom(room,{dropTraces:true});}
  finally{if(chatClearingRoom===room)chatClearingRoom=null;}
  if(room===activeRoom)await loadMessages();
 }
@@ -1338,7 +1344,7 @@ function bindUI(world){
    }
  });
  window.addEventListener('solvi:chat-updated',loadMessages);
- window.addEventListener('solvi:room-chat-cleared',event=>{const room=event.detail?.room||activeRoom;invalidateChatRoom(room,{dropTraces:true});if(room===activeRoom&&chatClearingRoom!==room)void loadMessages();});
+ window.addEventListener('solvi:room-chat-cleared',event=>{const room=event.detail?.room||activeRoom;chatClearCutoffs.set(room,String(event.detail?.cleared_at||new Date().toISOString()));invalidateChatRoom(room,{dropTraces:true});if(room===activeRoom&&chatClearingRoom!==room)void loadMessages();});
  $('chatButton').onclick=()=>window.solviSetChatMode?.('overlay');
  $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?.name||'Sign in';$('profilePanelNote').textContent=me?'Profile & media':'Create profile';refreshProfileAdminUI();show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
  $('closeProfile').onclick=()=>{closeProfileCamera();if(me&&auth)show('profileBackdrop',false);else{$('profileStatus').textContent='Sign in to continue.';$('profileName').focus();}};

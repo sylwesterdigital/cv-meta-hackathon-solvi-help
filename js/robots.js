@@ -1,3 +1,4 @@
+import {launchAirPlan} from './robot-air-control.js';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
@@ -81,7 +82,7 @@ export function robotAction(robot,mode){
   }
   robot.userData.robotAnimator?.play(mode);
   if(mode==='wave')robot.userData.waveEnd=performance.now()+1800;
-  if(mode==='jump'){robot.userData.robotJumpClip=jumpAnimationKind({moving:previouslyMoving,available:[...robot.userData.robotAnimator?.actions?.keys?.()||[]]});robot.userData.robotJumpActive=true;robot.userData.robotJumpUntil=performance.now()+1700;robot.userData.jumpVel=5.7;robot.userData.groundY=robot.position.y;}
+  if(mode==='jump'){robot.userData.robotJumpClip=jumpAnimationKind({moving:previouslyMoving,available:[...robot.userData.robotAnimator?.actions?.keys?.()||[]]});robot.userData.robotJumpActive=true;robot.userData.robotJumpUntil=performance.now()+1700;robot.userData.jumpVel=5.7;robot.userData.robotAirPlan=launchAirPlan({yaw:robot.rotation.y,velocity:inPlaceJump?0:robot.userData.robotVelocity,lateral:inPlaceJump?0:robot.userData.robotLateral});robot.userData.groundY=robot.position.y;}
 }
 export function tickRobots(items,dt,onMove=()=>{}){
   for(const robot of items){
@@ -314,6 +315,18 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     // Do not walk in place against an immovable wall or stair riser.
     mode=continuousGaitMode(data,mode,now);
     const animator=data.robotAnimator;
+    // A missing clip is a model-preparation problem, not a silent animation failure.
+    // Report each requested action once per avatar while the user has debug enabled.
+    if(animator?.actions?.size&& !animator.actions.has(mode) && !mode.startsWith('clip:')){
+      const missing=data.robotMissingActions??(data.robotMissingActions=new Set());
+      if(!missing.has(mode)){
+        missing.add(mode);
+        if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('solvi:brain-trace',{detail:{
+          robotId:data.editorId,robotName:robot.name,at:new Date().toLocaleTimeString(),
+          step:'MISSING AVATAR ACTION',detail:`Requested ${mode} is absent in this GLB. Available mapped actions: ${[...animator.actions.keys()].filter(k=>!k.startsWith('clip:')).join(', ')||'none'}. Use an avatar with the required animation clip.`
+        }}));
+      }
+    }
     if(data.robotPlaying!==mode){
       if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){
         animator?.playOnce(mode,shot.timing);

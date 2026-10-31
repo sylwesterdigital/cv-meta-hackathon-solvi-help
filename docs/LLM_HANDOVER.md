@@ -1,3 +1,5 @@
+> **v0.2.98 addendum (31 October 2026):** The v0.2.97 chat attachment lazy-loading path referenced undeclared variables (`chatAttachmentObserver`, `chatAttachmentCache`) and the admin chat-clear request used an undefined `exact`; these are corrected in v0.2.98 with a server-provided clear timestamp and client filtering to avoid replaying pre-clear messages. Robot jump airtime captures launch horizontal velocity/heading and ignores mid-air steering until physics landing. Continuous walk auto-runs after 2 seconds. Chase Smart threshold moves to Robot Properties, and dragging the camera during chase switches to Orbit Follow. Avatar/Asset galleries have S/M/L cards and primitive inspector now uses one slider. An absent GLB animation action emits a once-per-model/action Brains diagnostic. All items require deployment/browser validation.
+
 > **v0.2.97 addendum (31 October 2026):** Robot routines are now draggable with persisted position; Shift+Up/Down moves free camera only vertically; app-owned confirmation and exact-name dialogs replace blocking browser-native prompts for destructive and paid workflows; chat-clear now invalidates in-flight history/media callbacks and removes local debug and presence events so deleted messages do not reappear from stale responses. Source is tested but not confirmed live. Browser/Flask validation remains necessary.
 
 > **v0.2.96 addendum (31 October 2026):** New Camera Chase Smart with angular threshold and smooth heading catch-up; draggable default-minimized World Tools; per-profile last-realm restoration and stale-scene-load guards; media blob request deduplication and viewport-lazy attachment loading; an admin-only full-room transcript export then exactly confirmed per-room chat flush (chat media/scene files retained). The screenshots showed a browser RESULT_CODE_HUNG and hundreds of blob requests, but live performance gains are not established without browser verification. The deployment watcher must run Flask tests before publishing.
@@ -5,7 +7,7 @@
 # SOLVI.help — Master Project Handover for the Next LLM / Developer
 
 **Document status:** Engineering handover prepared 31 October 2026.  
-**Latest source prepared in this handover:** v0.2.97, **Profile-based, application-wide administrator session**.  
+**Latest source prepared in this handover:** v0.2.98, **Profile-based, application-wide administrator session**.  
 **Previous distributed release:** v0.2.94, `SOLVI_RELEASE_v0.2.94_FLASK_SCENE_REVISION_TEST_FIX.zip`.  
 **Production warning:** The latest **explicitly confirmed successful** deployment in the available conversation was **v0.2.79**, at 2026-10-30 12:40:09 UTC. Many later releases were prepared and tested, but **do not infer production deployment from an artifact link**. v0.2.93 explicitly failed backend tests and did not deploy. Request a fresh watcher log or `/api/health` result to establish the actual live version. A deployment ZIP is not deployment evidence.
 
