@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.92',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.94',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -338,15 +338,38 @@ def library_references(con,kind,ids):
             if any(ref in payload for ref in refs):return True
     return False
 
-def bundled_avatar_references(con,selected):
-    fragments=['assets/avatars/'+str(name)+'.glb' for name in selected]
-    for table in ('room_scenes','scene'):
-        for row in con.execute(f'SELECT payload FROM {table}'):
-            if any(fragment in (row['payload'] or '') for fragment in fragments):return True
-    # An avatar can also be assigned as a user profile picture.
-    for row in con.execute('SELECT avatar FROM users'):
-        if any(fragment in (row['avatar'] or '') for fragment in fragments):return True
-    return False
+DEFAULT_ROBOT_AVATAR='./assets/solvi-character.glb'
+
+def replace_avatar_models_in_scene(items,deleted_urls):
+    """Change only removed robot model references; preserve robot identity and state."""
+    count=0
+    if not isinstance(items,list):return items,0
+    for obj in items:
+        if isinstance(obj,dict) and obj.get('kind')=='robot' and obj.get('avatar') in deleted_urls:
+            obj['avatar']=DEFAULT_ROBOT_AVATAR
+            count+=1
+    return items,count
+
+def migrate_deleted_avatar_models(con,deleted_urls):
+    """Atomic with library deletion. Bump room revisions for multiplayer refresh."""
+    updates=[];replaced=0
+    for row in con.execute('SELECT room_id,revision,payload FROM room_scenes').fetchall():
+        objects=json.loads(row['payload'])
+        objects,count=replace_avatar_models_in_scene(objects,deleted_urls)
+        if count:
+            revision=row['revision']+1
+            con.execute('UPDATE room_scenes SET revision=?,payload=? WHERE room_id=?',
+                        (revision,json.dumps(objects,separators=(',',':')),row['room_id']))
+            updates.append((row['room_id'],revision,count))
+            replaced+=count
+    # Compatibility with the old pre-realm scene table.
+    for row in con.execute('SELECT id,revision,payload FROM scene').fetchall():
+        objects=json.loads(row['payload'])
+        objects,count=replace_avatar_models_in_scene(objects,deleted_urls)
+        if count:
+            con.execute('UPDATE scene SET revision=?,payload=? WHERE id=?',
+                        (row['revision']+1,json.dumps(objects,separators=(',',':')),row['id']))
+    return updates,replaced
 
 @app.post('/api/library/delete')
 def delete_library_selection():
@@ -363,12 +386,13 @@ def delete_library_selection():
     if body.get('confirm') is not True:return json_error('Deletion requires explicit confirmation')
     if bundled and not admin_authorized():return json_error('Administrator unlock required to permanently delete bundled avatars',403)
     if 'solvi-character' in bundled:return json_error('Default SOLVI avatar is required by fallback robots and cannot be deleted',409)
+    room_updates=[];replaced_robots=0
     try:
         with db() as con:
             rows=library_rows(con,kind,ids)
             if len(rows)!=len(ids):return json_error('One or more uploads no longer exist',404)
             if any(row['user_id']!=user['id'] for row in rows) and not admin_authorized():return json_error('Only the uploader or administrator can delete a file',403)
-            if library_references(con,kind,ids):return json_error('A selected file is still used in a realm. Replace its references first.',409)
+            if kind=='models' and library_references(con,kind,ids):return json_error('A selected asset is still used in a realm. Remove its references first.',409)
             dirname='avatar-library' if kind=='avatars' else 'scene-models'
             base=(STATE/dirname).resolve()
             for row in rows:
@@ -381,7 +405,6 @@ def delete_library_selection():
                 by_id={str(a.get('id')):a for a in catalog.get('avatars',[])}
                 deleted={r['id'] for r in con.execute('SELECT id FROM deleted_bundled_avatars')}
                 if any(i not in by_id or i in deleted for i in bundled):return json_error('A bundled avatar is already removed or unknown',404)
-                if bundled_avatar_references(con,bundled):return json_error('A bundled avatar is still used in a realm or profile. Replace its references first.',409)
                 folder=(ROOT/'assets/avatars').resolve()
                 for ident in bundled:
                     entry=by_id[ident];url=str(entry.get('url',''))
@@ -391,6 +414,9 @@ def delete_library_selection():
                     if not path.is_file():return json_error('Bundled file is unavailable for deletion',409)
                     targets.append(path)
                 if not os.access(catalog_path,os.W_OK) or not os.access(folder,os.W_OK):return json_error('Static avatar directory is not writable; run the updated Ubuntu installer',503)
+                deleted_urls={'/api/avatars/'+ident+'.glb' for ident in ids}
+                deleted_urls.update({'./assets/avatars/'+ident+'.glb' for ident in bundled})
+                room_updates,replaced_robots=migrate_deleted_avatar_models(con,deleted_urls)
                 # Write the new public catalog first. Tombstones below survive
                 # a future deployment that re-copies the original bundled files.
                 catalog['avatars']=[a for a in catalog.get('avatars',[]) if a.get('id') not in bundled]
@@ -400,6 +426,9 @@ def delete_library_selection():
                     os.replace(temp,catalog_path)
                 finally:temp.unlink(missing_ok=True)
                 for name in bundled:con.execute('INSERT INTO deleted_bundled_avatars VALUES(?,?,?)',(name,user['id'],now()))
+            if kind=='avatars' and not bundled:
+                room_updates,replaced_robots=migrate_deleted_avatar_models(
+                    con,{'/api/avatars/'+ident+'.glb' for ident in ids})
             table='avatar_library' if kind=='avatars' else 'scene_models'
             if ids:con.executemany(f'DELETE FROM {table} WHERE id=?',[(ident,) for ident in ids])
         for path in targets:path.unlink(missing_ok=True)
@@ -409,7 +438,12 @@ def delete_library_selection():
     except (OSError,ValueError,sqlite3.Error) as exc:
         audit_event('library-delete-failed',kind=kind)
         return json_error('Library deletion failed on the server: '+str(exc),503)
-    return jsonify(ok=True,deleted=ids,bundledDeleted=bundled)
+    for room_id,revision,_ in room_updates:
+        publish({'type':'scene-changed','revision':revision,'room':room_id,
+                 'action':'bulk','reason':'avatar-model-deleted'},room_id=room_id)
+    return jsonify(ok=True,deleted=ids,bundledDeleted=bundled,
+                   replacedRobots=replaced_robots,affectedRealms=len(room_updates),
+                   fallbackAvatar=DEFAULT_ROBOT_AVATAR if kind=='avatars' else None)
 
 @app.post('/api/library/export')
 def export_library_selection():

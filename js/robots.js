@@ -17,7 +17,14 @@ export async function hydrateRobot(group){
   const token=(group.userData.robotLoadToken||0)+1;group.userData.robotLoadToken=token;
   group.userData.robotLoading=true;
   try{
-    const gltf=await loader.loadAsync(group.userData.avatarUrl||DEFAULT_ROBOT_AVATAR);
+    let gltf;
+    try{gltf=await loader.loadAsync(group.userData.avatarUrl||DEFAULT_ROBOT_AVATAR);}
+    catch(error){
+      if((group.userData.avatarUrl||DEFAULT_ROBOT_AVATAR)===DEFAULT_ROBOT_AVATAR)throw error;
+      // A deleted or unavailable GLB must not strand the scene robot as a capsule.
+      gltf=await loader.loadAsync(DEFAULT_ROBOT_AVATAR);
+      if(group.userData.robotLoadToken===token)group.userData.avatarUrl=DEFAULT_ROBOT_AVATAR;
+    }
     if(!group.parent||group.userData.robotLoadToken!==token)return;
     const model=gltf.scene;
     const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());

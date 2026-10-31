@@ -87,11 +87,28 @@ for kind,ident in [('avatars',av_id),('models',model_id)]:
         assert any(name.startswith('models/'+ident+'.') for name in archive.namelist())
     reference='/api/avatars/'+ident+'.glb' if kind=='avatars' else '/api/scene/models/'+ident+'.glb'
     field='avatar' if kind=='avatars' else 'model'
-    with db() as con:con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps([{field:reference}]),'main'))
-    blocked=c.post('/api/library/delete',headers=headers,json={**request,'confirm':True})
-    assert blocked.status_code==409,(kind,blocked.status_code,blocked.data)
-    with db() as con:con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',('[]','main'))
+    robot_record={'id':'preserved-robot','kind':'robot','name':'Sofia',
+                  'position':[4,0,8],'rotation':[0,1,0],'scale':[1,1,1],
+                  'avatar':reference,'brain':{'personality':'Keep this robot alive'},'speed':2.1}
+    with db() as con:
+        before_revision=con.execute('SELECT revision FROM room_scenes WHERE room_id=?',('main',)).fetchone()['revision']
+        con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',
+                    (json.dumps([robot_record] if kind=='avatars' else [{field:reference}]),'main'))
+    if kind=='models':
+        blocked=c.post('/api/library/delete',headers=headers,json={**request,'confirm':True})
+        assert blocked.status_code==409,(kind,blocked.status_code,blocked.data)
+        with db() as con:con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',('[]','main'))
     removed=c.post('/api/library/delete',headers=headers,json={**request,'confirm':True})
+    if kind=='avatars':
+        assert removed.status_code==200,(removed.status_code,removed.data)
+        assert removed.get_json()['replacedRobots']==1
+        assert removed.get_json()['affectedRealms']==1
+        with db() as con:
+            updated=con.execute('SELECT revision,payload FROM room_scenes WHERE room_id=?',('main',)).fetchone()
+            assert updated['revision']==before_revision+1
+            objects=json.loads(updated['payload'])
+            assert objects==[{**robot_record,'avatar':'./assets/solvi-character.glb'}],objects
+            con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',('[]','main'))
     assert removed.status_code==200,(kind,removed.status_code,removed.data)
     assert ident in removed.get_json()['deleted']
 assert c.post('/api/library/export',headers=headers,json={'kind':'avatars','ids':[],'bundled':['fake-builtin']}).status_code==400
@@ -115,8 +132,20 @@ with _Temp() as scratch:
         adm={**headers,'X-Solvi-Admin':secret}
         found=c.get('/api/avatars',headers=adm).get_json()['bundled']
         assert len(found)==1 and found[0]['canManage'] is True
+        original={'id':'special-robot','kind':'robot','name':'Persistent robot',
+                  'avatar':'./assets/avatars/'+sample+'.glb','owner':'creator',
+                  'position':[5,2,6],'brain':{'history':'Unchanged history'},'animationSpeed':{'walk':1,'run':1,'jump':1}}
+        with db() as con:
+            before=con.execute('SELECT revision FROM room_scenes WHERE room_id=?',('main',)).fetchone()['revision']
+            con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps([original]),'main'))
         removed=c.post('/api/library/delete',headers=adm,json={'kind':'avatars','ids':[],'bundled':[sample],'confirm':True})
         assert removed.status_code==200,(removed.status_code,removed.data)
+        assert removed.get_json()['replacedRobots']==1
+        with db() as con:
+            saved=con.execute('SELECT revision,payload FROM room_scenes WHERE room_id=?',('main',)).fetchone()
+            assert saved['revision']==before+1
+            assert json.loads(saved['payload'])==[{**original,'avatar':'./assets/solvi-character.glb'}]
+            con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',('[]','main'))
         assert not file.exists() and json.loads(catalog.read_text())['avatars']==[]
         file.write_bytes(_test_glb)
         catalog.write_text(json.dumps({'version':1,'avatars':[{'id':sample,'url':'./assets/avatars/'+sample+'.glb'}]}))
@@ -179,9 +208,13 @@ lab_with_robot=c.get('/api/messages?room=lab',headers=headers)
 assert lab_with_robot.status_code==200,(lab_with_robot.status_code,lab_with_robot.data)
 robot_reply=next(m for m in lab_with_robot.get_json()['messages'] if m['id']=='test-robot-speaking')
 assert robot_reply['speaker']=='Jessica' and robot_reply['role']=='assistant'
+# Avatar-deletion regression fixtures above legitimately incremented the main
+# realm revision. A write to lab must not change main; it need not be revision 0.
+main_revision_before_lab=c.get('/api/scene?room=main',headers=headers).get_json()['revision']
 assert c.put('/api/scene',headers=headers,json={'room':'lab','revision':0,'objects':[]}).status_code==200
 assert c.get('/api/scene?room=lab',headers=headers).get_json()['revision']==1
-assert c.get('/api/scene?room=main',headers=headers).get_json()['revision']==0
+assert c.get('/api/scene?room=main',headers=headers).get_json()['revision']==main_revision_before_lab
+print('PASS: avatar fallback scene revisions remain intact; lab writes do not modify main')
 # Atomic per-object updates preserve changes and remain room-specific.
 obj={'id':'testcube-001','kind':'cube','name':'Test cube','position':[1,1,0],
      'rotation':[0,0,0],'scale':[1,1,1],'color':'#abcdef','texture':'checker'}

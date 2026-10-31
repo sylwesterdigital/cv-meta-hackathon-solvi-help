@@ -6,7 +6,9 @@ test('bundled avatar deletion requires an administrator and is permanent across 
  const server=read('backend/server.py'),install=read('backend/install-ubuntu.sh'),svc=read('backend/solvi-help.service.example');
  assert.match(server,/deleted_bundled_avatars/);
  assert.match(server,/if bundled and not admin_authorized\(\)/);
- assert.match(server,/bundled_avatar_references\(con,bundled\)/);
+ assert.match(server,/migrate_deleted_avatar_models\(con,deleted_urls\)/);
+ assert.match(server,/obj\['avatar'\]=DEFAULT_ROBOT_AVATAR/);
+ assert.match(server,/room_updates,wrapped|room_updates,replaced_robots/);
  assert.match(server,/path\.unlink\(missing_ok=True\)/);
  assert.match(install,/prune_removed_avatars\.py/);
  assert.match(install,/chown www-data:www-data \/var\/www\/solvi\.help\/assets\/avatars/);

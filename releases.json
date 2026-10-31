@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.92",
+  "currentVersion": "0.2.94",
   "releases": [
+    {
+      "version": "0.2.94",
+      "publishedAt": "2026-10-31T02:06:22Z",
+      "changes": [
+        "Fix Flask integration test after legitimate avatar-deletion scene revision increments; isolate realm revision assertions.",
+        "Keep server-side avatar fallback migrations and cross-realm revision updates without resetting saved history.",
+        "Preserve permanent avatar deletion, realm cloning, complete archive imports, and all v0.2.93 features."
+      ]
+    },
     {
       "version": "0.2.92",
       "publishedAt": "2026-10-31T01:47:17Z",
@@ -331,18 +340,6 @@
         "Wait for ongoing robot speech before presenting the next robot turn; allow user-initiated voice interruption and provide that context to the interrupted robot for a natural, bounded response.",
         "Allow an individual robot to decline an irrelevant group response via [PASS], guided by recent chat, its own identity and mission context to avoid repetitive chatter.",
         "Expand test coverage for mention order, @All limits, per-robot delivery and deduplication, optional silence, compact image previews, and turn taking."
-      ]
-    },
-    {
-      "version": "0.2.60",
-      "publishedAt": "2026-10-29T16:01:04Z",
-      "changes": [
-        "Render authenticated chat attachments in context: full-screen readable images, native audio/video players, and safe PDF/UTF-8 text previews with filename and Save controls.",
-        "Accept and validate PDF and UTF-8 plain-text uploads alongside existing image/audio/video types, including format checks and text file size limits.",
-        "Enable explicit robot-to-robot @handle conversation and sharing of mission-relevant context with identity/room validation, per-robot memory, one reply per source message and a hard two-hop relay limit.",
-        "Teach robot conversational models to use @handles when addressing another participant and to avoid unneeded or self-perpetuating mentions; relay model suggestions but never allow generated text to command physical robot actions.",
-        "Respect requested sofa/chair colours and numeric identifiers in robot navigation, preventing Grey Sofa 1 instructions from selecting a nearby Black Sofa 2.",
-        "Add JavaScript and backend regression tests for attachment formats, viewer safety, @handle routing, relay deduplication and exact-object targeting."
       ]
     }
   ]

@@ -27,5 +27,5 @@ export async function deleteLibrarySelection(kind,items){
 }
 export function selectionPrompt(items,kind){
  const count=items.length;
- return `Permanently delete ${count} selected ${kind==='avatars'?'avatar':'asset'}${count===1?'':'s'} FROM THE SERVER?\n\nFiles and catalog entries will be removed. Avatars still used in a realm or profile cannot be deleted. Bundled avatars require an unlocked Admin dashboard.\n\nThis cannot be undone. Export a backup first if needed.`;
+ return `Permanently delete ${count} selected ${kind==='avatars'?'avatar':'asset'}${count===1?'':'s'} FROM THE SERVER?\n\nFiles and catalog entries will be removed. Robots using a deleted avatar keep their name, position and settings, and automatically use the protected default SOLVI avatar. Bundled avatars require an unlocked Admin dashboard.\n\nThis cannot be undone. Export a backup first if needed.`;
 }

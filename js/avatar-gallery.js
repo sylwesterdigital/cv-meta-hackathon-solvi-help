@@ -110,17 +110,18 @@ export function setupAvatarGallery(editor){
   }
   if(!window.confirm(selectionPrompt(chosen,'avatars')))return;
   const button=$('avatarGalleryDelete');button.disabled=true;
-  let removed=0;const failures=[];
+  let removed=0,replacedRobots=0;const failures=[];
   for(const [i,avatar] of chosen.entries()){
    inform(`Deleting avatar ${i+1} of ${chosen.length}: ${avatar.label||avatar.id}…`);
    try{
     if(!avatar.bundled&&avatar.canManage!==true&&!window.solviLibraryAdminToken?.())throw Error('Not owned by this user; administrator permission required');
-    await deleteLibrarySelection('avatars',[avatar]);
+    const result=await deleteLibrarySelection('avatars',[avatar]);
+    replacedRobots+=Number(result?.replacedRobots||0);
     selected.delete(avatar.url);collection=collection.filter(a=>a.url!==avatar.url);removed++;
    }catch(error){failures.push(`${avatar.label||avatar.id}: ${error.message}`);}
   }
   try{await refreshAfterChange();}catch(error){failures.push('Gallery refresh: '+error.message);render();}
-  const message=`${removed} of ${chosen.length} avatars permanently deleted from the server.`+(failures.length?' Not deleted: '+failures.join(' | '):'');
+  const message=`${removed} of ${chosen.length} avatars permanently deleted from the server.`+(replacedRobots?` ${replacedRobots} realm robots retained with the default SOLVI avatar.`:'')+(failures.length?' Not deleted: '+failures.join(' | '):'');
   inform(message,failures.length>0);button.disabled=false;buttons();
  };
  $('avatarsButton').onclick=open;$('openAvatarGallery').onclick=open;
