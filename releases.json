@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.89",
+  "currentVersion": "0.2.90",
   "releases": [
+    {
+      "version": "0.2.90",
+      "publishedAt": "2026-10-31T01:17:17Z",
+      "changes": [
+        "Give Avatar and Asset libraries an accessible Edit mode, per-card multi-selection checkboxes, Select all, ZIP export and confirmed bulk removal.",
+        "Add avatar search and display accurate GLB animation-action counts from metadata for uploaded and bundled models whenever files are available.",
+        "Let users hide bundled release avatars locally while keeping shared baseline model files intact; allow only upload owners and administrators to delete custom assets.",
+        "Prevent deletion of model and avatar files referenced in any realm, and provide authenticated ZIP downloads containing selected models and library metadata.",
+        "Display portrait-style Asset thumbnails matching the Avatar gallery, without redundant decorative icons covering preview images.",
+        "Prevent walking/running animation stumbles by maintaining the authored gait loop across brief physics-controller/network stalls; return to Idle when genuinely stopped.",
+        "Add library authentication, export, deletion, scene-reference and gait tests."
+      ]
+    },
     {
       "version": "0.2.89",
       "publishedAt": "2026-10-31T00:50:46Z",
@@ -328,21 +341,6 @@
         "Reorient chat bubbles so remote users and robots have avatar, name and time on the right, with selectable user favorite chat colors saved to SQLite profiles and included in room messages.",
         "Show webcam video inside the clickable circular profile avatar during recording, then the converted 15-second GIF in the same roundel after saving, without an overlapping icon.",
         "Expand regression coverage with long navigation, obstacle rejection, three patrol cycles, speed bounds, voice visualization, profile color persistence, and compact responsive layout."
-      ]
-    },
-    {
-      "version": "0.2.56",
-      "publishedAt": "2026-10-29T13:37:10Z",
-      "changes": [
-        "Restore idle OrbitControls wheel and pinch zoom while using drag-only camera pointer capture; enable high-resolution two-finger trackpad panning without stealing gizmo movement.",
-        "Do not jump camera to selected objects; retain explicit numpad camera views and selected-object zoom.",
-        "Add Scene/Robot keyboard-control toggle and chooser of controllable robots to avoid trapping scene navigation after robot selection.",
-        "Compact object Position, Rotation and Scale into one accessible XYZ row per vector, with proportional scaling toggle and logarithmic 0.01x\u20131000x range.",
-        "Place Physics and Collider side by side; use a dark, unified friction/bounciness property selector with shared value input and slider.",
-        "Make Add Object a compact single-column list with fixed drag/search header and left-aligned icon/action rows.",
-        "Add room-user and robot @mention completion in the message composer, with keyboard navigation and full-name insertion.",
-        "Bring selected, newly opened and actively dragged windows to the front while leaving modal settings and galleries on top.",
-        "Add new regression tests for camera orbit, two-finger trackpad pan, transform scale, mentions, UI layout, menu and window focus."
       ]
     }
   ]

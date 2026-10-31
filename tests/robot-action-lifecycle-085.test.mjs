@@ -4,14 +4,14 @@ import {readFileSync} from 'node:fs';
 import {combatTimeline,combatPhase,combatClip} from '../js/robot-combat.js';
 import {pushedWalkState} from '../js/robot-push.js';
 import {MotionController} from '../js/animations.js';
-import {animationSpeedSettings,landingClipFor,gaitCadence} from '../js/animation-tuning.js';
+import {animationSpeedSettings,landingClipFor,gaitCadence,continuousGaitMode} from '../js/animation-tuning.js';
 import {permittedRobotLocomotion} from '../js/robot-contact.js';
 const src=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const robotSource=src('js/robots.js');
 function harness(){
  const body=robotSource.split('export function animateRobots(items,dt,onImpact=()=>{}){')[1]?.split('\n}')[0];
  assert.ok(body?.length>200);
- const anim=new Function('combatPhase','footfallRate','permittedRobotLocomotion','animationSpeedSettings','landingClipFor','gaitCadence',`return function animateRobots(items,dt,onImpact=()=>{}){${body}\n}`)(combatPhase,(s)=>Math.max(.9,Math.min(2.3,s/1.25)),permittedRobotLocomotion,animationSpeedSettings,landingClipFor,gaitCadence);
+ const anim=new Function('combatPhase','footfallRate','permittedRobotLocomotion','animationSpeedSettings','landingClipFor','gaitCadence','continuousGaitMode',`return function animateRobots(items,dt,onImpact=()=>{}){${body}\n}`)(combatPhase,(s)=>Math.max(.9,Math.min(2.3,s/1.25)),permittedRobotLocomotion,animationSpeedSettings,landingClipFor,gaitCadence,continuousGaitMode);
  const calls=[];
  const animator={clipDuration:()=>2,play(mode){calls.push(['play',mode]);},playOnce(mode,timing){calls.push(['once',mode,timing.rate]);},setPlaybackSpeed(speed){calls.push(['rate',speed]);},update(dt){calls.push(['update',dt]);}};
  const bot={children:[],userData:{editorKind:'robot',robotMode:'walk',robotActualSpeed:1.8,robotLocalMotion:true,robotAnimator:animator}};
@@ -23,6 +23,8 @@ test('walking cadence uses current resolved speed, no contact push for fixed obs
  assert.deepEqual(calls[0],['play','walk']);
  assert(calls.some(c=>c[0]==='rate'&&c[1]>=.85&&c[1]<=1.05));
  bot.userData.robotActualSpeed=0;anim([bot],1/60);
+ assert.equal(calls.filter(c=>c[0]==='play').at(-1)[1],'walk','Do not reset walk cycle for one stalled physics frame');
+ bot.userData.robotGaitStoppedAt-=300;anim([bot],1/60);
  assert(calls.some(c=>c[0]==='play'&&c[1]==='idle'));
  assert(!calls.some(c=>c[1]==='push'));
  const physics=src('js/scene-physics.js');

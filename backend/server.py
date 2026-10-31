@@ -5,6 +5,8 @@ import math
 import io
 import tempfile
 import tarfile
+import zipfile
+from functools import lru_cache
 import base64
 from collections import deque
 from flask import has_request_context
@@ -188,7 +190,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.89',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.90',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -203,14 +205,27 @@ def model_asset_exists(value):
         row=con.execute('SELECT extension FROM scene_models WHERE id=?',(match.group(1),)).fetchone()
     return bool(row and row['extension']==match.group(2))
 
+@lru_cache(maxsize=256)
+def glb_action_count(filename):
+    """Read only the GLB JSON chunk, never load its binary geometry."""
+    try:
+        with open(filename,'rb') as stream:
+            hdr=stream.read(20)
+            if len(hdr)<20 or hdr[:4]!=b'glTF' or hdr[16:20]!=b'JSON':return None
+            length=int.from_bytes(hdr[12:16],'little')
+            if length<=0 or length>8_000_000:return None
+            payload=json.loads(stream.read(length))
+            return min(10000,len(payload.get('animations',[])))
+    except (OSError,ValueError,TypeError,AttributeError):return None
+
 @app.get('/api/scene/models')
 def list_scene_models():
     user,msg,status=actor()
     if not user:return json_error(msg,status)
     with db() as con:
-        rows=con.execute('SELECT id,title,extension,size FROM scene_models ORDER BY created DESC LIMIT 100').fetchall()
+        rows=con.execute('SELECT id,title,extension,size,user_id FROM scene_models ORDER BY created DESC LIMIT 100').fetchall()
     return jsonify(models=[{'id':r['id'],'label':r['title'],'bytes':r['size'],'format':r['extension'],
-        'url':f"/api/scene/models/{r['id']}.{r['extension']}"} for r in rows],maxBytes=MAX_SCENE_MODEL_BYTES)
+        'url':f"/api/scene/models/{r['id']}.{r['extension']}",'canManage':r['user_id']==user['id'] or admin_authorized()} for r in rows],maxBytes=MAX_SCENE_MODEL_BYTES)
 
 @app.post('/api/scene/models')
 def upload_scene_model():
@@ -247,7 +262,7 @@ def upload_scene_model():
         con.execute('INSERT INTO scene_models VALUES(?,?,?,?,?,?,?)',
                     (identifier,user['id'],title,now(),str(target),len(content),extension))
     return jsonify(model={'id':identifier,'label':title,'bytes':len(content),'format':extension,
-                          'url':f'/api/scene/models/{identifier}.{extension}'}),201
+                          'url':f'/api/scene/models/{identifier}.{extension}','canManage':True}),201
 
 @app.get('/api/scene/models/<identifier>.<extension>')
 def serve_scene_model(identifier,extension):
@@ -268,8 +283,15 @@ def list_avatars():
     user,msg,status=actor()
     if not user:return json_error(msg,status)
     with db() as con:
-        rows=con.execute('SELECT a.id,a.title,a.user_id,u.name AS owner_name FROM avatar_library a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.created DESC LIMIT 100').fetchall()
-    return jsonify(avatars=[{'id':r['id'],'label':r['title'],'url':'/api/avatars/'+r['id']+'.glb','ownerName':r['owner_name'] or 'Member'} for r in rows])
+        rows=con.execute('SELECT a.id,a.title,a.user_id,a.filename,u.name AS owner_name FROM avatar_library a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.created DESC LIMIT 100').fetchall()
+    builtins={}
+    try:
+        for entry in json.loads((ROOT/'assets/avatars/catalog.json').read_text()).get('avatars',[]):
+            url=str(entry.get('url',''))
+            if re.fullmatch(r'\./assets/(?:avatars/[a-zA-Z0-9_-]+|solvi-character)\.glb',url):
+                builtins[entry['id']]=glb_action_count(ROOT/url.removeprefix('./'))
+    except (OSError,ValueError,KeyError,TypeError):pass
+    return jsonify(avatars=[{'id':r['id'],'label':r['title'],'url':'/api/avatars/'+r['id']+'.glb','ownerName':r['owner_name'] or 'Member','actions':glb_action_count(r['filename']),'canManage':r['user_id']==user['id'] or admin_authorized()} for r in rows],bundledActions=builtins)
 
 @app.post('/api/avatars')
 def upload_avatar():
@@ -285,7 +307,7 @@ def upload_avatar():
     path=directory/(identifier+'.glb');path.write_bytes(data)
     title=re.sub(r'[^a-zA-Z0-9 _.-]','',Path(upload.filename or '').stem).strip()[:60] or 'Custom avatar'
     with db() as con:con.execute('INSERT INTO avatar_library VALUES(?,?,?,?,?,?)',(identifier,user['id'],title,now(),str(path),len(data)))
-    return jsonify(avatar={'id':identifier,'label':title,'url':'/api/avatars/'+identifier+'.glb','ownerName':user['name']}),201
+    return jsonify(avatar={'id':identifier,'label':title,'url':'/api/avatars/'+identifier+'.glb','ownerName':user['name'],'actions':glb_action_count(path),'canManage':True}),201
 
 @app.get('/api/avatars/<identifier>.glb')
 def serve_avatar(identifier):
@@ -295,6 +317,83 @@ def serve_avatar(identifier):
     path=Path(row['filename']);
     if not path.is_file() or path.parent.resolve()!=(STATE/'avatar-library').resolve():return json_error('Avatar file unavailable',404)
     return send_file(path,mimetype='model/gltf-binary')
+
+# Bulk library operations do not change any built-in files. The client may hide
+# built-in avatars in per-user preferences, but server deletion is only for uploads.
+def library_rows(con,kind,ids):
+    table='avatar_library' if kind=='avatars' else 'scene_models'
+    if not ids:return []
+    return con.execute(f'SELECT * FROM {table} WHERE id IN ({",".join("?" for _ in ids)})',ids).fetchall()
+
+def library_references(con,kind,ids):
+    # Scan every realm, including nested media speaker models, not just top-level
+    # scene objects or the currently selected user's room.
+    refs=['/api/avatars/'+identifier+'.glb' if kind=='avatars' else '/api/scene/models/'+identifier+'.' for identifier in ids]
+    for table in ('room_scenes','scene'):
+        for row in con.execute(f'SELECT payload FROM {table}'):
+            payload=row['payload'] or ''
+            if any(ref in payload for ref in refs):return True
+    return False
+
+@app.post('/api/library/delete')
+def delete_library_selection():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    body=request.get_json(silent=True) or {}
+    kind=body.get('kind');ids=body.get('ids')
+    if kind not in ('avatars','models') or not isinstance(ids,list) or not 0<len(ids)<=40 or len(set(ids))!=len(ids) or any(not isinstance(i,str) or not re.fullmatch(r'[0-9a-f]{32}',i) for i in ids):return json_error('Invalid library selection')
+    if body.get('confirm') is not True:return json_error('Deletion requires explicit confirmation')
+    with db() as con:
+        rows=library_rows(con,kind,ids)
+        if len(rows)!=len(ids):return json_error('One or more uploads no longer exist',404)
+        if any(row['user_id']!=user['id'] for row in rows) and not admin_authorized():return json_error('Only the uploader or administrator can delete a file',403)
+        if library_references(con,kind,ids):return json_error('A selected file is still used in a realm. Replace those references first.',409)
+        dirname='avatar-library' if kind=='avatars' else 'scene-models'
+        base=(STATE/dirname).resolve()
+        for row in rows:
+            path=Path(row['filename'])
+            if path.parent.resolve()!=base:return json_error('Unsafe file location',409)
+        table='avatar_library' if kind=='avatars' else 'scene_models'
+        con.executemany(f'DELETE FROM {table} WHERE id=?',[(id,) for id in ids])
+    for row in rows:
+        try:Path(row['filename']).unlink(missing_ok=True)
+        except OSError:audit_event('library-delete-file-error',kind=kind)
+    return jsonify(ok=True,deleted=ids)
+
+@app.post('/api/library/export')
+def export_library_selection():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    body=request.get_json(silent=True) or {}
+    kind=body.get('kind');ids=body.get('ids',[]);bundled=body.get('bundled',[])
+    if kind not in ('avatars','models') or not isinstance(ids,list) or not isinstance(bundled,list) or len(ids)+len(bundled)>40 or len(ids)+len(bundled)<1 or len(set(ids))!=len(ids) or len(set(bundled))!=len(bundled) or any(not isinstance(i,str) or not re.fullmatch(r'[0-9a-f]{32}',i) for i in ids):return json_error('Invalid library selection')
+    if kind!='avatars' and bundled:return json_error('No bundled assets in this library')
+    with db() as con:rows=library_rows(con,kind,ids)
+    if len(rows)!=len(ids):return json_error('A selected upload no longer exists',404)
+    catalog=json.loads((ROOT/'assets/avatars/catalog.json').read_text()) if bundled else {'avatars':[]}
+    known={str(a['id']):a for a in catalog.get('avatars',[])}
+    if any(not isinstance(name,str) or name not in known for name in bundled):return json_error('Unknown bundled avatar')
+    entries=[];inventory=[]
+    base=(STATE/('avatar-library' if kind=='avatars' else 'scene-models')).resolve()
+    for row in rows:
+        path=Path(row['filename'])
+        if path.parent.resolve()!=base or not path.is_file():return json_error('Library asset missing',409)
+        ext='glb' if kind=='avatars' else row['extension']
+        entries.append((row['id']+'.'+ext,path))
+        inventory.append({'id':row['id'],'title':row['title'],'file':row['id']+'.'+ext,'bundled':False})
+    for name in bundled:
+        entry=known[name];url=str(entry.get('url',''))
+        if not re.fullmatch(r'\./assets/(?:avatars/[a-zA-Z0-9_-]+|solvi-character)\.glb',url):return json_error('Unsafe bundled avatar path')
+        path=(ROOT/url.removeprefix('./')).resolve()
+        if not path.is_relative_to((ROOT/'assets').resolve()) or not path.is_file():return json_error('Bundled avatar not available on this server',409)
+        entries.append((name+'.glb',path));inventory.append({'id':name,'title':entry.get('label',name),'file':name+'.glb','bundled':True})
+    if sum(path.stat().st_size for _,path in entries)>100_000_000:return json_error('Export exceeds 100 MB. Select fewer files.',413)
+    output=io.BytesIO()
+    with zipfile.ZipFile(output,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=3) as archive:
+        for name,path in entries:archive.write(path,'models/'+name)
+        archive.writestr('library.json',json.dumps({'kind':kind,'version':1,'items':inventory},indent=2))
+    output.seek(0)
+    return send_file(output,mimetype='application/zip',as_attachment=True,download_name='solvi-'+kind+'-export.zip')
 
 @app.post('/api/stt')
 def transcribe_audio():
@@ -1285,7 +1384,7 @@ def research_topic_sources(topic,limit=6):
     import urllib.parse
     sources=[]
     def read_json(url):
-        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.89 (public academic references)','Accept':'application/json'})
+        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.90 (public academic references)','Accept':'application/json'})
         with urlopen(req,timeout=3.5) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Large search response')
             return json.loads(response.read(180001).decode('utf-8'))

@@ -5,7 +5,7 @@ import {MotionController,computeMode} from './animations.js';
 import {pathBlocked} from './robot-pathfinding.js';
 import {footfallRate,combatPhase} from './robot-combat.js';
 import {permittedRobotLocomotion} from './robot-contact.js';
-import {animationSpeedSettings,jumpAnimationKind,landingClipFor,gaitCadence} from './animation-tuning.js';
+import {animationSpeedSettings,jumpAnimationKind,landingClipFor,gaitCadence,continuousGaitMode} from './animation-tuning.js';
 
 const loader=new GLTFLoader();
 const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');loader.setDRACOLoader(draco);
@@ -305,7 +305,7 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     // locomotion. Contact displacement is animated separately above.
     if(!permittedRobotLocomotion(data,mode,now))mode='idle';
     // Do not walk in place against an immovable wall or stair riser.
-    if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode)&&data.robotActualSpeed<.06&&!data.robotContactAction)mode='idle';
+    mode=continuousGaitMode(data,mode,now);
     const animator=data.robotAnimator;
     if(data.robotPlaying!==mode){
       if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){

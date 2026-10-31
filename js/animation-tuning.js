@@ -35,3 +35,16 @@ export function easedStepOffset(previousOffset,rise,grounded,jumping,dt){
  if(grounded&&!jumping&&rise>.018&&rise<.38)offset-=rise;
  return Math.max(-.35,Math.min(0,offset))*Math.exp(-Math.max(0,Math.min(dt,.06))*12);
 }
+
+// One-frame character-controller stalls and remote network jitter must not
+// reset a looping walk animation to time zero every few strides.
+export function continuousGaitMode(data,mode,now){
+ const moving=['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode);
+ if(!moving){data.robotGaitStoppedAt=null;return mode;}
+ if(Number(data.robotActualSpeed||0)>=.06||data.robotContactAction){data.robotGaitStoppedAt=null;return mode;}
+ if(!Number.isFinite(data.robotGaitStoppedAt))data.robotGaitStoppedAt=now;
+ // Keep only an already playing gait; never start walking against a wall.
+ const playing=data.robotPlaying;
+ if(now-data.robotGaitStoppedAt<220&&['walk','walkBackward','run','strafeLeft','strafeRight'].includes(playing))return playing;
+ return 'idle';
+}

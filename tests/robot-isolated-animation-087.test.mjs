@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {approachingRobotContact,permittedRobotLocomotion} from '../js/robot-contact.js';
-import {animationSpeedSettings,landingClipFor,gaitCadence} from '../js/animation-tuning.js';
+import {animationSpeedSettings,landingClipFor,gaitCadence,continuousGaitMode} from '../js/animation-tuning.js';
 import {combatPhase} from '../js/robot-combat.js';
 const src=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 
@@ -29,7 +29,7 @@ test('animating a moving robot leaves the other robot idle until physically push
  const source=src('js/robots.js');
  const part=source.split('export function animateRobots(items,dt,onImpact=()=>{}){')[1]?.split('\n}')[0];
  assert(part);
- const fn=new Function('combatPhase','footfallRate','permittedRobotLocomotion','animationSpeedSettings','landingClipFor','gaitCadence',`return function animateRobots(items,dt,onImpact=()=>{}){${part}\n}`)(combatPhase,()=>1,permittedRobotLocomotion,animationSpeedSettings,landingClipFor,gaitCadence);
+ const fn=new Function('combatPhase','footfallRate','permittedRobotLocomotion','animationSpeedSettings','landingClipFor','gaitCadence','continuousGaitMode',`return function animateRobots(items,dt,onImpact=()=>{}){${part}\n}`)(combatPhase,()=>1,permittedRobotLocomotion,animationSpeedSettings,landingClipFor,gaitCadence,continuousGaitMode);
  const actions=[];
  const make=(id,mode,speed,extra={})=>({children:[],userData:{editorKind:'robot',robotMode:mode,robotActualSpeed:speed,robotAnimator:{play(m){actions.push([id,m]);},setPlaybackSpeed(){},update(){}},...extra}});
  const leader=make('leader','run',3,{robotLocalMotion:true});

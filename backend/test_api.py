@@ -17,7 +17,7 @@ for _module in _local_imports:
     assert 'BACKEND_PY_MODULES=' in _installer and 'install -m 644 "$SRC/$module" "$TARGET/$module"' in _installer, 'Installer must deploy local Python modules'
 assert "DEPLOY_PHASE='Python backend import preflight'" in _installer
 print('PASS: local backend modules deployed, rollback protected and import preflight configured')
-from server import app, patch_scene_object, valid_robot_combat
+from server import app, patch_scene_object, valid_robot_combat, db
 # Regression: the Flask POST decorator must belong to the HTTP handler,
 # never to the combat-settings validator (the latter takes a settings arg).
 scene_object_rules=[rule for rule in app.url_map.iter_rules()
@@ -61,6 +61,41 @@ r=c.post('/api/onboard',json={'name':name,'tab':'test-tab-unique-001'},headers={
 assert r.status_code==200,(r.status_code,r.data)
 data=r.get_json();assert data['user']['name']==name and data['token'] and data['recovery']
 headers={'Authorization':'Bearer '+data['token'],'X-Solvi-Tab':'test-tab-unique-001','Origin':origin}
+# Shared library: action counts, owner-checked export, referenced-file protection,
+# confirmed deletion, and no modification of bundled release avatars.
+import io as _io, struct as _struct, zipfile as _zipfile
+_test_json=json.dumps({'asset':{'version':'2.0'},'animations':[{'name':'Walking'},{'name':'Running'}]}).encode()
+_test_json+=b' ' * ((-len(_test_json))%4)
+_test_glb=b'glTF'+_struct.pack('<II',2,20+len(_test_json))+_struct.pack('<I',len(_test_json))+b'JSON'+_test_json
+av_response=c.post('/api/avatars',headers=headers,data={'avatar':(_io.BytesIO(_test_glb),'manage-avatar.glb')},content_type='multipart/form-data')
+assert av_response.status_code==201,(av_response.status_code,av_response.data)
+av_id=av_response.get_json()['avatar']['id']
+assert av_response.get_json()['avatar']['actions']==2
+av_list=c.get('/api/avatars',headers=headers).get_json()
+assert next(a for a in av_list['avatars'] if a['id']==av_id)['canManage'] is True
+assert isinstance(av_list['bundledActions'],dict)
+model_response=c.post('/api/scene/models',headers=headers,data={'model':(_io.BytesIO(_test_glb),'manage-model.glb')},content_type='multipart/form-data')
+assert model_response.status_code==201,(model_response.status_code,model_response.data)
+model_id=model_response.get_json()['model']['id']
+for kind,ident in [('avatars',av_id),('models',model_id)]:
+    request={'kind':kind,'ids':[ident]}
+    assert c.post('/api/library/delete',headers=headers,json=request).status_code==400,'Deletion must require confirmation'
+    export=c.post('/api/library/export',headers=headers,json=request)
+    assert export.status_code==200,(export.status_code,export.data[:150])
+    with _zipfile.ZipFile(_io.BytesIO(export.data)) as archive:
+        assert 'library.json' in archive.namelist()
+        assert any(name.startswith('models/'+ident+'.') for name in archive.namelist())
+    reference='/api/avatars/'+ident+'.glb' if kind=='avatars' else '/api/scene/models/'+ident+'.glb'
+    field='avatar' if kind=='avatars' else 'model'
+    with db() as con:con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps([{field:reference}]),'main'))
+    blocked=c.post('/api/library/delete',headers=headers,json={**request,'confirm':True})
+    assert blocked.status_code==409,(kind,blocked.status_code,blocked.data)
+    with db() as con:con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',('[]','main'))
+    removed=c.post('/api/library/delete',headers=headers,json={**request,'confirm':True})
+    assert removed.status_code==200,(kind,removed.status_code,removed.data)
+    assert ident in removed.get_json()['deleted']
+assert c.post('/api/library/export',headers=headers,json={'kind':'avatars','ids':[],'bundled':['fake-builtin']}).status_code==400
+print('PASS: library bulk management, action counts, protected deletion and ZIP export')
 assert c.get('/api/me',headers=headers).status_code==200
 # v0.2.57: favorite chat color persists, is validated, and flows into messages.
 color_response=c.put('/api/profile',headers=headers,json={'name':name,'color':'#eb6f8a'})

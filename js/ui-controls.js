@@ -44,7 +44,8 @@ const utilityIconOnly=new Set(['webcamButton','minimizeScenePanel','toolboxMinim
 // Header close controls have an accessible name but no extra visible x or text.
 export function shouldUseIconOnlyControl(button){return /^(?:close[A-Z]|close$)/.test(button.id||'')||utilityIconOnly.has(button.id||'')||button.classList.contains('scene-item-delete')||button.classList.contains('scene-item-lock');}
 export function iconForButton(button){
- if(button.id==='profileButton')return null; // Initials/avatar are the profile symbol.
+ if(button.id==='profileButton')return null;
+ if(button.classList.contains('avatar-card')||button.classList.contains('asset-card'))return null; // Initials/avatar are the profile symbol.
  if(/^close[A-Z]/.test(button.id||''))return 'close';
  if(button.classList.contains('theme-swatch')||button.classList.contains('theme-preset'))return null;
  if(button.dataset?.uiIcon&&fileIcons.has(button.dataset.uiIcon))return button.dataset.uiIcon;
@@ -59,7 +60,7 @@ export function iconForButton(button){
 export function decorateButtons(root=document){
  const nodes=[];if(root.matches?.('button'))nodes.push(root);
  if(root.querySelectorAll)nodes.push(...root.querySelectorAll('button, label.icon-btn'));
- for(const b of nodes){if(b.id==='composerMove'||b.closest?.('.chat-attachment'))continue;if(b.classList.contains('theme-swatch')||b.classList.contains('theme-preset'))continue;
+ for(const b of nodes){if(b.id==='composerMove'||b.closest?.('.chat-attachment')||b.classList.contains('avatar-card')||b.classList.contains('asset-card'))continue;if(b.classList.contains('theme-swatch')||b.classList.contains('theme-preset'))continue;
   const name=(b.id==='minimizeScenePanel'?(document.getElementById('scenePanel')?.classList.contains('minimized')?'opened':'minified'):b.id==='toolboxMinimize'?(document.getElementById('editorToolbox')?.classList.contains('minimized')?'opened':'minified'):iconForButton(b));if(!name)continue;
   const label=(b.getAttribute('aria-label')||b.title||b.textContent||'').trim();
   if(!b.title&&label)b.title=label.slice(0,140);
