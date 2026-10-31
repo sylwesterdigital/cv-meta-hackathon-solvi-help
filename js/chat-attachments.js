@@ -1,5 +1,17 @@
 import {compactAudioPlayer} from './compact-audio-player.js';
+import {compactMediaPlayer} from './compact-media-player.js';
 // Secure, authenticated chat-attachment presentation. Blob URLs never expose session tokens.
+let menuDelegateReady=false;
+function ensureMenuDelegate(){
+ if(menuDelegateReady)return;
+ menuDelegateReady=true;
+ document.addEventListener('pointerdown',event=>{
+  document.querySelectorAll('.chat-attachment-menu:not([hidden])').forEach(menu=>{
+   if(!menu.parentElement?.contains(event.target))menu.hidden=true;
+  });
+ });
+}
+
 export function attachmentKind(mime=''){
  const type=String(mime).split(';')[0].toLowerCase();
  if(['image/png','image/jpeg','image/gif','image/webp'].includes(type))return 'image';
@@ -18,22 +30,38 @@ export function renderChatAttachment(slot,{id,url,mime,name,blob},openViewer,act
  slot.className='chat-attachment chat-attachment-'+kind;
  slot.replaceChildren();
  const title=document.createElement('small');title.className='chat-attachment-title';title.textContent=label;
- const download=document.createElement('a');download.href=url;download.download=label;download.textContent='Save';download.className='chat-attachment-save';download.setAttribute('aria-label','Save '+label);
- const menuButton=document.createElement('button');menuButton.type='button';menuButton.className='chat-attachment-more';menuButton.textContent='More';menuButton.setAttribute('aria-label','More actions for '+label);
+ const download=document.createElement('a');download.href=url;download.download=label;download.textContent='↓';download.title='Download';download.setAttribute('aria-label','Download '+label);download.className='chat-attachment-save';
+ const menuButton=document.createElement('button');menuButton.type='button';menuButton.className='chat-attachment-more';menuButton.textContent='⋯';menuButton.setAttribute('aria-label','More actions for '+label);
  const menu=document.createElement('div');menu.className='chat-attachment-menu';menu.hidden=true;
  const toggleMenu=event=>{event?.stopPropagation?.();menu.hidden=!menu.hidden;};
  menuButton.onclick=toggleMenu;
- const menuSave=document.createElement('a');menuSave.href=url;menuSave.download=label;menuSave.textContent='Save';menuSave.className='chat-attachment-menu-item';menu.append(menuSave);
+ const menuSave=document.createElement('a');menuSave.href=url||'#';menuSave.download=label;menuSave.textContent='Download';menuSave.className='chat-attachment-menu-item';menu.append(menuSave);
+ const downloadFull=async(event)=>{
+  if(url)return;
+  event.preventDefault();
+  if(!id||!globalThis.solviAPI?.mediaBlobInfo)return;
+  try{
+   const result=await globalThis.solviAPI.mediaBlobInfo(id);
+   const anchor=document.createElement('a');anchor.href=result.url;anchor.download=label;anchor.style.display='none';document.body.append(anchor);anchor.click();anchor.remove();
+   setTimeout(()=>URL.revokeObjectURL(result.url),15000);
+  }catch(error){const status=slot.querySelector('.chat-player-status');if(status){status.hidden=false;status.textContent='Download unavailable';}}
+ };
+ download.onclick=downloadFull;menuSave.onclick=downloadFull;
  if((kind==='image'||kind==='video'||kind==='audio')&&typeof actions.addToScene==='function'){const add=document.createElement('button');add.type='button';add.textContent='Add to scene';add.className='chat-attachment-menu-item';add.onclick=event=>{event.stopPropagation();menu.hidden=true;actions.addToScene({id,url,mime,name:label,blob,kind});};menu.append(add);}
- slot.addEventListener('pointerdown',event=>{if(!slot.contains(event.target))menu.hidden=true;});
- document.addEventListener('pointerdown',event=>{if(slot.isConnected&&!slot.contains(event.target))menu.hidden=true;});
+ ensureMenuDelegate();
  if(kind==='image'){
   const button=document.createElement('button');button.type='button';button.className='chat-image-open';button.setAttribute('aria-label','Enlarge image '+label);
   const img=document.createElement('img');img.src=url;img.alt=label;img.loading='lazy';img.decoding='async';button.append(img);
   button.onclick=()=>openViewer({kind,url,label});slot.append(button,title,menuButton,menu,download);
  }else if(kind==='audio'||kind==='video'){
-  if(kind==='audio'){slot.append(menuButton,menu,title,compactAudioPlayer({url,id,label}),download);}
-  else{const media=document.createElement('video');media.src=url;media.controls=true;media.preload='metadata';media.playsInline=true;media.setAttribute('aria-label',label);slot.append(menuButton,menu,title,media,download);}
+  const actionsRow=document.createElement('div');actionsRow.className='chat-attachment-actions';
+  download.textContent='↓';download.title='Download';actionsRow.append(download);
+  if(typeof actions.deleteMedia==='function'){
+   const remove=document.createElement('button');remove.type='button';remove.className='chat-attachment-delete';remove.textContent='×';remove.title='Delete attachment';remove.setAttribute('aria-label','Delete attachment');
+   remove.onclick=()=>actions.deleteMedia({id,url,mime,name:label,kind},slot);actionsRow.append(remove);
+  }
+  const player=kind==='audio'?compactAudioPlayer({url,id,label}):compactMediaPlayer({url,id,label,kind:'video'});
+  slot.append(player,actionsRow,menuButton,menu);
  }else if(kind==='pdf'){
   const button=document.createElement('button');button.type='button';button.textContent='Read PDF';button.className='chat-read-file';button.onclick=()=>openViewer({kind,url,label});
   slot.append(menuButton,menu,title,button,download);

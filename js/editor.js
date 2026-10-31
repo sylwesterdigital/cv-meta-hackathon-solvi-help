@@ -97,7 +97,7 @@ export function setLight(group,settings){
 function readDeleteConfirmation(){return readPreferences().deleteConfirm!==false;}
 export class SceneEditor{
  constructor(world,onToast){
-  this.world=world;this.toast=onToast;configureSceneModelRenderer(world.renderer);this.physics=new ScenePhysics(this);this.items=[];this.selected=null;this.revision=0;this.controlMode='scene';
+  this.world=world;this.toast=onToast;configureSceneModelRenderer(world.renderer);this.physics=new ScenePhysics(this);this.items=[];this.selected=null;this.revision=0;this.controlMode='scene';this.controlledRobotId=null;
   this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
   this.history=new EditHistory(120);this.transformBefore=null;
   this.transform=new TransformControls(world.camera,world.renderer.domElement);
@@ -250,21 +250,39 @@ export class SceneEditor{
   const turn=byId('robotTurnSpeed');turn.addEventListener('input',()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotTurnSpeed=Number(turn.value);byId('robotTurnLabel').textContent=Number(turn.value).toFixed(2)+'×';this.queueSave(this.selected);});
   const modeButton=byId('controlModeButton'),robotSelect=byId('controlledRobotSelect'),robotFaces=byId('controlledRobotFaces');
   this.robotPortraitCache=new Map();
+  this.controlledRobot=()=>{
+   const robot=this.items.find(o=>o.userData.editorId===this.controlledRobotId&&o.userData.editorKind==='robot');
+   return robot&&this.canEdit(robot)?robot:null;
+  };
+  this.cameraTargetRobot=()=>this.controlMode==='robot'?this.controlledRobot():this.robot();
+  this.activateControlledRobot=(id)=>{
+   const robot=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===id&&this.canEdit(o));
+   if(!robot)return false;
+   this.controlledRobotId=robot.userData.editorId;
+   this.controlMode='robot';
+   this.robotKeys.clear();this.world.keys.clear();this.localRobotInput=null;
+   this.select(robot);this.syncControlSwitcher();return true;
+  };
   this.syncControlSwitcher=()=>{
    const robots=this.items.filter(o=>o.userData.editorKind==='robot'&&this.canEdit(o));
-   const current=robotSelect.value;
-   robotSelect.replaceChildren(...robots.map(o=>new Option(o.name,o.userData.editorId)));
-   const selectedId=this.selected?.userData.editorKind==='robot'?this.selected.userData.editorId:null;
-   if(this.controlMode==='robot'&&selectedId&&robots.some(o=>o.userData.editorId===selectedId))robotSelect.value=selectedId;
-   else if(robots.some(o=>o.userData.editorId===current))robotSelect.value=current;
-   else if(selectedId&&robots.some(o=>o.userData.editorId===selectedId))robotSelect.value=selectedId;
-   robotSelect.hidden=true; // Accessible legacy select remains available to screen readers, but not visually used.
+   const oldId=this.controlledRobotId;
+   const selectedId=this.selected?.userData.editorKind==='robot'&&this.canEdit(this.selected)?this.selected.userData.editorId:null;
+   if(!robots.some(o=>o.userData.editorId===oldId)){
+    this.controlledRobotId=robots.some(o=>o.userData.editorId===selectedId)?selectedId:robots[0]?.userData.editorId||null;
+    this.robotKeys?.clear();this.localRobotInput=null;
+    if(!this.controlledRobotId&&this.controlMode==='robot')this.controlMode='scene';
+   }
+   const id=this.controlledRobotId;
+   // Keep a semantic native select for keyboard/assistive access, without visually
+   // replacing the portrait picker with a dropdown.
    const signature=robots.map(o=>[o.userData.editorId,o.name,o.userData.robotBrain?.portrait||''].join(':')).join('|');
    if(this.robotFacesSignature!==signature){
-    this.robotFacesSignature=signature;robotFaces.replaceChildren();
+    this.robotFacesSignature=signature;
+    robotSelect.replaceChildren(...robots.map(o=>new Option(o.name,o.userData.editorId)));
+    robotFaces.replaceChildren();
     for(const bot of robots){
      const button=document.createElement('button');button.type='button';button.className='robot-face-choice';button.dataset.robotId=bot.userData.editorId;
-     button.title='Control '+bot.name;button.setAttribute('aria-label','Control '+bot.name);
+     button.title='Control '+bot.name+' with arrow keys';button.setAttribute('aria-label','Control '+bot.name+' with arrow keys');
      const face=document.createElement('span');face.className='robot-face-avatar';face.textContent=bot.name.trim().slice(0,2).toUpperCase()||'R';
      button.append(face);const name=document.createElement('small');name.textContent=bot.name;button.append(name);
      const portrait=bot.userData.robotBrain?.portrait;
@@ -273,22 +291,29 @@ export class SceneEditor{
       if(!request){request=window.solviAPI.mediaBlob(portrait).catch(()=>null);this.robotPortraitCache.set(portrait,request);}
       request.then(url=>{if(url&&button.isConnected&&button.dataset.robotId===bot.userData.editorId){const image=document.createElement('img');image.src=url;image.alt='';face.replaceChildren(image);}});
      }
-     button.onclick=()=>{if(this.canEdit(bot))this.select(bot);};robotFaces.append(button);
+     button.onclick=()=>this.activateControlledRobot(bot.userData.editorId);
+     robotFaces.append(button);
     }
    }
-   robotFaces.hidden=this.controlMode!=='robot'||robots.length===0;
-   for(const btn of robotFaces.children)btn.setAttribute('aria-pressed',String(btn.dataset.robotId===robotSelect.value));
-   modeButton.textContent=this.controlMode==='robot'?'Robot control':'Scene control';
+   robotSelect.value=id||'';
+   robotSelect.hidden=true;
+   robotFaces.hidden=robots.length===0;
+   for(const btn of robotFaces.children){const active=btn.dataset.robotId===id&&this.controlMode==='robot';btn.setAttribute('aria-pressed',String(active));btn.classList.toggle('active',active);}
+   modeButton.textContent=this.controlMode==='robot'?'Robot control · '+(this.controlledRobot()?.name||''):'Scene control';
    modeButton.setAttribute('aria-pressed',String(this.controlMode==='robot'));
-   modeButton.title=this.controlMode==='robot'?'Switch arrows to scene navigation':'Switch arrows to selected robot';
+   modeButton.title=this.controlMode==='robot'?'Return arrow keys to camera navigation':'Use arrow keys to control the selected robot portrait';
   };
   modeButton.onclick=()=>{
-   this.controlMode=this.controlMode==='robot'?'scene':'robot';this.robotKeys.clear();this.world.keys.clear();
-   if(this.controlMode==='scene'){this.world.setCameraFollowMode('free');}
-   else{const id=robotSelect.value;const robot=this.items.find(o=>o.userData.editorId===id)||this.items.find(o=>o.userData.editorKind==='robot'&&this.canEdit(o));if(!robot){this.controlMode='scene';this.toast('No controllable robots in the room');}else this.select(robot);}
+   if(this.controlMode==='robot'){
+    this.controlMode='scene';this.robotKeys?.clear();this.localRobotInput=null;this.world.keys.clear();this.world.setCameraFollowMode('free');
+   }else{
+    const selectedId=this.selected?.userData.editorKind==='robot'?this.selected.userData.editorId:null;
+    const target=selectedId&&this.canEdit(this.selected)?selectedId:this.controlledRobotId;
+    if(!this.activateControlledRobot(target))this.toast('No controllable robots in the room');
+   }
    this.syncControlSwitcher();
   };
-  robotSelect.onchange=()=>{const robot=this.items.find(o=>o.userData.editorId===robotSelect.value);if(robot&&this.canEdit(robot))this.select(robot);};
+  robotSelect.onchange=()=>this.activateControlledRobot(robotSelect.value);
   this.syncControlSwitcher();
   byId('openRobotBrains').onclick=()=>window.dispatchEvent(new Event('solvi:open-brains'));
   for(const [id,scan] of [['robotEyeFront','front'],['robotEye180','180'],['robotEye360','360']]){byId(id).onclick=()=>{if(!this.robot())return;window.dispatchEvent(new CustomEvent('solvi:robot-eyes-action',{detail:{robotId:this.robot().userData.editorId,scan}}));};}
@@ -765,9 +790,9 @@ export class SceneEditor{
    if(e.shiftKey&&e.code==='KeyA'){e.preventDefault();if(byId('addMenu').hidden){this.showAddMenu(this.lastPointer.x,this.lastPointer.y);byId('addSearch')?.focus();}else byId('addMenu').hidden=true;}
    else if(this.selected&&e.shiftKey&&e.code==='KeyD'){e.preventDefault();this.duplicate();}
    else if(this.selected&&e.code==='KeyX'){e.preventDefault();this.remove();}
-   else if(!e.repeat&&this.controlMode==='robot'&&this.selected?.userData.editorKind==='robot'&&combatForKey(e.code,this.selected.userData.robotCombat)){e.preventDefault();this.triggerRobotCombat(this.selected,combatForKey(e.code,this.selected.userData.robotCombat));}
-   else if(this.controlMode==='robot'&&this.selected?.userData.editorKind==='robot'&&['ShiftLeft','ShiftRight'].includes(e.code)){this.robotKeys.add(e.code);}
-   else if(this.controlMode==='robot'&&this.selected?.userData.editorKind==='robot'&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)){e.preventDefault();this.robotKeys.add(e.code);this.world.keys.delete(e.code);if(e.code==='Space'&&!e.repeat){robotAction(this.selected,'jump');/* Jump is synchronised through the compact robot-input event. */}else if(e.code!=='Space'){this.selected.userData.robotGoal=null;}}
+   else if(!e.repeat&&this.controlMode==='robot'&&this.controlledRobot()&&combatForKey(e.code,this.controlledRobot().userData.robotCombat)){e.preventDefault();const bot=this.controlledRobot();this.triggerRobotCombat(bot,combatForKey(e.code,bot.userData.robotCombat));}
+   else if(this.controlMode==='robot'&&this.controlledRobot()&&['ShiftLeft','ShiftRight'].includes(e.code)){this.robotKeys.add(e.code);}
+   else if(this.controlMode==='robot'&&this.controlledRobot()&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)){e.preventDefault();this.robotKeys.add(e.code);this.world.keys.delete(e.code);if(e.code==='Space'&&!e.repeat){robotAction(this.controlledRobot(),'jump');/* Jump is synchronised through the compact robot-input event. */}else if(e.code!=='Space'){this.controlledRobot().userData.robotGoal=null;}}
    else if(this.selected&&e.code==='KeyO'&&this.selected.userData.editorKind==='cube'){e.preventDefault();this.startFaceDrawing('opening');}
    else if(this.selected&&e.code==='KeyU'&&['cube','plane'].includes(this.selected.userData.editorKind)){e.preventDefault();this.startFaceDrawing('media');}
    else if(this.selected&&['KeyG','KeyR','KeyS'].includes(e.code)){if(!this.canTransform(this.selected)){this.toast('Unlock this object to transform it');return;}this.transform.setMode({KeyG:'translate',KeyR:'rotate',KeyS:'scale'}[e.code]);}
@@ -813,7 +838,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  add(kind,showGallery=true,lightType=undefined,persist=true){const object=objectFor(kind);if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
  const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.cameraDropPosition(3.2);object.position.x=point.x;object.position.z=point.z;if(kind!=='robot')object.position.y=Math.max(.8,point.y);
  object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;if(PRIMITIVE_FIELDS[kind])object.userData.primitive=sanitisePrimitive(kind);this.items.push(object);this.world.scene.add(object);this.physics.sync(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}if(kind==='model'&&object.userData.modelUrl)hydrateSceneModel(object);if(kind!=='model'&&persist){this.recordEdit(null,this.snapshot(object));this.queueSave(object);}return object;}
- select(obj){if(this.wallEditTarget&&this.wallEditTarget!==obj)this.endWallDrawing();if(this.selected&&this.selected!==obj)this.broadcastEdit(false);this.clearLightHelper();this.robotKeys.clear();this.localRobotInput=null;this.selected=obj;
+ select(obj){if(this.wallEditTarget&&this.wallEditTarget!==obj)this.endWallDrawing();if(this.selected&&this.selected!==obj)this.broadcastEdit(false);this.clearLightHelper();this.robotKeys?.clear();this.localRobotInput=null;this.selected=obj;
   if(obj?.userData.editorKind==='robot')for(const key of ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'])this.world.keys.delete(key);
   // Robots are controlled with arrows, not a permanent transform gizmo.
   if(this.canTransform(obj)&&obj.userData.editorKind!=='robot')this.transform.attach(obj);
@@ -922,7 +947,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   updateMediaHUDPosition(){const hud=byId('mediaInteractionHud');if(!hud)return;const obj=this.selected;if(!obj||obj.userData?.editorKind!=='media'){hud.hidden=true;return;}const pos=obj.getWorldPosition(new THREE.Vector3());pos.y+=0.9;pos.project(this.world.camera);if(pos.z>1){hud.hidden=true;return;}const rect=this.world.renderer.domElement.getBoundingClientRect();const x=(pos.x*.5+.5)*rect.width+rect.left,y=(-pos.y*.5+.5)*rect.height+rect.top;hud.style.left=`${x}px`;hud.style.top=`${y}px`;hud.hidden=false;byId('mediaHudPlay').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaHudMute').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';}
 
   serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed??2.5):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed??1.8):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed??4):undefined,combat:o.userData.editorKind==='robot'?combatSettings(o.userData.robotCombat):undefined,animationSpeed:o.userData.editorKind==='robot'?animationSpeedSettings(o.userData.robotAnimationSpeed):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined,media:o.userData.editorKind==='media'?structuredClone(o.userData.media||{}):undefined,primitive:PRIMITIVE_FIELDS[o.userData.editorKind]?structuredClone(o.userData.primitive||sanitisePrimitive(o.userData.editorKind)):undefined,curve:o.userData.editorKind==='curve'?structuredClone(cleanCurve(o.userData.curve)):undefined,text:o.userData.editorKind==='text'?structuredClone(cleanText(o.userData.text)):undefined,openings:o.userData.editorKind==='cube'?cleanOpenings(o.userData.openings):undefined,wall:o.userData.editorKind==='wall'?structuredClone(o.userData.wall):undefined,stairs:o.userData.editorKind==='stairs'?structuredClone(o.userData.stairs):undefined}));}
- beginSceneReplacement(){this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.sceneRestorePhysics=this.physics.enabled;this.physics.clear();byId('propertiesPanel').hidden=true;}
+ beginSceneReplacement(){this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.controlledRobotId=null;this.robotKeys.clear();this.sceneRestorePhysics=this.physics.enabled;this.physics.clear();byId('propertiesPanel').hidden=true;}
  addSceneEntry(entry){if(!kinds.includes(entry.kind))return;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.robotCombat=combatSettings(entry.combat);o.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='curve'){o.userData.curve=cleanCurve(entry.curve);o.geometry.dispose();o.geometry=buildCurveGeometry(o.userData.curve);}if(entry.kind==='text')rebuildText(o,entry.text,()=>{if(this.items.includes(o))this.physics.sync(o);});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{});if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.userData.openings=entry.kind==='cube'?cleanOpenings(entry.openings):undefined;o.geometry=entry.kind==='cube'?cutCubeGeometry(o.userData.primitive,o.userData.openings):buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
@@ -1142,7 +1167,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     if(this.lightHelper&&!byId('propertiesPanel').hidden){this.lightHelper.visible=!this.world.renderer.xr.isPresenting;this.lightHelper.update?.();}
     if(this.lightHelper&&byId('propertiesPanel').hidden)this.clearLightHelper();
     const previousRobotPositions=new Map(this.items.filter(o=>o.userData.editorKind==='robot').map(o=>[o.userData.editorId,{x:o.position.x,z:o.position.z}]));
-    const robot=this.robot(),canControl=this.controlMode==='robot'&&robot&&this.canEdit(robot);
+    const robot=this.controlledRobot?.(),canControl=this.controlMode==='robot'&&robot&&this.canEdit(robot);
     const rawIntent=intent(this.robotKeys);
     const now=performance.now();
     if(canControl&&rawIntent.f>0){this.walkHeldSince??=now;}else this.walkHeldSince=null;

@@ -26,7 +26,7 @@ test('wheel event captured ahead of OrbitControls in chase and orbit and XR stay
  const w=read('js/world.js');
  assert.match(w,/renderer\.domElement\.addEventListener\('wheel'/);
  assert.match(w,/\{capture:true,passive:false\}/);
- assert.match(w,/!\['chase','chase-smart','orbit'\]\.includes\(this\.cameraFollowMode\)\|\|!this\.robotEditor\?\.robot\(\)\|\|this\.renderer\.xr\.isPresenting/);
+ assert.match(w,/!\['chase','chase-smart','orbit'\]\.includes\(this\.cameraFollowMode\)\|\|!this\.robotEditor\?\.cameraTargetRobot\?\.\(\)\|\|this\.renderer\.xr\.isPresenting/);
  assert.match(w,/event\.preventDefault\(\);event\.stopImmediatePropagation\(\)/);
  assert.match(w,/this\.setChaseDistance\(zoomChaseDistance\(this\.followChaseDistance,delta\)\)/);
  assert.match(w,/this\.camera\.position\.lerp\(/);

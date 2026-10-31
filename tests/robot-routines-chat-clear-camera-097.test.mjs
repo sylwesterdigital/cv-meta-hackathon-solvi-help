@@ -39,7 +39,8 @@ test('Clear-chat generations prevent old request, avatar, or attachment callback
  assert.match(source,/if\(room!==activeRoom\|\|epoch!==chatEpoch\|\|request!==chatLoadSerial\|\|chatClearingRoom===room\)return/);
  assert.match(source,/if\(room!==activeRoom\|\|epoch!==chatEpoch\|\|request!==chatLoadSerial\)break/);
  assert.match(source,/if\(renderEpoch!==chatEpoch\|\|roomAtBubble!==activeRoom\|\|!pic\.isConnected\)return/);
- assert.match(source,/if\(generation!==chatEpoch\)\{URL\.revokeObjectURL\(info\.url\)/);
+ assert.match(source,/if\(generation!==chatEpoch\)throw Error\('Chat view changed'\)/);
+ assert.match(source,/if\(generation!==chatEpoch\)\{URL\.revokeObjectURL\(fetched\.url\)/);
  assert.match(source,/invalidateChatRoom\(room,\{dropTraces:true\}\)/);
  assert.match(source,/roomActivities\.delete\(room\)/);
  assert.match(source,/window\.addEventListener\('solvi:room-chat-cleared',event/);

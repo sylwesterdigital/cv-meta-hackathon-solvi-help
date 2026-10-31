@@ -47,7 +47,7 @@ assert f('@All go to Red Sphere',bots[0],bots)=='@All go to Red Sphere'
 test('clean thumbnail previews and collapsible robot camera sources',()=>{
  const ui=source('js/ui-controls.js'),attachments=source('js/chat-attachments.js'),styles=source('styles.css'),studio=source('js/studio.js');
  assert.match(ui,/closest\?\.\('\.chat-attachment'\)/);
- assert.match(attachments,/menuButton\.textContent='More'/);
+ assert.match(attachments,/menuButton\.textContent='⋯'/);
  assert.match(styles,/#chatFeed \.chat-attachment \.chat-image-open::before/);
  assert.match(studio,/View \$\{mids\.length-1\} camera source frames/);
  assert.match(studio,/chat-panorama-attachment/);

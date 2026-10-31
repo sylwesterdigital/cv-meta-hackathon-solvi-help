@@ -22,7 +22,7 @@ test('authenticated attachment controls and safe viewer are wired',()=>{
  assert.match(media,/blob\.text\(\)/);
  assert.match(media,/pre\.textContent=text\.slice/);
  assert.match(media,/frame\.setAttribute\('sandbox','allow-downloads'\)/);
- assert.match(media,/media\.controls=true/);
+ assert.match(media,/compactMediaPlayer\(\{url,id,label,kind:'video'\}\)/);
  assert.match(api,/X-Solvi-File-Name/);
  assert.match(api,/application\/pdf.*\.pdf/);
 });

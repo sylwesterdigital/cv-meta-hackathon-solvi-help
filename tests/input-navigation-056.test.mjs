@@ -50,13 +50,13 @@ test('idle trackpad input enabled without allowing a stale drag over gizmos',()=
  assert.match(world,/this\.controls\.touches=\{ONE:THREE\.TOUCH\.ROTATE,TWO:THREE\.TOUCH\.DOLLY_PAN\}/);
  assert.match(editor,/orbitGesture\.orphanedMove/);
  assert.match(editor,/recoverStaleOrbitPointers/);
- assert.match(editor,/this\.controlMode==='robot'&&this\.selected/);
+ assert.match(editor,/this\.controlMode==='robot'&&this\.controlledRobot\(\)/);
 });
 test('scene/robot control chooser supports all scene robots and does not steal scene arrows',()=>{
  const editor=read('js/editor.js');const html=read('index.html');
  for(const id of ['controlModeButton','controlledRobotSelect'])assert.ok(html.includes('id="'+id+'"'));
- assert.match(editor,/this\.controlMode=this\.controlMode==='robot'\?'scene':'robot'/);
- assert.match(editor,/this\.controlMode==='robot'&&this\.selected\?\.userData\.editorKind==='robot'/);
+ assert.match(editor,/this\.controlMode='robot'/);assert.match(editor,/this\.controlMode='scene'/);
+ assert.match(editor,/this\.controlMode==='robot'&&this\.controlledRobot\(\)/);
 });
 test('Add palette uses fixed search and a single scrollable, left-aligned column',()=>{
  const editor=read('js/editor.js');const css=read('styles.css');

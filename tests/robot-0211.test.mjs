@@ -88,7 +88,7 @@ test('Legacy visual correction does not alter robot root yaw or reverse heading'
   const source=read('js/robots.js'),editor=read('js/editor.js');
   assert.match(source,/avatarVisual\.rotation\.y=Math\.PI/);
   assert.match(source,/avatarVisual\.add\(model\)/);
-  assert.match(editor,/this\.selected\.userData\.robotGoal=null/);
+  assert.match(editor,/this\.controlledRobot\(\)\.userData\.robotGoal=null/);
   assert.match(editor,/if\(packet\.m&&\(packet\.f\|\|packet\.t\)\)robot\.userData\.robotGoal=null/);
   assert.doesNotMatch(editor,/rotation\.y\s*(?:\+=|=)\s*Math\.PI/);
 });

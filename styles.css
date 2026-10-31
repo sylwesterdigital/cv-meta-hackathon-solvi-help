@@ -1946,3 +1946,44 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #webcamPanel .webcam-record-actions{display:flex;flex-wrap:wrap;gap:5px;}
 #webcamPanel .webcam-record-actions button{min-height:29px;font-size:11px;padding:3px 6px;}
 #webcamPanel .webcam-record-actions #webcamXRRecord{flex:1 1 100%;}
+
+/* v0.2.105: compact, custom streamed-media chrome without filenames or native controls */
+#chatFeed .chat-attachment-video,#chatFeed .chat-attachment-audio{width:min(380px,100%);max-width:100%;padding:0!important;gap:2px!important;background:none!important;position:relative}
+#chatFeed .chat-attachment :is(.chat-attachment-title,.chat-attachment-save){display:none!important}
+#chatFeed .chat-attachment :is(.chat-attachment-actions,.chat-attachment-actions .chat-attachment-save){display:flex!important}
+#chatFeed .chat-attachment-actions{position:absolute;right:4px;top:4px;z-index:4;gap:3px;align-items:center}
+#chatFeed .chat-attachment-actions a,#chatFeed .chat-attachment-actions button{display:grid!important;place-items:center;width:23px;height:23px;min-width:0;border-radius:5px;border:1px solid #426077;background:rgba(11,28,41,.87);color:#ebf7ff;text-decoration:none;font-size:15px;padding:0;margin:0;cursor:pointer}
+#chatFeed .chat-attachment :is(.chat-attachment-more){position:absolute!important;top:4px!important;left:4px!important;right:auto!important;width:23px!important;height:23px!important;display:grid!important;place-items:center!important;border-radius:5px!important;background:rgba(11,28,41,.87)!important;border:1px solid #426077!important;color:#eaf6ff!important;font-size:16px!important;padding:0!important}
+#chatFeed .chat-attachment-menu{top:31px!important;left:4px;right:auto;bottom:auto!important}
+#chatFeed .chat-player{display:flex;flex-direction:column;gap:0;width:100%;min-width:0;overflow:hidden;border-radius:8px;background:rgba(3,11,20,.78)}
+#chatFeed .chat-player-video video{display:block!important;width:100%!important;max-height:245px!important;aspect-ratio:16/9;object-fit:contain;background:#02070d;border-radius:0;cursor:pointer;margin:0!important}
+#chatFeed .chat-player-audio audio{display:none!important}
+#chatFeed .chat-player-controls{display:flex;align-items:center;gap:5px;padding:3px 5px;min-height:31px}
+#chatFeed .chat-player button{background:transparent;color:#dfedf6;flex:0 0 auto;border:0;padding:0;width:24px;height:25px;font-size:13px;line-height:1;cursor:pointer}
+#chatFeed .chat-player .chat-player-progress{flex:1;min-width:30px;width:100%;height:4px;margin:0;padding:0;accent-color:#9ce4f6}
+#chatFeed .chat-player-time{white-space:nowrap;color:#c4d8e8;font-size:10px;font-variant-numeric:tabular-nums}
+#chatFeed .chat-player-status{padding:0 8px 3px;font-size:10px;color:#b3d7e7}
+#chatFeed .chat-attachment-audio .chat-player{width:min(275px,100%)}
+#chatFeed .chat-bubble{padding:7px 9px!important}
+#composerRecorderPanel{padding:6px!important;gap:4px}
+.composer-recorder-controls{gap:3px!important}
+.composer-recorder-controls>button{min-height:25px!important;padding:3px 6px!important;font-size:11px!important}
+#composerRecorderPlayer .chat-player{width:min(310px,100%);background:#061423;border-radius:6px;overflow:hidden}
+#composerRecorderPlayer .chat-player video{display:block;width:100%;max-height:155px;object-fit:contain}
+#composerRecorderPlayer .chat-player audio{display:none}
+#composerRecorderPlayer .chat-player-controls{display:flex;align-items:center;gap:5px;padding:4px}
+#composerRecorderPlayer .chat-player-controls button{background:transparent;color:white;border:0;padding:4px}
+#composerRecorderPlayer .chat-player-progress{flex:1;min-width:35px;accent-color:#9ce4f6}
+#composerRecorderPlayer .chat-player-time{font-size:10px}
+.webcam-record-actions{gap:4px!important}.webcam-record-actions button{padding:4px 6px!important;min-height:27px;font-size:11px}
+@media(max-width:500px){#chatFeed .chat-player-video video{max-height:200px!important}}
+
+/* v0.2.105: robot portrait selector stays visible above cameraFollowButton. */
+#controlSwitcher.control-switcher{position:fixed!important;left:130px!important;bottom:calc(50px + env(safe-area-inset-bottom))!important;z-index:70!important;display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:4px!important;width:max-content!important;max-width:calc(100vw - 145px)!important;background:none!important;pointer-events:none!important}
+#controlSwitcher .robot-face-options{position:static!important;left:auto!important;bottom:auto!important;display:flex!important;gap:4px!important;max-width:100%!important;overflow:auto!important;background:rgba(15,30,43,.9)!important;padding:4px!important;border-radius:10px!important;box-shadow:0 2px 10px #0005!important;pointer-events:auto!important}
+#controlSwitcher .robot-face-options[hidden]{display:none!important}
+#controlSwitcher .robot-face-choice{flex:0 0 auto!important;min-width:47px!important;width:55px!important;max-width:55px!important;padding:2px!important;gap:2px!important}
+#controlSwitcher .robot-face-avatar{width:40px!important;height:40px!important;min-width:40px!important}
+#controlSwitcher .robot-face-choice small{max-width:50px!important;font-size:9px!important}
+#controlSwitcher #controlModeButton{pointer-events:auto!important;max-width:100%!important;font-size:11px!important}
+@media(max-width:750px){#controlSwitcher.control-switcher{left:118px!important;bottom:calc(102px + env(safe-area-inset-bottom))!important;max-width:calc(100vw - 130px)!important}}

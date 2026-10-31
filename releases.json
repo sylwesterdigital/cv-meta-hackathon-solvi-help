@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.104",
+  "currentVersion": "0.2.105",
   "releases": [
+    {
+      "version": "0.2.105",
+      "publishedAt": "2026-10-31T06:26:19Z",
+      "changes": [
+        "Robot portrait selector remains visible above Camera Follow, with correct active-robot highlighting. Selecting a robot now activates arrow-key control independently of Properties selection.",
+        "Video recording from chat or My Camera opens a live preview; capture does not begin until the user presses Start. Pause, resume, stop, discard, chat, scene and surface sharing remain available.",
+        "Chat audio and video attachments use slim shared custom controls, time/seek/mute/fullscreen, compact download/delete actions and no raw filename or native player bar.",
+        "Chat fetches metadata instead of loading entire recordings. On Play, authenticated 15-minute HLS access is requested; native HLS or locally bundled hls.js plays the stream; direct blob playback is a failure fallback.",
+        "Media deletion requires uploader/admin authorization and rejects scene, environment, profile and bookmarked references; linked chat attachments are unlinked on success."
+      ]
+    },
     {
       "version": "0.2.104",
       "publishedAt": "2026-10-31T06:05:17Z",
@@ -335,17 +346,6 @@
         "Separate chat diagnostic events from robot floor-path display at per-robot and all-robot levels.",
         "Add opt-in, browser-session robot follow, observation and periodic discussion routines with stop controls.",
         "Add Shift+Up / Shift+Down chat draft history and XR ray-targeted media play/mute interaction."
-      ]
-    },
-    {
-      "version": "0.2.72",
-      "publishedAt": "2026-10-30T01:44:50Z",
-      "changes": [
-        "Add audio-file scene media with speaker-style geometry, spatial playback distance, looping and sync-group start controls.",
-        "Extend the file-drop chooser and chat attachment actions so audio uploads can be posted to chat or placed in the scene as speaker sources.",
-        "Add a compact in-world media interaction HUD with Play/Pause and Mute/Unmute that only appears while interacting with a selected media object.",
-        "Animate speaker wave rings while audio is playing and keep inspector controls for video/image media while adding audio-specific settings.",
-        "Update release metadata and extend automated tests for audio media support."
       ]
     }
   ]

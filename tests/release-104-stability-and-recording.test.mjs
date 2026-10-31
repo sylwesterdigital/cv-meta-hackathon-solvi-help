@@ -27,7 +27,7 @@ test('chat pagination prevents huge microtask-only realm rebuilds',()=>{
 test('robot control uses profile portraits with fallback and no visible dropdown',()=>{
  const h=get('index.html'),e=get('js/editor.js'),css=get('styles.css');
  assert.match(h,/id="controlledRobotFaces"/);
- assert.match(e,/robotFaces\.hidden=this\.controlMode!=='robot'/);
+ assert.match(e,/robotFaces\.hidden=robots\.length===0/);
  assert.match(e,/bot\.userData\.robotBrain\?\.portrait/);
  assert.match(e,/window\.solviAPI\.mediaBlob\(portrait\)/);
  assert.match(css,/robot-face-avatar/);

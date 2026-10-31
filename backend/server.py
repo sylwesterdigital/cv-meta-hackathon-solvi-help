@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.104',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.105',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1066,6 +1066,58 @@ def get_media(mid):
     response.headers['X-Solvi-File-Size']=str(m['size'])
     response.headers['Content-Security-Policy']="default-src 'none'; sandbox" if m['mime']=='application/pdf' else "default-src 'none'"
     return response
+
+@app.get('/api/media/<mid>/info')
+def media_playback_info(mid):
+    # A tiny authenticated descriptor avoids loading a whole video/audio into
+    # every chat message just to discover its type and display a play button.
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:m=con.execute('SELECT id,name,mime,size,user_id FROM media WHERE id=?',(mid,)).fetchone()
+    if not m:return json_error('Media missing',404)
+    return jsonify(id=m['id'],name=m['name'],mime=m['mime'],size=m['size'],user_id=m['user_id'])
+
+@app.delete('/api/media/<mid>')
+def delete_media_attachment(mid):
+    """Uploader/admin removal, without breaking any saved scene, profile or bookmark."""
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    if not re.fullmatch(r'[0-9a-f-]{8,80}',mid,re.I):return json_error('Invalid media id',400)
+    touched_rooms=set()
+    with db() as con:
+        media=con.execute('SELECT * FROM media WHERE id=?',(mid,)).fetchone()
+        if not media:return json_error('Media missing',404)
+        if media['user_id']!=user['id'] and not admin_authorized():return json_error('Uploader or administrator required',403)
+        # Do not remove media embedded in a shared realm or used by another
+        # persisted feature. The uploader can unlink it from the scene first.
+        for row in con.execute('SELECT room_id,payload FROM room_scenes').fetchall():
+            if mid in row['payload']:
+                return json_error('Remove media from the scene before deleting the file',409)
+        for row in con.execute('SELECT payload FROM room_environments').fetchall():
+            if mid in row['payload']:
+                return json_error('Media is used by a realm environment',409)
+        if con.execute('SELECT 1 FROM camera_bookmarks WHERE media_id=? LIMIT 1',(mid,)).fetchone():
+            return json_error('Delete the camera bookmark first',409)
+        if con.execute('SELECT 1 FROM users WHERE avatar=? OR intro=? LIMIT 1',(mid,mid)).fetchone():
+            return json_error('Media is still used by a profile',409)
+        for row in con.execute('SELECT id,room_id,media FROM messages WHERE media LIKE ?',('%'+mid+'%',)).fetchall():
+            try:attachments=json.loads(row['media'] or '[]')
+            except (TypeError,ValueError):continue
+            if not isinstance(attachments,list) or mid not in attachments:continue
+            attachments=[item for item in attachments if item!=mid]
+            con.execute('UPDATE messages SET media=? WHERE id=?',(json.dumps(attachments),row['id']))
+            touched_rooms.add(row['room_id'])
+        con.execute('DELETE FROM media_captions WHERE media_id=?',(mid,))
+        con.execute('DELETE FROM media WHERE id=?',(mid,))
+        original=Path(media['path'])
+    # Paths originate from generated IDs; ensure even a corrupted record
+    # cannot delete arbitrary files on the host.
+    if original.resolve().parent==(STATE/'media').resolve() and original.name.startswith(mid):
+        original.unlink(missing_ok=True)
+    shutil.rmtree(STATE/'media'/('hls-'+mid),ignore_errors=True)
+    for room_id in touched_rooms:
+        publish({'type':'media-deleted','room':room_id,'media':mid},room_id=room_id)
+    return jsonify(deleted=True,id=mid,rooms=sorted(touched_rooms))
 
 @app.route('/api/media/<mid>/caption',methods=['GET','POST'])
 def media_caption(mid):

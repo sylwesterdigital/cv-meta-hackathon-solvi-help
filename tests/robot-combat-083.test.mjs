@@ -58,7 +58,7 @@ test('persisted compact per-robot control settings are validated for bulk and at
  assert.match(s,/if 'combat' in o and not valid_robot_combat/);
  assert.match(s,/if obj\['kind'\]=='robot' and 'combat' in obj and not valid_robot_combat/);
  assert.match(editor,/combat:o\.userData\.editorKind==='robot'/);
- assert.match(editor,/this\.triggerRobotCombat\(this\.selected/);
+ assert.match(editor,/this\.triggerRobotCombat\(bot/);
  assert.match(editor,/animateRobots\(this\.items,dt,/);
  assert.match(editor,/this\.physics\.applyCombat\(actor,kind,force,remote\)/);
 });

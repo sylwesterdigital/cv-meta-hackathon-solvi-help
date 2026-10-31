@@ -1,6 +1,6 @@
 {
   "name": "cv-meta-hackathon-solvi-help",
-  "version": "0.2.104",
+  "version": "0.2.105",
   "type": "module",
   "private": true,
   "scripts": {
@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "three": "0.180.0",
-    "@dimforge/rapier3d-compat": "0.21.0"
+    "@dimforge/rapier3d-compat": "0.21.0",
+    "hls.js": "1.6.15"
   }
 }

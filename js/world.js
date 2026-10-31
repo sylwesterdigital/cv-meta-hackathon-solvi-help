@@ -74,7 +74,7 @@ export class SolviWorld {
     // Capture before OrbitControls' wheel handler to avoid fighting its own dolly.
     // Apple trackpads dispatch wheel events, sometimes with ctrlKey for pinch.
     this.renderer.domElement.addEventListener('wheel',event=>{
-      if(!['chase','chase-smart','orbit'].includes(this.cameraFollowMode)||!this.robotEditor?.robot()||this.renderer.xr.isPresenting)return;
+      if(!['chase','chase-smart','orbit'].includes(this.cameraFollowMode)||!this.robotEditor?.cameraTargetRobot?.()||this.renderer.xr.isPresenting)return;
       event.preventDefault();event.stopImmediatePropagation();
       const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?500:1);
       if(['chase','chase-smart'].includes(this.cameraFollowMode))this.setChaseDistance(zoomChaseDistance(this.followChaseDistance,delta));
@@ -231,8 +231,8 @@ export class SolviWorld {
     window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||e.ctrlKey||e.metaKey||e.altKey)return;
       if(e.code==='KeyV'&&!e.repeat){e.preventDefault();this.setCameraFollowMode(nextCameraMode(this.cameraFollowMode));return;}
       if(/^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|ShiftLeft|ShiftRight)$/.test(e.code)){
-       const robot=this.robotEditor?.robot();
-       if(robot&&this.robotEditor.canEdit(robot)&&e.code.startsWith('Arrow')){this.keys.delete(e.code);return;}
+       const robot=this.robotEditor?.cameraTargetRobot?.();
+       if(this.robotEditor?.controlMode==='robot'&&robot&&this.robotEditor.canEdit(robot)&&e.code.startsWith('Arrow')){this.keys.delete(e.code);return;}
        this.keys.add(e.code);if(e.code.startsWith('Arrow')||e.code.startsWith('Page'))e.preventDefault();this.pending=null;
       }});
     window.addEventListener('keyup',e=>this.keys.delete(e.code));
@@ -612,14 +612,14 @@ export class SolviWorld {
   refreshFollowButton(){
     const button=document.getElementById('cameraFollowButton');if(!button)return;
     const labels={free:'Camera: Free',chase:'Camera: Chase','chase-smart':'Camera: Chase Smart',orbit:'Camera: Orbit follow'};
-    const hasRobot=Boolean(this.robotEditor?.robot());
+    const hasRobot=Boolean(this.robotEditor?.cameraTargetRobot?.());
     const label=labels[this.cameraFollowMode]+(this.cameraFollowMode!=='free'&&!hasRobot?' · select robot':'');
     if(label!==this.lastFollowLabel){button.textContent=label;this.lastFollowLabel=label;}
     button.dataset.mode=this.cameraFollowMode;
     button.setAttribute('aria-label',label+'. Click to switch camera mode.');
     button.title='Cycle: Free → Chase → Chase Smart → Orbit follow (V). Adjust follow distance via slider or wheel/trackpad.';
     const control=document.getElementById('chaseDistanceControl');
-    if(control)control.hidden=!['chase','chase-smart','orbit'].includes(this.cameraFollowMode);const smart=document.getElementById('smartChaseAngleControl');if(smart)smart.hidden=this.cameraFollowMode!=='chase-smart'||!this.robotEditor?.robot();
+    if(control)control.hidden=!['chase','chase-smart','orbit'].includes(this.cameraFollowMode);const smart=document.getElementById('smartChaseAngleControl');if(smart)smart.hidden=this.cameraFollowMode!=='chase-smart'||!this.robotEditor?.cameraTargetRobot?.();
     this.updateChaseDistanceUI();
   }
   updateChaseDistanceUI(){
@@ -650,7 +650,7 @@ export class SolviWorld {
   }
   syncFollowAfterManualView(){
     if(this.cameraFollowMode==='free')return;
-    const robot=this.robotEditor?.robot();if(!robot)return;
+    const robot=this.robotEditor?.cameraTargetRobot?.();if(!robot)return;
     // Numpad views should not be immediately overwritten by chase mode.
     if(['chase','chase-smart'].includes(this.cameraFollowMode))this.setCameraFollowMode('orbit');
     const anchor=followAnchor(robot);
@@ -661,7 +661,7 @@ export class SolviWorld {
   }
   updateFollowCamera(dt){
     if(this.renderer.xr.isPresenting||document.pointerLockElement===this.renderer.domElement||this.cameraFollowMode==='free')return;
-    const robot=this.robotEditor?.robot();
+    const robot=this.robotEditor?.cameraTargetRobot?.();
     if(!robot){this.followRobotId=null;this.followOrbitOffset=null;this.refreshFollowButton();return;}
     if(this.editorDragging||this.editorGizmoPointer)return;
     const anchor=followAnchor(robot),yaw=robot.rotation.y,id=robot.userData.editorId;
@@ -766,7 +766,7 @@ export class SolviWorld {
   navigateCamera(dt){
     // Inertia applies only to free camera translations, never gizmo drags.
     if(this.renderer.xr.isPresenting||this.editorDragging||this.editorGizmoPointer){this.cameraVelocity.set(0,0,0);return;}
-    const robot=this.robotEditor?.robot();
+    const robot=this.robotEditor?.cameraTargetRobot?.();
     if(this.cameraFollowMode!=='free'&&robot){this.cameraVelocity.set(0,0,0);return;}
     if(robot&&this.robotEditor.canEdit(robot)&&this.robotEditor.controlMode==='robot'){this.cameraVelocity.set(0,0,0);return;}
     const {forward:f,side,vertical,boost}=freeCameraAxes(this.keys);

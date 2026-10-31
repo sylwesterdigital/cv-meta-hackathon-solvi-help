@@ -33,7 +33,7 @@ test('webcam recording shows a live preview before the recording is stopped',()=
  assert.match(html,/id="composerRecorderLivePreview"/);
  assert.match(studio,/livePreview\.srcObject=recordStream/);
  assert.match(studio,/preview\.srcObject=null;preview\.hidden=true/);
- assert.match(studio,/player=document\.createElement\(video\?'video':'audio'\)/);
+ assert.match(studio,/compactMediaPlayer\(\{url:recordingUrl,kind:video\?'video':'audio',stream:false\}\)/);
 });
 
 test('robot typing reveals text progressively and then completes without altering history',()=>{
@@ -68,10 +68,13 @@ test('audio HLS signs media-specific expiring playback tickets',()=>{
  assert.match(server,/response\.set_data/);
 });
 
-test('compact chat audio falls back to authenticated blob where native HLS is absent',()=>{
- const src=read('js/compact-audio-player.js');
- assert.match(src,/audio\.src=url/);assert.match(src,/audio\.canPlayType\('application\/vnd\.apple\.mpegurl'\)/);
- assert.match(src,/progress\.oninput/);assert.match(src,/audio\.muted=!audio\.muted/);
+test('compact chat audio uses shared authenticated HLS playback with direct fallback',()=>{
+ const audio=read('js/compact-audio-player.js'),src=read('js/compact-media-player.js');
+ assert.match(audio,/compactMediaPlayer\(\{\.\.\.options,kind:'audio'\}\)/);
+ assert.match(src,/media\.src=direct\.url/);
+ assert.match(src,/media\.canPlayType\('application\/vnd\.apple\.mpegurl'\)/);
+ assert.match(src,/progress\.oninput/);
+ assert.match(src,/media\.muted=!media\.muted/);
  assert.match(read('js/chat-attachments.js'),/compactAudioPlayer\(\{url,id,label\}\)/);
 });
 
