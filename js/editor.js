@@ -1747,21 +1747,43 @@ SceneEditor.prototype.addPortalPair=function(){
  this.toast('Portal pair created · Move Entry and Exit separately in Objects');return [entry,exit];
 };
 SceneEditor.prototype.setupPortalControls=function(){
- const ids=['portalShape','portalEffect','portalMode','portalDelay','portalWidth','portalHeight','portalDepth','portalOpeningWidth','portalOpeningHeight','portalColor','portalTexture','portalOpacity','portalSound'];
- for(const id of ids)document.getElementById(id)?.addEventListener('change',()=>{
+ const simple=['portalShape','portalEffect','portalMode','portalColor','portalTexture','portalSound'];
+ const numeric=['delay','width','height','depth','openingWidth','openingHeight','opacity'];
+ const apply=(key,raw)=>{
   const o=this.selected;if(o?.userData.editorKind!=='portal'||!this.canEdit(o))return;
-  const before=this.snapshot(o),v=id.replace('portal',''),key=v[0].toLowerCase()+v.slice(1);
-  const control=document.getElementById(id),value=control.type==='checkbox'?control.checked:control.value;
-  o.userData.portal=cleanPortal({...o.userData.portal,[key]:value});
+  if(o.userData.portal?.role==='exit'&&['mode','delay','sound'].includes(key))return;
+  const before=this.snapshot(o);
+  o.userData.portal=cleanPortal({...o.userData.portal,[key]:raw});
   rebuildPortal(o,o.userData.portal);this.physics.sync(o);this.recordEdit(before,this.snapshot(o));this.queueSave(o);this.updateInspector();
+ };
+ for(const id of simple)document.getElementById(id)?.addEventListener('change',()=>{
+  const key=id.replace('portal','');const prop=key[0].toLowerCase()+key.slice(1);const control=document.getElementById(id);
+  apply(prop,control?.type==='checkbox'?control.checked:control?.value);
+ });
+ for(const key of numeric){
+  const name='portal'+key[0].toUpperCase()+key.slice(1),number=document.getElementById(name),range=document.getElementById(name+'Range');
+  const sync=(from,other)=>{if(other&&from)other.value=from.value;};
+  number?.addEventListener('change',()=>{sync(number,range);apply(key,number.value);});
+  range?.addEventListener('input',()=>{sync(range,number);apply(key,range.value);});
+ }
+ for(const button of document.querySelectorAll('#portalProperties .portal-swatch'))button.addEventListener('click',()=>{
+  const color=button.getAttribute('data-color')||'#499fe3';
+  const input=document.getElementById('portalColor');if(input)input.value=color;apply('color',color);
  });
 };
 SceneEditor.prototype.renderPortalControls=function(obj){
  const fold=document.getElementById('portalProperties');if(!fold)return;fold.hidden=obj?.userData.editorKind!=='portal';if(fold.hidden)return;
  const cfg=cleanPortal(obj.userData.portal);obj.userData.portal=cfg;
- document.getElementById('portalRole').textContent=cfg.role==='entry'?'Entry · sends to Exit':'Exit · destination';
- document.getElementById('portalPairStatus').textContent=pairedPortal(this.items,obj)?'Linked pair':'Missing partner · restore or create pair';
- for(const key of ['shape','effect','mode','delay','width','height','depth','openingWidth','openingHeight','color','texture','opacity','sound']){
-  const id='portal'+key[0].toUpperCase()+key.slice(1),el=document.getElementById(id);if(el){if(el.type==='checkbox')el.checked=cfg[key];else el.value=String(cfg[key]);el.disabled=!this.canEdit(obj)||cfg.role==='exit'&&['mode','delay','sound'].includes(key);}
+ document.getElementById('portalRole').textContent=cfg.role==='entry'?'Entry → Exit':'Exit · destination';
+ document.getElementById('portalPairStatus').textContent=pairedPortal(this.items,obj)?'Linked pair':'Missing partner';
+ for(const key of ['shape','effect','mode','color','texture','sound']){
+  const id='portal'+key[0].toUpperCase()+key.slice(1),el=document.getElementById(id);if(el){if(el.type==='checkbox')el.checked=cfg[key];else el.value=String(cfg[key]);el.disabled=!this.canEdit(obj)||cfg.role==='exit'&&['mode','sound'].includes(key);}
  }
+ for(const key of ['delay','width','height','depth','openingWidth','openingHeight','opacity']){
+  const id='portal'+key[0].toUpperCase()+key.slice(1),num=document.getElementById(id),range=document.getElementById(id+'Range');
+  if(num){num.value=String(cfg[key]);num.disabled=!this.canEdit(obj)||cfg.role==='exit'&&key==='delay';}
+  if(range){range.value=String(cfg[key]);range.disabled=!this.canEdit(obj)||cfg.role==='exit'&&key==='delay';}
+ }
+ const swatches=document.querySelectorAll('#portalProperties .portal-swatch');
+ swatches.forEach(btn=>btn.setAttribute('aria-pressed',String((btn.getAttribute('data-color')||'').toLowerCase()===String(cfg.color).toLowerCase())));
 };

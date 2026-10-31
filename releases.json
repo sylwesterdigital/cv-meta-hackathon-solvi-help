@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.118",
+  "currentVersion": "0.2.119",
   "releases": [
+    {
+      "version": "0.2.119",
+      "publishedAt": "2026-10-31T21:58:03Z",
+      "changes": [
+        "Rework portal visuals so effect modes are materially different in-world: a clearly visible animated rainbow border, stronger glow/pulse treatments, and a new shader-driven mystery / reality-pull interior effect.",
+        "Compact the Portal inspector to match the rest of SOLVI properties: remove explanatory filler text, add one-line slider-plus-number controls, compact selects, curated colour swatches and a tighter layout with less vertical waste.",
+        "Keep paired portal transport, Entry/Exit linking, trigger modes and persistence intact while preserving watcher-safe packaging and versioned browser cache keys."
+      ]
+    },
     {
       "version": "0.2.118",
       "publishedAt": "2026-10-31T21:31:20Z",
@@ -311,17 +320,6 @@
         "Improve Punch/Kick target contact against imported meshes by testing the nearest collider surface in front of the striking limb and verifying strike height instead of testing distant model pivots.",
         "Apply Dynamic-object combat impulses at the physical contact point when supported by Rapier, including rotational response, with authority retained by the object owner.",
         "Report when a local punch or kick does not find a movable target and add functional tests for contact detection and Dynamic-only impulse application."
-      ]
-    },
-    {
-      "version": "0.2.87",
-      "publishedAt": "2026-10-30T21:26:59Z",
-      "changes": [
-        "Isolate running and walking animation per robot identity: an idle robot cannot inherit a nearby robot\u2019s stale Run/Walk state or movement packets.",
-        "Permit a pushed robot to play temporary backward, forward, or lateral steps only while a measured, physically applied displacement is current; return to Idle after contact.",
-        "Require close, approaching capsule contact at a comparable floor height before automatic robot-to-robot pushing, rather than broad model proximity.",
-        "Accept compact multiplayer robot-impact events only when attacker and victim remain within realistic push/strike reach; only the target owner applies displacement.",
-        "Add five regression tests for independent animations, contact approach, stale modes, per-robot multiplayer packet scope, and impact validation."
       ]
     }
   ]
