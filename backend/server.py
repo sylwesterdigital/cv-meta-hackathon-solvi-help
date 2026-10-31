@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.116',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.118',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3117,8 +3117,10 @@ def valid_text_geometry(text):
     return True
 
 def valid_portal_geometry(portal):
-    if not isinstance(portal,dict) or len(portal)>16:return False
+    if not isinstance(portal,dict) or len(portal)>18:return False
     if portal.get('role') not in ('entry','exit') or portal.get('mode') not in ('auto','button'):return False
+    if portal.get('shape') not in ('square','rounded','triangle','field','orb'):return False
+    if portal.get('effect') not in ('rainbow','mystery','glow','pulse'):return False
     if not isinstance(portal.get('partner'),str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',portal['partner']):return False
     if not isinstance(portal.get('sound'),bool):return False
     if not isinstance(portal.get('color'),str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',portal['color']):return False

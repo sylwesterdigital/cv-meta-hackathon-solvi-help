@@ -1,18 +1,46 @@
 // The pair is two independent scene objects, linked by stable editor IDs.
 export const PORTAL_MODES=['auto','button'];
+export const PORTAL_SHAPES=['square','rounded','triangle','field','orb'];
+export const PORTAL_EFFECTS=['rainbow','mystery','glow','pulse'];
 export function cleanPortal(raw={}){
  const number=(key,def,min,max)=>{const x=Number(raw?.[key]);return Number.isFinite(x)?Math.max(min,Math.min(max,x)):def;};
  const color=(v,f)=>typeof v==='string'&&/^#[0-9a-fA-F]{6}$/.test(v)?v:f;
  const width=number('width',2.2,1.1,8),height=number('height',2.7,1.8,8);
  return {role:raw?.role==='exit'?'exit':'entry',partner:typeof raw?.partner==='string'&&/^[a-zA-Z0-9_-]{8,80}$/.test(raw.partner)?raw.partner:'',
  mode:PORTAL_MODES.includes(raw?.mode)?raw.mode:'auto',delay:number('delay',0,0,12),width,height,depth:number('depth',.3,.12,1.2),
- openingWidth:Math.min(number('openingWidth',1.45,.7,6),width-.15),openingHeight:Math.min(number('openingHeight',2.1,1.2,7),height-.12),color:color(raw?.color,'#499fe3'),texture:['none','concrete','bricks','metal','tiles'].includes(raw?.texture)?raw.texture:'none',opacity:number('opacity',1,.1,1),sound:raw?.sound!==false};
+ openingWidth:Math.min(number('openingWidth',1.45,.7,6),width-.15),openingHeight:Math.min(number('openingHeight',2.1,1.2,7),height-.12),color:color(raw?.color,'#499fe3'),texture:['none','concrete','bricks','metal','tiles'].includes(raw?.texture)?raw.texture:'none',opacity:number('opacity',1,.1,1),sound:raw?.sound!==false,
+ shape:PORTAL_SHAPES.includes(raw?.shape)?raw.shape:'square',effect:PORTAL_EFFECTS.includes(raw?.effect)?raw.effect:'rainbow'};
 }
 export function portalActivation(local,config,kind='robot'){
  if(!local||!config||!['x','y','z'].every(k=>Number.isFinite(local[k])))return false;
- const half=Math.min(config.openingWidth,config.width-.2)/2;
  const floor=kind==='robot'?-.16:-.35;
- return Math.abs(local.x)<half-.08&&local.y>floor&&local.y<Math.min(config.openingHeight,config.height-.12)&&Math.abs(local.z)<Math.max(.38,config.depth+.19);
+ const shape=config.shape||'square';
+ const half=Math.max(.24,Math.min(config.openingWidth,config.width-.2)/2);
+ const maxY=Math.min(config.openingHeight,config.height-.12);
+ const depth=Math.max(.38,config.depth+.19);
+ if(shape==='field'){
+  const radius=Math.max(.24,Math.min(config.openingWidth,config.width-.2)/2);
+  return local.y>-0.45&&local.y<0.7&&(local.x*local.x+local.z*local.z)<=radius*radius;
+ }
+ if(shape==='orb'){
+  const ry=Math.max(.5,Math.min(maxY,config.width)*0.35);
+  const r=Math.max(.34,Math.min(half,ry));
+  const cy=Math.max(r,.5);
+  const dx=local.x,dy=local.y-cy,dz=local.z;
+  return dx*dx+dy*dy+dz*dz<=r*r;
+ }
+ if(Math.abs(local.z)>=depth||local.y<=floor||local.y>=maxY)return false;
+ if(shape==='triangle'){
+  const t=(local.y-floor)/(maxY-floor);
+  const span=Math.max(.05,half*(1-t));
+  return Math.abs(local.x)<span;
+ }
+ if(shape==='rounded'){
+  const rx=Math.max(.24,half-.02),ry=Math.max(.5,maxY/2-.02),cy=maxY/2;
+  const nx=local.x/rx,ny=(local.y-cy)/ry;
+  return nx*nx+ny*ny<1;
+ }
+ return Math.abs(local.x)<half-.08;
 }
 export function portalDestination(entry,exit,point,offset=.85){
  // A forward step in the exit portal's local -Z direction avoids re-entry.

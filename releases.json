@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.116",
+  "currentVersion": "0.2.118",
   "releases": [
+    {
+      "version": "0.2.118",
+      "publishedAt": "2026-10-31T21:31:20Z",
+      "changes": [
+        "Reissue the v0.2.117 paired-portal geometry and animation update as v0.2.118 because the previous archive contained generated Python bytecode, which the deployment watcher correctly rejected at Git publishing.",
+        "Exclude all __pycache__ directories and .pyc/.pyo or other generated artifacts from the watcher ZIP and the checksum manifest; preserve the original application source and avatar bytes.",
+        "Refresh release, backend and Ubuntu installer versions, and all versioned browser import URLs and stylesheet cache keys for v0.2.118."
+      ]
+    },
     {
       "version": "0.2.116",
       "publishedAt": "2026-10-31T19:28:47Z",
@@ -313,19 +322,6 @@
         "Require close, approaching capsule contact at a comparable floor height before automatic robot-to-robot pushing, rather than broad model proximity.",
         "Accept compact multiplayer robot-impact events only when attacker and victim remain within realistic push/strike reach; only the target owner applies displacement.",
         "Add five regression tests for independent animations, contact approach, stale modes, per-robot multiplayer packet scope, and impact validation."
-      ]
-    },
-    {
-      "version": "0.2.86",
-      "publishedAt": "2026-10-30T21:10:27Z",
-      "changes": [
-        "Keep physics jumps airborne through ascent and descent, increase launch velocity, and release the Jump animation only after a real landing rather than a transient grounded contact.",
-        "Recognize distinct Falling, Falling Idle, Falling To Landing, Falling Flat Impact, and Stand Up animation states with real default-avatar fallback clips for lower and severe drops.",
-        "Use authored Running and backwards-walking clips before synthetic walking fallbacks; normalize one-shot hit/landing durations to prevent partial held poses.",
-        "Apply Punch and Kick impacts during the clip strike phase, replay short Head Hit/Hit to Body/Wobbling reactions, and permit stronger hits to transition through death-like fall and recovery.",
-        "Relay compact, permission-checked robot-impact events for cross-owner robot collisions and attacks, and let Rapier character colliders integrate the victim displacement.",
-        "Increase compact live movement input frequency and merge incoming scene revisions in place without destroying remote avatar mixers or rewinding currently predicted positions.",
-        "Add eight regression tests for physics jump height, falling/landing animation clip resolution, combat impulse timing, network pose preservation, contact events, and recovery."
       ]
     }
   ]

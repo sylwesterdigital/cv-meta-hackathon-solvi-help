@@ -1747,7 +1747,7 @@ SceneEditor.prototype.addPortalPair=function(){
  this.toast('Portal pair created · Move Entry and Exit separately in Objects');return [entry,exit];
 };
 SceneEditor.prototype.setupPortalControls=function(){
- const ids=['portalMode','portalDelay','portalWidth','portalHeight','portalDepth','portalOpeningWidth','portalOpeningHeight','portalColor','portalTexture','portalOpacity','portalSound'];
+ const ids=['portalShape','portalEffect','portalMode','portalDelay','portalWidth','portalHeight','portalDepth','portalOpeningWidth','portalOpeningHeight','portalColor','portalTexture','portalOpacity','portalSound'];
  for(const id of ids)document.getElementById(id)?.addEventListener('change',()=>{
   const o=this.selected;if(o?.userData.editorKind!=='portal'||!this.canEdit(o))return;
   const before=this.snapshot(o),v=id.replace('portal',''),key=v[0].toLowerCase()+v.slice(1);
@@ -1761,7 +1761,7 @@ SceneEditor.prototype.renderPortalControls=function(obj){
  const cfg=cleanPortal(obj.userData.portal);obj.userData.portal=cfg;
  document.getElementById('portalRole').textContent=cfg.role==='entry'?'Entry · sends to Exit':'Exit · destination';
  document.getElementById('portalPairStatus').textContent=pairedPortal(this.items,obj)?'Linked pair':'Missing partner · restore or create pair';
- for(const key of ['mode','delay','width','height','depth','openingWidth','openingHeight','color','texture','opacity','sound']){
+ for(const key of ['shape','effect','mode','delay','width','height','depth','openingWidth','openingHeight','color','texture','opacity','sound']){
   const id='portal'+key[0].toUpperCase()+key.slice(1),el=document.getElementById(id);if(el){if(el.type==='checkbox')el.checked=cfg[key];else el.value=String(cfg[key]);el.disabled=!this.canEdit(obj)||cfg.role==='exit'&&['mode','delay','sound'].includes(key);}
  }
 };

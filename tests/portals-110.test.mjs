@@ -24,6 +24,10 @@ test('portal openings are bounded and permit passage at robot foot height',()=>{
  assert.equal(portalActivation({x:0,y:1,z:2},c),false);
  assert.equal(cleanPortal({delay:99,mode:'invalid'}).delay,12);
  assert.equal(cleanPortal({delay:99,mode:'invalid'}).mode,'auto');
+ assert.equal(cleanPortal({shape:'orb',effect:'mystery'}).shape,'orb');
+ assert.equal(cleanPortal({shape:'???',effect:'???'}).effect,'rainbow');
+ assert.equal(portalActivation({x:0,y:0,z:0},cleanPortal({shape:'field',openingWidth:2,width:2.4}),'viewer'),true);
+ assert.equal(portalActivation({x:0,y:.7,z:0},cleanPortal({shape:'orb',openingWidth:2,openingHeight:2,width:2.4,height:2.4}),'viewer'),true);
  const dest=portalDestination({}, {x:5,y:0,z:2,yaw:0});assert.ok(dest.z<2);
 });
 test('real opening geometry has three frame colliders, no blocking box',()=>{
@@ -32,6 +36,8 @@ test('real opening geometry has three frame colliders, no blocking box',()=>{
  assert.match(geometry,/portalFrame/);assert.match(physics,/segment\.userData\.portalFrame/);
  assert.match(physics,/kind==='portal'/);
  assert.match(geometry,/polygonOffset/);
+ assert.match(geometry,/portalShape\(/);
+ assert.match(geometry,/effect==='rainbow'/);
 });
 test('teleport moves kinematic physics and prevents immediate loops',()=>{
  const code=read('js/portal-transport.js');
@@ -45,6 +51,8 @@ test('teleport moves kinematic physics and prevents immediate loops',()=>{
 test('scene and server handle portal persistence and archive pair remapping',()=>{
  const api=read('backend/server.py'),arch=read('backend/realm_archives.py'),editor=read('js/editor.js');
  assert.match(api,/def valid_portal_geometry/);
+ assert.match(api,/shape'\) not in \('square','rounded','triangle','field','orb'\)/);
+ assert.match(api,/effect'\) not in \('rainbow','mystery','glow','pulse'\)/);
  assert.match(api,/if obj\['kind'\]=='portal' and not valid_portal_geometry/);
  assert.match(arch,/cfg\['partner'\]=remap\.get/);
  assert.match(editor,/rebuildPortal\(o,entry\.portal\|\|\{\}\)/);
@@ -58,6 +66,8 @@ test('mouse and XR selectors share in-scene portal button activation',()=>{
  assert.match(world,/selection\.liftButton\.userData\.portalButton/);
  assert.match(html,/id="portalProperties"/);
  assert.match(html,/id="portalTexture"/);
+ assert.match(html,/id="portalShape"/);
+ assert.match(html,/id="portalEffect"/);
 });
 test('world XR and free-camera travellers pass through linked portals',()=>{
  const code=read('js/portal-transport.js');
