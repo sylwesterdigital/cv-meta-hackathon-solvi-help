@@ -1904,3 +1904,29 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 .text-geometry-settings label{min-width:0;display:flex;flex-direction:column;gap:3px;font-size:11px;color:#c8dce7}
 .text-geometry-settings label:first-child{grid-column:1/-1}
 .text-geometry-settings input,.text-geometry-settings select{width:100%;min-width:0;padding:6px 8px;border:1px solid #547084;border-radius:6px;background:#12253a;color:#f5fbff}
+/* v0.2.103: subtle animation for *new* robot utterances only. */
+@keyframes solviRobotCloudPop{0%{opacity:0;transform:translateY(5px) scale(.96)}65%{opacity:1;transform:translateY(-1px) scale(1.015)}100%{opacity:1;transform:none}}
+#chatFeed .robot-bubble-enter .chat-bubble{animation:solviRobotCloudPop .25s cubic-bezier(.2,.7,.25,1) both}
+#chatFeed .robot-typing::after{content:'▏';opacity:.6;animation:solviCursor 1s step-end infinite}
+@keyframes solviCursor{50%{opacity:0}}
+@media(prefers-reduced-motion:reduce){#chatFeed .robot-bubble-enter .chat-bubble,#chatFeed .robot-typing::after{animation:none!important}}
+.surface-source-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.surface-source-tabs button{font-size:12px;flex:1;min-width:90px;padding:8px;background:#1c2c3c;border:1px solid #49647c;border-radius:8px;color:#dce9f2}
+.surface-source-tabs button[aria-pressed="true"]{background:#385a79;border-color:#8abddd;color:#fff}
+#surfaceOtherSources{margin-top:12px}
+#surfaceSourceStatus{display:block;min-height:24px;margin:6px 0 12px;color:#c4d9e8}
+.surface-upload-label{display:block;border:1px dashed #637b90;border-radius:9px;padding:10px;margin:9px 0;color:#e7f4fa}
+.surface-upload-label input{display:block;max-width:100%;margin-top:7px}
+.surface-camera-actions{display:flex;flex-wrap:wrap;gap:8px;margin:9px 0}
+.surface-camera-actions button{padding:9px 11px}
+#surfaceCameraPreview{display:block;width:min(100%,630px);max-height:46vh;object-fit:contain;border-radius:8px;background:#060a12}
+/* Compact inline audio rather than the browser's oversized native bar. */
+#chatFeed .chat-attachment-audio{max-width:100%;min-width:0}
+#chatFeed .chat-audio-compact{display:flex;align-items:center;gap:7px;max-width:100%;width:min(265px,100%);padding:4px 2px}
+#chatFeed .chat-audio-compact audio{display:none}
+#chatFeed .chat-audio-compact button{flex-shrink:0;display:grid;place-items:center;background:#294e65;border:1px solid #557d92;color:#edf7ff;border-radius:50%;width:29px;height:29px;padding:0;cursor:pointer;font-size:12px}
+#chatFeed .chat-audio-compact input[type=range]{min-width:36px;flex:1;accent-color:#8bd8ef;height:4px;padding:0}
+#chatFeed .chat-audio-compact time{white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums;color:#bcd7e7}
+#chatFeed .chat-audio-compact button:last-child{background:transparent;border:none;font-size:14px;width:24px;height:24px}
+#composerRecorderLivePreview{width:100%;max-height:180px;object-fit:contain;background:#050b13;border-radius:9px;margin:8px 0}
+#composerRecorderPlayer video{max-width:100%;max-height:185px;object-fit:contain}

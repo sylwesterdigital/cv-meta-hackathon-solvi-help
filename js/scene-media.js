@@ -204,10 +204,17 @@ export function hydrateSceneMedia(mesh,world){
   if(kind==='video'&&media.width&&media.height)applyAspect(mesh,media.width,media.height);
   const video=document.createElement('video');
   video.crossOrigin='anonymous';video.preload='metadata';video.playsInline=true;video.loop=media.loop!==false;video.muted=media.muted!==false?true:false;
-  const mediaId=media.id;window.solviAPI?.mediaBlobInfo(mediaId).then(info=>{
-    if(mesh.userData.media?.id!==mediaId||!mesh.parent){URL.revokeObjectURL(info.url);return;}
+  const mediaId=media.id;
+  const stillCurrent=()=>mesh.userData.media?.id===mediaId&&!!mesh.parent;
+  const direct=()=>window.solviAPI?.mediaBlobInfo(mediaId).then(info=>{
+    if(!stillCurrent()){URL.revokeObjectURL(info.url);return;}
     assetURLs.set(mesh,info.url);video.src=info.url;
   }).catch(error=>console.warn('Media video load failed',mediaId,error));
+  if(media.stream==='hls'&&video.canPlayType('application/vnd.apple.mpegurl')&&window.solviAPI?.req){
+    window.solviAPI.req('/api/media/'+encodeURIComponent(mediaId)+'/hls-access').then(result=>{
+      if(stillCurrent()&&result.url)video.src=result.url;
+    }).catch(()=>direct());
+  }else direct();
   video.addEventListener('loadedmetadata',()=>{if(mesh.parent)applyAspect(mesh,video.videoWidth,video.videoHeight);});
   const texture=new THREE.VideoTexture(video);texture.colorSpace=THREE.SRGBColorSpace;
   if(!orb){front.map=texture;front.needsUpdate=true;mediaTextures.set(mesh,texture);}else{texture.dispose();ensureSpeakerDecor(mesh,true);}

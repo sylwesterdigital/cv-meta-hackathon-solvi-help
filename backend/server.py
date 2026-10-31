@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.102',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.103',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1094,8 +1094,8 @@ def media_caption(mid):
     finally:stt_guard.release()
 
 def ensure_hls_stream(media_row):
-    if not media_row or not str(media_row['mime']).startswith('video/'):
-        raise ValueError('Video upload required')
+    if not media_row or not str(media_row['mime']).startswith(('video/','audio/')):
+        raise ValueError('Video or audio upload required')
     if not (shutil.which('ffmpeg') and shutil.which('ffprobe')):
         raise RuntimeError('FFmpeg/FFprobe missing on backend')
     root=STATE/'media'/f"hls-{media_row['id']}"
@@ -1107,12 +1107,12 @@ def ensure_hls_stream(media_row):
     playlist=str(manifest)
     segment=str(root/'segment%03d.ts')
     try:
-        subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',src,
-                        '-vf','scale=trunc(iw/2)*2:trunc(ih/2)*2',
-                        '-c:v','libx264','-preset','veryfast','-g','48','-sc_threshold','0',
-                        '-c:a','aac','-b:a','128k',
-                        '-f','hls','-hls_time','4','-hls_playlist_type','vod',
-                        '-hls_segment_filename',segment,playlist],check=True,timeout=150)
+        video=str(media_row['mime']).startswith('video/')
+        convert=['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-y','-i',src,'-t','900']
+        if video:convert+=['-vf','scale=trunc(iw/2)*2:trunc(ih/2)*2','-c:v','libx264','-preset','veryfast','-g','48','-sc_threshold','0','-c:a','aac','-b:a','128k']
+        else:convert+=['-vn','-c:a','aac','-b:a','96k']
+        convert+=['-f','hls','-hls_time','4','-hls_playlist_type','vod','-hls_segment_filename',segment,playlist]
+        subprocess.run(convert,check=True,timeout=150)
     except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as exc:
         shutil.rmtree(root,ignore_errors=True)
         raise RuntimeError('HLS conversion failed: '+str(exc)) from exc
@@ -1123,29 +1123,84 @@ def ensure_hls_stream(media_row):
     manifest.write_text('\n'.join(line if line.startswith('#') or line.startswith('hls/') else 'hls/'+line for line in content)+'\n',encoding='utf-8')
     return manifest
 
-@app.get('/api/media/<mid>/stream.m3u8')
-def get_media_hls(mid):
+# HLS audio/video is delivered using a narrowly scoped, short-lived token:
+# native media elements cannot add the application's Authorization headers.
+# Tickets are valid for 15 minutes and only for one media item.
+_HLS_KEY_PATH=STATE/'hls-signing-key'
+_HLS_SIGNING_KEY=None
+
+def hls_key():
+    global _HLS_SIGNING_KEY
+    if _HLS_SIGNING_KEY is None:
+        # Publish the secret atomically across multiple Gunicorn workers, so
+        # no worker can cache an empty partially written signing key.
+        candidate=STATE/('hls-key-'+secrets.token_hex(12)+'.tmp')
+        try:
+            fd=os.open(candidate,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+            with os.fdopen(fd,'wb') as file:file.write(secrets.token_bytes(32))
+            try:os.link(candidate,_HLS_KEY_PATH)
+            except FileExistsError:pass
+        finally:candidate.unlink(missing_ok=True)
+        _HLS_SIGNING_KEY=_HLS_KEY_PATH.read_bytes()
+        if len(_HLS_SIGNING_KEY)!=32:raise RuntimeError('HLS signing key is invalid')
+    return _HLS_SIGNING_KEY
+
+def create_hls_ticket(mid,uid):
+    expiry=int(time.time())+900
+    payload=f'{mid}:{uid}:{expiry}'.encode()
+    signature=hmac.new(hls_key(),payload,hashlib.sha256).hexdigest()
+    return f'{uid}.{expiry}.{signature}'
+
+def valid_hls_ticket(mid,ticket):
+    if not isinstance(ticket,str) or len(ticket)>200:return False
+    parts=ticket.split('.')
+    if len(parts)!=3:return False
+    uid,expiry,sig=parts
+    if not re.fullmatch(r'[a-f0-9-]{36}',uid,re.I) or not expiry.isdigit() or not re.fullmatch(r'[a-f0-9]{64}',sig):return False
+    if abs(int(expiry)-int(time.time()))>900 or int(expiry)<time.time():return False
+    check=hmac.new(hls_key(),f'{mid}:{uid}:{expiry}'.encode(),hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sig,check)
+
+def hls_authorized(mid):
+    ticket=request.args.get('ticket','')
+    if ticket:return valid_hls_ticket(mid,ticket)
+    return actor()[0] is not None
+
+@app.get('/api/media/<mid>/hls-access')
+def issue_hls_access(mid):
     user,msg,status=actor()
     if not user:return json_error(msg,status)
     with db() as con:m=con.execute('SELECT * FROM media WHERE id=?',(mid,)).fetchone()
+    if not m or not str(m['mime']).startswith(('audio/','video/')):return json_error('Audio/video attachment missing',404)
+    token=create_hls_ticket(mid,user['id'])
+    return jsonify(url=f'/api/media/{mid}/stream.m3u8?ticket={token}',expires_in=900)
+
+@app.get('/api/media/<mid>/stream.m3u8')
+def get_media_hls(mid):
+    if not hls_authorized(mid):return json_error('Playback authorization required',401)
+    with db() as con:m=con.execute('SELECT * FROM media WHERE id=?',(mid,)).fetchone()
     if not m:return json_error('Media missing',404)
-    if not str(m['mime']).startswith('video/'):return json_error('Video upload required',400)
+    if not str(m['mime']).startswith(('video/','audio/')):return json_error('Video or audio upload required',400)
     try:manifest=ensure_hls_stream(m)
     except ValueError as exc:return json_error(str(exc),400)
     except RuntimeError as exc:return json_error(str(exc),503)
     response=send_from_directory(manifest.parent,manifest.name,mimetype='application/vnd.apple.mpegurl',as_attachment=False)
-    response.headers['Cache-Control']='private, max-age=300'
+    ticket=request.args.get('ticket','')
+    if ticket:
+        content=manifest.read_text(encoding='utf-8')
+        response.set_data('\n'.join(line+('?ticket='+ticket if line and not line.startswith('#') else '') for line in content.splitlines())+'\n')
+    response.headers['Cache-Control']='private, no-store'
+    response.headers['Referrer-Policy']='no-referrer'
     return response
 
 @app.get('/api/media/<mid>/hls/<path:name>')
 def get_media_hls_segment(mid,name):
-    user,msg,status=actor()
-    if not user:return json_error(msg,status)
+    if not hls_authorized(mid):return json_error('Playback authorization required',401)
     if '..' in name or name.startswith('/'):
         return json_error('Invalid HLS asset',400)
     with db() as con:m=con.execute('SELECT * FROM media WHERE id=?',(mid,)).fetchone()
     if not m:return json_error('Media missing',404)
-    if not str(m['mime']).startswith('video/'):return json_error('Video upload required',400)
+    if not str(m['mime']).startswith(('video/','audio/')):return json_error('Video or audio upload required',400)
     try:manifest=ensure_hls_stream(m)
     except ValueError as exc:return json_error(str(exc),400)
     except RuntimeError as exc:return json_error(str(exc),503)
@@ -1153,7 +1208,9 @@ def get_media_hls_segment(mid,name):
     asset=root/name
     if not asset.is_file():return json_error('HLS asset missing',404)
     mime='video/mp2t' if asset.suffix=='.ts' else 'application/octet-stream'
-    return send_from_directory(root,asset.name,mimetype=mime,as_attachment=False)
+    result=send_from_directory(root,asset.name,mimetype=mime,as_attachment=False)
+    result.headers['Referrer-Policy']='no-referrer'
+    return result
 
 @app.post('/api/profile/intro')
 def intro():

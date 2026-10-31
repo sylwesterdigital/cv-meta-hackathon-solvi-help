@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {cleanCurve,buildCurveGeometry} from './curve-geometry.js';
 import {sketchPlane,strokePoint,appendStrokePoint} from './curve-sketch.js';
+import {setupSurfaceSources,chooseSurfaceSource,stopSurfaceCamera} from './surface-media-sources.js';
 import {cleanOpenings,cutCubeGeometry,surfaceAxis,rectangleFromSurface} from './cube-openings.js';
 const $=id=>document.getElementById(id);
 const v3=p=>new THREE.Vector3(...p);
@@ -9,6 +10,8 @@ function disposePreview(editor,key){const mesh=editor[key];if(mesh){editor.world
 function readCurve(editor){return cleanCurve(editor.selected?.userData?.curve);}
 function rebuildCurve(editor,obj,params){const previous=obj.geometry;obj.geometry=buildCurveGeometry(params);previous?.dispose();obj.userData.curve=cleanCurve(params);editor.physics.sync(obj);}
 export function setupSpatialTools(){
+ setupSurfaceSources(this);
+ this.closeSurfaceMediaPicker=()=>hideMediaPicker(this);
  $('curveDrawCancel').onclick=()=>this.cancelSpatialDrawing();
  $('curveDrawUndo').onclick=()=>{const d=this.curveDrawing;if(d?.points.length){d.points.pop();drawCurvePreview(this);}};
  $('curveDrawSave').onclick=()=>finishCurve(this);
@@ -218,9 +221,10 @@ export function cancelSpatialDrawing(){
  this.world.controls.enabled=true;
  if(this.selected&&this.canTransform(this.selected)&&this.selected.userData.editorKind!=='robot')this.transform.attach(this.selected);
 }
-function hideMediaPicker(editor){$('chatMediaPicker').hidden=true;editor.pendingSurfaceMount=null;editor.mediaPickerURLs?.forEach(url=>URL.revokeObjectURL(url));editor.mediaPickerURLs=[];}
+function hideMediaPicker(editor){stopSurfaceCamera();$('chatMediaPicker').hidden=true;editor.pendingSurfaceMount=null;editor.mediaPickerURLs?.forEach(url=>URL.revokeObjectURL(url));editor.mediaPickerURLs=[];}
 export async function openChatMediaPicker(mount){
- const windowEl=$('chatMediaPicker'),grid=$('chatMediaResults');this.pendingSurfaceMount=mount;hideMediaPicker(this);this.pendingSurfaceMount=mount;grid.replaceChildren();windowEl.hidden=false;
+ const windowEl=$('chatMediaPicker'),grid=$('chatMediaResults');this.pendingSurfaceMount=mount;hideMediaPicker(this);
+ chooseSurfaceSource(this,'chat');this.pendingSurfaceMount=mount;grid.replaceChildren();windowEl.hidden=false;
  $('chatMediaSearch').value='';$('chatMediaStatus').textContent='Loading attachments posted to this realm…';
  const selectedRoom=window.solviRoom||'main';
  try{

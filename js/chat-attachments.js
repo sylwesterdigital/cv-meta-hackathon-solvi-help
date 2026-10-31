@@ -1,3 +1,4 @@
+import {compactAudioPlayer} from './compact-audio-player.js';
 // Secure, authenticated chat-attachment presentation. Blob URLs never expose session tokens.
 export function attachmentKind(mime=''){
  const type=String(mime).split(';')[0].toLowerCase();
@@ -31,9 +32,8 @@ export function renderChatAttachment(slot,{id,url,mime,name,blob},openViewer,act
   const img=document.createElement('img');img.src=url;img.alt=label;img.loading='lazy';img.decoding='async';button.append(img);
   button.onclick=()=>openViewer({kind,url,label});slot.append(button,title,menuButton,menu,download);
  }else if(kind==='audio'||kind==='video'){
-  const media=document.createElement(kind);media.src=url;media.controls=true;media.preload='metadata';
-  if(kind==='video')media.playsInline=true;
-  media.setAttribute('aria-label',label);slot.append(menuButton,menu,title,media,download);
+  if(kind==='audio'){slot.append(menuButton,menu,title,compactAudioPlayer({url,id,label}),download);}
+  else{const media=document.createElement('video');media.src=url;media.controls=true;media.preload='metadata';media.playsInline=true;media.setAttribute('aria-label',label);slot.append(menuButton,menu,title,media,download);}
  }else if(kind==='pdf'){
   const button=document.createElement('button');button.type='button';button.textContent='Read PDF';button.className='chat-read-file';button.onclick=()=>openViewer({kind,url,label});
   slot.append(menuButton,menu,title,button,download);

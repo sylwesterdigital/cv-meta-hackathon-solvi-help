@@ -2,6 +2,7 @@ import {confirmAction,exactNameAction,textEntry} from './app-dialogs.js';
 import {makeRealmCards,captureRealmPreview} from './realm-gallery.js';
 import {mentionQuery,mentionCandidates,insertMention} from './chat-mentions.js';
 import {renderChatAttachment,ensureChatMediaViewer} from './chat-attachments.js';
+import {typeRobotReply} from './robot-typing.js';
 import {atChatBottom,chatNextPage,chatTimeline} from './chat-timeline.js';
 import {chooseDroppedMediaAction} from './media-drop-dialog.js';
 import {ROBOT_DEBUG_ALL_KEY,robotDebugVisible,setRobotDebug,readDebugSelection} from './robot-debug.js';
@@ -206,6 +207,7 @@ async function bubble(entry){
  const group=!entry.isBrainTrace&&!previous?.isBrainTrace&&wrap&&shouldGroupMessages(previous,entry,readPreferences().group)&&wrap.classList.contains(mine?'mine':'theirs');
  if(!group){
   wrap=document.createElement('article');wrap.className='chat-row '+(mine?'mine':'theirs');
+  if(role==='assistant'&&!renderingChat&&!entry.isBrainTrace)wrap.classList.add('robot-bubble-enter');
   wrap.dataset.messageId=entry.id||'';
   // Robot replies have their own stable visual hue, never the human command issuer's color.
   const speakerColor=role==='assistant'?null:(entry.speaker_color||(mine?me?.color:null));
@@ -226,6 +228,7 @@ async function bubble(entry){
   wrap.append(pic,panel);feed.append(wrap);
  }else{panel.querySelector('time').textContent=safeTime(entry.created);}
  const content=document.createElement('div');content.className='chat-body chat-message-item';content.dataset.messageId=entry.id||'';content.textContent=entry.text||'';panel.append(content);
+ if(role==='assistant'&&!renderingChat&&!entry.isBrainTrace&&(!entry.media||(Array.isArray(entry.media)?entry.media.length===0:entry.media==='[]')))typeRobotReply(content,entry.text||'',{active:()=>renderEpoch===chatEpoch&&roomAtBubble===activeRoom,onProgress:()=>{if(followChat)scrollChatToLatest();}});
  const marker=String(entry.text||'').match(/#bookmark=([0-9a-f-]{36})/i);
  if(marker){const teleport=document.createElement('button');teleport.type='button';teleport.className='chat-bookmark-teleport';teleport.textContent='Teleport to camera view';teleport.onclick=()=>window.dispatchEvent(new CustomEvent('solvi:bookmark-teleport',{detail:{id:marker[1]}}));content.append(document.createTextNode(' '),teleport);}
 
@@ -314,6 +317,8 @@ async function addChatMediaToScene(info,{backing='white'}={}){
  toast((String(info.mime).startsWith('audio/')?'Audio speaker':String(info.mime).startsWith('video/')?'Video screen':'Picture frame')+' added to the realm');
  return true;
 }
+// Share the existing authenticated upload pipeline with the surface media picker.
+window.solviUploadMedia=file=>uploadFile(file);
 async function attach(file){if(!file)return false;try{const media=await uploadFile(file);pending.push(media);pending=pending.slice(-3);updatePending();toast('Attachment ready');return true;}catch(e){toast(e.message);return false;}}
 async function postDroppedMediaToChat(file){
  if(!me)throw Error('Sign in before posting an attachment');
@@ -528,13 +533,14 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
 }
 let recordingCancelled=false,recordingFile=null,recordingUrl='',recordingSeconds=0,recordTick=null,recordingAudioContext=null,recordAnalyser=null,recordAnimation=0;
 function recordingUIVisible(on){const panel=$('composerRecorderPanel');if(panel)panel.hidden=!on;}
-function cleanupRecording(){clearTimeout(recTimer);clearInterval(recordTick);recordTick=null;cancelAnimationFrame(recordAnimation);recordAnimation=0;recordStream?.getTracks().forEach(t=>t.stop());recordStream=null;recordingAudioContext?.close().catch(()=>{});recordingAudioContext=null;recordAnalyser=null;}
+function cleanupRecording(){const preview=$('composerRecorderLivePreview');if(preview){preview.pause();preview.srcObject=null;preview.hidden=true;}clearTimeout(recTimer);clearInterval(recordTick);recordTick=null;cancelAnimationFrame(recordAnimation);recordAnimation=0;recordStream?.getTracks().forEach(t=>t.stop());recordStream=null;recordingAudioContext?.close().catch(()=>{});recordingAudioContext=null;recordAnalyser=null;}
 function discardRecording(){if(recorder?.state==='recording'){recordingCancelled=true;recorder.stop();}cleanupRecording();recordingFile=null;if(recordingUrl)URL.revokeObjectURL(recordingUrl);recordingUrl='';$('composerRecorderPlayer')?.replaceChildren();recordingUIVisible(false);}
 function formatRecordingTime(seconds){const s=Math.max(0,Math.floor(seconds));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
 async function startRecording(video,forIntro=false){if(recorder?.state==='recording'){recorder.stop();return;}
  if(!online){toast('Recording requires a connected backend');return;}
  if(recordingFile)discardRecording();
  try{recordStream=await navigator.mediaDevices.getUserMedia({video,audio:true});recordingCancelled=false;
+  const livePreview=$('composerRecorderLivePreview');if(video){livePreview.srcObject=recordStream;livePreview.hidden=false;livePreview.muted=true;livePreview.playsInline=true;livePreview.play().catch(()=>{livePreview.title='Webcam preview unavailable';});}else{livePreview.srcObject=null;livePreview.hidden=true;}
   const preferences=video?['video/webm;codecs=vp8,opus','video/webm','video/mp4']:['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus'];
   const mime=preferences.find(m=>MediaRecorder.isTypeSupported(m))||'';
   const chunks=[];recorder=new MediaRecorder(recordStream,mime?{mimeType:mime}:{});recKind=forIntro?'intro':video?'video':'audio';

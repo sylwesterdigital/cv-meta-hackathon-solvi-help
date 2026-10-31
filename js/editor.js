@@ -11,7 +11,7 @@ import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneMode
 import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,toggleSceneMediaPlayback,setSceneMediaMuted,setSceneMediaLoop,setSceneMediaSpatial,syncSceneMediaGroup,sceneMediaMuted,sceneMediaPlaying,sceneMediaKind,showSceneMediaCaptions} from './scene-media.js';
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive} from './primitive-properties.js';
-import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal} from './office-walls.js';
+import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
 import {makeOfficeStairs,rebuildOfficeStairs,sanitiseStairs,stairSegments} from './office-stairs.js';
 import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
@@ -35,6 +35,7 @@ const byId=id=>document.getElementById(id);
 const material=(color='#8bc3ff')=>new THREE.MeshStandardMaterial({color,roughness:.7,side:THREE.DoubleSide});
 const xyz=v=>[+v.x.toFixed(4),+v.y.toFixed(4),+v.z.toFixed(4)];
 const makeTexture=(kind)=>{
+ if(['concrete','bricks'].includes(kind))return wallPresetTexture(kind);
  const c=document.createElement('canvas');c.width=c.height=256;const ctx=c.getContext('2d');
  if(kind==='checker'){ctx.fillStyle='#dae7ef';ctx.fillRect(0,0,256,256);ctx.fillStyle='#748b9d';for(let x=0;x<4;x++)for(let y=0;y<4;y++)if((x+y)%2)ctx.fillRect(x*64,y*64,64,64);}
  else if(kind==='gradient'){const g=ctx.createLinearGradient(0,0,256,256);g.addColorStop(0,'#79d2c1');g.addColorStop(1,'#4c568d');ctx.fillStyle=g;ctx.fillRect(0,0,256,256);}
@@ -394,6 +395,7 @@ export class SceneEditor{
  }
  setupWallControls(){
   const field=id=>byId(id),panel=field('wallPanel');if(!panel)return;
+  field('wallConvertStatic').onclick=()=>this.convertWallToCuttableCubes();
   const ranges={wallWidth:[.05,4,.01,'m'],wallHeight:[.2,10,.1,'m'],wallOpacity:[.08,1,.02,'']};
   let active='wallHeight';
   const setActive=id=>{active=id;const input=field(id),slider=field('wallValueSlider'),[min,max,step,unit]=ranges[id];
@@ -510,9 +512,52 @@ export class SceneEditor{
   byId('wallFinish').hidden=!!wall;byId('wallUndo').hidden=false;byId('wallRedo').hidden=false;
   byId('wallSmoothNow').disabled=!wall&&!this.wallDrawing?.points?.length;
   byId('wallConfirm').disabled=!wall;byId('wallConfirm').textContent=wall?'Save wall':'Create wall';
+  byId('wallConvertStatic').hidden=!wall||stair;byId('wallConvertStatic').disabled=!!wall&&!this.canEdit(wall);
   byId('wallStatus').textContent=wall?'Editing selected geometry':'Move pointer over floor to begin';
   byId('wallCloseLoop').hidden=stair||!!wall;this.wallSessionHistory.clear();this.wallStateLast=this.wallSessionState();
   this.wallSetActiveSlider?.('wallHeight');
+ }
+ convertWallToCuttableCubes(){
+  const wall=this.wallEditTarget;
+  if(!wall||wall.userData.editorKind!=='wall'||!this.canEdit(wall))return this.toast('Select an editable office wall first');
+  // Each wall segment becomes a persistent primitive cube, not a decorative
+  // overlay. Cubes use the existing real CSG opening and trimesh collider.
+  const data=this.readWallOptions(wall.userData.wall?.points);
+  const segments=wallSegments(data);
+  if(!segments.length)return this.toast('Wall has no segments');
+  if(segments.length>80||this.items.length+segments.length-1>128)return this.toast('The scene is too large to convert these wall sections');
+  wall.updateMatrixWorld(true);
+  const size=wall.getWorldScale(new THREE.Vector3());
+  if(Math.min(Math.abs(size.x),Math.abs(size.y),Math.abs(size.z))<.001)return this.toast('Wall scale must be nonzero');
+  const originals=this.snapshot(wall);
+  const rotation=wall.getWorldQuaternion(new THREE.Quaternion());
+  const parts=[];
+  for(const [i,seg] of segments.entries()){
+   const cube=objectFor('cube');
+   cube.name=(wall.name||'Office wall')+' · '+(i+1);
+   cube.userData.ownerId=wall.userData.ownerId;
+   cube.userData.primitive=sanitisePrimitive('cube',{width:seg.length,height:data.height,depth:data.width});
+   cube.userData.openings=[];
+   cube.geometry.dispose();cube.geometry=cutCubeGeometry(cube.userData.primitive,[]);
+   cube.position.copy(wall.localToWorld(new THREE.Vector3(seg.x,data.height/2,seg.z)));
+   cube.quaternion.copy(rotation).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),seg.yaw));
+   cube.scale.copy(size);
+   if(cube.material?.color)cube.material.color.set(data.color);
+   cube.material.opacity=data.opacity;cube.material.transparent=data.opacity<1;cube.material.roughness=data.texture==='glass'?.14:.82;
+   cube.userData.physics=physicsOptions({mode:'static'});
+   cube.userData.textureName=['concrete','bricks'].includes(data.texture)?data.texture:'none';
+   if(cube.userData.textureName!=='none'){cube.material.map=wallPresetTexture(cube.userData.textureName);cube.material.needsUpdate=true;}
+   parts.push(cube);
+  }
+  // Cancel the editing session before selecting the generated primitives;
+  // otherwise the session's original snapshot would restore the old wall.
+  this.wallEditOriginal=null;this.endWallDrawing();
+  for(const cube of parts){this.items.push(cube);this.world.scene.add(cube);this.physics.sync(cube);this.recordEdit(null,this.snapshot(cube));this.queueSave(cube);}
+  this.items=this.items.filter(o=>o!==wall);
+  this.world.scene.remove(wall);this.physics.remove(wall.userData.editorId);
+  this.recordEdit(originals,null);this.persistRemoval(wall.userData.editorId);
+  this.disposeObject(wall);this.select(parts[0]);this.refreshList();
+  this.toast(`${parts.length} static wall section(s) · select a face and press O to cut`);
  }
  startWallDrawing(kind='wall',closed=false){
   this.endWallDrawing();byId('addMenu').hidden=true;
