@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.113",
+  "currentVersion": "0.2.114",
   "releases": [
+    {
+      "version": "0.2.114",
+      "publishedAt": "2026-10-31T18:24:18Z",
+      "changes": [
+        "WebXR teleport controller rays target actual nearby static/trimesh surfaces, stairs, moving walkways and lift cabin floors instead of only the world floor",
+        "Apply XR teleport limits to controller range and headset-to-target distance, reject steep surfaces and large downward jumps, and provide a personal 2\u201320 m limit in World Settings",
+        "Track XR standing-surface elevation across surface teleports, lifts and paired portals; render teleport rings at true hit height and orientation"
+      ]
+    },
     {
       "version": "0.2.113",
       "publishedAt": "2026-10-31T18:08:41Z",
@@ -322,20 +331,6 @@
         "Register /api/scene/object on patch_scene_object() and retain the combat validator as an undecorated utility.",
         "Add Flask integration checks for route registration, valid robot combat persistence and invalid settings in both atomic and bulk scene writes.",
         "Preserve v0.2.83 robot footsteps, push, combat, impulses, multiplayer actions and platform gravity without changing their behavior."
-      ]
-    },
-    {
-      "version": "0.2.82",
-      "publishedAt": "2026-10-30T14:17:33Z",
-      "changes": [
-        "Undo/redo Office Space construction and property changes using Control/Command+Z and Shift+Control/Command+Z.",
-        "Fix the wall panel responsive clipping and allow native select/color controls without cutting off options.",
-        "Show 1.70 m human silhouette and adjustable 2.5 m ceiling-height visual guide during wall placement.",
-        "Update wall color live during picker input and offer wireframe-only or live material plus wireframe previews.",
-        "Closed room vector tool draws a floor polygon outline and creates a closed wall perimeter with adjustable height.",
-        "Stair generator follows single/multiline/freehand floor paths, with even step counts or fixed tread/riser mm dimensions, optional free-floating treads and individual physics colliders.",
-        "Persist and validate stair geometry and closed room settings in scene object API; support scene archive metadata.",
-        "Add functional regression tests for stair flight metrics, geometry persistence, keyboard history and editor widgets."
       ]
     }
   ]

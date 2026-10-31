@@ -6,7 +6,7 @@ import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MotionController, computeMode} from './animations.js';
-import {teleportOffset,validTeleport} from './xr-navigation.js';
+import {teleportOffset,validTeleport,selectXRLanding,surfaceTeleportDestination,xrTeleportRange,XR_TELEPORT_DEFAULT_DISTANCE} from './xr-navigation.js';
 import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
 import {XRHandModelFactory} from 'three/addons/webxr/XRHandModelFactory.js';
 import {readPreferences} from './preferences.js';
@@ -58,6 +58,8 @@ export class SolviWorld {
     this.pending=null;this.roam=false;this.allowFloorWalk=false;this.editorDragging=false;this.desiredSpeed=1.4;this.idleTimer=2;this.currentMode='idle';this.gestureUntil=0;
     this.keys=new Set();this.animator=null;this.ready=false;this.others=new Map();this.cameraMoveSpeed=Number(localStorage.getItem('solvi-camera-speed')||2.6);
     this.raycaster=new THREE.Raycaster();this.mouse=new THREE.Vector2();
+    this.xrTeleportDistance=xrTeleportRange(localStorage.getItem('solvi-xr-teleport-range')||XR_TELEPORT_DEFAULT_DISTANCE);
+    this.xrStandingSurfaceY=0;
     this.setupEnvironment();this.setupEvents();this.setupXR();
     const fly=document.getElementById('cameraFlyButton');
     document.getElementById('cameraSpeed').value=this.cameraMoveSpeed;document.getElementById('cameraSpeed').oninput=e=>{this.cameraMoveSpeed=Number(e.target.value);localStorage.setItem('solvi-camera-speed',String(this.cameraMoveSpeed));};
@@ -460,11 +462,11 @@ export class SolviWorld {
           session=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['hand-tracking']});
         }
         try{await this.renderer.xr.setSession(session);}catch(e){await session.end().catch(()=>{});throw e;}
-        btn.textContent='Exit VR';stage.hidden=true;this.xrMenuPlaced=false;this.teleportAim=null;
+        btn.textContent='Exit VR';stage.hidden=true;this.xrMenuPlaced=false;this.teleportAim=null;this.xrStandingSurfaceY=0;
         this.renderer.xr.setFoveation?.(.8);
         session.addEventListener('end',()=>{
           btn.textContent='VR';stage.hidden=false;this.xrMenu.visible=false;
-          this.teleportIndicator.visible=false;this.teleportAim=null;
+          this.teleportIndicator.visible=false;this.teleportAim=null;this.xrStandingSurfaceY=0;
           this.renderer.xr.setReferenceSpaceType('local-floor');
         },{once:true});
       }catch(e){toast('Cannot start VR: '+e.message);console.warn('XR session:',e);}
@@ -512,9 +514,9 @@ export class SolviWorld {
       const controller=this.renderer.xr.getController(i);
       // A simple ray works even when a native controller profile cannot be fetched.
       const beam=new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-5)]),
+        new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-this.xrTeleportDistance)]),
         new THREE.LineBasicMaterial({color:0x9fe3ff,transparent:true,opacity:.7}));
-      beam.name='Teleport ray';controller.add(beam);
+      beam.name='Teleport ray';controller.add(beam);controller.userData.teleportRay=beam;
       controller.addEventListener('selectstart',async()=>{
         if(!this.renderer.xr.isPresenting)return;
         const selection=this.xrRaycast(controller);
@@ -528,12 +530,12 @@ export class SolviWorld {
           return;
         }
         this.xrInputs[i].selecting=true;
-        this.xrInputs[i].landing=selection.floor?.point.clone()||null;
+        this.xrInputs[i].landing=selection.landing?.point.clone()||null;
       });
       controller.addEventListener('selectend',()=>{
         const input=this.xrInputs[i];if(!input.selecting)return;
         input.selecting=false;
-        if(input.landing)this.teleportTo(input.landing);
+        if(input.landing)this.teleportTo(input.landing,{vertical:true,surface:true});
         input.landing=null;this.teleportIndicator.visible=false;
       });
       this.scene.add(controller);
@@ -550,37 +552,100 @@ export class SolviWorld {
       this.xrInputs.push({controller,grip,hand,selecting:false,landing:null});
     }
   }
+  setXRTeleportDistance(value){
+    this.xrTeleportDistance=xrTeleportRange(value);
+    localStorage.setItem('solvi-xr-teleport-range',String(this.xrTeleportDistance));
+    for(const input of this.xrInputs||[]){const ray=input.controller.userData.teleportRay;if(!ray)continue;
+      const positions=ray.geometry.getAttribute('position');positions.setXYZ(1,0,0,-this.xrTeleportDistance);positions.needsUpdate=true;
+      ray.geometry.computeBoundingSphere();}
+    return this.xrTeleportDistance;
+  }
+  xrWalkableMeshes(){
+    const items=this.robotEditor?.items||[];
+    const now=performance.now();
+    if(this.xrSurfaceCache?.items===items&&this.xrSurfaceCache.count===items.length&&now-this.xrSurfaceCache.time<250)
+      return this.xrSurfaceCache.meshes;
+    const objects=[this.floor];
+    this.xrMeshWalkability=new WeakMap([[this.floor,true]]);
+    for(const root of items){
+      if(!root.visible)continue;
+      const kind=root.userData.editorKind;
+      // Include dynamic colliders as occluders, but *never* teleport onto them.
+      // A visual mesh with physics off is not a real walking surface.
+      if(['robot','light','media','portal','points'].includes(kind))continue;
+      const mode=root.userData.physics?.mode;
+      if(!['static','kinematic','dynamic'].includes(mode))continue;
+      root.traverse(child=>{
+        if(!child.isMesh||!child.visible||!child.geometry?.attributes?.position)return;
+        if(child.userData.transportMarker||child.userData.liftButton||child.userData.portalButton)return;
+        const walkable=(mode==='static'||mode==='kinematic')&&(kind!=='stairs'||Boolean(child.userData.stairTread));
+        this.xrMeshWalkability.set(child,walkable);
+        objects.push(child);
+      });
+    }
+    this.xrSurfaceCache={items,count:items.length,time:now,meshes:objects};
+    return objects;
+  }
+  xrLanding(raycaster){
+    const meshes=this.xrWalkableMeshes();
+    // XR rays must see both sides of static trimeshes. This is a temporary
+    // raycast setting, never a change to the rendered material or scene mesh.
+    const changed=[];
+    const oldFar=raycaster.far;
+    raycaster.far=this.xrTeleportDistance;
+    try{
+      for(const mesh of meshes){const mats=Array.isArray(mesh.material)?mesh.material:[mesh.material];
+        for(const mat of mats)if(mat&&mat.side!==THREE.DoubleSide){changed.push([mat,mat.side]);mat.side=THREE.DoubleSide;}}
+      const hits=raycaster.intersectObjects(meshes,false).map(hit=>{
+        const normal=hit.face?.normal?.clone().applyMatrix3(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld)).normalize();
+        // Orient a two-sided trimesh's contact normal toward the controller.
+        // Backwards-wound floor triangles must still behave as floors, while
+        // underside ceiling hits remain non-walkable.
+        if(normal?.dot(raycaster.ray.direction)>0)normal.negate();
+        return {point:hit.point,distance:hit.distance,normalY:normal?.y??-1,
+          walkable:this.xrMeshWalkability.get(hit.object)===true,object:hit.object,normal};
+      });
+      const eye=this.renderer.xr.getCamera()?.getWorldPosition(new THREE.Vector3());
+      if(!eye)return null;
+      return selectXRLanding(hits,{controller:raycaster.ray.origin,head:eye,
+        maxDistance:this.xrTeleportDistance,standingY:this.xrStandingSurfaceY,
+        worldLimit:Math.max(16,this.environment.floorSize/2-1)});
+    }finally{raycaster.far=oldFar;for(const [mat,side] of changed)mat.side=side;}
+  }
   xrRaycast(controller){
     controller.updateWorldMatrix(true,false);
     this.raycaster.setFromXRController(controller);
     const liftButton=this.robotEditor?.hitLiftButton?.(this.raycaster)||this.robotEditor?.hitPortalButton?.(this.raycaster)||null;
     const menu=this.raycaster.intersectObjects(this.xrButtons,false)[0]?.object;
     const mediaButton=this.xrMediaControls?.visible?this.raycaster.intersectObjects(this.xrMediaButtons,false)[0]?.object:null;
-    const floor=this.raycaster.intersectObject(this.floor,false)[0];
+    const landing=this.xrLanding(this.raycaster);
     const media=this.robotEditor?.items?.filter(o=>o.userData.editorKind==='media')||[];
     const mediaHit=this.raycaster.intersectObjects(media,true)[0];
     let mediaTarget=mediaHit?.object;
     while(mediaTarget&&!mediaTarget.userData?.editorKind)mediaTarget=mediaTarget.parent;
-    if(mediaHit&&floor&&mediaHit.distance>floor.distance)mediaTarget=null;
-    return {liftButton,menu,mediaButton,mediaTarget,floor:floor&&validTeleport(floor.point.x,floor.point.z,Math.max(16,this.environment.floorSize/2-1))?floor:null};
+    if(mediaHit&&landing&&mediaHit.distance>landing.distance)mediaTarget=null;
+    return {liftButton,menu,mediaButton,mediaTarget,landing};
   }
   shiftXRViewer(delta){
     if(!this.renderer.xr.isPresenting||!delta||![delta.x,delta.y,delta.z].every(Number.isFinite))return false;
     const reference=this.renderer.xr.getReferenceSpace();
     if(!reference||typeof XRRigidTransform==='undefined')return false;
-    try{this.renderer.xr.setReferenceSpace(reference.getOffsetReferenceSpace(new XRRigidTransform({x:-delta.x,y:-delta.y,z:-delta.z})));return true;}
+    try{this.renderer.xr.setReferenceSpace(reference.getOffsetReferenceSpace(new XRRigidTransform({x:-delta.x,y:-delta.y,z:-delta.z})));this.xrStandingSurfaceY+=delta.y;return true;}
     catch(error){console.warn('XR lift transport failed:',error);return false;}
   }
-  teleportTo(landing,{vertical=false}={}){
+  teleportTo(landing,{vertical=false,surface=false}={}){
     const session=this.renderer.xr.getSession();
     const reference=this.renderer.xr.getReferenceSpace();
     if(!session||!reference||typeof XRRigidTransform==='undefined')return;
     const head=this.renderer.xr.getCamera();
     const current=head.getWorldPosition(new THREE.Vector3());
     if(!validTeleport(landing.x,landing.z,Math.max(16,this.environment.floorSize/2-1)))return;
-    const offset=teleportOffset(current,landing,{vertical});
+    const destination=surface?surfaceTeleportDestination(current,landing,this.xrStandingSurfaceY):landing;
+    const offset=teleportOffset(current,destination,{vertical:vertical||surface});
     try{
       this.renderer.xr.setReferenceSpace(reference.getOffsetReferenceSpace(new XRRigidTransform(offset)));
+      if(surface)this.xrStandingSurfaceY=landing.y;
+      else if(vertical)this.xrStandingSurfaceY+=destination.y-current.y;
     }catch(err){console.warn('XR teleport failed:',err);}
   }
   updateXR(){
@@ -610,9 +675,10 @@ export class SolviWorld {
     for(const input of this.xrInputs){
       if(!input.selecting)continue;
       const hit=this.xrRaycast(input.controller);
-      input.landing=hit.menu?null:hit.floor?.point.clone()||null;
+      input.landing=hit.menu||hit.liftButton||hit.mediaButton?null:hit.landing?.point.clone()||null;
       if(input.landing){
-        this.teleportIndicator.position.set(input.landing.x,.024,input.landing.z);
+        this.teleportIndicator.position.copy(input.landing).add(new THREE.Vector3(0,.025,0));
+        this.teleportIndicator.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),hit.landing.normal);
         found=true;
       }
     }

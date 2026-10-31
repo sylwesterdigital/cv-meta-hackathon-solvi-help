@@ -918,6 +918,16 @@ async function loadWorldSettings(){
  await loadRoomEnvironment();autosaveWorldStatus();
 }
 function setupWorldSettings(){
+ const xrRange=$('xrTeleportMaxDistance');
+ if(xrRange){
+  const world=window.solviEditor?.world;
+  xrRange.value=String(world?.xrTeleportDistance||localStorage.getItem('solvi-xr-teleport-range')||5);
+  xrRange.addEventListener('change',()=>{
+   const live=window.solviEditor?.world;
+   if(!live?.setXRTeleportDistance)return;
+   xrRange.value=String(live.setXRTeleportDistance(xrRange.value));
+  });
+ }
  fillEnvironmentFields(ENVIRONMENT_DEFAULTS);
  environmentAutosave=createRoomAutosave({storage:localStorage,storagePrefix:'solvi-world-env-draft-',delay:500,
   onStatus:(room)=>{if(room===activeRoom)autosaveWorldStatus();},
