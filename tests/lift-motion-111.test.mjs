@@ -46,13 +46,13 @@ test('WebSocket lift commands have backend ownership and room-level validation',
  assert.match(server,/may_edit\(uid,device,room_policy\(room_id\),ws_admin_enabled\(\)\)/);
  assert.match(server,/if abs\(started_at-time.time\(\)\*1000\)>15000:continue/);
  assert.match(live,/applyRemoteLiftMotion\(m\)/);
- assert.match(server,/mode not in \('idle','walk','run','wave','lift'\)/);
+ assert.match(server,/mode not in \('idle','walk','run','wave','lift','conveyor'\)/);
 });
 test('Robot ownership for persistence is unchanged while lift spectators can render riders',()=>{
  const sourceCode=source('js/stair-transport.js');
  assert.match(sourceCode,/!phys\?\.owns\(item\)&&!\(variant==='lift'&&item.userData.editorKind==='robot'\)/);
  assert.match(sourceCode,/if\(!moved\|\|!phys\?\.owns\(item\)\)return/);
- assert.match(sourceCode,/mode:'lift'/);
+ assert.match(sourceCode,/function transfer\(editor,item,delta,mode='lift'\)/);
 });
 test('Robot portrait selector is draggable and scene selection updates active robot',()=>{
  const html=source('index.html'),editor=source('js/editor.js'),styles=source('styles.css');

@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.112',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.113',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3480,7 +3480,7 @@ def websocket(ws):
                 identifier=str(msg.get('id',''))
                 position=msg.get('position');rotation=msg.get('rotation');mode=msg.get('mode','idle')
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
-                if mode not in ('idle','walk','run','wave','lift'):continue
+                if mode not in ('idle','walk','run','wave','lift','conveyor'):continue
                 if not all(isinstance(v,list) and len(v)==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in v) for v in (position,rotation)):continue
                 with db() as con:
                     itemrow=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()

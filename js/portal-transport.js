@@ -60,10 +60,12 @@ export function tickPortals(editor,dt){
     active=true;
     if(now-editor.world.portalViewerTransit.since>=cfg.delay*1000){
      const forward=new THREE.Vector3(0,0,-1).applyQuaternion(other.quaternion);
-     const destination=other.getWorldPosition(new THREE.Vector3()).addScaledVector(forward,Math.max(.95,other.userData.portal.depth+.72));
+     // Preserve the visitor's local height above the entry threshold, not
+     // the source world's ground-floor Y. XR reference spaces must move in 3D.
+     const destination=other.localToWorld(new THREE.Vector3(0,local.y,0)).addScaledVector(forward,Math.max(.95,other.userData.portal.depth+.72));
      const maxExtent=Math.max(16,editor.world.environment?.floorSize/2-1||16);
      if(validTeleport(destination.x,destination.z,maxExtent)){
-      if(vr)editor.world.teleportTo(destination);
+      if(vr)editor.world.teleportTo(destination,{vertical:true});
       else{const shift=destination.sub(location);editor.world.camera.position.add(shift);editor.world.controls.target.add(shift);editor.world.controls.update();}
       editor.world.portalViewerBlockedUntil=now+2200;editor.world.portalViewerTransit=null;
       if(cfg.sound)chime();

@@ -564,14 +564,21 @@ export class SolviWorld {
     if(mediaHit&&floor&&mediaHit.distance>floor.distance)mediaTarget=null;
     return {liftButton,menu,mediaButton,mediaTarget,floor:floor&&validTeleport(floor.point.x,floor.point.z,Math.max(16,this.environment.floorSize/2-1))?floor:null};
   }
-  teleportTo(landing){
+  shiftXRViewer(delta){
+    if(!this.renderer.xr.isPresenting||!delta||![delta.x,delta.y,delta.z].every(Number.isFinite))return false;
+    const reference=this.renderer.xr.getReferenceSpace();
+    if(!reference||typeof XRRigidTransform==='undefined')return false;
+    try{this.renderer.xr.setReferenceSpace(reference.getOffsetReferenceSpace(new XRRigidTransform({x:-delta.x,y:-delta.y,z:-delta.z})));return true;}
+    catch(error){console.warn('XR lift transport failed:',error);return false;}
+  }
+  teleportTo(landing,{vertical=false}={}){
     const session=this.renderer.xr.getSession();
     const reference=this.renderer.xr.getReferenceSpace();
     if(!session||!reference||typeof XRRigidTransform==='undefined')return;
     const head=this.renderer.xr.getCamera();
     const current=head.getWorldPosition(new THREE.Vector3());
     if(!validTeleport(landing.x,landing.z,Math.max(16,this.environment.floorSize/2-1)))return;
-    const offset=teleportOffset(current,landing);
+    const offset=teleportOffset(current,landing,{vertical});
     try{
       this.renderer.xr.setReferenceSpace(reference.getOffsetReferenceSpace(new XRRigidTransform(offset)));
     }catch(err){console.warn('XR teleport failed:',err);}

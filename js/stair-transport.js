@@ -6,6 +6,7 @@ import {updateLiftPanel} from './office-stairs.js';
 import {liftChime} from './lift-chimes.js';
 import {liftHeightAt,liftMotionFinished,motionSnapshot,liftBaseY,safeLiftMotion} from './lift-sync.js';
 import {canCarryLiftRider} from './lift-rider.js';
+import {conveyorSupport,xrCabinSupport,conveyorPhase} from './transport-support.js';
 const vec=new THREE.Vector3();
 function surfaceHeight(segments,along,total){
  if(!segments.length)return 0;
@@ -17,6 +18,8 @@ function surfaceHeight(segments,along,total){
 export function tickStairTransport(editor,dt){
  if(!Number.isFinite(dt)||dt<=0)return;
  const step=Math.min(.05,dt),world=editor.world,phys=editor.physics;
+ // Expire last frame's tread support unless real contact is rediscovered.
+ for(const actor of editor.items)if(actor.userData.editorKind==='robot')delete actor.userData.conveyorRide;
  for(const device of editor.items){
   if(device.userData.editorKind!=='stairs')continue;
   const cfg=device.userData.stairs||{},variant=cfg.variant;
@@ -27,7 +30,7 @@ export function tickStairTransport(editor,dt){
    if(plan){runtime.motion=plan;runtime.target=plan.target;runtime.commanded=true;runtime.moving=plan.active;runtime.baseY=liftBaseY(device.position.y,cfg.lift.currentHeight);}
   }
   const speed=Math.min(2.5,Math.max(.05,transport.speed||.5));
-  runtime.phase=(runtime.phase+step*speed*(transport.direction===-1?-1:1))%1;
+  runtime.phase=conveyorPhase(speed,transport.direction);
   // Classify passengers against the OLD cabin pose, before changing its height.
   // This prevents remote commands and direction reversals from leaving riders behind.
   device.updateMatrixWorld(true);
@@ -57,6 +60,14 @@ export function tickStairTransport(editor,dt){
     if(phys?.enabled){const body=phys.bodies.get(device.userData.editorId);if(body){const next={x:device.position.x,y:device.position.y,z:device.position.z};body.setTranslation(next,true);body.setNextKinematicTranslation(next);}}
    }
   }
+  if(variant==='lift'&&Math.abs(carry.y)>.000001&&world?.renderer?.xr?.isPresenting){
+   // XR viewers are not editor objects or Rapier bodies. Advance the tracking
+   // reference with the cabin, otherwise the cabin rises without the headset.
+   const headset=world.renderer.xr.getCamera();
+   const headLocal=headset?headset.getWorldPosition(new THREE.Vector3()).applyMatrix4(before):null;
+   const footprint=device.userData.liftFootprint||{width:cfg.width,depth:cfg.width*1.25};
+   if(xrCabinSupport(headLocal,footprint,cfg.lift.cabinHeight))world.shiftXRViewer({x:0,y:carry.y,z:0});
+  }
   if(variant==='lift')for(const child of device.children)if(child.userData.stairShaft)child.position.y=-runtime.height;
   if(variant==='lift')updateLiftPanel(device);
   if(variant==='lift'&&editor.wallEditTarget===device){const status=document.getElementById('stairLiftState');if(status)status.textContent=runtime.moving?'Travelling to level '+(runtime.target+1):'Stopped · '+runtime.height.toFixed(2)+' m';}
@@ -77,7 +88,9 @@ export function tickStairTransport(editor,dt){
   for(const item of editor.items){
    if(item===device||(!phys?.owns(item)&&!(variant==='lift'&&item.userData.editorKind==='robot'))||!['robot','cube','sphere','cylinder','model'].includes(item.userData.editorKind))continue;
    if(item.userData.editorKind==='robot'&&item.userData.robotJumpActive){if(item.userData.liftRide?.id===device.userData.editorId)delete item.userData.liftRide;continue;}
-   if(variant!=='lift'&&item.userData.editorKind==='robot'&&item.userData.physicsAirborne)continue;
+   // A previous grounded/airborne flag can be stale on a moving surface.
+   // Decide support from actual tread proximity instead of excluding owners.
+   if(variant!=='lift'&&item.userData.robotJumpActive)continue;
    const local=transformPoint(item.position);
    // Robots have a foot-origin; ordinary primitives have a centred pivot.
    if(item.userData.editorKind!=='robot'&&item.isMesh){
@@ -103,7 +116,7 @@ export function tickStairTransport(editor,dt){
      item.userData.robotFallActive=false;
      delete item.userData.liftRemoteTargetY;
     }
-    if(Math.abs(carry.y)>.000001)transfer(editor,item,{x:0,y:carry.y,z:0});
+    if(Math.abs(carry.y)>.000001)transfer(editor,item,{x:0,y:carry.y,z:0},'lift');
     continue;
    }
    if(!entryTotal)continue;
@@ -111,19 +124,25 @@ export function tickStairTransport(editor,dt){
    if(!projected||projected.distance>cfg.width/2-.11)continue;
    const top=surfaceHeight(segments,projected.along,projected.total);
    // A mesh below a stair flight is NOT a rider on the treads.
-   if(Math.abs(local.y-top)>.34)continue;
+   if(!conveyorSupport(local,top,cfg.width,{jumping:!!item.userData.robotJumpActive}))continue;
+   if(item.userData.editorKind==='robot'){
+    item.userData.conveyorRide={id:device.userData.editorId};
+    item.userData.physicsAirborne=false;item.userData.robotFallActive=false;
+   }
    const nextAlong=Math.max(0,Math.min(projected.total,projected.along+step*speed*(transport.direction===-1?-1:1)));
    const next=pathAt(pts,nextAlong);if(!next)continue;
    const nextTop=surfaceHeight(segments,nextAlong,projected.total);
    const currentWorld=device.localToWorld(new THREE.Vector3(local.x,local.y,local.z));
    const centre=pathAt(pts,projected.along);
-   const destination=device.localToWorld(new THREE.Vector3(local.x+next.x-centre.x,local.y+nextTop-top,local.z+next.z-centre.z));
+   // Keep the foot (or primitive bottom) on the surface as it advances.
+   // This also corrects small stale ground offsets after remote scene updates.
+   const destination=device.localToWorld(new THREE.Vector3(local.x+next.x-centre.x,nextTop,local.z+next.z-centre.z));
    const delta=destination.sub(currentWorld);
-   if(delta.lengthSq()>0&&delta.length()<.22)transfer(editor,item,delta);
+   if(delta.lengthSq()>0&&delta.length()<.22)transfer(editor,item,delta,'conveyor');
   }
  }
 }
-function transfer(editor,item,delta){
+function transfer(editor,item,delta,mode='lift'){
  const phys=editor.physics,body=phys?.bodies?.get(item.userData.editorId);
  // A throttled tab can resume after more than one physics tick. Split a large
  // cabin displacement into safe body translations, instead of losing the rider.
@@ -132,7 +151,7 @@ function transfer(editor,item,delta){
  if(!moved||!phys?.owns(item))return;
  const now=performance.now();
  if(item.userData.editorKind==='robot'&&now-(item.userData.lastTransportPacket||0)>130){
-  item.userData.lastTransportPacket=now;window.solviRoomSocket?.send({type:'robot-motion',id:item.userData.editorId,position:item.position.toArray(),rotation:item.rotation.toArray(),mode:'lift'});
+  item.userData.lastTransportPacket=now;window.solviRoomSocket?.send({type:'robot-motion',id:item.userData.editorId,position:item.position.toArray(),rotation:item.rotation.toArray(),mode});
  }
  if(now-(item.userData.lastTransportSave||0)>1800){item.userData.lastTransportSave=now;editor.queueSave(item);}
 }

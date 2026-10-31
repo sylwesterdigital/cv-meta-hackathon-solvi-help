@@ -1454,7 +1454,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   }
   applyRobotMotion(state){
    this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});
-   if(state.mode==='lift'){const robot=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===state.id);
+   if(state.mode==='lift'||state.mode==='conveyor'){const robot=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===state.id);
     const y=state.position?.[1];if(robot&&!this.physics.owns(robot)&&typeof y==='number'&&Number.isFinite(y)){
      // Vertical transport is absent from the 2D robot input correction path.
      if(!robot.userData.liftRide)robot.userData.liftRemoteTargetY=y;

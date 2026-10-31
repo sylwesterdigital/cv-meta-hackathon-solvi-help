@@ -1,0 +1,51 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {teleportOffset} from '../js/xr-navigation.js';
+import {conveyorSupport,conveyorPhase,xrCabinSupport,supportedConveyorRobot} from '../js/transport-support.js';
+const source=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8');
+test('WebXR portal teleportation adjusts Y while ordinary ground teleports stay at original elevation',()=>{
+ assert.deepEqual(teleportOffset({x:2,y:1.6,z:3},{x:5,y:12.6,z:-7},{vertical:true}),{x:-3,y:-11,z:10});
+ assert.deepEqual(teleportOffset({x:2,y:1.6,z:3},{x:5,y:12.6,z:-7}),{x:-3,y:0,z:10});
+ assert.throws(()=>teleportOffset({x:1,z:0},{x:0,y:3,z:0},{vertical:true}),TypeError);
+ const portal=source('js/portal-transport.js');
+ assert.match(portal,/other\.localToWorld\(new THREE\.Vector3\(0,local\.y,0\)\)/);
+ assert.match(portal,/teleportTo\(destination,\{vertical:true\}\)/);
+});
+test('A tracked headset inside a moving cabin is carried in Y, but people outside are not',()=>{
+ const footprint={width:3,depth:3.75};
+ assert.equal(xrCabinSupport({x:0,y:1.65,z:0},footprint,2.4),true);
+ assert.equal(xrCabinSupport({x:1.6,y:1.65,z:0},footprint,2.4),false);
+ assert.equal(xrCabinSupport({x:0,y:4,z:0},footprint,2.4),false);
+ const world=source('js/world.js'),stairs=source('js/stair-transport.js');
+ assert.match(world,/shiftXRViewer\(delta\)/);
+ assert.match(world,/x:-delta\.x,y:-delta\.y,z:-delta\.z/);
+ assert.match(stairs,/xrCabinSupport\(headLocal,footprint,cfg\.lift\.cabinHeight\)/);
+ assert.match(stairs,/world\.shiftXRViewer\(\{x:0,y:carry\.y,z:0\}\)/);
+});
+test('Conveyors support robots despite stale airborne state and reject deliberate jumping',()=>{
+ assert.equal(conveyorSupport({x:0,y:.14,z:0},.14,1.5),true);
+ assert.equal(conveyorSupport({x:0,y:.05,z:0},.14,1.5),true);
+ assert.equal(conveyorSupport({x:0,y:.14,z:0},.14,1.5,{jumping:true}),false);
+ assert.equal(conveyorSupport({x:0,y:1.2,z:0},.14,1.5),false);
+ const device={userData:{editorId:'walkway1',stairs:{variant:'walkway',transport:{enabled:true}}}};
+ const obj={userData:{conveyorRide:{id:'walkway1'}}};
+ assert.equal(supportedConveyorRobot(obj,{items:[device]}),device);
+ obj.userData.robotJumpActive=true;
+ assert.equal(supportedConveyorRobot(obj,{items:[device]}),null);
+ const stairs=source('js/stair-transport.js');
+ assert.doesNotMatch(stairs,/variant!=='lift'&&item\.userData\.editorKind==='robot'&&item\.userData\.physicsAirborne/);
+ assert.match(stairs,/delete actor\.userData\.conveyorRide/);
+ assert.match(stairs,/item\.userData\.conveyorRide=\{id:device\.userData\.editorId\}/);
+ const physics=source('js/scene-physics.js');
+ assert.match(physics,/supportedLiftRobot\(object,this\.editor\)\|\|supportedConveyorRobot\(object,this\.editor\)/);
+});
+test('Conveyor marker animation phase is deterministic across clients sharing time',()=>{
+ assert.equal(conveyorPhase(.55,1,1793450114000),conveyorPhase(.55,1,1793450114000));
+ assert.notEqual(conveyorPhase(.55,1,1793450114000),conveyorPhase(.55,-1,1793450114000));
+ const transport=source('js/stair-transport.js'),editor=source('js/editor.js'),server=source('backend/server.py');
+ assert.match(transport,/runtime\.phase=conveyorPhase\(speed,transport\.direction\)/);
+ assert.match(transport,/transfer\(editor,item,delta,'conveyor'\)/);
+ assert.match(editor,/state\.mode==='lift'\|\|state\.mode==='conveyor'/);
+ assert.match(server,/mode not in \('idle','walk','run','wave','lift','conveyor'\)/);
+});

@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.112",
+  "currentVersion": "0.2.113",
   "releases": [
+    {
+      "version": "0.2.113",
+      "publishedAt": "2026-10-31T18:08:41Z",
+      "changes": [
+        "Ensure moving walkway and escalator riders are carried by the owning client using geometric tread support, authorized conveyor robot-motion packets, and shared visual marker phase",
+        "Carry the WebXR headset vertically with a moving lift cabin using tracking reference-space offsets while the viewer is inside its footprint",
+        "Restore vertical displacement for WebXR portal teleportation and preserve local entry height at the paired exit, without changing ordinary ground-ray teleportation"
+      ]
+    },
     {
       "version": "0.2.112",
       "publishedAt": "2026-10-31T17:13:23Z",
@@ -327,19 +336,6 @@
         "Stair generator follows single/multiline/freehand floor paths, with even step counts or fixed tread/riser mm dimensions, optional free-floating treads and individual physics colliders.",
         "Persist and validate stair geometry and closed room settings in scene object API; support scene archive metadata.",
         "Add functional regression tests for stair flight metrics, geometry persistence, keyboard history and editor widgets."
-      ]
-    },
-    {
-      "version": "0.2.81",
-      "publishedAt": "2026-10-30T13:17:03Z",
-      "changes": [
-        "Correct Office Walls edit lifecycle: live in-place geometry, Save commits original-vs-current state, Cancel restores original without a duplicate wall mesh.",
-        "Add a floor pointer cursor, live cyan wireframe wall volume and segment path that tracks the pointer before the next click, including multiline previews.",
-        "Default grid snapping with selectable 0.25\u20132.0 m steps; snap single/multi wall segments to 15/30/45/90-degree increments or free angles.",
-        "Compact draggable wall controls using numeric width/height/opacity fields and one context-sensitive slider, responsive on mobile.",
-        "Freehand smoothing button and adjustable smoothing strength using curve-preserving corner rounding, plus optional automatic freehand smoothing on create.",
-        "Allow PNG/JPEG/WebP wall texture upload via authenticated scene media, persist image metadata across reloads and include/remap referenced images in realm archives.",
-        "Add regression tests for wall snapping, freehand smoothing, editor in-place updates, cancellation, server validation and custom-image persistence."
       ]
     }
   ]

@@ -63,7 +63,7 @@ test('world XR and free-camera travellers pass through linked portals',()=>{
  const code=read('js/portal-transport.js');
  assert.match(code,/portalViewerTransit/);
  assert.match(code,/renderer\.xr\.getCamera\(\)/);
- assert.match(code,/world\.teleportTo\(destination\)/);
+ assert.match(code,/world\.teleportTo\(destination,\{vertical:true\}\)/);
  assert.match(code,/world\.controls\.target\.add\(shift\)/);
  assert.match(code,/portalViewerBlockedUntil/);
 });

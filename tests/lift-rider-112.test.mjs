@@ -40,8 +40,8 @@ test('Lift transport runs before character physics and never skips passenger sol
  assert.ok(order>0&&phys>order,'lift rides ahead of gravity');
  assert.match(transport,/const before=device.matrixWorld.clone\(\).invert\(\)/);
  assert.match(transport,/canCarryLiftRider\(oldLocal,dim/);
- assert.match(transport,/if\(variant!=='lift'&&item.userData.editorKind==='robot'&&item.userData.physicsAirborne\)continue/);
- assert.match(physics,/const support=supportedLiftRobot\(object,this.editor\)/);
+ assert.doesNotMatch(transport,/variant!=='lift'&&item.userData.editorKind==='robot'&&item.userData.physicsAirborne/);
+ assert.match(physics,/const support=supportedLiftRobot\(object,this.editor\)\|\|supportedConveyorRobot\(object,this.editor\)/);
  assert.match(physics,/if\(support\)\{/);
  assert.match(physics,/state.verticalSpeed=0;state.grounded=true/);
  assert.match(physics,/body.setTranslation\(next,true\);body.setNextKinematicTranslation\(next\)/);
