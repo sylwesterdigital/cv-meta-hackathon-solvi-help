@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.119",
+  "currentVersion": "0.2.120",
   "releases": [
+    {
+      "version": "0.2.120",
+      "publishedAt": "2026-10-31T22:21:47Z",
+      "changes": [
+        "Rebuild portal visuals so every effect is constrained to the actual aperture: door effects stay inside the opening, the rounded gate has a flat floor-aligned base, the floor field is a square floor portal, and the orb variant is a real sphere.",
+        "Add animated frame FX, better centered interior shaders, and sparkle / star-like particles so portals read as intentional in-world devices rather than loose planes or ring placeholders.",
+        "Preserve linked Entry/Exit transport behaviour, button triggering, persistence, and watcher-safe packaging while updating portal regression coverage for the rebuilt geometry."
+      ]
+    },
     {
       "version": "0.2.119",
       "publishedAt": "2026-10-31T21:58:03Z",
@@ -309,17 +318,6 @@
         "Select Jumping for stationary jumps and Jump for jumps with movement; match exact authored avatar clips and fall back to Jump when Jumping is absent.",
         "Keep the airborne jump pose synchronized to expected physics flight; select Landing or Hard Landing based on drop height and use the final phase of Jump when an avatar lacks a Landing clip.",
         "Validate animation controls in both atomic and bulk Flask scene writes, and add JS/Flask regression coverage for clip selection, speed, visual step easing and persistence."
-      ]
-    },
-    {
-      "version": "0.2.88",
-      "publishedAt": "2026-10-30T22:57:42Z",
-      "changes": [
-        "Fix Uniform Scale editing: scale X/Y/Z geometry and inspector fields update together while typing or dragging the contextual range slider, with a single edit commit on change.",
-        "Clarify physics modes in object Properties, including a permission-checked Make pushable control that sets an object to Dynamic and keeps static scenery unchanged.",
-        "Improve Punch/Kick target contact against imported meshes by testing the nearest collider surface in front of the striking limb and verifying strike height instead of testing distant model pivots.",
-        "Apply Dynamic-object combat impulses at the physical contact point when supported by Rapier, including rotational response, with authority retained by the object owner.",
-        "Report when a local punch or kick does not find a movable target and add functional tests for contact detection and Dynamic-only impulse application."
       ]
     }
   ]

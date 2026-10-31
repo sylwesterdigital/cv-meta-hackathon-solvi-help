@@ -32,11 +32,12 @@ test('portal openings are bounded and permit passage at robot foot height',()=>{
 });
 test('real opening geometry has three frame colliders, no blocking box',()=>{
  const geometry=read('js/portal-geometry.js'),physics=read('js/scene-physics.js');
- assert.match(geometry,/w-ow/);assert.match(geometry,/h-oh/);
  assert.match(geometry,/portalFrame/);assert.match(physics,/segment\.userData\.portalFrame/);
  assert.match(physics,/kind==='portal'/);
  assert.match(geometry,/polygonOffset/);
- assert.match(geometry,/portalShape\(/);
+ assert.match(geometry,/floorPortalShape\(/);
+ assert.match(geometry,/portalFrameFx/);
+ assert.match(geometry,/portalParticles/);
  assert.match(geometry,/effect==='rainbow'/);
 });
 test('teleport moves kinematic physics and prevents immediate loops',()=>{

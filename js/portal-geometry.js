@@ -3,78 +3,109 @@ import {cleanPortal} from './portal-core.js';
 import {wallPresetTexture} from './office-walls.js';
 
 const textures=new Map();
-const tempColor=new THREE.Color();
+const tmpColor=new THREE.Color();
 
 function frameTexture(name){
  if(name==='none')return null;
  if(!textures.has(name))textures.set(name,wallPresetTexture(name==='metal'?'concrete':name==='tiles'?'plaster':name));
  return textures.get(name);
 }
-function slab(group,x,y,z,w,h,d,mat,tag='portalFrame'){
- const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
- m.position.set(x,y,z);m.userData[tag]=true;m.castShadow=true;m.receiveShadow=true;group.add(m);return m;
-}
 function circlePoints(radius,start,end,segments=24){
- const points=[];for(let i=0;i<=segments;i++){const t=start+(end-start)*(i/segments);points.push(new THREE.Vector2(Math.cos(t)*radius,Math.sin(t)*radius));}return points;
-}
-function roundedShape(width,height,r){
- const hw=width/2,hh=height/2,rad=Math.min(r,hw*.8,hh*.8);
- const pts=[new THREE.Vector2(-hw+rad,-hh),new THREE.Vector2(hw-rad,-hh),...circlePoints(rad,-Math.PI/2,0,10).map(p=>p.add(new THREE.Vector2(hw-rad,-hh+rad))),new THREE.Vector2(hw,hh-rad),...circlePoints(rad,0,Math.PI/2,10).map(p=>p.add(new THREE.Vector2(hw-rad,hh-rad))),new THREE.Vector2(-hw+rad,hh),...circlePoints(rad,Math.PI/2,Math.PI,10).map(p=>p.add(new THREE.Vector2(-hw+rad,hh-rad))),new THREE.Vector2(-hw,-hh+rad),...circlePoints(rad,Math.PI,Math.PI*1.5,10).map(p=>p.add(new THREE.Vector2(-hw+rad,-hh+rad)))];
- return new THREE.Shape(pts);
-}
-function portalShape(shape,w,h){
- if(shape==='triangle'){const s=new THREE.Shape();s.moveTo(0,h/2);s.lineTo(w/2,-h/2);s.lineTo(-w/2,-h/2);s.closePath();return s;}
- if(shape==='rounded')return roundedShape(w,h,Math.min(w,h)*.22);
- const s=new THREE.Shape();s.moveTo(-w/2,-h/2);s.lineTo(w/2,-h/2);s.lineTo(w/2,h/2);s.lineTo(-w/2,h/2);s.closePath();return s;
-}
-function roleTint(cfg){return cfg.role==='exit' ? new THREE.Color('#ff70d4') : new THREE.Color('#64d8ff');}
-function themeColors(cfg){
- if(cfg.effect==='mystery')return [new THREE.Color('#4819b8'),new THREE.Color('#f866ff')];
- if(cfg.effect==='glow')return [new THREE.Color('#76fff2'),new THREE.Color('#e1fffd')];
- if(cfg.effect==='pulse')return [new THREE.Color('#33b7ff'),new THREE.Color('#ffffff')];
- return [new THREE.Color('#79aaff'),new THREE.Color('#ffffff')];
-}
-function makeRing(group,cfg,shapeMat){
- const ow=Math.min(cfg.openingWidth,cfg.width-.2),oh=Math.min(cfg.openingHeight,cfg.height-.12),depth=Math.max(.04,cfg.depth*.44);
- if(cfg.shape==='rounded'||cfg.shape==='triangle'){
-  const outer=portalShape(cfg.shape,cfg.width,cfg.height),inner=portalShape(cfg.shape,ow,oh);
-  outer.holes=[new THREE.Path(inner.getPoints())];
-  const geo=new THREE.ExtrudeGeometry(outer,{depth,bevelEnabled:false});geo.center();
-  const mesh=new THREE.Mesh(geo,shapeMat);mesh.userData.portalFrame=true;mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);return {ow,oh,depth};
+ const points=[];
+ for(let i=0;i<=segments;i++){
+  const t=start+(end-start)*(i/segments);
+  points.push(new THREE.Vector2(Math.cos(t)*radius,Math.sin(t)*radius));
  }
- if(cfg.shape==='field'){
-  const radius=Math.max(.34,ow/2),tube=Math.max(.055,Math.min(.18,cfg.depth*.38));
-  const torus=new THREE.Mesh(new THREE.TorusGeometry(radius,tube,28,96),shapeMat);torus.rotation.x=Math.PI/2;torus.position.y=.03;torus.userData.portalFrame=true;torus.castShadow=true;torus.receiveShadow=true;group.add(torus);return {ow:radius*2,oh:radius*2,depth,radius};
- }
- if(cfg.shape==='orb'){
-  const radius=Math.max(.38,Math.min(ow,oh)*.38),tube=Math.max(.05,Math.min(.16,cfg.depth*.32));
-  const torus=new THREE.Mesh(new THREE.TorusGeometry(radius,tube,28,96),shapeMat);torus.position.y=Math.max(radius,.7);torus.userData.portalFrame=true;torus.castShadow=true;torus.receiveShadow=true;group.add(torus);return {ow:radius*2,oh:radius*2,depth,centerY:torus.position.y,radius};
- }
- // Classic square portal keeps side segments sized from width minus opening (w-ow) and header from height minus opening (h-oh).
- const side=(cfg.width-ow)/2;
- slab(group,-cfg.width/2+side/2,cfg.height/2,0,side,cfg.height,cfg.depth,shapeMat);
- slab(group,cfg.width/2-side/2,cfg.height/2,0,side,cfg.height,cfg.depth,shapeMat);
- slab(group,0,oh+(cfg.height-oh)/2,0,ow,cfg.height-oh,cfg.depth,shapeMat);
- return {ow,oh,depth};
+ return points;
 }
-function portalShaderMaterial(cfg){
- const [cA,cB]=themeColors(cfg),role=roleTint(cfg);
- const material=new THREE.ShaderMaterial({
-  uniforms:{
-   time:{value:0},
-   strength:{value:.2},
-   effectMode:{value:cfg.effect==='mystery'?1:cfg.effect==='glow'?2:cfg.effect==='pulse'?3:0},
-   colorA:{value:cA},
-   colorB:{value:cB},
-   roleColor:{value:role}
-  },
+function floorPortalShape(shape,width,height){
+ const hw=width/2;
+ if(shape==='triangle'){
+  const s=new THREE.Shape();
+  s.moveTo(-hw,0); s.lineTo(0,height); s.lineTo(hw,0); s.closePath();
+  return s;
+ }
+ if(shape==='rounded'){
+  const archRadius=Math.min(hw,Math.max(.24,height*.32));
+  const sideTop=Math.max(0,height-archRadius);
+  const s=new THREE.Shape();
+  s.moveTo(-hw,0);
+  s.lineTo(-hw,sideTop);
+  for(const p of circlePoints(archRadius,Math.PI,0,20))s.lineTo(p.x,p.y+sideTop);
+  s.lineTo(hw,0);
+  s.closePath();
+  return s;
+ }
+ const s=new THREE.Shape();
+ s.moveTo(-hw,0); s.lineTo(-hw,height); s.lineTo(hw,height); s.lineTo(hw,0); s.closePath();
+ return s;
+}
+function roleTint(cfg){return cfg.role==='exit' ? new THREE.Color('#ff74d1') : new THREE.Color('#63d3ff');}
+function effectColors(cfg){
+ if(cfg.effect==='mystery')return [new THREE.Color('#4b16c3'),new THREE.Color('#ff68ed')];
+ if(cfg.effect==='glow')return [new THREE.Color('#7cf5ff'),new THREE.Color('#e7fffd')];
+ if(cfg.effect==='pulse')return [new THREE.Color('#35b1ff'),new THREE.Color('#ffffff')];
+ return [new THREE.Color('#66d9ff'),new THREE.Color('#ff5bd8')];
+}
+function buildFrameMaterial(cfg){
+ const frameColor=tmpColor.copy(new THREE.Color(cfg.color)).lerp(roleTint(cfg),.18).getHex();
+ return new THREE.MeshStandardMaterial({
+  color:frameColor,
+  roughness:.42,
+  metalness:cfg.texture==='metal'?.44:.12,
+  transparent:cfg.opacity<1,
+  opacity:cfg.opacity,
+  map:frameTexture(cfg.texture),
+  side:THREE.DoubleSide,
+  polygonOffset:true,
+  polygonOffsetFactor:1,
+  polygonOffsetUnits:1,
+  emissive:roleTint(cfg).clone().multiplyScalar(.06),
+  emissiveIntensity:.55
+ });
+}
+function buildFrameFxMaterial(cfg){
+ const [a,b]=effectColors(cfg);
+ return new THREE.ShaderMaterial({
+  uniforms:{time:{value:0}, effectMode:{value:cfg.effect==='mystery'?1:cfg.effect==='glow'?2:cfg.effect==='pulse'?3:0}, colorA:{value:a}, colorB:{value:b}, roleColor:{value:roleTint(cfg)}, strength:{value:.18}},
   transparent:true,
   depthWrite:false,
   side:THREE.DoubleSide,
   blending:THREE.AdditiveBlending,
-  vertexShader:`varying vec2 vUv; varying vec3 vPos; void main(){ vUv=uv; vPos=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  vertexShader:`varying vec2 vUv; varying vec3 vPos; void main(){vUv=uv; vPos=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
   fragmentShader:`
    varying vec2 vUv; varying vec3 vPos;
+   uniform float time; uniform float effectMode; uniform vec3 colorA; uniform vec3 colorB; uniform vec3 roleColor; uniform float strength;
+   vec3 hsv2rgb(vec3 c){ vec4 K=vec4(1.,2./3.,1./3.,3.); vec3 p=abs(fract(c.xxx+K.xyz)*6.-K.www); return c.z*mix(K.xxx, clamp(p-K.xxx,0.,1.), c.y); }
+   float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123); }
+   float noise(vec2 p){ vec2 i=floor(p), f=fract(p); float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1)); vec2 u=f*f*(3.-2.*f); return mix(a,b,u.x)+(c-a)*u.y*(1.-u.x)+(d-b)*u.x*u.y; }
+   void main(){
+    float t=time;
+    float flow=.5+.5*sin((vUv.y*15.+vUv.x*6.) + t*6.0);
+    float scan=.5+.5*sin(vUv.y*38.0 - t*8.0);
+    float n=noise(vUv*5.0+vec2(t*.5,-t*.25));
+    vec3 col=mix(colorA,colorB,flow*.65+.35*n);
+    float a=.08 + .1*scan + .08*flow;
+    if(effectMode<0.5){ col=hsv2rgb(vec3(fract(vUv.y*.55+t*.12+vUv.x*.18),.85,1.0)); a=.12+.15*scan; }
+    else if(effectMode<1.5){ a=.08+.14*(.5+.5*sin(vUv.y*25.-t*10.+n*2.)); col=mix(colorA,colorB,n); }
+    else if(effectMode<2.5){ a=.08+.12*n; col=mix(colorA,colorB,scan); }
+    else { a=.1+.14*(.5+.5*sin(t*5.+vUv.y*18.)); }
+    col=mix(col,roleColor,.18);
+    gl_FragColor=vec4(col, clamp(a*(1.0+strength*1.2),0.0,.42));
+   }`
+ });
+}
+function buildInnerShader(cfg){
+ const [cA,cB]=effectColors(cfg);
+ return new THREE.ShaderMaterial({
+  uniforms:{time:{value:0}, strength:{value:.3}, effectMode:{value:cfg.effect==='mystery'?1:cfg.effect==='glow'?2:cfg.effect==='pulse'?3:0}, colorA:{value:cA}, colorB:{value:cB}, roleColor:{value:roleTint(cfg)}},
+  transparent:true,
+  depthWrite:false,
+  side:THREE.DoubleSide,
+  blending:THREE.AdditiveBlending,
+  vertexShader:`varying vec2 vUv; void main(){vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`
+   varying vec2 vUv;
    uniform float time; uniform float strength; uniform float effectMode; uniform vec3 colorA; uniform vec3 colorB; uniform vec3 roleColor;
    vec3 hsv2rgb(vec3 c){ vec4 K=vec4(1.,2./3.,1./3.,3.); vec3 p=abs(fract(c.xxx+K.xyz)*6.-K.www); return c.z*mix(K.xxx, clamp(p-K.xxx,0.,1.), c.y); }
    float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123); }
@@ -83,125 +114,205 @@ function portalShaderMaterial(cfg){
     vec2 uv=vUv*2.-1.;
     float r=length(uv);
     float ang=atan(uv.y,uv.x);
-    float edge=smoothstep(1.06,0.18,1.-r);
-    float rim=smoothstep(.98,.7,r);
-    float inner=1.-smoothstep(.0,.92,r);
     float t=time;
-    vec3 col=vec3(0.);
-    float alpha=0.;
+    vec3 col=vec3(0.); float alpha=0.;
     if(effectMode<0.5){
-      float hue=fract((ang/6.2831853)+t*.12+r*.35);
-      col=hsv2rgb(vec3(hue,.82,1.0));
-      float bands=.5+.5*sin(ang*10.-t*8.+r*16.);
-      alpha=(0.18+0.5*edge)*(0.55+0.45*bands);
-      col=mix(col,roleColor,.22);
+      float hue=fract(ang/6.2831853 + r*.22 + t*.1);
+      float arc=.5+.5*sin(r*18.-t*6.+ang*4.);
+      col=hsv2rgb(vec3(hue,.78,1.0));
+      alpha=.2+.34*(1.-smoothstep(.05,1.0,r))*(.65+.35*arc);
     }else if(effectMode<1.5){
-      float pull=1.-smoothstep(.0,.95,r);
-      float vortex=.5+.5*sin((1.2-r)*16.-t*9.+ang*5.);
-      float warp=noise(vec2(ang*2.2,r*10.-t*2.5));
-      col=mix(colorA,colorB,vortex*.65+.25*warp);
-      col=mix(col,vec3(.03,.0,.07),smoothstep(.0,.45,r));
-      alpha=.2+.45*edge+.22*pull*(.5+.5*sin(t*4.+ang*4.));
-      col+=roleColor*.14;
+      vec2 swirl=uv;
+      float rr=max(length(swirl),0.001);
+      float phi=atan(swirl.y,swirl.x)+t*1.4+(1.0-rr)*4.0;
+      vec2 p=vec2(cos(phi),sin(phi))*rr;
+      float neb=noise(p*6.0 + vec2(t*.4,-t*.25));
+      float core=1.0-smoothstep(.0,.45,rr);
+      float spiral=.5+.5*sin(phi*6.0 - rr*10.0 - t*7.0);
+      col=mix(colorA,colorB,neb*.6+.4*spiral);
+      col=mix(col,vec3(.02,.0,.08),smoothstep(.0,.35,rr));
+      alpha=.16 + .34*(1.-smoothstep(.15,1.05,rr)) + .22*core;
     }else if(effectMode<2.5){
-      float haze=noise(uv*4.+vec2(t*.8,-t*.45));
-      col=mix(colorA,colorB,haze);
-      alpha=.18+.28*edge+.1*haze;
-      col+=roleColor*.2;
+      float mist=noise(uv*3.4 + vec2(t*.3,-t*.18));
+      float mist2=noise(uv*6.2 + vec2(-t*.42,t*.21));
+      col=mix(colorA,colorB,mist*.55+.45*mist2);
+      alpha=.16+.28*(1.-smoothstep(.0,1.05,r))*(.45+.55*mist);
     }else{
-      float rings=.5+.5*sin(r*24.-t*10.);
-      col=mix(colorA,colorB,rings);
-      alpha=.18+.42*(1.-smoothstep(.0,.92,r))*(.4+.6*rings);
-      col+=roleColor*.16;
+      float wave=.5+.5*sin(t*5. + r*20.0 - ang*2.0);
+      float ring=.5+.5*sin(r*24.0 - t*9.0);
+      col=mix(colorA,colorB,wave);
+      alpha=.16+.32*(1.-smoothstep(.0,1.0,r))*(.35+.65*ring);
     }
-    alpha*=mix(.55,1.35,clamp(strength,0.,1.));
-    col*=1.0 + 0.55*clamp(strength,0.,1.);
-    gl_FragColor=vec4(col, clamp(alpha,0.02,0.94));
+    col+=roleColor*.12;
+    alpha*=1.0 + strength*.65;
+    gl_FragColor=vec4(col,clamp(alpha,0.02,.92));
    }`
  });
- material.userData.portalInnerShader=true;
- return material;
 }
-function addInnerField(group,cfg,info){
- const mat=portalShaderMaterial(cfg);
- let mesh;
- if(cfg.shape==='field'){
-  mesh=new THREE.Mesh(new THREE.CircleGeometry(Math.max(.3,info.ow/2-.08),64),mat);mesh.rotation.x=-Math.PI/2;mesh.position.y=.02;
- }else if(cfg.shape==='orb'){
-  mesh=new THREE.Mesh(new THREE.SphereGeometry(Math.max(.26,(info.radius||.6)*.82),42,42),mat);mesh.position.y=info.centerY||Math.max(.6,info.oh/2);
+function outlineCurveFromShape(shape,z){
+ const pts=shape.getSpacedPoints(64);
+ return new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(p.x,p.y,z)),true);
+}
+function addDoorPortal(group,cfg){
+ const ow=Math.min(cfg.openingWidth,cfg.width-.15);
+ const oh=Math.min(cfg.openingHeight,cfg.height-.12);
+ const outer=floorPortalShape(cfg.shape,cfg.width,cfg.height);
+ const inner=floorPortalShape(cfg.shape,ow,oh);
+ const outerWithHole=outer.clone();
+ outerWithHole.holes.push(new THREE.Path(inner.getPoints(48)));
+ const frameGeo=new THREE.ExtrudeGeometry(outerWithHole,{depth:cfg.depth,bevelEnabled:false,steps:1});
+ frameGeo.translate(0,0,-cfg.depth/2);
+ const frame=new THREE.Mesh(frameGeo,buildFrameMaterial(cfg));
+ frame.userData.portalFrame=true; frame.castShadow=true; frame.receiveShadow=true; group.add(frame);
+ const fxFrame=new THREE.Mesh(frameGeo.clone(),buildFrameFxMaterial(cfg));
+ fxFrame.userData.portalFrameFx=true; fxFrame.position.z=.001; fxFrame.renderOrder=2; group.add(fxFrame);
+ const innerGeo=new THREE.ShapeGeometry(inner);
+ const innerMesh=new THREE.Mesh(innerGeo,buildInnerShader(cfg));
+ innerMesh.userData.portalInner=true;
+ innerMesh.position.set(0,0,-cfg.depth*.18);
+ innerMesh.renderOrder=3;
+ group.add(innerMesh);
+ const glowMat=new THREE.MeshBasicMaterial({color:cfg.color,transparent:true,opacity:.85,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});
+ const glowCurve=outlineCurveFromShape(inner,cfg.depth*.18);
+ const glow=new THREE.Mesh(new THREE.TubeGeometry(glowCurve,128,Math.max(.018,Math.min(.05,cfg.depth*.1)),12,true),glowMat);
+ glow.userData.portalGlow=true; glow.renderOrder=4; group.add(glow);
+ addSparkles(group,cfg,{kind:'door', shape:inner, width:ow, height:oh, z:-cfg.depth*.18});
+ return {ow,oh};
+}
+function addFieldPortal(group,cfg){
+ const size=Math.max(.8,Math.min(cfg.openingWidth,cfg.width));
+ const outer=size+.34;
+ const borderH=.07;
+ const mat=buildFrameMaterial(cfg);
+ const t=(outer-size)/2;
+ const parts=[[-outer/2+t/2,borderH/2,0,t,borderH,outer],[outer/2-t/2,borderH/2,0,t,borderH,outer],[0,borderH/2,-outer/2+t/2,outer,borderH,t],[0,borderH/2,outer/2-t/2,outer,borderH,t]];
+ for(const [x,y,z,w,h,d] of parts){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.userData.portalFrame=true;m.castShadow=true;m.receiveShadow=true;group.add(m);}
+ const frameFx=new THREE.Mesh(new THREE.PlaneGeometry(outer,outer),buildFrameFxMaterial(cfg));
+ frameFx.rotation.x=-Math.PI/2; frameFx.position.y=.012; frameFx.userData.portalFrameFx=true; frameFx.renderOrder=2; group.add(frameFx);
+ const inner=new THREE.Mesh(new THREE.PlaneGeometry(size,size),buildInnerShader(cfg));
+ inner.rotation.x=-Math.PI/2; inner.position.y=.018; inner.userData.portalInner=true; inner.renderOrder=3; group.add(inner);
+ const border=new THREE.Mesh(new THREE.RingGeometry(size*.47,size*.52,4),new THREE.MeshBasicMaterial({color:cfg.color,transparent:true,opacity:.7,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
+ border.rotation.x=-Math.PI/2; border.position.y=.022; border.rotation.z=Math.PI/4; border.userData.portalGlow=true; border.renderOrder=4; group.add(border);
+ addSparkles(group,cfg,{kind:'field', size});
+ return {size};
+}
+function addOrbPortal(group,cfg){
+ const radius=Math.max(.42,Math.min(cfg.openingWidth,cfg.width,Math.max(1.1,cfg.openingHeight))*.5);
+ const centerY=radius;
+ const outerMat=buildFrameMaterial(cfg);
+ outerMat.transparent=true; outerMat.opacity=Math.min(cfg.opacity,.62);
+ const shell=new THREE.Mesh(new THREE.SphereGeometry(radius,40,40),outerMat);
+ shell.position.y=centerY; shell.userData.portalFrame=true; shell.castShadow=true; shell.receiveShadow=true; group.add(shell);
+ const shellFx=new THREE.Mesh(new THREE.SphereGeometry(radius*.995,40,40),buildFrameFxMaterial(cfg));
+ shellFx.position.y=centerY; shellFx.userData.portalFrameFx=true; shellFx.renderOrder=2; group.add(shellFx);
+ const inner=new THREE.Mesh(new THREE.SphereGeometry(radius*.78,40,40),buildInnerShader(cfg));
+ inner.position.y=centerY; inner.userData.portalInner=true; inner.renderOrder=3; group.add(inner);
+ const glow=new THREE.Mesh(new THREE.SphereGeometry(radius*1.02,36,36),new THREE.MeshBasicMaterial({color:cfg.color,transparent:true,opacity:.18,depthWrite:false,blending:THREE.AdditiveBlending}));
+ glow.position.y=centerY; glow.userData.portalGlow=true; glow.renderOrder=4; group.add(glow);
+ addSparkles(group,cfg,{kind:'orb', radius, centerY});
+ return {radius,centerY};
+}
+function addSparkles(group,cfg,info){
+ const count=cfg.effect==='glow'?18:cfg.effect==='mystery'?28:24;
+ const positions=[];
+ const sizes=[];
+ const color=roleTint(cfg);
+ const push=(x,y,z)=>{positions.push(x,y,z);sizes.push(.01+Math.random()*.022);};
+ if(info.kind==='orb'){
+  for(let i=0;i<count;i++){
+   const u=Math.random()*2-1,v=Math.random()*2-1,w=Math.random()*2-1;
+   const len=Math.hypot(u,v,w)||1;
+   const r=(.18+Math.random()*.55)*info.radius;
+   push((u/len)*r, info.centerY+(v/len)*r, (w/len)*r);
+  }
+ }else if(info.kind==='field'){
+  for(let i=0;i<count;i++)push((Math.random()-.5)*info.size*.82,.06+Math.random()*.18,(Math.random()-.5)*info.size*.82);
  }else{
-  const shape=portalShape(cfg.shape,Math.max(.45,info.ow-.08),Math.max(.65,info.oh-.08));
-  const geo=new THREE.ShapeGeometry(shape);
-  mesh=new THREE.Mesh(geo,mat);mesh.position.z=-cfg.depth/2-.025;mesh.position.y=Math.max(.32,info.oh/2);
+  const shape=info.shape;
+  const w=info.width,h=info.height;
+  let tries=0;
+  while(positions.length<count*3&&tries<count*16){
+   const x=(Math.random()-.5)*w*.96,y=Math.random()*h*.96;
+   if(shape.containsPoint(new THREE.Vector2(x,y)))push(x,y,info.z + (Math.random()-.5)*Math.max(.04,cfg.depth*.16));
+   tries++;
+  }
  }
- mesh.userData.portalInner=true;mesh.renderOrder=2;group.add(mesh);
+ const geo=new THREE.BufferGeometry();
+ geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+ geo.setAttribute('aSize',new THREE.Float32BufferAttribute(sizes,1));
+ const mat=new THREE.ShaderMaterial({
+  uniforms:{time:{value:0}, tint:{value:color}},
+  transparent:true,
+  depthWrite:false,
+  blending:THREE.AdditiveBlending,
+  vertexShader:`attribute float aSize; uniform float time; varying float vAlpha; void main(){ vec3 p=position; p.y += sin(time*2.0 + position.x*8.0 + position.z*5.0)*0.02; vec4 mv=modelViewMatrix*vec4(p,1.0); gl_Position=projectionMatrix*mv; gl_PointSize=aSize*900.0/(-mv.z); vAlpha=.55+.45*sin(time*4.0 + position.y*9.0); }`,
+  fragmentShader:`uniform vec3 tint; varying float vAlpha; void main(){ vec2 uv=gl_PointCoord*2.0-1.0; float d=dot(uv,uv); float a=smoothstep(1.0,0.0,d); gl_FragColor=vec4(mix(vec3(1.0),tint,.55), a*vAlpha*.9); }`
+ });
+ const points=new THREE.Points(geo,mat);
+ points.userData.portalParticles=true; points.renderOrder=5; group.add(points);
 }
-function glowMaterial(cfg){
- return new THREE.MeshBasicMaterial({color:cfg.color,transparent:true,opacity:.75,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+function addPortalButton(group,cfg){
+ if(cfg.role!=='entry'||cfg.mode!=='button')return;
+ const body=new THREE.Mesh(new THREE.BoxGeometry(.18,.34,.12),new THREE.MeshStandardMaterial({color:'#253a53',roughness:.55,metalness:.25}));
+ body.position.set(cfg.width/2+.2,Math.max(.55,Math.min(cfg.height*.5,1.15)),-cfg.depth/2-.07);
+ const button=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.06,24),new THREE.MeshStandardMaterial({color:'#e54b6d',emissive:'#9e2746',emissiveIntensity:.8}));
+ button.rotation.x=Math.PI/2; button.position.set(0,0,.09); button.userData.portalButton=true; button.name='Activate portal'; body.add(button);
+ group.add(body);
 }
-function addBorderGlow(group,cfg,info){
- const glow=glowMaterial(cfg);
- glow.userData.portalGlowMaterial=true;
- const tubeRadius=cfg.effect==='rainbow'?.045:cfg.effect==='mystery'?.034:cfg.effect==='pulse'?.032:.028;
- if(cfg.shape==='field'){
-  const ring=new THREE.Mesh(new THREE.TorusGeometry(Math.max(.34,info.ow/2),tubeRadius,22,96),glow);ring.rotation.x=Math.PI/2;ring.position.y=.03;ring.userData.portalGlow=true;group.add(ring);
-  return;
- }
- if(cfg.shape==='orb'){
-  const ring=new THREE.Mesh(new THREE.TorusGeometry(Math.max(.3,info.radius||.6),tubeRadius,22,96),glow);ring.position.y=info.centerY||.9;ring.rotation.y=Math.PI/2;ring.userData.portalGlow=true;group.add(ring);
-  const halo=new THREE.Mesh(new THREE.TorusGeometry(Math.max(.26,(info.radius||.6)*.78),tubeRadius*.45,18,72),glow.clone());halo.position.y=ring.position.y;halo.rotation.x=Math.PI/2;halo.userData.portalGlow=true;group.add(halo);
-  return;
- }
- if(cfg.shape==='rounded'||cfg.shape==='triangle'){
-  const outline=portalShape(cfg.shape,info.ow+.02,info.oh+.02).getPoints(64);
-  const baseY=Math.max(.32,info.oh/2)-info.oh/2;
-  const points=outline.map(p=>new THREE.Vector3(p.x,p.y+baseY,-cfg.depth/2-.026));
-  const path=new THREE.CatmullRomCurve3(points,true);
-  const tube=new THREE.Mesh(new THREE.TubeGeometry(path,120,tubeRadius,12,true),glow);tube.userData.portalGlow=true;group.add(tube);
-  return;
- }
- for(const x of [-info.ow/2,info.ow/2])slab(group,x,info.oh/2,-cfg.depth/2-.026,tubeRadius*1.6,info.oh,tubeRadius*1.4,glow,'portalGlow');
- slab(group,0,info.oh,-cfg.depth/2-.026,info.ow,tubeRadius*1.6,tubeRadius*1.4,glow,'portalGlow');
+function disposeChild(child){
+ child.geometry?.dispose?.();
+ const mats=Array.isArray(child.material)?child.material:[child.material];
+ for(const mat of mats)if(mat&&!mat.userData?.sharedMaterial)mat.dispose?.();
 }
 export function rebuildPortal(group,raw){
- const c=cleanPortal(raw);
- for(const child of [...group.children]){group.remove(child);child.geometry?.dispose?.();const mats=Array.isArray(child.material)?child.material:[child.material];for(const mat of mats)if(mat&&!mat.userData?.sharedMaterial)mat.dispose?.();}
- group.userData.portal=c;
- const frameColor=tempColor.copy(new THREE.Color(c.color)).lerp(roleTint(c),.18).getHex();
- const frame=new THREE.MeshStandardMaterial({color:frameColor,roughness:.45,metalness:c.texture==='metal'?.42:.16,transparent:c.opacity<1,opacity:c.opacity,map:frameTexture(c.texture),side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1,emissive:roleTint(c).clone().multiplyScalar(.05)});
- const info=makeRing(group,c,frame);
- addBorderGlow(group,c,info);
- addInnerField(group,c,info);
- if(c.role==='entry'&&c.mode==='button'){
-  const key=new THREE.Mesh(new THREE.CylinderGeometry(.095,.095,.07,18),new THREE.MeshStandardMaterial({color:'#dd3c5f',emissive:'#8d1f40',emissiveIntensity:.7}));
-  key.rotation.x=Math.PI/2;key.position.set(c.width/2+.18,Math.max(.42,c.shape==='field'?.24:1.08),-c.depth/2-.065);key.userData.portalButton=true;key.name='Activate portal';group.add(key);
- }
+ const cfg=cleanPortal(raw);
+ for(const child of [...group.children]){group.remove(child);disposeChild(child);}
+ group.userData.portal=cfg;
+ if(cfg.shape==='orb')addOrbPortal(group,cfg);
+ else if(cfg.shape==='field')addFieldPortal(group,cfg);
+ else addDoorPortal(group,cfg);
+ addPortalButton(group,cfg);
+ group.name=cfg.role==='exit'?'Portal Exit':'Portal Entry';
  return group;
 }
-export function makePortal(config={}){const group=new THREE.Group();group.userData.editorKind='portal';group.name=config.role==='exit'?'Portal Exit':'Portal Entry';return rebuildPortal(group,config);}
-export function portalPulse(group,amount){
+export function makePortal(config={}){const group=new THREE.Group();group.userData.editorKind='portal';return rebuildPortal(group,config);}
+export function portalPulse(group,amount=0){
  const cfg=group.userData.portal||cleanPortal({});
  const t=performance.now()*0.001;
- const wave=.55+.45*Math.sin(performance.now()*.008);
+ const activated=Math.max(0,amount);
  group.traverse(part=>{
-  if(part.userData.portalGlow&&part.material){
-   const mat=part.material;
-   let color=roleTint(cfg).clone().lerp(new THREE.Color(cfg.color),.45);
-   if(cfg.effect==='rainbow')color.setHSL((t*.22)%1,.95,.62);
-   else if(cfg.effect==='mystery')color.setHSL(.79+.05*Math.sin(t*1.5),.85,.6);
-   else if(cfg.effect==='glow')color.set('#b0fff8');
-   else if(cfg.effect==='pulse')color.setHSL(.56,.95,.58+.12*Math.sin(t*3.2));
-   mat.color?.copy(color);
-   mat.opacity=cfg.effect==='rainbow'?.82:cfg.effect==='mystery'?.58:.46;
-   mat.opacity+=(Math.max(0,amount)*.32)+(.14*wave);
-   part.scale.setScalar(1+(cfg.effect==='pulse'?0.03*Math.sin(t*4.5):cfg.effect==='rainbow'?0.02*Math.sin(t*2.4):0));
+  if(part.userData.portalFrame&&part.material?.emissive){
+   const base=roleTint(cfg).clone().lerp(new THREE.Color(cfg.color),.35);
+   if(cfg.effect==='rainbow')base.setHSL((t*.14 + part.position.y*.03)%1,.88,.62);
+   else if(cfg.effect==='mystery')base.setHSL(.78+.04*Math.sin(t*1.8),.85,.55);
+   else if(cfg.effect==='glow')base.set('#bcfffc');
+   else if(cfg.effect==='pulse')base.setHSL(.56,.95,.58+.11*Math.sin(t*4.2));
+   part.material.emissive.copy(base);
+   part.material.emissiveIntensity=.35 + activated*.6 + (cfg.effect==='pulse'?.22*(.5+.5*Math.sin(t*5.2)):cfg.effect==='rainbow'?.12*(.5+.5*Math.sin(t*2.7)):cfg.effect==='glow'?.14:.08);
+  }
+  if(part.userData.portalFrameFx&&part.material?.uniforms){
+   part.material.uniforms.time.value=t;
+   part.material.uniforms.strength.value=.22+activated*.9;
   }
   if(part.userData.portalInner&&part.material?.uniforms){
-   const u=part.material.uniforms;
-   u.time.value=t;
-   u.strength.value=Math.min(1,.28+Math.max(0,amount)*.72+(cfg.effect==='mystery'?0.12:0));
-   if(cfg.shape==='orb')part.rotation.y=t*.35;
-   if(cfg.shape==='field')part.rotation.z=t*.18;
+   part.material.uniforms.time.value=t;
+   part.material.uniforms.strength.value=.35+activated*.85+(cfg.effect==='mystery'?.15:0);
+   if(cfg.shape==='orb')part.rotation.y=t*.26;
+  }
+  if(part.userData.portalGlow&&part.material){
+   const glow=roleTint(cfg).clone().lerp(new THREE.Color(cfg.color),.5);
+   if(cfg.effect==='rainbow')glow.setHSL((t*.2)%1,.95,.64);
+   else if(cfg.effect==='mystery')glow.setHSL(.79,.84,.58+.08*Math.sin(t*3.1));
+   else if(cfg.effect==='glow')glow.set('#e8fffd');
+   else if(cfg.effect==='pulse')glow.setHSL(.56,.96,.62+.08*Math.sin(t*5.0));
+   part.material.color?.copy(glow);
+   part.material.opacity=Math.min(.95,(part.userData.portalGlow? .32: .2) + activated*.35 + (cfg.effect==='glow'?.12:cfg.effect==='rainbow'?.18:cfg.effect==='pulse'?.16:.1));
+   const s=cfg.effect==='pulse'?1+.03*Math.sin(t*5.0):cfg.effect==='rainbow'?1+.02*Math.sin(t*2.2):1;
+   part.scale.setScalar(s);
+  }
+  if(part.userData.portalParticles&&part.material?.uniforms){
+   part.material.uniforms.time.value=t;
+   part.rotation.y=t*.1;
   }
  });
 }
