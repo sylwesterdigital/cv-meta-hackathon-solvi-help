@@ -153,6 +153,16 @@ function outlineCurveFromShape(shape,z){
  const pts=shape.getSpacedPoints(64);
  return new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(p.x,p.y,z)),true);
 }
+function pointInPolygon(point,polygon){
+ let inside=false;
+ for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){
+  const xi=polygon[i].x, yi=polygon[i].y;
+  const xj=polygon[j].x, yj=polygon[j].y;
+  const intersect=((yi>point.y)!==(yj>point.y)) && (point.x < (xj-xi)*(point.y-yi)/((yj-yi)||1e-9) + xi);
+  if(intersect)inside=!inside;
+ }
+ return inside;
+}
 function addDoorPortal(group,cfg){
  const ow=Math.min(cfg.openingWidth,cfg.width-.15);
  const oh=Math.min(cfg.openingHeight,cfg.height-.12);
@@ -228,13 +238,16 @@ function addSparkles(group,cfg,info){
  }else if(info.kind==='field'){
   for(let i=0;i<count;i++)push((Math.random()-.5)*info.size*.82,.06+Math.random()*.18,(Math.random()-.5)*info.size*.82);
  }else{
-  const shape=info.shape;
   const w=info.width,h=info.height;
+  const polygon=(info.shape?.getSpacedPoints?.(96)||[]).map(p=>({x:p.x,y:p.y}));
   let tries=0;
-  while(positions.length<count*3&&tries<count*16){
+  while(positions.length<count*3&&tries<count*18){
    const x=(Math.random()-.5)*w*.96,y=Math.random()*h*.96;
-   if(shape.containsPoint(new THREE.Vector2(x,y)))push(x,y,info.z + (Math.random()-.5)*Math.max(.04,cfg.depth*.16));
+   if(!polygon.length||pointInPolygon({x,y},polygon))push(x,y,info.z + (Math.random()-.5)*Math.max(.04,cfg.depth*.16));
    tries++;
+  }
+  if(!positions.length){
+   for(let i=0;i<count;i++)push((Math.random()-.5)*w*.22,h*(0.2+Math.random()*0.55),info.z);
   }
  }
  const geo=new THREE.BufferGeometry();
@@ -260,18 +273,49 @@ function addPortalButton(group,cfg){
  group.add(body);
 }
 function disposeChild(child){
- child.geometry?.dispose?.();
- const mats=Array.isArray(child.material)?child.material:[child.material];
- for(const mat of mats)if(mat&&!mat.userData?.sharedMaterial)mat.dispose?.();
+ child.traverse?.(part=>{
+  part.geometry?.dispose?.();
+  const mats=Array.isArray(part.material)?part.material:[part.material];
+  for(const mat of mats)if(mat&&!mat.userData?.sharedMaterial)mat.dispose?.();
+ });
+}
+// Build a new gate before removing the existing one. A shader/geometry exception
+// must never erase a saved pair or abort scene restoration.
+function emergencyPortalFrame(group,cfg){
+ const material=new THREE.MeshStandardMaterial({color:cfg.color,roughness:.5,emissive:cfg.color,emissiveIntensity:.12});
+ const w=cfg.width, h=cfg.height, gap=Math.min(cfg.openingWidth,w-.2), side=Math.max(.08,(w-gap)*.5);
+ const parts=[[-w*.5+side*.5,h*.5,side,h],[w*.5-side*.5,h*.5,side,h],[0,h-.10,gap,.2]];
+ for(const [x,y,bw,bh] of parts){
+  const mesh=new THREE.Mesh(new THREE.BoxGeometry(bw,bh,cfg.depth),material);
+  mesh.position.set(x,y,0);mesh.userData.portalFrame=true;group.add(mesh);
+ }
 }
 export function rebuildPortal(group,raw){
  const cfg=cleanPortal(raw);
+ const pending=new THREE.Group();
+ try{
+  if(cfg.shape==='orb')addOrbPortal(pending,cfg);
+  else if(cfg.shape==='field')addFieldPortal(pending,cfg);
+  else addDoorPortal(pending,cfg);
+  addPortalButton(pending,cfg);
+  if(!pending.children.some(child=>child.userData.portalFrame))throw Error('Missing portal frame');
+ }catch(error){
+  for(const child of [...pending.children]){pending.remove(child);disposeChild(child);}
+  // Existing scene meshes and their working transport configuration remain intact.
+  if(group.children.length){
+   if(!group.userData.portalRenderError)console.error('SOLVI portal render preserved:',error);
+   group.userData.portalRenderError=true;
+   return group;
+  }
+  // A newly created portal is still visible and usable without optional effects.
+  console.error('SOLVI portal effects fell back to a solid gate:',error);
+  emergencyPortalFrame(pending,cfg);
+  if(cfg.role==='entry'&&cfg.mode==='button')addPortalButton(pending,cfg);
+ }
  for(const child of [...group.children]){group.remove(child);disposeChild(child);}
+ for(const child of [...pending.children])group.add(child);
  group.userData.portal=cfg;
- if(cfg.shape==='orb')addOrbPortal(group,cfg);
- else if(cfg.shape==='field')addFieldPortal(group,cfg);
- else addDoorPortal(group,cfg);
- addPortalButton(group,cfg);
+ group.userData.portalRenderError=false;
  group.name=cfg.role==='exit'?'Portal Exit':'Portal Entry';
  return group;
 }

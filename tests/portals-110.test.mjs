@@ -38,6 +38,7 @@ test('real opening geometry has three frame colliders, no blocking box',()=>{
  assert.match(geometry,/floorPortalShape\(/);
  assert.match(geometry,/portalFrameFx/);
  assert.match(geometry,/portalParticles/);
+ assert.doesNotMatch(geometry,/containsPoint\(/);
  assert.match(geometry,/effect==='rainbow'/);
 });
 test('teleport moves kinematic physics and prevents immediate loops',()=>{

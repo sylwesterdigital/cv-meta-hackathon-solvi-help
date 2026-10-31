@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.120",
+  "currentVersion": "0.2.121",
   "releases": [
+    {
+      "version": "0.2.121",
+      "publishedAt": "2026-10-31T22:38:16Z",
+      "changes": [
+        "Restore paired gateways after a v0.2.120 runtime crash caused by calling non-existent THREE.Shape.containsPoint() during particle generation.",
+        "Generate sparkles with explicit point-in-polygon filtering; rebuild gate geometry transactionally and preserve existing saved portal meshes and settings when a visual construction step fails.",
+        "Smoke-test all 5 portal shapes, 4 visual effects, and Entry/Exit construction with simulated rendering failures; preserve the aperture-constrained effects, transport code, existing avatars and server storage compatibility."
+      ]
+    },
     {
       "version": "0.2.120",
       "publishedAt": "2026-10-31T22:21:47Z",
@@ -307,17 +316,6 @@
         "Display portrait-style Asset thumbnails matching the Avatar gallery, without redundant decorative icons covering preview images.",
         "Prevent walking/running animation stumbles by maintaining the authored gait loop across brief physics-controller/network stalls; return to Idle when genuinely stopped.",
         "Add library authentication, export, deletion, scene-reference and gait tests."
-      ]
-    },
-    {
-      "version": "0.2.89",
-      "publishedAt": "2026-10-31T00:50:46Z",
-      "changes": [
-        "Fix native walk/run clip cadence and smooth small Rapier stair autosteps so avatars no longer visibly hop at an ordinary step.",
-        "Offer independently persisted Walk animation, Run animation and Jump animation speed multipliers (0.35\u20132.0\u00d7) in the existing one-slider robot inspector.",
-        "Select Jumping for stationary jumps and Jump for jumps with movement; match exact authored avatar clips and fall back to Jump when Jumping is absent.",
-        "Keep the airborne jump pose synchronized to expected physics flight; select Landing or Hard Landing based on drop height and use the final phase of Jump when an avatar lacks a Landing clip.",
-        "Validate animation controls in both atomic and bulk Flask scene writes, and add JS/Flask regression coverage for clip selection, speed, visual step easing and persistence."
       ]
     }
   ]
