@@ -11,7 +11,7 @@ test('robot keyboard commands, duplicate and delete are present',()=>{
  for(const token of ['KeyD','KeyX','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','robotJumpUntil','duplicate()']){
   assert.ok(js.includes(token)||read('js/robots.js').includes(token),token);
  }
- assert.ok(motions.includes("jump:['jump','jumping']"));
+ assert.ok(motions.includes("jump:['running jump','jump forward','jump']"));
 });
 test('head orientation, attached wrists and chest pose',()=>{
  const world=read('js/world.js');

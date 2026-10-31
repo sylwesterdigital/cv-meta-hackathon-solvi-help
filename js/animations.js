@@ -7,7 +7,10 @@ export const MOTION_ALIASES=Object.freeze({
   strafeRight:['strafe right','right strafe','walk right','side step right'],
   walkBackward:['walk backwards','walking backwards','backward walk','walk backward'],
   wave:['waving','wave'],
-  jump:['jump','jumping'],
+  jump:['running jump','jump forward','jump'],
+  jumping:['jumping in place','jump in place','jumping','vertical jump','jump'],
+  landing:['landing','jump landing','falling to landing','fall to landing'],
+  hardLanding:['hard landing','landing hard','falling flat impact','fall flat impact','falling back death'],
   push:['pushing','push'],
   falling:['falling','fall','falling idle'],
   fallingIdle:['falling idle','fall idle','falling loop'],
@@ -58,7 +61,7 @@ export class MotionController{
     this.oneShotStopAt=null;action.paused=false;
     action.reset().setEffectiveWeight(1).setEffectiveTimeScale((reverseWalk?-1:1)*this.playbackSpeed).play();
     if(reverseWalk)action.time=Math.max(0,action.getClip().duration-.001);
-    const oneShot=['wave','jump','fallingLanding','fallingImpact','standUp','hitHead','hitBody','dying'].includes(kind)||kind.startsWith('clip:');
+    const oneShot=['wave','jump','jumping','landing','hardLanding','fallingLanding','fallingImpact','standUp','hitHead','hitBody','dying'].includes(kind)||kind.startsWith('clip:');
     action.setLoop(oneShot?this.THREE.LoopOnce:this.THREE.LoopRepeat,oneShot?1:Infinity);
     action.clampWhenFinished=oneShot;
     // Crossfade between clips using AnimationMixer; avoid snapping pose on mode change.
@@ -69,13 +72,13 @@ export class MotionController{
   playOnce(kind,{rate=1,trimStart=0,trimEnd=0}={}){
     const action=this.actions.get(kind)||this.actions.get('wave');
     if(!action){this.play('idle');return false;}
-    this.playbackSpeed=Math.max(.85,Math.min(6.5,rate));
+    this.playbackSpeed=Math.max(.35,Math.min(6.5,rate));
     // Replay the same clip, including alternating punches, without inheriting
     // an old crossfade or a paused/clamped playhead.
     if(action===this.current){action.stop();this.current=null;}
     this.play(kind,.09);
     const clipDuration=Math.max(.001,action.getClip().duration||1);
-    action.time=clipDuration*Math.max(0,Math.min(.35,trimStart));
+    action.time=clipDuration*Math.max(0,Math.min(.85,trimStart));
     this.oneShotStopAt=clipDuration*(1-Math.max(0,Math.min(.35,trimEnd)));
     action.paused=false;
     action.setLoop(this.THREE.LoopOnce,1);
@@ -83,7 +86,7 @@ export class MotionController{
     this.setPlaybackSpeed(this.playbackSpeed);
     return true;
   }
-  setPlaybackSpeed(value=1){this.playbackSpeed=Math.max(.85,Math.min(6.5,Number(value)||1));if(this.current)this.current.setEffectiveTimeScale((this.currentKind==='walkBackward'&&!this.actions.has('walkBackward')&&this.actions.has('walk')?-1:1)*this.playbackSpeed);}
+  setPlaybackSpeed(value=1){this.playbackSpeed=Math.max(.3,Math.min(6.5,Number(value)||1));if(this.current)this.current.setEffectiveTimeScale((this.currentKind==='walkBackward'&&!this.actions.has('walkBackward')&&this.actions.has('walk')?-1:1)*this.playbackSpeed);}
   update(dt){
     this.mixer.update(dt);
     if(this.oneShotStopAt!==null&&this.current&&this.current.time>=this.oneShotStopAt){

@@ -1,3 +1,4 @@
+import {landingAnimationKind,easedStepOffset} from './animation-tuning.js';
 import * as THREE from 'three';
 import {physicsOptions} from './physics-options.js';
 import {CHARACTER,characterMotion,resolveCharacterMotion,easedRemotePose} from './character-physics.js';
@@ -405,14 +406,15 @@ export class ScenePhysics{
    if(!state.airStartAt)state.airStartAt=now;
   }else if(state.airStartAt){
    const fallHeight=Math.max(0,(state.airStartY??p.y)-resolved.y);
-   if(object.userData.robotFallActive&&now-state.airStartAt>120){
+   if((object.userData.robotFallActive||state.jumpStarted)&&now-state.airStartAt>120){
     const heavy=fallHeight>2.5;
-    object.userData.robotReaction={clip:heavy?'fallingImpact':'fallingLanding',duration:heavy?1.25:.65,elapsed:0,next:heavy?'standUp':null};
+    object.userData.robotReaction={clip:landingAnimationKind(fallHeight),duration:heavy?1.25:.58,elapsed:0,next:heavy?'standUp':null};
     object.userData.robotPlaying=null;
    }
    object.userData.robotFallActive=false;
    state.airStartY=null;state.airStartAt=0;
   }
+  object.userData.robotVisualStepOffset=easedStepOffset(object.userData.robotVisualStepOffset,resolved.y-p.y,state.grounded,state.jumpStarted,dt);
   body.setNextKinematicTranslation({x:resolved.x,y:resolved.y,z:resolved.z});
   body.setNextKinematicRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
   object.position.set(resolved.x,resolved.y,resolved.z);

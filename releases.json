@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.88",
+  "currentVersion": "0.2.89",
   "releases": [
+    {
+      "version": "0.2.89",
+      "publishedAt": "2026-10-31T00:50:46Z",
+      "changes": [
+        "Fix native walk/run clip cadence and smooth small Rapier stair autosteps so avatars no longer visibly hop at an ordinary step.",
+        "Offer independently persisted Walk animation, Run animation and Jump animation speed multipliers (0.35\u20132.0\u00d7) in the existing one-slider robot inspector.",
+        "Select Jumping for stationary jumps and Jump for jumps with movement; match exact authored avatar clips and fall back to Jump when Jumping is absent.",
+        "Keep the airborne jump pose synchronized to expected physics flight; select Landing or Hard Landing based on drop height and use the final phase of Jump when an avatar lacks a Landing clip.",
+        "Validate animation controls in both atomic and bulk Flask scene writes, and add JS/Flask regression coverage for clip selection, speed, visual step easing and persistence."
+      ]
+    },
     {
       "version": "0.2.88",
       "publishedAt": "2026-10-30T22:57:42Z",
@@ -332,17 +343,6 @@
         "Add room-user and robot @mention completion in the message composer, with keyboard navigation and full-name insertion.",
         "Bring selected, newly opened and actively dragged windows to the front while leaving modal settings and galleries on top.",
         "Add new regression tests for camera orbit, two-finger trackpad pan, transform scale, mentions, UI layout, menu and window focus."
-      ]
-    },
-    {
-      "version": "0.2.55",
-      "publishedAt": "2026-10-29T13:00:59Z",
-      "changes": [
-        "Fix blank white Settings roundel by using a dedicated light cog asset and removing an icon-inverting filter from its painted background across button modes.",
-        "Render crisp 416x544 WebP avatar portrait thumbnails with portrait camera framing, balanced lighting and a visible dark backdrop rather than stretching tiny landscape JPEGs.",
-        "Persist avatar thumbnails in browser CacheStorage with a memory fallback, avoiding repeated GLB downloads and GPU rendering when the avatar library is reopened or the page is revisited.",
-        "Limit first-load avatar preview decoding to two concurrent jobs, reuse the single existing WebGL gallery renderer, and dispose short-lived GLB preview geometries/materials/textures.",
-        "Show built-in avatar cards without waiting for the authenticated uploaded-avatar API, and add four new thumbnail/cache/UI regression tests."
       ]
     }
   ]

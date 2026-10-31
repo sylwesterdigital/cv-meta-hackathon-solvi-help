@@ -188,7 +188,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.88',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.89',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1285,7 +1285,7 @@ def research_topic_sources(topic,limit=6):
     import urllib.parse
     sources=[]
     def read_json(url):
-        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.88 (public academic references)','Accept':'application/json'})
+        req=Request(url,headers={'User-Agent':'SOLVI-help-research/0.2.89 (public academic references)','Accept':'application/json'})
         with urlopen(req,timeout=3.5) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Large search response')
             return json.loads(response.read(180001).decode('utf-8'))
@@ -2682,6 +2682,7 @@ def set_scene():
             if not row or row['mime']!=media.get('mime'):return json_error('Missing uploaded media reference')
         if o['kind']=='robot':
             if 'combat' in o and not valid_robot_combat(o['combat']):return json_error('Invalid robot combat controls')
+            if 'animationSpeed' in o and not valid_robot_animation_speed(o['animationSpeed']):return json_error('Invalid robot animation speed')
             if 'turnSpeed' in o and (not isinstance(o['turnSpeed'],(float,int)) or isinstance(o['turnSpeed'],bool) or not math.isfinite(o['turnSpeed']) or not 0<=o['turnSpeed']<=10):return json_error('Invalid robot turn speed')
             brain=o.get('brain',{})
             if not isinstance(brain,dict) or any((k in ('initiative','initiativeVision') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision') and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch','gender','voiceGender'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8,'gender':12,'voiceGender':12}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
@@ -2706,6 +2707,11 @@ def set_scene():
     publish({'type':'scene-changed','revision':old+1,'room':room_id,'by':user['id'],'action':'bulk'},room_id=room_id)
     return jsonify(revision=old+1,ok=True)
 
+
+def valid_robot_animation_speed(settings):
+    return isinstance(settings,dict) and set(settings)=={'walk','run','jump'} and all(
+        isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) and .35<=value<=2
+        for value in settings.values())
 
 def valid_robot_combat(settings):
     if not isinstance(settings,dict) or any(a not in ('push','punch','kick','throw') for a in settings):return False
@@ -2733,8 +2739,9 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','combat','brain','physics','model','media','primitive','wall','stairs','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','transformLocked') if key in obj}
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
+        if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if obj['kind']=='wall' and not valid_office_wall(obj.get('wall')):return json_error('Invalid office wall')
         if obj['kind']=='stairs' and not valid_office_stairs(obj.get('stairs')):return json_error('Invalid office stairs')
         if 'primitive' in obj:

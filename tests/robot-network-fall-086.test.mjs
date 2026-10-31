@@ -57,7 +57,7 @@ test('fall or combat reactions have one-shot ownership and return to idle',()=>{
  const robots=src('js/robots.js');
  assert.match(robots,/data\.robotReaction=\{clip:reaction\.next,elapsed:0,duration:\.85\}/);
  assert.match(robots,/else data\.robotReaction=null/);
- assert.match(robots,/animator\?\.playOnce\(mode,\{rate:Math\.max\(\.85,Math\.min\(6\.5,clipSeconds\//);
+ assert.match(robots,/animator\?\.playOnce\(mode,\{rate:Math\.max\(\.35,Math\.min\(6\.5,clipSeconds\*/);
  const physics=src('js/scene-physics.js');
  assert.match(physics,/robotImpactVelocity/);
  assert.match(physics,/applyRobotImpact\(packet\)/);

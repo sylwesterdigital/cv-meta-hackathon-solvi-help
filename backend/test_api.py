@@ -184,6 +184,22 @@ for bad_combat in ({'punch':{'key':'Key-P','force':6}}, {'kick':{'key':'KeyK','f
     r=c.put('/api/scene',headers=headers,json={'room':'lab','revision':scene['revision'],'objects':[invalid]})
     assert r.status_code==400,(bad_combat,r.status_code,r.data)
 print('PASS: robot combat controls persist via atomic/bulk saves and reject invalid bindings')
+# Animation playback settings persist per robot and reject malformed profiles.
+robot['animationSpeed']={'walk':.7,'run':1.1,'jump':.85}
+r=c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':robot})
+assert r.status_code==200,(r.status_code,r.data)
+scene=c.get('/api/scene?room=lab',headers=headers).get_json()
+assert scene['objects'][0]['animationSpeed']==robot['animationSpeed']
+r=c.put('/api/scene',headers=headers,json={'room':'lab','revision':scene['revision'],'objects':[robot]})
+assert r.status_code==200,(r.status_code,r.data)
+for bad_speed in ({'walk':1,'run':1}, {'walk':0,'run':1,'jump':1}, {'walk':1,'run':1,'jump':3},
+                  {'walk':True,'run':1,'jump':1}, {'walk':1,'run':1,'jump':float('nan')}):
+    invalid={**robot,'animationSpeed':bad_speed}
+    assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':invalid}).status_code==400
+    scene=c.get('/api/scene?room=lab',headers=headers).get_json()
+    assert c.put('/api/scene',headers=headers,json={'room':'lab','revision':scene['revision'],'objects':[invalid]}).status_code==400
+print('PASS: per-robot walking/running/jump playback speed persist via object/bulk saves with bounded validation')
+
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testrobot-001'}}).status_code==200
 # Every room defaults to shared editing; owners can be enforced independently.
 settings=c.get('/api/room/settings?room=lab',headers=headers)

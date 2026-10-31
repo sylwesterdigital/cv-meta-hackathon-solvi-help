@@ -5,6 +5,7 @@ import {MotionController,computeMode} from './animations.js';
 import {pathBlocked} from './robot-pathfinding.js';
 import {footfallRate,combatPhase} from './robot-combat.js';
 import {permittedRobotLocomotion} from './robot-contact.js';
+import {animationSpeedSettings,jumpAnimationKind,landingClipFor,gaitCadence} from './animation-tuning.js';
 
 const loader=new GLTFLoader();
 const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');loader.setDRACOLoader(draco);
@@ -62,6 +63,10 @@ export function interruptRobotMission(robot){
 }
 export function robotAction(robot,mode){
   if(!robot||robot.userData.editorKind!=='robot')return;
+  const inPlaceJump=mode==='jumping';if(inPlaceJump)mode='jump';
+  const previouslyMoving=!inPlaceJump&&(Math.abs(Number(robot.userData.robotVelocity)||0)>.35||
+    Math.abs(Number(robot.userData.robotActualSpeed)||0)>.35||
+    Boolean(robot.userData.robotGoal)||['walk','run','strafeLeft','strafeRight'].includes(robot.userData.robotMode));
   robot.userData.robotMode=mode;interruptRobotMission(robot);
   if(mode==='walk'||mode==='run'){
     const forward=new THREE.Vector3(0,0,mode==='run'?4:2.3).applyQuaternion(robot.quaternion);
@@ -69,7 +74,7 @@ export function robotAction(robot,mode){
   }
   robot.userData.robotAnimator?.play(mode);
   if(mode==='wave')robot.userData.waveEnd=performance.now()+1800;
-  if(mode==='jump'){robot.userData.robotJumpActive=true;robot.userData.robotJumpUntil=performance.now()+1700;robot.userData.jumpVel=5.7;robot.userData.groundY=robot.position.y;}
+  if(mode==='jump'){robot.userData.robotJumpClip=jumpAnimationKind({moving:previouslyMoving,available:[...robot.userData.robotAnimator?.actions?.keys?.()||[]]});robot.userData.robotJumpActive=true;robot.userData.robotJumpUntil=performance.now()+1700;robot.userData.jumpVel=5.7;robot.userData.groundY=robot.position.y;}
 }
 export function tickRobots(items,dt,onMove=()=>{}){
   for(const robot of items){
@@ -99,7 +104,7 @@ export function tickRobots(items,dt,onMove=()=>{}){
     }
     if(mode==='jump'&&robot.userData.jumpVel!==undefined&&!robot.userData.physicsCharacterActive){
       robot.position.y+=robot.userData.jumpVel*dt;robot.userData.jumpVel-=12.5*dt;
-      if(robot.position.y<=(robot.userData.groundY??0)){robot.position.y=robot.userData.groundY??0;delete robot.userData.jumpVel;robot.userData.robotJumpActive=false;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;
+      if(robot.position.y<=(robot.userData.groundY??0)){robot.position.y=robot.userData.groundY??0;delete robot.userData.jumpVel;robot.userData.robotJumpActive=false;robot.userData.robotReaction={clip:'landing',duration:.52,elapsed:0};robot.userData.robotPlaying=null;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;
         const mission=robot.userData.robotMission;
         if(mission?.kind==='jump'){robot.userData.robotMission=null;
           window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,
@@ -274,10 +279,16 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     }
     // Jump owns animation until Rapier confirms landing. Movement input,
     // stair autostep and contact clips cannot abort a jump in midair.
-    if(data.robotJumpActive||data.physicsAirborne&&data.robotMode==='jump')mode='jump';
+    if(data.robotJumpActive||data.physicsAirborne&&data.robotMode==='jump'){
+      mode=data.robotJumpClip||'jump';
+      const active=data.robotAnimator?.actions?.get?.(mode);
+      if(active&&active.time>=Math.max(.01,active.getClip().duration-.035)&&data.physicsAirborne){
+        mode=data.robotAnimator?.actions?.has('fallingIdle')?'fallingIdle':mode;
+      }
+    }
     else if(data.robotReaction){
       const reaction=data.robotReaction;reaction.elapsed=(reaction.elapsed||0)+Math.max(0,dt);
-      if(reaction.elapsed<reaction.duration)mode=reaction.clip;
+      if(reaction.elapsed<reaction.duration){mode=landingClipFor(reaction.clip,[...data.robotAnimator?.actions?.keys?.()||[]]);}
       else if(reaction.next){data.robotReaction={clip:reaction.next,elapsed:0,duration:.85};mode=reaction.next;data.robotPlaying=null;}
       else data.robotReaction=null;
     }else if(data.robotFallActive)mode=data.robotFallMode||'falling';
@@ -299,19 +310,31 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     if(data.robotPlaying!==mode){
       if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){
         animator?.playOnce(mode,shot.timing);
-      }else if(data.robotReaction&&mode===data.robotReaction.clip){
+      }else if(data.robotReaction&&mode===landingClipFor(data.robotReaction.clip,[...animator?.actions?.keys?.()||[]])){
         const clipSeconds=animator?.clipDuration?.(mode)||data.robotReaction.duration;
-        animator?.playOnce(mode,{rate:Math.max(.85,Math.min(6.5,clipSeconds/Math.max(.15,data.robotReaction.duration))),trimStart:0,trimEnd:0});
+        const tail=data.robotReaction.clip==='landing'&&mode==='jump'?.68:0;
+        if(mode==='idle')animator?.play('idle');
+        else animator?.playOnce(mode,{rate:Math.max(.35,Math.min(6.5,clipSeconds*(1-tail)/Math.max(.15,data.robotReaction.duration))),trimStart:tail,trimEnd:0});
       }else animator?.play(mode);
       data.robotPlaying=mode;
     }
+    const tune=animationSpeedSettings(data.robotAnimationSpeed);
     if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){/* playOnce owns rate */}
     else if(data.robotPushState&&now-data.robotPushState.at<420&&mode===data.robotPushState.kind)animator?.setPlaybackSpeed(data.robotPushState.rate);
-    else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode))animator?.setPlaybackSpeed(footfallRate(data.robotActualSpeed,mode)*(mode==='run'&&!animator?.actions?.has?.('run')?1.45:1));
-    else animator?.setPlaybackSpeed(1);
+    else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode)){
+      const key=mode==='run'?'run':'walk';
+      const target=tune[key]*gaitCadence(data.robotActualSpeed,mode,(data.robotSpeed??1.8)*1.2);
+      data.robotGaitRate=(data.robotGaitRate??target)+(target-(data.robotGaitRate??target))*Math.min(1,Math.max(0,dt)*5);
+      animator?.setPlaybackSpeed(data.robotGaitRate);
+    }else if(data.robotJumpActive&&(mode==='jump'||mode==='jumping')){
+      // The default Jump clip lasts .87s while a normal Rapier flight is ~1.16s.
+      // Sync the authored pose to the nominal flight, then apply user tuning.
+      const flight=2*5.7/(data.physicsCharacterActive?9.81:12.5);
+      animator?.setPlaybackSpeed(Math.max(.35,Math.min(2.5,(animator?.clipDuration(mode)||.87)/flight*tune.jump)));
+    }else animator?.setPlaybackSpeed(1);
     animator?.update(dt);
     const visual=robot.children.find(c=>c.userData.robotVisual);
-    if(visual){const lean=(data.robotLateral||0)*-.075;visual.rotation.z+=(lean-visual.rotation.z)*Math.min(1,dt*5);}
+    if(visual){const lean=(data.robotLateral||0)*-.075;visual.rotation.z+=(lean-visual.rotation.z)*Math.min(1,dt*5);visual.position.y=Number(data.robotVisualStepOffset)||0;}
     if(robot.userData.robotSeated&&robot.userData.robotSitPose==='procedural'){
       const visualModel=visual?.children[0];
       if(visualModel){visualModel.position.y+=(Math.max(-.40,(visualModel.userData.sitBaseY??visualModel.position.y)-.32)-visualModel.position.y)*Math.min(1,dt*4);

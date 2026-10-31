@@ -43,7 +43,7 @@ test('physics contact uses Push animation, forces and platform support probe',()
  assert.match(physics,/body\.setTranslation\(\{x:actor\.position\.x/);
  assert.match(physics,/hasGroundSupport\(resolved,collider\)/);
  assert.match(physics,/state\.grounded=resolved\.grounded&&supported/);
- assert.match(robots,/footfallRate\(data\.robotActualSpeed/);
+ assert.match(robots,/gaitCadence\(data\.robotActualSpeed/);
  const snapshot=editor.indexOf('const previousRobotPositions=new Map');
  const motion=editor.indexOf('stepRobotMotion(',editor.indexOf('tick(dt){'));
  assert.ok(snapshot>0&&motion>snapshot,'speed snapshot must precede player movement');
