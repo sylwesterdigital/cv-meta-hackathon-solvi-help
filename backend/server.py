@@ -103,6 +103,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL, mime TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, created TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS avatar_library (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, created TEXT NOT NULL, filename TEXT NOT NULL, size INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS deleted_bundled_avatars (id TEXT PRIMARY KEY, deleted_by TEXT NOT NULL, created TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS scene_models (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, created TEXT NOT NULL, filename TEXT NOT NULL, size INTEGER NOT NULL, extension TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS ai_usage (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, model TEXT NOT NULL, operation TEXT NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, images INTEGER NOT NULL DEFAULT 0, frames INTEGER NOT NULL DEFAULT 0, estimated_usd REAL NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}', created TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS ai_usage_user_created ON ai_usage(user_id,created);
@@ -190,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.90',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.91',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -284,14 +285,18 @@ def list_avatars():
     if not user:return json_error(msg,status)
     with db() as con:
         rows=con.execute('SELECT a.id,a.title,a.user_id,a.filename,u.name AS owner_name FROM avatar_library a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.created DESC LIMIT 100').fetchall()
-    builtins={}
+    builtins=[]
+    with db() as con:
+        removed={row['id'] for row in con.execute('SELECT id FROM deleted_bundled_avatars')}
     try:
         for entry in json.loads((ROOT/'assets/avatars/catalog.json').read_text()).get('avatars',[]):
             url=str(entry.get('url',''))
+            if entry.get('id') in removed:continue
             if re.fullmatch(r'\./assets/(?:avatars/[a-zA-Z0-9_-]+|solvi-character)\.glb',url):
-                builtins[entry['id']]=glb_action_count(ROOT/url.removeprefix('./'))
+                path=(ROOT/url.removeprefix('./')).resolve()
+                if path.is_file():builtins.append({**entry,'bundled':True,'canManage':admin_authorized(),'actions':glb_action_count(path)})
     except (OSError,ValueError,KeyError,TypeError):pass
-    return jsonify(avatars=[{'id':r['id'],'label':r['title'],'url':'/api/avatars/'+r['id']+'.glb','ownerName':r['owner_name'] or 'Member','actions':glb_action_count(r['filename']),'canManage':r['user_id']==user['id'] or admin_authorized()} for r in rows],bundledActions=builtins)
+    return jsonify(avatars=[{'id':r['id'],'label':r['title'],'url':'/api/avatars/'+r['id']+'.glb','ownerName':r['owner_name'] or 'Member','actions':glb_action_count(r['filename']),'canManage':r['user_id']==user['id'] or admin_authorized()} for r in rows],bundled=builtins)
 
 @app.post('/api/avatars')
 def upload_avatar():
@@ -318,16 +323,14 @@ def serve_avatar(identifier):
     if not path.is_file() or path.parent.resolve()!=(STATE/'avatar-library').resolve():return json_error('Avatar file unavailable',404)
     return send_file(path,mimetype='model/gltf-binary')
 
-# Bulk library operations do not change any built-in files. The client may hide
-# built-in avatars in per-user preferences, but server deletion is only for uploads.
+# Server-side library deletion: uploaded items require ownership; bundled avatars
+# belong to the shared deployment and require an unlocked administrator session.
 def library_rows(con,kind,ids):
     table='avatar_library' if kind=='avatars' else 'scene_models'
     if not ids:return []
     return con.execute(f'SELECT * FROM {table} WHERE id IN ({",".join("?" for _ in ids)})',ids).fetchall()
 
 def library_references(con,kind,ids):
-    # Scan every realm, including nested media speaker models, not just top-level
-    # scene objects or the currently selected user's room.
     refs=['/api/avatars/'+identifier+'.glb' if kind=='avatars' else '/api/scene/models/'+identifier+'.' for identifier in ids]
     for table in ('room_scenes','scene'):
         for row in con.execute(f'SELECT payload FROM {table}'):
@@ -335,30 +338,78 @@ def library_references(con,kind,ids):
             if any(ref in payload for ref in refs):return True
     return False
 
+def bundled_avatar_references(con,selected):
+    fragments=['assets/avatars/'+str(name)+'.glb' for name in selected]
+    for table in ('room_scenes','scene'):
+        for row in con.execute(f'SELECT payload FROM {table}'):
+            if any(fragment in (row['payload'] or '') for fragment in fragments):return True
+    # An avatar can also be assigned as a user profile picture.
+    for row in con.execute('SELECT avatar FROM users'):
+        if any(fragment in (row['avatar'] or '') for fragment in fragments):return True
+    return False
+
 @app.post('/api/library/delete')
 def delete_library_selection():
     user,msg,status=actor()
     if not user:return json_error(msg,status)
     body=request.get_json(silent=True) or {}
-    kind=body.get('kind');ids=body.get('ids')
-    if kind not in ('avatars','models') or not isinstance(ids,list) or not 0<len(ids)<=40 or len(set(ids))!=len(ids) or any(not isinstance(i,str) or not re.fullmatch(r'[0-9a-f]{32}',i) for i in ids):return json_error('Invalid library selection')
+    kind=body.get('kind');ids=body.get('ids',[]);bundled=body.get('bundled',[])
+    if (kind not in ('avatars','models') or not isinstance(ids,list) or not isinstance(bundled,list)
+        or not 0<len(ids)+len(bundled)<=40 or len(set(ids))!=len(ids) or len(set(bundled))!=len(bundled)
+        or any(not isinstance(i,str) or not re.fullmatch(r'[0-9a-f]{32}',i) for i in ids)
+        or any(not isinstance(i,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',i) for i in bundled)):
+        return json_error('Invalid library selection')
+    if kind!='avatars' and bundled:return json_error('Only avatars support bundled deletion')
     if body.get('confirm') is not True:return json_error('Deletion requires explicit confirmation')
-    with db() as con:
-        rows=library_rows(con,kind,ids)
-        if len(rows)!=len(ids):return json_error('One or more uploads no longer exist',404)
-        if any(row['user_id']!=user['id'] for row in rows) and not admin_authorized():return json_error('Only the uploader or administrator can delete a file',403)
-        if library_references(con,kind,ids):return json_error('A selected file is still used in a realm. Replace those references first.',409)
-        dirname='avatar-library' if kind=='avatars' else 'scene-models'
-        base=(STATE/dirname).resolve()
+    if bundled and not admin_authorized():return json_error('Administrator unlock required to permanently delete bundled avatars',403)
+    if 'solvi-character' in bundled:return json_error('Default SOLVI avatar is required by fallback robots and cannot be deleted',409)
+    try:
+        with db() as con:
+            rows=library_rows(con,kind,ids)
+            if len(rows)!=len(ids):return json_error('One or more uploads no longer exist',404)
+            if any(row['user_id']!=user['id'] for row in rows) and not admin_authorized():return json_error('Only the uploader or administrator can delete a file',403)
+            if library_references(con,kind,ids):return json_error('A selected file is still used in a realm. Replace its references first.',409)
+            dirname='avatar-library' if kind=='avatars' else 'scene-models'
+            base=(STATE/dirname).resolve()
+            for row in rows:
+                path=Path(row['filename'])
+                if path.parent.resolve()!=base:return json_error('Unsafe file location',409)
+            catalog_path=ROOT/'assets/avatars/catalog.json'
+            targets=[]
+            if bundled:
+                catalog=json.loads(catalog_path.read_text())
+                by_id={str(a.get('id')):a for a in catalog.get('avatars',[])}
+                deleted={r['id'] for r in con.execute('SELECT id FROM deleted_bundled_avatars')}
+                if any(i not in by_id or i in deleted for i in bundled):return json_error('A bundled avatar is already removed or unknown',404)
+                if bundled_avatar_references(con,bundled):return json_error('A bundled avatar is still used in a realm or profile. Replace its references first.',409)
+                folder=(ROOT/'assets/avatars').resolve()
+                for ident in bundled:
+                    entry=by_id[ident];url=str(entry.get('url',''))
+                    if not re.fullmatch(r'\./assets/avatars/[A-Za-z0-9_-]+\.glb',url):return json_error('Protected or invalid bundled avatar path',409)
+                    path=(ROOT/url.removeprefix('./')).resolve()
+                    if path.parent!=folder:return json_error('Unsafe bundled avatar location',409)
+                    if not path.is_file():return json_error('Bundled file is unavailable for deletion',409)
+                    targets.append(path)
+                if not os.access(catalog_path,os.W_OK) or not os.access(folder,os.W_OK):return json_error('Static avatar directory is not writable; run the updated Ubuntu installer',503)
+                # Write the new public catalog first. Tombstones below survive
+                # a future deployment that re-copies the original bundled files.
+                catalog['avatars']=[a for a in catalog.get('avatars',[]) if a.get('id') not in bundled]
+                temp=catalog_path.with_name('.catalog-delete-'+secrets.token_hex(8)+'.json')
+                try:
+                    temp.write_text(json.dumps(catalog,indent=2)+'\n')
+                    os.replace(temp,catalog_path)
+                finally:temp.unlink(missing_ok=True)
+                for name in bundled:con.execute('INSERT INTO deleted_bundled_avatars VALUES(?,?,?)',(name,user['id'],now()))
+            table='avatar_library' if kind=='avatars' else 'scene_models'
+            if ids:con.executemany(f'DELETE FROM {table} WHERE id=?',[(ident,) for ident in ids])
+        for path in targets:path.unlink(missing_ok=True)
         for row in rows:
-            path=Path(row['filename'])
-            if path.parent.resolve()!=base:return json_error('Unsafe file location',409)
-        table='avatar_library' if kind=='avatars' else 'scene_models'
-        con.executemany(f'DELETE FROM {table} WHERE id=?',[(id,) for id in ids])
-    for row in rows:
-        try:Path(row['filename']).unlink(missing_ok=True)
-        except OSError:audit_event('library-delete-file-error',kind=kind)
-    return jsonify(ok=True,deleted=ids)
+            try:Path(row['filename']).unlink(missing_ok=True)
+            except OSError:audit_event('library-delete-file-error',kind=kind)
+    except (OSError,ValueError,sqlite3.Error) as exc:
+        audit_event('library-delete-failed',kind=kind)
+        return json_error('Library deletion failed on the server: '+str(exc),503)
+    return jsonify(ok=True,deleted=ids,bundledDeleted=bundled)
 
 @app.post('/api/library/export')
 def export_library_selection():
@@ -373,6 +424,8 @@ def export_library_selection():
     catalog=json.loads((ROOT/'assets/avatars/catalog.json').read_text()) if bundled else {'avatars':[]}
     known={str(a['id']):a for a in catalog.get('avatars',[])}
     if any(not isinstance(name,str) or name not in known for name in bundled):return json_error('Unknown bundled avatar')
+    with db() as con:
+        if any(name in {r['id'] for r in con.execute('SELECT id FROM deleted_bundled_avatars')} for name in bundled):return json_error('Bundled avatar was permanently deleted',404)
     entries=[];inventory=[]
     base=(STATE/('avatar-library' if kind=='avatars' else 'scene-models')).resolve()
     for row in rows:

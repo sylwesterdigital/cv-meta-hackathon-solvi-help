@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.90",
+  "currentVersion": "0.2.91",
   "releases": [
+    {
+      "version": "0.2.91",
+      "publishedAt": "2026-10-31T01:29:37Z",
+      "changes": [
+        "Permanently delete selected bundled avatars from the Ubuntu server and public catalog with explicit administrator authorization, not browser-only hiding.",
+        "Protect avatars still used in any realm or profile, and preserve the default SOLVI fallback avatar; owners can still remove unused uploads.",
+        "Persist bundled-avatar deletion tombstones and reapply them after future static-file deployments so removed models do not reappear.",
+        "Repair Asset library overlapping cards with a fixed responsive portrait grid and pages of 12 items, keeping selection and export operations.",
+        "Add backend integration and frontend regression tests for destructive deletion permissions, redeployment persistence, and gallery layout."
+      ]
+    },
     {
       "version": "0.2.90",
       "publishedAt": "2026-10-31T01:17:17Z",
@@ -327,20 +338,6 @@
       "changes": [
         "Fix backend integration regression: update mocked robot speech synthesizer to accept the gender argument introduced in v0.2.58, and test profile fallback, explicit voice gender, and preview overrides.",
         "Carry forward v0.2.58 physics, chat alignment, voice management, mission ownership and bounded robot navigation enhancements without changing their behavior."
-      ]
-    },
-    {
-      "version": "0.2.57",
-      "publishedAt": "2026-10-29T14:19:00Z",
-      "changes": [
-        "Configure newly created robots with walk 1.8x, strafe 2.5x, turn 4x; allow all robot speed controls from 0 to 10x in the UI and server validators, preserving explicitly saved settings.",
-        "Move linked XYZ-scale checkbox immediately beside the Scale label; collapse the voice editor by default; tightly align per-robot Debug and Brains controls, removing unneeded spacing.",
-        "Display a minimal head-anchored animated speech ring only while a robot is actually speaking via spatial or device audio, with reduced-motion support and no added WebGL context.",
-        "Preserve explicit requested walking distances up to 600m instead of silently truncating to 6m. Plan and verify obstacle-aware long routes in short A* sections and report blocked routes without false success.",
-        "Support repeatable walk-and-return patrol commands and bounded random safe roaming with a stoppable sequence, keeping completion tied to the last actual leg and movement permissions intact.",
-        "Reorient chat bubbles so remote users and robots have avatar, name and time on the right, with selectable user favorite chat colors saved to SQLite profiles and included in room messages.",
-        "Show webcam video inside the clickable circular profile avatar during recording, then the converted 15-second GIF in the same roundel after saving, without an overlapping icon.",
-        "Expand regression coverage with long navigation, obstacle rejection, three patrol cycles, speed bounds, voice visualization, profile color persistence, and compact responsive layout."
       ]
     }
   ]

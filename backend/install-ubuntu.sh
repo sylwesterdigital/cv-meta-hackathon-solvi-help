@@ -9,7 +9,7 @@ SERVICE=/etc/systemd/system/solvi-help.service
 TARGET=/opt/solvi-help
 STATE=/var/lib/solvi-help
 PORT=18765
-EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.90}
+EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.91}
 export SOLVI_EXPECTED_VERSION="$EXPECTED_VERSION"
 BACKUP=$(mktemp -d /root/solvi-backend-backup-XXXXXXXX)
 CHANGED=0
@@ -21,7 +21,7 @@ RESTORE_SERVER=0
 RESTORE_REQUIREMENTS=0
 RESTORE_PY_MODULES=0
 # Keep these local Python modules together with server.py in /opt/solvi-help.
-BACKEND_PY_MODULES=(realm_archives.py)
+BACKEND_PY_MODULES=(realm_archives.py prune_removed_avatars.py)
 DEPLOY_PHASE='initial checks'
 # A failed SSH deployment previously reported only `Command failed (1): ssh -o`.
 # Report the failure phase without printing credentials from the environment.
@@ -132,6 +132,14 @@ Path('/etc/solvi-help-admin-initial.txt').write_text(secret+'\n')
 Path('/etc/solvi-help-admin-initial.txt').chmod(0o600)
 PY
 fi
+# Only the avatar-library directory may be edited by the backend, and only
+# after the administrator authorises a bundled removal. Other web assets remain
+# read-only to the API service. Restore tombstones after every frontend rsync.
+DEPLOY_PHASE='prune permanently deleted avatars'
+"$TARGET/.venv/bin/python" "$TARGET/prune_removed_avatars.py" "$STATE/solvi.sqlite3" /var/www/solvi.help
+chown www-data:www-data /var/www/solvi.help/assets/avatars /var/www/solvi.help/assets/avatars/catalog.json
+chmod 755 /var/www/solvi.help/assets/avatars
+chmod 644 /var/www/solvi.help/assets/avatars/catalog.json
 DEPLOY_PHASE="write Nginx configuration"
 install -m 644 "$SRC/solvi-help.service.example" "$SERVICE"
 cat > "$SNIPPET" <<'NGINX'

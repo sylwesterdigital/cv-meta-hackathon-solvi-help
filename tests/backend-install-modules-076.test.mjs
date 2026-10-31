@@ -6,7 +6,7 @@ const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 
 test('Ubuntu install deploys the archive helper next to server, backs it up and preflights imports',()=>{
  const script=read('backend/install-ubuntu.sh');
- assert.match(script,/BACKEND_PY_MODULES=\(realm_archives\.py\)/);
+ assert.match(script,/BACKEND_PY_MODULES=\(realm_archives\.py\s+prune_removed_avatars\.py\)/);
  assert.match(script,/install -m 644 "\$SRC\/\$module" "\$TARGET\/\$module"/);
  assert.match(script,/\$BACKUP\/python-modules\/\$module/);
  assert.match(script,/Python backend import preflight/);

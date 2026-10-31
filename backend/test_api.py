@@ -73,7 +73,7 @@ av_id=av_response.get_json()['avatar']['id']
 assert av_response.get_json()['avatar']['actions']==2
 av_list=c.get('/api/avatars',headers=headers).get_json()
 assert next(a for a in av_list['avatars'] if a['id']==av_id)['canManage'] is True
-assert isinstance(av_list['bundledActions'],dict)
+assert isinstance(av_list['bundled'],list)
 model_response=c.post('/api/scene/models',headers=headers,data={'model':(_io.BytesIO(_test_glb),'manage-model.glb')},content_type='multipart/form-data')
 assert model_response.status_code==201,(model_response.status_code,model_response.data)
 model_id=model_response.get_json()['model']['id']
@@ -95,6 +95,36 @@ for kind,ident in [('avatars',av_id),('models',model_id)]:
     assert removed.status_code==200,(kind,removed.status_code,removed.data)
     assert ident in removed.get_json()['deleted']
 assert c.post('/api/library/export',headers=headers,json={'kind':'avatars','ids':[],'bundled':['fake-builtin']}).status_code==400
+# Permanent bundled deletion is administrator-only, removes the server file,
+# updates the catalog, and survives the next static asset deployment.
+from unittest.mock import patch as _patch
+from tempfile import TemporaryDirectory as _Temp
+from server import sha as _sha
+with _Temp() as scratch:
+    static=_Path(scratch)
+    folder=static/'assets/avatars';folder.mkdir(parents=True)
+    sample='test-bundled-delete'
+    file=folder/(sample+'.glb');file.write_bytes(_test_glb)
+    catalog=folder/'catalog.json'
+    catalog.write_text(json.dumps({'version':1,'avatars':[{'id':sample,'label':'Removable model','url':'./assets/avatars/'+sample+'.glb'}]}))
+    with _patch('server.ROOT',static):
+        bad=c.post('/api/library/delete',headers=headers,json={'kind':'avatars','ids':[],'bundled':[sample],'confirm':True})
+        assert bad.status_code==403,(bad.status_code,bad.data)
+        secret='temporary-admin-library-delete'
+        with db() as con:con.execute('INSERT INTO admin_sessions(token_hash,expires) VALUES(?,?)',(_sha(secret),float('4102444800')))
+        adm={**headers,'X-Solvi-Admin':secret}
+        found=c.get('/api/avatars',headers=adm).get_json()['bundled']
+        assert len(found)==1 and found[0]['canManage'] is True
+        removed=c.post('/api/library/delete',headers=adm,json={'kind':'avatars','ids':[],'bundled':[sample],'confirm':True})
+        assert removed.status_code==200,(removed.status_code,removed.data)
+        assert not file.exists() and json.loads(catalog.read_text())['avatars']==[]
+        file.write_bytes(_test_glb)
+        catalog.write_text(json.dumps({'version':1,'avatars':[{'id':sample,'url':'./assets/avatars/'+sample+'.glb'}]}))
+        from prune_removed_avatars import prune
+        assert prune(str(__import__('server').DB),str(static))==1
+        assert not file.exists() and json.loads(catalog.read_text())['avatars']==[]
+        assert c.get('/api/avatars',headers=adm).get_json()['bundled']==[]
+print('PASS: permanent bundled-avatar deletion, admin permission, catalog and redeploy tombstones')
 print('PASS: library bulk management, action counts, protected deletion and ZIP export')
 assert c.get('/api/me',headers=headers).status_code==200
 # v0.2.57: favorite chat color persists, is validated, and flows into messages.

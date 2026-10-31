@@ -19,6 +19,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadOnlyPaths=/var/www/solvi.help
+ReadWritePaths=/var/www/solvi.help/assets/avatars
 ReadWritePaths=/var/lib/solvi-help
 [Install]
 WantedBy=multi-user.target

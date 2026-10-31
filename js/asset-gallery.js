@@ -8,10 +8,13 @@ const $=id=>document.getElementById(id);
 export function setupAssetGallery(editor){
  const backdrop=$('assetGalleryBackdrop'),grid=$('assetGalleryGrid'),status=$('assetGalleryStatus');
  const edit=$('assetGalleryEdit'),bulk=$('assetGalleryBulk'),selectedCount=$('assetGallerySelected');
- let collection=[],replacing=null,renderSerial=0,observer=null,previewQueue=Promise.resolve(),editing=false;
+ let collection=[],replacing=null,renderSerial=0,observer=null,previewQueue=Promise.resolve(),editing=false,page=0;
+ const PAGE_SIZE=12;
  const selected=new Set();
  const filtered=()=>visibleAssets(collection,$('assetGallerySearch').value);
  const selection=()=>filtered().filter(a=>selected.has(a.id));
+ const pageItems=()=>filtered().slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
+ const updatePage=()=>{const total=filtered().length;page=Math.min(page,Math.max(0,Math.ceil(total/PAGE_SIZE)-1));const label=$('assetGalleryPageLabel');if(label)label.textContent=total?`Page ${page+1} / ${Math.ceil(total/PAGE_SIZE)} · ${total} assets`:'No assets';$('assetGalleryPrev').disabled=page===0;$('assetGalleryNext').disabled=(page+1)*PAGE_SIZE>=total;};
  const updateActions=()=>{selectedCount.textContent=selection().length+' selected';bulk.hidden=!editing;edit.textContent=editing?'Done':'Edit';edit.setAttribute('aria-pressed',String(editing));$('assetGalleryDelete').disabled=!selection().length;$('assetGalleryExport').disabled=!selection().length;};
  function close(){backdrop.hidden=true;renderSerial++;observer?.disconnect();observer=null;replacing=null;editing=false;selected.clear();updateActions();}
  $('closeAssetGallery').onclick=close;
@@ -36,9 +39,9 @@ export function setupAssetGallery(editor){
   }catch(error){if(serial===renderSerial&&canvas.isConnected){canvas.parentElement.textContent='Preview unavailable';canvas.parentElement.title=String(error.message||error);}}
  }
  function render(){
-  const serial=++renderSerial;observer?.disconnect();observer=null;grid.replaceChildren();
+  updatePage();const serial=++renderSerial;observer?.disconnect();observer=null;grid.replaceChildren();
   if(typeof IntersectionObserver==='function')observer=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){observer?.unobserve(entry.target);const asset=entry.target._asset,canvas=entry.target.querySelector('canvas');if(canvas&&asset)previewQueue=previewQueue.catch(()=>{}).then(()=>serial===renderSerial?preview(canvas,asset,serial):undefined);}}, {root:grid,rootMargin:'100px'});
-  const models=filtered();
+  const models=pageItems();
   if(!models.length){const empty=document.createElement('p');empty.textContent=collection.length?'No matching assets.':'No 3D assets uploaded yet.';grid.append(empty);updateActions();return;}
   for(const asset of models){
    const item=document.createElement('div');item.className='library-item';item.setAttribute('role','listitem');item._asset=asset;
@@ -68,16 +71,18 @@ export function setupAssetGallery(editor){
  }
  async function refresh(){
   if(!window.solviAPI?.online){status.textContent='Connect to the shared server to load uploaded assets.';collection=[];render();return;}
-  try{status.textContent='Loading models…';const response=await window.solviAPI.req('/api/scene/models');collection=visibleAssets(response.models||[]);render();status.textContent=`${collection.length} available models · GLB / FBX · Select to ${replacing?'replace the object':'add to scene'}.`;
+  try{status.textContent='Loading models…';const response=await window.solviAPI.req('/api/scene/models');collection=visibleAssets(response.models||[]);page=0;render();status.textContent=`${collection.length} available models · GLB / FBX · Select to ${replacing?'replace the object':'add to scene'}.`;
   }catch(error){collection=[];render();status.textContent='Cannot load assets: '+error.message;}
  }
  async function open({replace=null}={}){
   replacing=['model','media'].includes(replace?.userData?.editorKind)&&editor.canEdit(replace)?replace:null;
   $('assetGalleryTitle').textContent=replacing?'Select visual model · '+replacing.name:'3D Assets';
-  $('assetGallerySearch').value='';backdrop.hidden=false;editing=false;selected.clear();updateActions();await refresh();
+  $('assetGallerySearch').value='';page=0;backdrop.hidden=false;editing=false;selected.clear();updateActions();await refresh();
  }
  edit.onclick=()=>{editing=!editing;selected.clear();render();};
- $('assetGallerySelectAll').onclick=()=>{for(const asset of filtered().slice(0,40))selected.add(asset.id);render();};
+ $('assetGallerySelectAll').onclick=()=>{for(const asset of pageItems())selected.add(asset.id);render();};
+ $('assetGalleryPrev').onclick=()=>{if(page>0){page--;render();}};
+ $('assetGalleryNext').onclick=()=>{if((page+1)*PAGE_SIZE<filtered().length){page++;render();}};
  $('assetGalleryExport').onclick=async()=>{try{status.textContent='Preparing selected assets…';await downloadLibrarySelection('models',selection());status.textContent='Asset ZIP downloaded.';}catch(error){status.textContent='Export failed: '+error.message;}};
  $('assetGalleryDelete').onclick=async()=>{
   const chosen=selection();if(!chosen.length||!window.confirm(selectionPrompt(chosen,'models')))return;
@@ -101,7 +106,7 @@ export function setupAssetGallery(editor){
   }catch(error){status.textContent='Upload failed: '+error.message;editor.toast?.(status.textContent);return false;}
  }
  $('assetsButton').onclick=()=>open();$('refreshAssetGallery').onclick=refresh;
- $('assetGallerySearch').addEventListener('input',()=>{selected.clear();render();});
+ $('assetGallerySearch').addEventListener('input',()=>{page=0;selected.clear();render();});
  $('assetGalleryUpload').onchange=async e=>{const file=e.target.files?.[0];e.target.value='';if(file)await upload(file);};
  return {open,refresh,upload};
 }

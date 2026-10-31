@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {filterLibrary,hiddenAvatarStorageKey,selectionPrompt,libraryIdentifier} from '../js/library-management.js';
+import {filterLibrary,selectionPrompt,libraryIdentifier} from '../js/library-management.js';
 import {continuousGaitMode} from '../js/animation-tuning.js';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 test('avatar and asset galleries offer searchable edit selections and export/delete controls',()=>{
  const html=read('index.html'),avatars=read('js/avatar-gallery.js'),assets=read('js/asset-gallery.js'),css=read('styles.css');
- assert.match(html,/id="avatarGalleryRestore"/);
+ assert.doesNotMatch(html,/id="avatarGalleryRestore"/);
  for(const prefix of ['avatarGallery','assetGallery'])for(const suffix of ['Edit','Export','Delete','Bulk','SelectAll','Search'])assert.match(html,new RegExp('id="'+prefix+suffix+'"'));
  assert.match(avatars,/actions\} actions|actions'|actions\+|avatar\.actions/);
  assert.match(avatars,/selected\.add\(avatar\.url\)/);
@@ -18,10 +18,10 @@ test('gallery filtering excludes hidden bundled avatars and searches labels and 
  const entries=[{id:'a',url:'./a',label:'Cyber cat',ownerName:'Tata'},{id:'b',url:'./b',label:'Robot Woman',ownerName:'Solvi'}];
  assert.deepEqual(filterLibrary(entries,'tata').map(x=>x.id),['a']);
  assert.deepEqual(filterLibrary(entries,'robot',['./b']),[]);
- assert.notEqual(hiddenAvatarStorageKey('person-A'),hiddenAvatarStorageKey('person-B'));
+
  assert.equal(libraryIdentifier({id:'x'}),null);
  assert.equal(libraryIdentifier({id:'a'.repeat(32)}),'a'.repeat(32));
- assert.match(selectionPrompt([entries[0]],'avatars'),/permanently deleted/);
+ assert.match(selectionPrompt([entries[0]],'avatars'),/Permanently delete/);
 });
 test('bulk exports are zip attachments and server enforces ownership and scene references',()=>{
  const backend=read('backend/server.py');

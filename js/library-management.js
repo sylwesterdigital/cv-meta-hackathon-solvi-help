@@ -1,4 +1,4 @@
-// Deliberately distinguish hiding bundled avatars from deleting user uploads.
+// Server-backed library export and permanent deletion; no local-only hiding.
 export const libraryIdentifier = item=>typeof item?.id==='string'&&/^[0-9a-f]{32}$/.test(item.id)?item.id:null;
 export function filterLibrary(items,query='',hidden=[]){
  const q=String(query).trim().toLocaleLowerCase();const skipped=new Set(hidden);
@@ -17,10 +17,15 @@ export async function downloadLibrarySelection(kind,items){
  try{const a=document.createElement('a');a.href=url;a.download='solvi-'+kind+'-'+new Date().toISOString().slice(0,10)+'.zip';document.body.append(a);a.click();a.remove();}finally{setTimeout(()=>URL.revokeObjectURL(url),60000);}
 }
 export async function deleteLibrarySelection(kind,items){
- const ids=items.map(libraryIdentifier).filter(Boolean);
- if(!ids.length)return {deleted:[]};
- return window.solviAPI.req('/api/library/delete',{method:'POST',body:JSON.stringify({kind,ids,confirm:true})});
+ const ids=items.filter(a=>!a.bundled).map(libraryIdentifier).filter(Boolean);
+ const bundled=kind==='avatars'?items.filter(a=>a.bundled).map(a=>a.id):[];
+ if(!ids.length&&!bundled.length)return {deleted:[],bundledDeleted:[]};
+ const admin=window.solviLibraryAdminToken?.();
+ if(bundled.length&&!admin)throw Error('Unlock the Admin dashboard before deleting server-bundled avatars.');
+ const headers=admin?{'X-Solvi-Admin':admin}:{};
+ return window.solviAPI.req('/api/library/delete',{method:'POST',headers,body:JSON.stringify({kind,ids,bundled,confirm:true})});
 }
 export function selectionPrompt(items,kind){
- const count=items.length;return `Delete ${count} selected ${kind==='avatars'?'avatar':'asset'}${count===1?'':'s'}?\n\nUploaded files will be permanently deleted if you own them and they are unused in every realm. Bundled avatars will only be hidden from your personal gallery.\n\nThis cannot be undone for uploaded files.`;
+ const count=items.length;
+ return `Permanently delete ${count} selected ${kind==='avatars'?'avatar':'asset'}${count===1?'':'s'} FROM THE SERVER?\n\nFiles and catalog entries will be removed. Avatars still used in a realm or profile cannot be deleted. Bundled avatars require an unlocked Admin dashboard.\n\nThis cannot be undone. Export a backup first if needed.`;
 }
