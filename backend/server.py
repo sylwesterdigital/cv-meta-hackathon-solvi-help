@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.99',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.100',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -745,7 +745,7 @@ def put_room_settings():
 # Separate table preserves the existing policy response contract and legacy databases.
 ENV_DEFAULTS = {
     'fogEnabled': True, 'fogColor':'#101b2c', 'fogNear':12, 'fogFar':130,
-    'gridEnabled': True, 'gridColor':'#455a6a', 'floorSize':70, 'floorColor':'#344758',
+    'gridEnabled': True, 'gridColor':'#455a6a', 'floorSize':70, 'floorColor':'#344758', 'floorTexture':'none',
     'backgroundColor':'#101b2c', 'skyType':'solid', 'skyTop':'#10315e',
     'skyHorizon':'#7ea2bd', 'skySpeed':0.4, 'skyIntensity':0.75,
     'starDensity':0.65, 'viewDistance':1500
@@ -755,6 +755,7 @@ ENV_RANGE = {'fogNear':(0,100000),'fogFar':(1,150000),'floorSize':(40,20000),
              'viewDistance':(200,100000)}
 ENV_COLOR_KEYS = ('fogColor','gridColor','floorColor','backgroundColor','skyTop','skyHorizon')
 ENV_SKY_TYPES = ('solid','gradient','sunset','rainbow','stars','nebula')
+ENV_FLOOR_TYPES = ('none','concrete','soil','tarmac','sand','tiles','gradient-tiles','random-tiles')
 
 def normalize_environment(value):
     if not isinstance(value,dict):raise ValueError('Environment must be an object')
@@ -771,6 +772,9 @@ def normalize_environment(value):
     if 'skyType' in value:
         if value['skyType'] not in ENV_SKY_TYPES:raise ValueError('Invalid sky effect')
         cfg['skyType']=value['skyType']
+    if 'floorTexture' in value:
+        if value['floorTexture'] not in ENV_FLOOR_TYPES:raise ValueError('Invalid floor texture')
+        cfg['floorTexture']=value['floorTexture']
     for key,(low,high) in ENV_RANGE.items():
         if key in value:
             v=value[key]
@@ -2945,14 +2949,14 @@ def valid_office_stairs(stairs):
     return stairs.get('stepMode') in ('fixed','count') and isinstance(stairs.get('floating'),bool) and isinstance(stairs.get('color'),str) and re.fullmatch(r'#[0-9a-fA-F]{6}',stairs['color']) is not None
 
 def valid_curve_geometry(curve):
-    if not isinstance(curve,dict) or len(curve)>8:return False
+    if not isinstance(curve,dict) or len(curve)>9:return False
     points=curve.get('points')
     if not isinstance(points,list) or not 2<=len(points)<=120:return False
     if any(not isinstance(p,list) or len(p)!=3 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or abs(v)>500 for v in p) for p in points):return False
     for key,low,high in (('offset',-3,3),('extrude',.01,5),('bevel',0,1),('bevelResolution',1,12),('resolution',8,250)):
         val=curve.get(key)
         if not isinstance(val,(int,float)) or isinstance(val,bool) or not math.isfinite(val) or not low<=val<=high:return False
-    return True
+    return 'capEnds' not in curve or isinstance(curve['capEnds'],bool)
 
 def valid_cube_openings(openings):
     if not isinstance(openings,list) or len(openings)>8:return False

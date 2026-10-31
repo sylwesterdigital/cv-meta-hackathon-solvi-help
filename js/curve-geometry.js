@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-export const CURVE_DEFAULT={points:[[-.8,0,-.6],[-.3,.55,0],[.4,.15,.3],[.8,.7,.1]],offset:0,extrude:.1,bevel:.025,bevelResolution:4,resolution:48};
+export const CURVE_DEFAULT={points:[[-.8,0,-.6],[-.3,.55,0],[.4,.15,.3],[.8,.7,.1]],offset:0,extrude:.1,bevel:.025,bevelResolution:4,resolution:48,capEnds:true};
 const bound=(v,lo,hi,def)=>Number.isFinite(Number(v))?Math.min(hi,Math.max(lo,Number(v))):def;
 export function cleanCurve(value={}){
  const points=(Array.isArray(value.points)?value.points:CURVE_DEFAULT.points).filter(p=>Array.isArray(p)&&p.length===3&&p.every(v=>Number.isFinite(v)&&Math.abs(v)<=500)).slice(0,120);
- return {points:points.length>=2?points.map(p=>p.map(Number)):CURVE_DEFAULT.points.map(p=>[...p]),offset:bound(value.offset,-3,3,0),extrude:bound(value.extrude,.01,5,.1),bevel:bound(value.bevel,0,1,.025),bevelResolution:Math.round(bound(value.bevelResolution,1,12,4)),resolution:Math.round(bound(value.resolution,8,250,48))};
+ return {points:points.length>=2?points.map(p=>p.map(Number)):CURVE_DEFAULT.points.map(p=>[...p]),offset:bound(value.offset,-3,3,0),extrude:bound(value.extrude,.01,5,.1),bevel:bound(value.bevel,0,1,.025),bevelResolution:Math.round(bound(value.bevelResolution,1,12,4)),resolution:Math.round(bound(value.resolution,8,250,48)),capEnds:value.capEnds!==false};
 }
 // Sweep a rounded-square bevel profile along a 3D Catmull-Rom curve.
 export function buildCurveGeometry(input){
@@ -18,8 +18,8 @@ export function buildCurveGeometry(input){
   for(let j=0;j<width;j++){const [a,b]=profile[j];const v=center.clone().addScaledVector(frame.normals[i],a).addScaledVector(frame.binormals[i],b);vertices.push(...v.toArray());uv.push(i/count,j/width);}
  }
  for(let i=0;i<count;i++)for(let j=0;j<width;j++){const a=i*width+j,b=i*width+(j+1)%width,c=(i+1)*width+j,d=(i+1)*width+(j+1)%width;indices.push(a,c,b,b,c,d);}
- const first=vertices.length/3,begin=curve.getPointAt(0).addScaledVector(frame.normals[0],p.offset);vertices.push(...begin.toArray());uv.push(0,.5);
+ if(p.capEnds){const first=vertices.length/3,begin=curve.getPointAt(0).addScaledVector(frame.normals[0],p.offset);vertices.push(...begin.toArray());uv.push(0,.5);
  const last=vertices.length/3,end=curve.getPointAt(1).addScaledVector(frame.normals[count],p.offset);vertices.push(...end.toArray());uv.push(1,.5);
- for(let j=0;j<width;j++){indices.push(first,(j+1)%width,j);indices.push(last,count*width+j,count*width+(j+1)%width);}
+ for(let j=0;j<width;j++){indices.push(first,(j+1)%width,j);indices.push(last,count*width+j,count*width+(j+1)%width);}}
  const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geom.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geom.setIndex(indices);geom.computeVertexNormals();return geom;
 }

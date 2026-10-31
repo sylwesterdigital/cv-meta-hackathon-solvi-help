@@ -31,6 +31,9 @@ print('PASS: combat validator separate from Flask route and scene-object POST co
 from server import valid_curve_geometry, valid_cube_openings, valid_surface_mount
 _curve={'points':[[0,0,0],[1,0,2]],'offset':0,'extrude':.15,'bevel':.02,'bevelResolution':4,'resolution':30}
 assert valid_curve_geometry(_curve)
+assert valid_curve_geometry({**_curve,'capEnds':False})
+assert valid_curve_geometry({**_curve,'capEnds':True})
+assert not valid_curve_geometry({**_curve,'capEnds':'false'})
 assert not valid_curve_geometry({**_curve,'points':[[0,0,0],[float('inf'),0,0]]})
 assert valid_cube_openings([{'axis':'z','u':0,'v':0,'width':.4,'height':.6}])
 assert not valid_cube_openings([{'axis':'z','u':0,'v':0,'width':float('nan'),'height':.6}])
@@ -353,10 +356,13 @@ assert r.status_code==200,(r.status_code,r.data)
 saved=c.get('/api/room/environment?room=lab',headers=headers).get_json()['environment']
 assert saved['floorSize']==2400 and saved['skyType']=='nebula' and saved['fogEnabled'] is False
 assert saved['skySpeed']==1.2 and saved['viewDistance']==20000
+r=c.put('/api/room/environment',headers=headers,json={'room':'lab','environment':{**appearance,'floorTexture':'gradient-tiles'}})
+assert r.status_code==200 and r.get_json()['environment']['floorTexture']=='gradient-tiles'
+assert c.get('/api/room/environment?room=lab',headers=headers).get_json()['environment']['floorTexture']=='gradient-tiles'
 assert c.get('/api/room/environment?room=main',headers=headers).get_json()['environment']['floorSize']==70
 for bad in [{'skyType':'external-url'},{'fogColor':'not-a-color'},{'fogFar':10,'fogNear':20},
             {'floorSize':99999999},{'gridEnabled':'false'},{'starDensity':float('nan')},
-            {'invalidSetting':1}]:
+            {'invalidSetting':1},{'floorTexture':'remote-url'}]:
     assert c.put('/api/room/environment',headers=headers,json={'room':'lab','environment':bad}).status_code==400,bad
 assert c.get('/api/room/environment?room=unknown',headers=headers).status_code==404
 print('PASS: room-specific fog/grid/floor/sky appearance, persistence, validation and isolation')

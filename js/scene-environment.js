@@ -1,12 +1,13 @@
 // Room-scoped environment settings. Pure normalization is also used by tests.
 export const ENVIRONMENT_DEFAULTS=Object.freeze({
  fogEnabled:true,fogColor:'#101b2c',fogNear:12,fogFar:130,
- gridEnabled:true,gridColor:'#455a6a',floorSize:70,floorColor:'#344758',
+ gridEnabled:true,gridColor:'#455a6a',floorSize:70,floorColor:'#344758',floorTexture:'none',
  backgroundColor:'#101b2c',skyType:'solid',skyTop:'#10315e',skyHorizon:'#7ea2bd',
  skySpeed:0.4,skyIntensity:0.75,starDensity:0.65,viewDistance:1500
 });
 const ranges={fogNear:[0,100000],fogFar:[1,150000],floorSize:[40,20000],skySpeed:[0,5],skyIntensity:[0,2],starDensity:[0,2],viewDistance:[200,100000]};
 const types=new Set(['solid','gradient','sunset','rainbow','stars','nebula']);
+const floorTypes=new Set(['none','concrete','soil','tarmac','sand','tiles','gradient-tiles','random-tiles']);
 const validHex=v=>typeof v==='string'&&/^#[0-9a-fA-F]{6}$/.test(v);
 export function normalizeEnvironment(input={}){
  const out={...ENVIRONMENT_DEFAULTS};
@@ -18,6 +19,7 @@ export function normalizeEnvironment(input={}){
   if(Number.isFinite(value))out[key]=Math.round(Math.max(a,Math.min(b,value))*1000)/1000;
  }
  if(types.has(input.skyType))out.skyType=input.skyType;
+ if(floorTypes.has(input.floorTexture))out.floorTexture=input.floorTexture;
  out.fogFar=Math.max(out.fogNear+1,out.fogFar);
  return out;
 }

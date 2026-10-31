@@ -768,7 +768,7 @@ async function configureRooms(){
  };
 }
 const envFieldIds={fogEnabled:'envFogEnabled',gridEnabled:'envGridEnabled',fogColor:'envFogColor',
- gridColor:'envGridColor',floorSize:'envFloorSize',floorColor:'envFloorColor',fogNear:'envFogNear',fogFar:'envFogFar',
+ gridColor:'envGridColor',floorSize:'envFloorSize',floorColor:'envFloorColor',floorTexture:'envFloorTexture',fogNear:'envFogNear',fogFar:'envFogFar',
  backgroundColor:'envBackgroundColor',skyType:'envSkyType',skyTop:'envSkyTop',skyHorizon:'envSkyHorizon',
  skySpeed:'envSkySpeed',skyIntensity:'envSkyIntensity',starDensity:'envStarDensity',viewDistance:'envViewDistance'};
 let savedRoomEnvironment={...ENVIRONMENT_DEFAULTS};

@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.99",
+  "currentVersion": "0.2.100",
   "releases": [
+    {
+      "version": "0.2.100",
+      "publishedAt": "2026-10-31T04:48:45Z",
+      "changes": [
+        "Replace click-by-click curve placement with continuous pointer-drag drawing projected onto a locked screen-facing, XZ floor, XY, or YZ plane. Orbit is disabled only while drawing.",
+        "Add Fill end caps checkbox to extruded/beveled curves; persist and validate capEnds for saved and imported curves.",
+        "Repair O cube openings: true through-hole geometry previews immediately after the drag, Enter / Confirm persists the cutout and exact static trimesh; Escape or canvas click restores the original mesh without saving.",
+        "Repair U face media mounting: confirm frame rectangle before choosing authenticated realm chat media, and persist the mount with the first object save rather than in a later racing update.",
+        "Add seven tiny deterministic procedural textures to World Settings floor: concrete, soil, tarmac, sand, tiles, gradient tiles, and random tiles. Respect floor colour and room-scoped environment save.",
+        "Add regression tests for stroke projection and sampling, open curve caps, floor style normalization and geometry preview/media persistence."
+      ]
+    },
     {
       "version": "0.2.99",
       "publishedAt": "2026-10-31T04:22:44Z",
@@ -334,16 +346,6 @@
         "Render real computed A* floor paths as legible wide ribbons and show the measured robot travel trail in cyan, so Debug can distinguish planned waypoints from actual motion.",
         "Emit authentic route-accepted or route-blocked debug events with waypoint and obstacle counts, and never imply a chat-only statement proves movement.",
         "Preserve existing visual autonomy, chat-to-scene media and task ownership; add dedicated regression coverage for real command routing and path telemetry."
-      ]
-    },
-    {
-      "version": "0.2.67",
-      "publishedAt": "2026-10-29T23:17:57Z",
-      "changes": [
-        "Fix backend integration regression: group @mentions are answered in sequence and are not redirected to implicit camera vision when visual memory is stale. One-to-one natural camera observations and independent autonomous perception continue.",
-        "Expose robot floor route diagnostics immediately when robot Debug is enabled, including after a route has already been planned; show real A* waypoints, blocked attempts and scene obstacle footprints.",
-        "Keep completed path diagnostics visible for fifteen seconds, distinguish heading guide from verified camera evidence, and add an explanatory status legend to robot Properties.",
-        "Clear navigation debug visuals on scene reload, robot deletion and Stop; add regressions for vision routing and floor debug visibility."
       ]
     }
   ]

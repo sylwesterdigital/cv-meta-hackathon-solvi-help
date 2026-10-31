@@ -13,6 +13,7 @@ import {readPreferences} from './preferences.js';
 import {ENVIRONMENT_DEFAULTS,normalizeEnvironment,environmentViewLimit,createSkyDome,skyModeIndex} from './scene-environment.js';
 import {nextCameraMode,followAnchor,localOrbitOffset,cameraFromLocalOffset,chaseOffset,clampChaseDistance,zoomChaseDistance,smoothFactor,chaseSmartStep} from './camera-follow.js';
 import {freeCameraAxes} from './camera-key-movement.js';
+import {createFloorTexture} from './floor-textures.js';
 import {updateSceneMedia,toggleSceneMediaPlayback,setSceneMediaMuted,sceneMediaMuted,showSceneMediaCaptions} from './scene-media.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -141,6 +142,12 @@ export class SolviWorld {
         const old=this.floor.geometry;this.floor.geometry=new THREE.PlaneGeometry(cfg.floorSize,cfg.floorSize);old.dispose();
       }
       this.floor.material.color.set(cfg.floorColor);
+      if(previous.floorTexture!==cfg.floorTexture||this.floorTextureStyle!==cfg.floorTexture){
+        this.floor.material.map?.dispose?.();
+        this.floor.material.map=createFloorTexture(cfg.floorTexture);this.floorTextureStyle=cfg.floorTexture;
+        this.floor.material.needsUpdate=true;
+      }
+      if(this.floor.material.map)this.floor.material.map.repeat.set(cfg.floorSize/4,cfg.floorSize/4);
     }
     if(this.grid){
       if(previousSize!==cfg.floorSize||previous.gridColor!==cfg.gridColor){

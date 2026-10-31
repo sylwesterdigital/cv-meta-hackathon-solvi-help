@@ -50,7 +50,8 @@ test('face shortcuts generate surface sketches and persist true openings plus me
  assert.match(editor,/openings:o\.userData\.editorKind==='cube'/);
  assert.match(spatial,/cutCubeGeometry\(obj\.userData\.primitive,holes\)/);
  assert.match(spatial,/collider:'trimesh'/);
- assert.match(spatial,/media\.userData\.media\.mount=structuredClone\(mount\)/);
+ assert.match(spatial,/addSceneMedia\(\{\.\.\.asset,author:asset\.author\},\{[^}]*mount\}\)/);
+ assert.match(editor,/if\(mount\)object\.userData\.media\.mount=structuredClone\(mount\)/);
  assert.match(physics,/JSON\.stringify\(object\.userData\.openings\)/);
  assert.match(server,/valid_cube_openings/);assert.match(server,/valid_surface_mount/);
 });
