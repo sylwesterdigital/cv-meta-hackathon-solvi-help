@@ -15,3 +15,17 @@ export function liftButtonRequest(lift,button){
  if(!Number.isInteger(level)||level<0||level>=Math.max(2,Math.min(12,Number(lift?.levels)||2)))return null;
  return level;
 }
+
+// Stationary landing call buttons use red as their resting colour. Orange marks
+// a requested floor in transit; green indicates the cabin has arrived there.
+export const LIFT_CALL_COLORS=Object.freeze({idle:0xc83246,requested:0xf3a43b,arrived:0x24a66c});
+export function liftCallState(lift={},runtime={},level){
+ const count=Math.max(2,Math.min(12,Math.round(Number(lift.levels)||2)));
+ if(!Number.isInteger(level)||level<0||level>=count)return 'idle';
+ const height=Math.max(0,Math.min((count-1)*(Number(lift.levelHeight)||3),Number(runtime.height??lift.currentHeight)||0));
+ const target=Math.max(0,Math.min(count-1,Math.round(Number(runtime.target??lift.target)||0)));
+ const atFloor=Math.abs(height-level*(Number(lift.levelHeight)||3))<.05;
+ if(atFloor&&runtime.moving!==true)return 'arrived';
+ if(runtime.commanded===true&&target===level)return 'requested';
+ return 'idle';
+}

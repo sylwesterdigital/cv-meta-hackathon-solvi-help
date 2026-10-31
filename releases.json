@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.108",
+  "currentVersion": "0.2.109",
   "releases": [
+    {
+      "version": "0.2.109",
+      "publishedAt": "2026-10-31T15:46:56Z",
+      "changes": [
+        "Add opt-in floor-call stations beside the landing exit at every level of a procedural lift, with compact red numbered buttons and configurable left/right placement.",
+        "Keep landing-call stations stationary while the lift cabin moves, with an orange requested-floor indication and green arrived-floor indication.",
+        "Support mouse clicks and WebXR controller-ray selection using the existing permission-checked lift movement and saved destination action.",
+        "Expose Call button at each level and Button side inside the compact Lift stops and cabin settings; preserve existing lifts with calls disabled by default.",
+        "Validate and persist the call-button configuration, accept earlier five-field lift settings, and add focused source/runtime regression tests."
+      ]
+    },
     {
       "version": "0.2.108",
       "publishedAt": "2026-10-31T15:20:15Z",
@@ -331,16 +342,6 @@
         "Add verified partial approaches when no collision-free exact route exists; try up to 95 percent of the direct route, and report stopped-short rather than arrived or seated.",
         "Repair the Flask integration trace assertion to find the named parser result instead of relying on its historic list position.",
         "Add regression coverage for safe partial stopping, camera sky visibility, timestamped debug sorting, and parser trace compatibility."
-      ]
-    },
-    {
-      "version": "0.2.76",
-      "publishedAt": "2026-10-30T05:00:11Z",
-      "changes": [
-        "Fix Ubuntu Gunicorn boot failure by installing realm_archives.py alongside server.py; previously the ZIP contained this helper but the installer omitted it.",
-        "Backup and restore backend helper modules on rollback so failed upgrades do not leave mixed Python module versions behind.",
-        "Preflight importing the deployed backend with isolated temporary SQLite data before restarting the systemd service, failing with a named installer phase if startup imports are broken.",
-        "Add backend integration and JavaScript regression checks enforcing local Python module deployment for future releases."
       ]
     }
   ]

@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.108',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.109',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3078,7 +3078,12 @@ def valid_office_stairs(stairs):
     if not structured('roof',('enabled','height','thickness','walls','color','opacity','texture'),(('height',1.75,5),('thickness',.03,.4),('opacity',.1,1)),(('texture',('none','concrete','bricks','plaster','metal')),),('enabled','walls')):return False
     if not structured('supports',('enabled','side','every','width','color','opacity','texture'),(('every',1,16),('width',.04,.65),('opacity',.1,1)),(('side',('both','left','right','center')),('texture',('none','concrete','bricks','plaster','metal'))),('enabled',)):return False
     if not structured('transport',('speed','direction','enabled'),(('speed',.05,2.5),),(('direction',(-1,1)),),('enabled',)):return False
-    if not structured('lift',('levels','levelHeight','target','cabinHeight','currentHeight'),(('levels',2,12),('levelHeight',1.8,8),('target',0,11),('cabinHeight',1.8,4),('currentHeight',0,96)),()):return False
+    lift=stairs.get('lift')
+    # Legacy rooms may have the original five lift fields. Never accept arbitrary
+    # extras; new stations are opt-in and side must be left or right.
+    base_lift_keys={'levels','levelHeight','target','cabinHeight','currentHeight'}
+    if not isinstance(lift,dict) or set(lift) not in (base_lift_keys,base_lift_keys|{'callButtons','callSide'}):return False
+    if not structured('lift',tuple(lift),(('levels',2,12),('levelHeight',1.8,8),('target',0,11),('cabinHeight',1.8,4),('currentHeight',0,96)),(('callSide',('left','right')), ) if 'callSide' in lift else (),('callButtons',) if 'callButtons' in lift else ()):return False
     if stairs['variant']=='lift' and stairs['lift']['target']>=stairs['lift']['levels']:return False
     return True
 

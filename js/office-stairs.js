@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {sanitiseStairs,stairSegments} from './office-stairs-math.js';
 import {cleanStairExtras} from './stair-extensions.js';
-import {liftPanelState,LIFT_BUTTON_COLORS} from './lift-panel-state.js';
+import {liftPanelState,LIFT_BUTTON_COLORS,liftCallState,LIFT_CALL_COLORS} from './lift-panel-state.js';
 import {wallPresetTexture} from './office-walls.js';
 export {sanitiseStairs,stairSegments} from './office-stairs-math.js';
 const cachedTextures=new Map();
@@ -91,16 +91,39 @@ function liftFloorReadout(group,s){
  digit.position.set(-s.width/2+.11,Math.min(1.6,s.lift.cabinHeight-.45),0);
  digit.rotation.y=Math.PI/2;digit.userData.liftReadout={canvas,texture,last:''};digit.name='Lift floor display';group.add(digit);
 }
+// Per-level summon stations are attached to the counter-moving landing group,
+// not to the travelling cabin. This keeps them accessible at every floor.
+function liftLandingCall(shaft,s,level,depth,trim){
+ const side=s.lift.callSide==='left'?-1:1;
+ const x=side*(s.width/2+.25),y=level*s.lift.levelHeight+1.15,z=-depth/2-.14;
+ box(shaft,{x,y,z:z+.025,width:.24,height:.32,depth:.10},trim,'liftCallHousing');
+ const key=new THREE.Mesh(new THREE.CylinderGeometry(.087,.087,.052,18),new THREE.MeshStandardMaterial({color:LIFT_CALL_COLORS.idle,metalness:.15,roughness:.36,emissive:LIFT_CALL_COLORS.idle,emissiveIntensity:.3}));
+ key.rotation.x=Math.PI/2;key.position.set(x,y,z-.055);
+ key.name='Call lift to level '+(level+1);
+ key.userData.liftButton=true;key.userData.liftCallButton=true;key.userData.liftLevel=level;key.userData.liftColor='idle';
+ shaft.add(key);
+ // Number beneath the physical red switch, on the entrance-facing side.
+ const label=new THREE.Mesh(new THREE.PlaneGeometry(.13,.13),new THREE.MeshBasicMaterial({map:floorGlyph(level+1),transparent:true,side:THREE.DoubleSide,depthWrite:false}));
+ label.position.set(x,y-.17,z-.079);
+ label.name='Call lift level '+(level+1)+' label';
+ label.userData.liftDecoration=true;label.userData.liftButton=true;label.userData.liftCallButton=true;label.userData.liftLabel=true;label.userData.liftLevel=level;
+ shaft.add(label);
+}
 export function updateLiftPanel(group){
  const lift=group?.userData?.stairs?.lift;if(!lift)return;
- const state=liftPanelState(lift,group.userData.stairRuntime||{height:lift.currentHeight,target:lift.target,moving:false});
- for(const child of group.children){
-  if(child.userData.liftButton&&!child.userData.liftLabel){const status=state.colors[child.userData.liftLevel];if(child.userData.liftColor!==status){const color=LIFT_BUTTON_COLORS[status];child.material.color.setHex(color);child.material.emissive.setHex(color);child.userData.liftColor=status;}}
-  if(child.userData.liftReadout){const display=String(state.display);if(child.userData.liftReadout.last===display)continue;
+ const runtime=group.userData.stairRuntime||{height:lift.currentHeight,target:lift.target,moving:false};
+ const state=liftPanelState(lift,runtime);
+ group.traverse(child=>{
+  if(child.userData.liftButton&&!child.userData.liftLabel){
+   const status=child.userData.liftCallButton?liftCallState(lift,runtime,child.userData.liftLevel):state.colors[child.userData.liftLevel];
+   if(child.userData.liftColor!==status){const color=(child.userData.liftCallButton?LIFT_CALL_COLORS:LIFT_BUTTON_COLORS)[status];if(color!==undefined){child.material.color.setHex(color);child.material.emissive.setHex(color);child.userData.liftColor=status;}}
+  }
+  if(child.userData.liftReadout){const display=String(state.display);if(child.userData.liftReadout.last===display)return;
    const {canvas,texture}=child.userData.liftReadout,ctx=canvas.getContext('2d');ctx.fillStyle='#14262b';ctx.fillRect(0,0,256,256);ctx.strokeStyle='#6b9c88';ctx.lineWidth=10;ctx.strokeRect(6,6,244,244);ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#cbffda';ctx.font='bold 188px system-ui';ctx.fillText(display,128,133);texture.needsUpdate=true;child.userData.liftReadout.last=display;
   }
- }
+ });
 }
+
 function liftCabin(group,s){
  const {lift}=s,mat=material(s.surface),trim=material(s.rail,{metal:true});const w=s.width,depth=Math.max(1.25,Math.min(3.5,s.width*1.25)),h=lift.cabinHeight;
  // Open front and back: entrance at one end; exit at the destination level.
@@ -124,8 +147,10 @@ function liftCabin(group,s){
    box(shaft,{x:side*w/2,y:y+h/2,z:end*depth/2,width:.065,height:h,depth:.065},trim);
   }
   for(const end of [-1,1])box(shaft,{x:0,y:y+h+.04,z:end*depth/2,width:w+.15,height:.08,depth:.08},trim);
+  if(lift.callButtons)liftLandingCall(shaft,s,level,depth,trim);
  }
  for(const side of [-1,1])for(const end of [-1,1])box(shaft,{x:side*w/2,y:total/2,z:end*depth/2,width:.045,height:total+.1,depth:.045},trim);
+ shaft.position.y=-(lift.currentHeight||0);
  group.add(shaft);
  group.userData.liftFootprint={width:w,depth};
  updateLiftPanel(group);

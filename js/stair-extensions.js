@@ -19,7 +19,7 @@ export function cleanStairExtras(raw={}){
   supports:{enabled:supports.enabled===true,side:choice(supports.side,['both','left','right','center'],'both'),every:Math.round(limit(supports.every,1,16,4)),
    width:limit(supports.width,.04,.65,.12),color:hex(supports.color,'#8a939b'),opacity:limit(supports.opacity,.1,1,1),texture:choice(supports.texture,['none','concrete','bricks','plaster','metal'],'none')},
   transport:{speed:limit(transport.speed,.05,2.5,.5),direction:transport.direction===-1?-1:1,enabled:transport.enabled!==false},
-  lift:{levels:Math.round(limit(lift.levels,2,12,2)),levelHeight:limit(lift.levelHeight,1.8,8,3),target:Math.round(limit(lift.target,0,11,1)),cabinHeight:limit(lift.cabinHeight,1.8,4,2.4),currentHeight:limit(lift.currentHeight,0,96,0)}
+  lift:{levels:Math.round(limit(lift.levels,2,12,2)),levelHeight:limit(lift.levelHeight,1.8,8,3),target:Math.round(limit(lift.target,0,11,1)),cabinHeight:limit(lift.cabinHeight,1.8,4,2.4),currentHeight:limit(lift.currentHeight,0,96,0),callButtons:lift.callButtons===true,callSide:choice(lift.callSide,['left','right'],'right')}
  };
 }
 export function projectPath(points,x,z){

@@ -444,7 +444,7 @@ export class SceneEditor{
  setupWallControls(){
   const field=id=>byId(id),panel=field('wallPanel');if(!panel)return;
   field('wallConvertStatic').onclick=()=>this.convertWallToCuttableCubes();
-  const extraIds=['stairRailEnabled','stairRailSide','stairRailRods','stairRailHeight','stairRailWidth','stairRailEvery','stairRailMaterial','stairRailTexture','stairRailColor','stairRailOpacity','stairRoofEnabled','stairRoofWalls','stairRoofHeight','stairRoofThickness','stairRoofTexture','stairRoofColor','stairRoofOpacity','stairSupportEnabled','stairSupportSide','stairSupportEvery','stairSupportWidth','stairSupportTexture','stairSupportColor','stairSupportOpacity','stairSurfaceTexture','stairSurfaceMaterial','stairSurfaceColor','stairSurfaceOpacity','stairTransportEnabled','stairTransportSpeed','stairTransportDirection','stairLiftLevels','stairLiftLevelHeight','stairLiftCabinHeight'];
+  const extraIds=['stairRailEnabled','stairRailSide','stairRailRods','stairRailHeight','stairRailWidth','stairRailEvery','stairRailMaterial','stairRailTexture','stairRailColor','stairRailOpacity','stairRoofEnabled','stairRoofWalls','stairRoofHeight','stairRoofThickness','stairRoofTexture','stairRoofColor','stairRoofOpacity','stairSupportEnabled','stairSupportSide','stairSupportEvery','stairSupportWidth','stairSupportTexture','stairSupportColor','stairSupportOpacity','stairSurfaceTexture','stairSurfaceMaterial','stairSurfaceColor','stairSurfaceOpacity','stairTransportEnabled','stairTransportSpeed','stairTransportDirection','stairLiftLevels','stairLiftLevelHeight','stairLiftCabinHeight','stairLiftCallButtons','stairLiftCallSide'];
   this.stairExtraIds=extraIds;
   const ranges={wallWidth:[.05,4,.01,'m'],wallHeight:[.2,10,.1,'m'],wallOpacity:[.08,1,.02,'']};
   let active='wallHeight';
@@ -539,7 +539,7 @@ export class SceneEditor{
    roof:{enabled:get('stairRoofEnabled'),walls:get('stairRoofWalls'),height:get('stairRoofHeight'),thickness:get('stairRoofThickness'),texture:get('stairRoofTexture'),color:get('stairRoofColor'),opacity:get('stairRoofOpacity')},
    supports:{enabled:get('stairSupportEnabled'),side:get('stairSupportSide'),every:get('stairSupportEvery'),width:get('stairSupportWidth'),texture:get('stairSupportTexture'),color:get('stairSupportColor'),opacity:get('stairSupportOpacity')},
    transport:{enabled:get('stairTransportEnabled'),speed:get('stairTransportSpeed'),direction:get('stairTransportDirection')==='-1'?-1:1},
-   lift:{levels:get('stairLiftLevels'),levelHeight:get('stairLiftLevelHeight'),cabinHeight:get('stairLiftCabinHeight'),target:this.wallEditTarget?.userData.stairs?.lift?.target||0,currentHeight:this.wallEditTarget?.userData.stairs?.lift?.currentHeight||0}
+   lift:{levels:get('stairLiftLevels'),levelHeight:get('stairLiftLevelHeight'),cabinHeight:get('stairLiftCabinHeight'),callButtons:get('stairLiftCallButtons'),callSide:get('stairLiftCallSide'),target:this.wallEditTarget?.userData.stairs?.lift?.target||0,currentHeight:this.wallEditTarget?.userData.stairs?.lift?.currentHeight||0}
   });
  }
  refreshLiftLevels(){const select=byId('stairLiftTarget');if(!select)return;const previous=select.value;select.replaceChildren();const count=Math.max(2,Math.min(12,Number(byId('stairLiftLevels').value)||2));for(let i=0;i<count;i++){const option=document.createElement('option');option.value=String(i);option.textContent='Level '+(i+1);select.append(option);}select.value=Number(previous)<count?previous:'0';}
@@ -584,7 +584,7 @@ export class SceneEditor{
     stairSupportEnabled:config.supports.enabled,stairSupportSide:config.supports.side,stairSupportEvery:config.supports.every,stairSupportWidth:config.supports.width,stairSupportTexture:config.supports.texture,stairSupportColor:config.supports.color,stairSupportOpacity:config.supports.opacity,
     stairSurfaceTexture:config.surface.texture,stairSurfaceMaterial:config.surface.material,stairSurfaceColor:config.surface.color,stairSurfaceOpacity:config.surface.opacity,
     stairTransportEnabled:config.transport.enabled,stairTransportSpeed:config.transport.speed,stairTransportDirection:config.transport.direction,
-    stairLiftLevels:config.lift.levels,stairLiftLevelHeight:config.lift.levelHeight,stairLiftCabinHeight:config.lift.cabinHeight};
+    stairLiftLevels:config.lift.levels,stairLiftLevelHeight:config.lift.levelHeight,stairLiftCabinHeight:config.lift.cabinHeight,stairLiftCallButtons:config.lift.callButtons,stairLiftCallSide:config.lift.callSide};
    for(const [id,value] of Object.entries(map)){const input=byId(id);if(input.type==='checkbox')input.checked=value;else input.value=value;}
    this.refreshLiftLevels();if(variant==='lift')byId('stairLiftTarget').value=String(Math.min(config.lift.target,config.lift.levels-1));
   }
@@ -766,7 +766,7 @@ export class SceneEditor{
   const buttons=[];
   for(const lift of this.items){
    if(lift.userData.editorKind==='stairs'&&lift.userData.stairs?.variant==='lift'){
-    for(const part of lift.children)if(part.userData.liftButton)buttons.push(part);
+    lift.traverse(part=>{if(part.userData.liftButton)buttons.push(part);});
    }
   }
   if(!buttons.length)return null;
