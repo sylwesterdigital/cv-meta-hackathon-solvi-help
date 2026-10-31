@@ -1998,27 +1998,21 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #wallPanel .stair-fold input[type=color]{height:28px;width:100%;min-width:0;padding:2px}
 #wallPanel .stair-fold button{font-size:11px;min-height:28px;padding:4px 6px}
 
-/* Compact portal properties, consistent with the main inspector styling. */
-.portal-settings{display:grid;gap:8px;padding:8px 4px 4px}
-.portal-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-weight:650;padding:0 2px 2px}
-.portal-meta span{font-weight:500;opacity:.78}
-.portal-select-grid,.portal-bottom-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-.portal-select-grid label,.portal-bottom-grid label,.portal-color-block{display:grid;gap:4px;font-size:11px}
-.portal-select-grid label span,.portal-bottom-grid label span,.portal-color-block>span{opacity:.82}
-.portal-settings :is(select,input[type=number],input[type=color]){width:100%;min-width:0;box-sizing:border-box;background:#112338;color:#eaf5ff;border:1px solid #426078;border-radius:7px;min-height:32px;padding:5px 7px}
-.portal-settings input[type=color]{padding:2px;height:32px}
-.portal-slider-grid{display:grid;gap:5px}
-.portal-slider-row{display:grid;grid-template-columns:56px minmax(0,1fr) 62px;gap:6px;align-items:center;font-size:11px}
-.portal-slider-row>span{opacity:.82}
-.portal-slider-row input[type=range]{width:100%;min-width:0;margin:0;padding:0}
-.portal-slider-row input[type=number]{text-align:right;padding-inline:6px}
-.portal-color-tools{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:6px;align-items:center}
-.portal-swatches{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
-.portal-swatch{appearance:none;-webkit-appearance:none;cursor:pointer;height:24px;border-radius:7px;border:1px solid #5f7692;background:var(--sw,#57b9ff);box-shadow:inset 0 0 0 1px #ffffff22;min-width:0}
-.portal-swatch[aria-pressed=true]{outline:2px solid var(--solvi-accent,#c875e8);outline-offset:1px}
-.portal-check{display:flex!important;align-items:center;gap:6px;font-size:11px;padding-top:2px}
+/* Portal inspector: one aperture size, one contextual slider, no decorative swatch placeholders. */
+.portal-settings{display:grid;gap:7px;padding:7px 4px 4px;min-width:0}
+.portal-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-weight:650}
+.portal-meta span{font-weight:500;opacity:.75}
+.portal-select-grid,.portal-parameters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 8px;min-width:0}
+.portal-select-grid label,.portal-parameters label{display:grid;gap:3px;min-width:0;font-size:11px}
+.portal-select-grid label span{opacity:.85}
+.portal-settings :is(select,input[type=number]){box-sizing:border-box;width:100%;min-width:0;min-height:30px;padding:4px 7px;border:1px solid var(--ui-border,#426078);border-radius:7px;background:var(--ui-panel,#112338);color:var(--ui-fg,#eaf5ff);font:inherit}
+.portal-parameters input[type=number]{text-align:right}
+.portal-parameters .portal-colour-field input[type=color]{display:block;box-sizing:border-box;width:100%;height:30px;min-height:30px;padding:2px;border:1px solid var(--ui-border,#426078);border-radius:7px;background:var(--ui-panel,#112338);cursor:pointer}
+.portal-range-row{display:grid;grid-template-columns:54px minmax(0,1fr);gap:8px;align-items:center;font-size:11px;min-width:0}
+.portal-range-row>span{opacity:.84}
+.portal-range-row input[type=range]{display:block;width:100%;min-width:0;margin:0;accent-color:var(--solvi-accent,#c875e8)}
+.portal-check{display:flex!important;align-items:center;gap:6px;font-size:11px}
 .portal-check input{margin:0}
-@media(max-width:560px){.portal-select-grid,.portal-bottom-grid{grid-template-columns:1fr}.portal-slider-row{grid-template-columns:52px minmax(0,1fr) 58px}}
 
 /* v0.2.111: draggable compact control window; selected robot is visible. */
 #controlSwitcher.control-switcher{left:130px;bottom:calc(50px + env(safe-area-inset-bottom));pointer-events:auto!important;background:rgba(14,27,40,.90)!important;border:1px solid var(--ui-border,#71809b);border-radius:12px;padding:5px!important;box-shadow:0 5px 16px #0006;max-width:calc(100vw - 20px)!important;width:max-content!important;}

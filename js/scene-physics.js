@@ -152,6 +152,7 @@ export class ScenePhysics{
    // Compound collider, one capsule-safe box per segment. Do not use a single
    // enclosing AABB that incorrectly blocks an open room / U-shaped wall.
    for(const segment of object.children){
+    if(segment.userData.portalVisualOnly)continue; // Orb event horizon is a trigger, not a rigid wall.
     if(!segment.userData.portalFrame&&!segment.userData.wallSegment&&!segment.userData.stairTread&&!(segment.userData.stairStructure&&segment.geometry?.type==='BoxGeometry'&&kind==='stairs'&&['advanced','escalator','walkway'].includes(object.userData.stairs?.variant)))continue;
     const size=segment.geometry.parameters;
     const scale=object.scale;

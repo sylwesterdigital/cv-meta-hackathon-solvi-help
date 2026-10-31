@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.121",
+  "currentVersion": "0.2.124",
   "releases": [
+    {
+      "version": "0.2.124",
+      "publishedAt": "2026-10-31T23:11:04Z",
+      "changes": [
+        "Simplify Portal inspector to one Width and one Height controlling the doorway and surrounding frame together, with automatic thickness and legacy saved geometry compatibility.",
+        "Replace seven duplicate geometry sliders with one contextual range slider linked to focused Width, Height, Depth, Delay or Opacity and compact numeric inputs.",
+        "Remove decorative colour pills and use one matching native portal colour input; simplify the compact layout while preserving portal effects, paired teleportation, WebXR and persistence.",
+        "Add executable portal UI and dimension regression tests and package as an incremented watcher-safe release.",
+        "Replace solid-looking Orb sphere and ring decorations with a luminous transparent event-horizon shader, an inward spiraling centered vortex throat, and contained star particles, preserving Entry/Exit visual distinction.",
+        "Keep Orb gates traversable: exclude spherical visual shells from Rapier collision and allow standing WebXR visitor capsules to activate the orb at natural headset height.",
+        "Add runtime regression checks for transparent orb materials, absence of opaque globes or decorative rings, shader animation across all four effect modes, and XR standing-body activation."
+      ]
+    },
     {
       "version": "0.2.121",
       "publishedAt": "2026-10-31T22:38:16Z",
@@ -303,19 +316,6 @@
         "Persist bundled-avatar deletion tombstones and reapply them after future static-file deployments so removed models do not reappear.",
         "Repair Asset library overlapping cards with a fixed responsive portrait grid and pages of 12 items, keeping selection and export operations.",
         "Add backend integration and frontend regression tests for destructive deletion permissions, redeployment persistence, and gallery layout."
-      ]
-    },
-    {
-      "version": "0.2.90",
-      "publishedAt": "2026-10-31T01:17:17Z",
-      "changes": [
-        "Give Avatar and Asset libraries an accessible Edit mode, per-card multi-selection checkboxes, Select all, ZIP export and confirmed bulk removal.",
-        "Add avatar search and display accurate GLB animation-action counts from metadata for uploaded and bundled models whenever files are available.",
-        "Let users hide bundled release avatars locally while keeping shared baseline model files intact; allow only upload owners and administrators to delete custom assets.",
-        "Prevent deletion of model and avatar files referenced in any realm, and provide authenticated ZIP downloads containing selected models and library metadata.",
-        "Display portrait-style Asset thumbnails matching the Avatar gallery, without redundant decorative icons covering preview images.",
-        "Prevent walking/running animation stumbles by maintaining the authored gait loop across brief physics-controller/network stalls; return to Idle when genuinely stopped.",
-        "Add library authentication, export, deletion, scene-reference and gait tests."
       ]
     }
   ]

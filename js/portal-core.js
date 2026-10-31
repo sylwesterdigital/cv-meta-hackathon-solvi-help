@@ -11,6 +11,24 @@ export function cleanPortal(raw={}){
  openingWidth:Math.min(number('openingWidth',1.45,.7,6),width-.15),openingHeight:Math.min(number('openingHeight',2.1,1.2,7),height-.12),color:color(raw?.color,'#499fe3'),texture:['none','concrete','bricks','metal','tiles'].includes(raw?.texture)?raw.texture:'none',opacity:number('opacity',1,.1,1),sound:raw?.sound!==false,
  shape:PORTAL_SHAPES.includes(raw?.shape)?raw.shape:'square',effect:PORTAL_EFFECTS.includes(raw?.effect)?raw.effect:'rainbow'};
 }
+
+// One visible Width/Height edits the doorway and keeps the surrounding frame
+// at a fixed thickness. Historical portal saves retain their original sizes
+// until one of these two controls is adjusted.
+export function resizePortalAperture(raw,key,value){
+ const cfg=cleanPortal(raw);
+ const n=Number(value);
+ if(!Number.isFinite(n))return cfg;
+ if(key==='openingWidth'){
+  const openingWidth=Math.max(.7,Math.min(6,n));
+  return cleanPortal({...cfg,openingWidth,width:Math.max(1.1,Math.min(8,openingWidth+.32))});
+ }
+ if(key==='openingHeight'){
+  const openingHeight=Math.max(1.2,Math.min(7,n));
+  return cleanPortal({...cfg,openingHeight,height:Math.max(1.8,Math.min(8,openingHeight+.24))});
+ }
+ return cfg;
+}
 export function portalActivation(local,config,kind='robot'){
  if(!local||!config||!['x','y','z'].every(k=>Number.isFinite(local[k])))return false;
  const floor=kind==='robot'?-.16:-.35;
@@ -26,7 +44,11 @@ export function portalActivation(local,config,kind='robot'){
   const ry=Math.max(.5,Math.min(maxY,config.width)*0.35);
   const r=Math.max(.34,Math.min(half,ry));
   const cy=Math.max(r,.5);
-  const dx=local.x,dy=local.y-cy,dz=local.z;
+  // The headset camera is at eye height. Use the visitor's standing capsule,
+  // not only the headset point, so entering a low sphere works without crouching.
+  const foot=kind==='viewer'?local.y-1.6:local.y;
+  const closestY=kind==='viewer'?Math.max(foot,Math.min(local.y,cy)):local.y;
+  const dx=local.x,dy=closestY-cy,dz=local.z;
   return dx*dx+dy*dy+dz*dz<=r*r;
  }
  if(Math.abs(local.z)>=depth||local.y<=floor||local.y>=maxY)return false;

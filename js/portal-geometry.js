@@ -153,6 +153,28 @@ function outlineCurveFromShape(shape,z){
  const pts=shape.getSpacedPoints(64);
  return new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(p.x,p.y,z)),true);
 }
+
+function normalizePlanarUVs(geometry,axes='xy'){
+ if(!geometry||typeof geometry.computeBoundingBox!=='function'||!geometry.attributes?.position)return geometry;
+ geometry.computeBoundingBox();
+ const box=geometry.boundingBox;
+ const pos=geometry.attributes.position;
+ if(!box||!pos||typeof pos.count!=='number')return geometry;
+ const uvs=[];
+ const [ua,va]=axes==='xz'?['x','z']:axes==='yz'?['y','z']:['x','y'];
+ const minU=box.min[ua], maxU=box.max[ua];
+ const minV=box.min[va], maxV=box.max[va];
+ const spanU=Math.max(1e-6,maxU-minU);
+ const spanV=Math.max(1e-6,maxV-minV);
+ for(let i=0;i<pos.count;i++){
+  const x=pos.getX(i), y=pos.getY(i), z=pos.getZ(i);
+  const map={x,y,z};
+  uvs.push((map[ua]-minU)/spanU,(map[va]-minV)/spanV);
+ }
+ if(typeof geometry.setAttribute==='function')geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
+ return geometry;
+}
+
 function pointInPolygon(point,polygon){
  let inside=false;
  for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){
@@ -172,11 +194,12 @@ function addDoorPortal(group,cfg){
  outerWithHole.holes.push(new THREE.Path(inner.getPoints(48)));
  const frameGeo=new THREE.ExtrudeGeometry(outerWithHole,{depth:cfg.depth,bevelEnabled:false,steps:1});
  frameGeo.translate(0,0,-cfg.depth/2);
+ normalizePlanarUVs(frameGeo,'xy');
  const frame=new THREE.Mesh(frameGeo,buildFrameMaterial(cfg));
  frame.userData.portalFrame=true; frame.castShadow=true; frame.receiveShadow=true; group.add(frame);
  const fxFrame=new THREE.Mesh(frameGeo.clone(),buildFrameFxMaterial(cfg));
  fxFrame.userData.portalFrameFx=true; fxFrame.position.z=.001; fxFrame.renderOrder=2; group.add(fxFrame);
- const innerGeo=new THREE.ShapeGeometry(inner);
+ const innerGeo=normalizePlanarUVs(new THREE.ShapeGeometry(inner),'xy');
  const innerMesh=new THREE.Mesh(innerGeo,buildInnerShader(cfg));
  innerMesh.userData.portalInner=true;
  innerMesh.position.set(0,0,-cfg.depth*.18);
@@ -206,20 +229,103 @@ function addFieldPortal(group,cfg){
  addSparkles(group,cfg,{kind:'field', size});
  return {size};
 }
+// The orb is a traversable spherical event horizon, not an opaque ball or torus.
+// View-space normals keep the vortex's focal point centered from every angle.
+function orbShaderMaterial(cfg,layer){
+ const [a,b]=effectColors(cfg);
+ return new THREE.ShaderMaterial({
+  uniforms:{time:{value:0},strength:{value:.35},portalOpacity:{value:cfg.opacity},effectMode:{value:cfg.effect==='mystery'?1:cfg.effect==='glow'?2:cfg.effect==='pulse'?3:0},colorA:{value:a},colorB:{value:b},roleColor:{value:roleTint(cfg)}},
+  transparent:true,depthWrite:false,
+  side:THREE.FrontSide,
+  blending:layer==='shell'?THREE.AdditiveBlending:THREE.NormalBlending,
+  vertexShader:`
+   varying vec3 vEyeNormal;
+   varying vec3 vPosition;
+   void main(){
+    vEyeNormal=normalize(normalMatrix*normal);
+    vPosition=position;
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+   }`,
+  fragmentShader:`
+   varying vec3 vEyeNormal;
+   varying vec3 vPosition;
+   uniform float time;
+   uniform float strength;
+   uniform float portalOpacity;
+   uniform float effectMode;
+   uniform vec3 colorA;
+   uniform vec3 colorB;
+   uniform vec3 roleColor;
+   vec3 rainbow(float t){
+    return .53+.47*cos(6.2831853*(t+vec3(0.,.33333,.66667)));
+   }
+   float ripples(vec2 p){
+    return .5+.5*sin(p.x*16.3+p.y*11.2+sin(p.y*7.+time*1.8)*2.-time*3.);
+   }
+   void main(){
+    // Front hemisphere projected into camera space: (0,0) is always the center.
+    vec3 n=normalize(vEyeNormal);
+    vec2 uv=n.xy;
+    float r=clamp(length(uv),0.,1.);
+    float a=atan(uv.y,uv.x);
+    float t=time;
+    float spiral=a*7.0 + r*24.0 - t*5.1 + 2.0*sin(r*9.0-t*1.2);
+    float thread=pow(.5+.5*cos(spiral),7.0);
+    float second=pow(.5+.5*cos(a*12.0-r*38.0+t*4.0),14.0);
+    float crest=smoothstep(.48,.98,r);
+    float throat=1.0-smoothstep(.025,.46,r);
+    vec3 col=mix(colorA,colorB,.5+.5*sin(spiral*.33+t*.4));
+    if(effectMode<.5){
+     col=rainbow(a/6.2831853+r*.19+t*.09);
+    }else if(effectMode<1.5){
+     col=mix(colorA,colorB,thread*.82+.18);
+    }else if(effectMode<2.5){
+     col=mix(colorA,colorB,ripples(uv));
+    }else{
+     col=mix(colorA,colorB,.5+.5*sin(r*22.0-t*6.0));
+    }
+    col=mix(col,roleColor,.12);
+    ${layer==='shell' ? `
+      // Thin luminous atmosphere; transparent center and alive with filament arcs.
+      float arcs=thread*.28+second*.22;
+      float pulse=.78+.22*sin(t*3.2);
+      float alpha=(.045 + .63*pow(crest,2.4) + arcs*crest)*pulse;
+      col*=1.0 + crest*.65 + thread*.35;
+      alpha*=.85+.5*strength;
+    ` : `
+      // A dark, penetrable throat surrounded by contracting luminous currents.
+      float cosmic=(thread*.52+second*.25) * smoothstep(.02,.52,r);
+      float bloom=.2 * (1.0-smoothstep(.12,.78,r));
+      float alpha=(.16+.31*cosmic+.18*crest + bloom) * (.75+.55*strength);
+      float dark=1.0-.88*throat;
+      col*=dark*(.6+1.35*cosmic);
+      col+=roleColor*thread*.22;
+    `}
+    gl_FragColor=vec4(col,clamp(alpha*portalOpacity,0.,.82));
+   }`
+ });
+}
 function addOrbPortal(group,cfg){
  const radius=Math.max(.42,Math.min(cfg.openingWidth,cfg.width,Math.max(1.1,cfg.openingHeight))*.5);
  const centerY=radius;
- const outerMat=buildFrameMaterial(cfg);
- outerMat.transparent=true; outerMat.opacity=Math.min(cfg.opacity,.62);
- const shell=new THREE.Mesh(new THREE.SphereGeometry(radius,40,40),outerMat);
- shell.position.y=centerY; shell.userData.portalFrame=true; shell.castShadow=true; shell.receiveShadow=true; group.add(shell);
- const shellFx=new THREE.Mesh(new THREE.SphereGeometry(radius*.995,40,40),buildFrameFxMaterial(cfg));
- shellFx.position.y=centerY; shellFx.userData.portalFrameFx=true; shellFx.renderOrder=2; group.add(shellFx);
- const inner=new THREE.Mesh(new THREE.SphereGeometry(radius*.78,40,40),buildInnerShader(cfg));
- inner.position.y=centerY; inner.userData.portalInner=true; inner.renderOrder=3; group.add(inner);
- const glow=new THREE.Mesh(new THREE.SphereGeometry(radius*1.02,36,36),new THREE.MeshBasicMaterial({color:cfg.color,transparent:true,opacity:.18,depthWrite:false,blending:THREE.AdditiveBlending}));
- glow.position.y=centerY; glow.userData.portalGlow=true; glow.renderOrder=4; group.add(glow);
- addSparkles(group,cfg,{kind:'orb', radius, centerY});
+ // A fine view-dependent luminous boundary leaves the world visible through
+ // the gateway. Unlike a solid sphere it has no physical collision surface.
+ const shell=new THREE.Mesh(new THREE.SphereGeometry(radius,64,48),orbShaderMaterial(cfg,'shell'));
+ shell.position.y=centerY;
+ shell.userData.portalFrame=true;
+ shell.userData.portalVisualOnly=true;
+ shell.userData.portalFrameFx=true;
+ shell.userData.portalOrbShell=true;
+ shell.renderOrder=3;
+ group.add(shell);
+ const throat=new THREE.Mesh(new THREE.SphereGeometry(radius*.94,64,48),orbShaderMaterial(cfg,'throat'));
+ throat.position.y=centerY;
+ throat.userData.portalInner=true;
+ throat.userData.portalOrbThroat=true;
+ throat.renderOrder=2;
+ group.add(throat);
+ // Constellations appear within the volume, never as white latitude/longitude rings.
+ addSparkles(group,cfg,{kind:'orb',radius,centerY});
  return {radius,centerY};
 }
 function addSparkles(group,cfg,info){
@@ -341,7 +447,7 @@ export function portalPulse(group,amount=0){
   if(part.userData.portalInner&&part.material?.uniforms){
    part.material.uniforms.time.value=t;
    part.material.uniforms.strength.value=.35+activated*.85+(cfg.effect==='mystery'?.15:0);
-   if(cfg.shape==='orb')part.rotation.y=t*.26;
+   // Orb focal point follows camera-facing surface normals, not mesh rotation.
   }
   if(part.userData.portalGlow&&part.material){
    const glow=roleTint(cfg).clone().lerp(new THREE.Color(cfg.color),.5);

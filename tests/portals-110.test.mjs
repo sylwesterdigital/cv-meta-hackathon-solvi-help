@@ -38,6 +38,7 @@ test('real opening geometry has three frame colliders, no blocking box',()=>{
  assert.match(geometry,/floorPortalShape\(/);
  assert.match(geometry,/portalFrameFx/);
  assert.match(geometry,/portalParticles/);
+ assert.match(geometry,/normalizePlanarUVs\(/);
  assert.doesNotMatch(geometry,/containsPoint\(/);
  assert.match(geometry,/effect==='rainbow'/);
 });

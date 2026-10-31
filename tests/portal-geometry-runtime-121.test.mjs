@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {cleanPortal} from '../js/portal-core.js';
+import {cleanPortal,portalActivation} from '../js/portal-core.js';
 
 // Geometry-build smoke test with a minimal Three.js interface. This executes
 // rebuildPortal for every shape and mode: the previous build disappeared because
@@ -92,4 +92,41 @@ test('portal creation falls back to visible solid geometry when optional mesh ge
  assert.ok(portal.children.length>=3);
  assert.ok(portal.children.every(x=>x.userData.portalFrame));
  assert.equal(portal.userData.portal.role,'entry');
+});
+
+test('orb is an open luminous gateway instead of an opaque solid sphere or white ring globe',()=>{
+ const THREE=mockThree();const {makePortal,portalPulse}=moduleFor(THREE);
+ for(const effect of ['rainbow','mystery','glow','pulse']){
+  const gate=makePortal({shape:'orb',effect,role:'entry',openingWidth:2.4,width:2.8});
+  const shell=gate.children.find(x=>x.userData.portalOrbShell);
+  const throat=gate.children.find(x=>x.userData.portalOrbThroat);
+  assert.ok(shell,`${effect}: luminous shell missing`);
+  assert.ok(throat,`${effect}: vortex throat missing`);
+  assert.equal(shell.userData.portalVisualOnly,true,'orb shell must not block passage');
+  assert.equal(shell.material.transparent,true);
+  assert.equal(shell.material.depthWrite,false);
+  assert.equal(shell.material.blending,THREE.AdditiveBlending);
+  assert.match(shell.material.vertexShader,/vEyeNormal=normalize\(normalMatrix\*normal\)/);
+  assert.match(throat.material.fragmentShader,/vec2 uv=n\.xy/,'vortex center must face the viewer');
+  assert.match(throat.material.fragmentShader,/spiral=a\*7\.0/);
+  assert.ok(!gate.children.some(x=>x.geometry instanceof THREE.RingGeometry),'orb must not have globe hoops');
+  assert.ok(!gate.children.some(x=>x.material&&x.material.emissive),'orb must not contain an opaque solid sphere');
+  assert.doesNotThrow(()=>portalPulse(gate,1));
+  assert.notEqual(shell.material.uniforms.time.value,0,'shader must animate');
+ }
+});
+
+test('portal orb is a visual trigger, not a Rapier collider that blocks visitors',()=>{
+ const physics=fs.readFileSync(new URL('../js/scene-physics.js',import.meta.url),'utf8');
+ assert.match(physics,/if\(segment\.userData\.portalVisualOnly\)continue/);
+ assert.match(physics,/segment\.userData\.portalFrame/);
+});
+
+
+test('orb carries a normal standing XR visitor without requiring the headset to crouch',()=>{
+ const cfg=cleanPortal({shape:'orb',openingWidth:1.7,width:2.1,height:2.8,openingHeight:2.3});
+ assert.equal(portalActivation({x:0,y:1.6,z:0},cfg,'viewer'),true);
+ assert.equal(portalActivation({x:0,y:3.5,z:0},cfg,'viewer'),false);
+ assert.equal(portalActivation({x:3,y:1.6,z:0},cfg,'viewer'),false);
+ assert.equal(portalActivation({x:0,y:0,z:0},cfg,'robot'),true);
 });

@@ -19,7 +19,7 @@ import {attachControlSwitcherDrag} from './control-switcher-drag.js';
 import {liftButtonRequest} from './lift-panel-state.js';
 import {stairGeometryKey} from './stair-extensions.js';
 import {makePortal,rebuildPortal} from './portal-geometry.js';
-import {cleanPortal,pairedPortal} from './portal-core.js';
+import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
@@ -1748,42 +1748,64 @@ SceneEditor.prototype.addPortalPair=function(){
 };
 SceneEditor.prototype.setupPortalControls=function(){
  const simple=['portalShape','portalEffect','portalMode','portalColor','portalTexture','portalSound'];
- const numeric=['delay','width','height','depth','openingWidth','openingHeight','opacity'];
+ const numeric=['openingWidth','openingHeight','depth','delay','opacity'];
+ const labels={openingWidth:'Width',openingHeight:'Height',depth:'Depth',delay:'Delay',opacity:'Opacity'};
+ const controlFor=key=>document.getElementById('portal'+key[0].toUpperCase()+key.slice(1));
+ const slider=document.getElementById('portalParameterRange');
+ const chooseParameter=key=>{
+  const el=controlFor(key);if(!el||!slider)return;
+  this.portalActiveParameter=key;
+  slider.min=el.min;slider.max=el.max;slider.step=el.step;slider.value=el.value;
+  slider.disabled=el.disabled;
+  slider.setAttribute('aria-label','Portal '+labels[key]);
+  const label=document.getElementById('portalRangeLabel');if(label)label.textContent=labels[key];
+ };
  const apply=(key,raw)=>{
   const o=this.selected;if(o?.userData.editorKind!=='portal'||!this.canEdit(o))return;
   if(o.userData.portal?.role==='exit'&&['mode','delay','sound'].includes(key))return;
   const before=this.snapshot(o);
-  o.userData.portal=cleanPortal({...o.userData.portal,[key]:raw});
-  rebuildPortal(o,o.userData.portal);this.physics.sync(o);this.recordEdit(before,this.snapshot(o));this.queueSave(o);this.updateInspector();
+  const next=['openingWidth','openingHeight'].includes(key)
+   ?resizePortalAperture(o.userData.portal,key,raw)
+   :cleanPortal({...o.userData.portal,[key]:raw});
+  if(JSON.stringify(next)===JSON.stringify(o.userData.portal))return;
+  rebuildPortal(o,next);
+  this.physics.sync(o);this.recordEdit(before,this.snapshot(o));this.queueSave(o);
+  this.updateInspector();
  };
  for(const id of simple)document.getElementById(id)?.addEventListener('change',()=>{
-  const key=id.replace('portal','');const prop=key[0].toLowerCase()+key.slice(1);const control=document.getElementById(id);
-  apply(prop,control?.type==='checkbox'?control.checked:control?.value);
+  const part=id.slice('portal'.length),key=part[0].toLowerCase()+part.slice(1),control=document.getElementById(id);
+  apply(key,control.type==='checkbox'?control.checked:control.value);
  });
  for(const key of numeric){
-  const name='portal'+key[0].toUpperCase()+key.slice(1),number=document.getElementById(name),range=document.getElementById(name+'Range');
-  const sync=(from,other)=>{if(other&&from)other.value=from.value;};
-  number?.addEventListener('change',()=>{sync(number,range);apply(key,number.value);});
-  range?.addEventListener('input',()=>{sync(range,number);apply(key,range.value);});
+  const el=controlFor(key);if(!el)continue;
+  el.addEventListener('focus',()=>chooseParameter(key));
+  el.addEventListener('click',()=>chooseParameter(key));
+  el.addEventListener('change',()=>{apply(key,el.value);chooseParameter(key);});
  }
- for(const button of document.querySelectorAll('#portalProperties .portal-swatch'))button.addEventListener('click',()=>{
-  const color=button.getAttribute('data-color')||'#499fe3';
-  const input=document.getElementById('portalColor');if(input)input.value=color;apply('color',color);
+ slider?.addEventListener('input',()=>{
+  const key=this.portalActiveParameter||'openingWidth',el=controlFor(key);
+  if(el)el.value=slider.value;
+  apply(key,slider.value);
  });
+ this.portalActiveParameter='openingWidth';
+ this.refreshPortalSlider=()=>chooseParameter(this.portalActiveParameter||'openingWidth');
 };
 SceneEditor.prototype.renderPortalControls=function(obj){
- const fold=document.getElementById('portalProperties');if(!fold)return;fold.hidden=obj?.userData.editorKind!=='portal';if(fold.hidden)return;
+ const fold=document.getElementById('portalProperties');if(!fold)return;
+ fold.hidden=obj?.userData.editorKind!=='portal';if(fold.hidden)return;
  const cfg=cleanPortal(obj.userData.portal);obj.userData.portal=cfg;
- document.getElementById('portalRole').textContent=cfg.role==='entry'?'Entry → Exit':'Exit · destination';
+ document.getElementById('portalRole').textContent=cfg.role==='entry'?'Entry → Exit':'Exit';
  document.getElementById('portalPairStatus').textContent=pairedPortal(this.items,obj)?'Linked pair':'Missing partner';
+ const editable=this.canEdit(obj);
  for(const key of ['shape','effect','mode','color','texture','sound']){
-  const id='portal'+key[0].toUpperCase()+key.slice(1),el=document.getElementById(id);if(el){if(el.type==='checkbox')el.checked=cfg[key];else el.value=String(cfg[key]);el.disabled=!this.canEdit(obj)||cfg.role==='exit'&&['mode','sound'].includes(key);}
+  const id='portal'+key[0].toUpperCase()+key.slice(1),el=document.getElementById(id);
+  if(!el)continue;
+  if(el.type==='checkbox')el.checked=cfg[key];else el.value=String(cfg[key]);
+  el.disabled=!editable||(cfg.role==='exit'&&['mode','sound'].includes(key));
  }
- for(const key of ['delay','width','height','depth','openingWidth','openingHeight','opacity']){
-  const id='portal'+key[0].toUpperCase()+key.slice(1),num=document.getElementById(id),range=document.getElementById(id+'Range');
-  if(num){num.value=String(cfg[key]);num.disabled=!this.canEdit(obj)||cfg.role==='exit'&&key==='delay';}
-  if(range){range.value=String(cfg[key]);range.disabled=!this.canEdit(obj)||cfg.role==='exit'&&key==='delay';}
+ for(const key of ['openingWidth','openingHeight','depth','delay','opacity']){
+  const id='portal'+key[0].toUpperCase()+key.slice(1),el=document.getElementById(id);
+  if(el){el.value=String(cfg[key]);el.disabled=!editable||(cfg.role==='exit'&&key==='delay');}
  }
- const swatches=document.querySelectorAll('#portalProperties .portal-swatch');
- swatches.forEach(btn=>btn.setAttribute('aria-pressed',String((btn.getAttribute('data-color')||'').toLowerCase()===String(cfg.color).toLowerCase())));
+ this.refreshPortalSlider?.();
 };
