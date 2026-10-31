@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.110',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.111',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3082,7 +3082,16 @@ def valid_office_stairs(stairs):
     # Legacy rooms may have the original five lift fields. Never accept arbitrary
     # extras; new stations are opt-in and side must be left or right.
     base_lift_keys={'levels','levelHeight','target','cabinHeight','currentHeight'}
-    if not isinstance(lift,dict) or set(lift) not in (base_lift_keys,base_lift_keys|{'callButtons','callSide'}):return False
+    if not isinstance(lift,dict) or not base_lift_keys.issubset(lift) or set(lift)-base_lift_keys-{'callButtons','callSide','motion'}:return False
+    if 'motion' in lift:
+        motion=lift['motion']
+        if not isinstance(motion,dict) or set(motion)!={'fromHeight','target','startedAt','speed','active'}:return False
+        if type(motion.get('active')) is not bool:return False
+        for field,low,high in (('fromHeight',0,96),('target',0,11),('startedAt',1700000000000,4102444800000),('speed',.05,2.5)):
+            value=motion[field]
+            if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not low<=value<=high:return False
+        if type(motion['target']) is not int:return False
+        if motion['target']>=lift['levels']:return False
     if not structured('lift',tuple(lift),(('levels',2,12),('levelHeight',1.8,8),('target',0,11),('cabinHeight',1.8,4),('currentHeight',0,96)),(('callSide',('left','right')), ) if 'callSide' in lift else (),('callButtons',) if 'callButtons' in lift else ()):return False
     if stairs['variant']=='lift' and stairs['lift']['target']>=stairs['lift']['levels']:return False
     return True
@@ -3447,11 +3456,31 @@ def websocket(ws):
                 with room_lock:
                     if uid in room:room[uid]['state']=filtered
                 publish({'type':'state','id':uid,'name':name,'state':filtered},uid,room_id)
+            elif msg.get('type')=='lift-motion':
+                identifier=str(msg.get('id',''))
+                if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
+                try:
+                    target=int(msg.get('target',-1));from_height=float(msg.get('fromHeight'));started_at=float(msg.get('startedAt'));speed=float(msg.get('speed'));active=msg.get('active')
+                except (TypeError,ValueError,OverflowError):continue
+                if isinstance(active,bool) is False or not all(math.isfinite(x) for x in (from_height,started_at,speed)):continue
+                if not (0<=from_height<=96 and .05<=speed<=2.5 and 1700000000000<=started_at<=4102444800000):continue
+                if abs(started_at-time.time()*1000)>15000:continue
+                with db() as con:
+                    row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+                    objects=json.loads(row['payload']) if row else []
+                    device=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='stairs' and isinstance(o.get('stairs'),dict) and o['stairs'].get('variant')=='lift'),None)
+                if not device or not may_edit(uid,device,room_policy(room_id),ws_admin_enabled()):continue
+                saved_lift=device['stairs'].get('lift',{})
+                levels=saved_lift.get('levels',2)
+                if not isinstance(levels,int) or target<0 or target>=levels:continue
+                publish({'type':'lift-motion','room':room_id,'by':uid,'id':identifier,'target':target,
+                         'fromHeight':round(from_height,4),'startedAt':started_at,
+                         'speed':round(speed,3),'active':active},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-motion':
                 identifier=str(msg.get('id',''))
                 position=msg.get('position');rotation=msg.get('rotation');mode=msg.get('mode','idle')
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
-                if mode not in ('idle','walk','run','wave'):continue
+                if mode not in ('idle','walk','run','wave','lift'):continue
                 if not all(isinstance(v,list) and len(v)==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in v) for v in (position,rotation)):continue
                 with db() as con:
                     itemrow=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()

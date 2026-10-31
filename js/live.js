@@ -22,6 +22,7 @@ export class LiveRoom{
         if(m.type==='presence'){const name=m.name||this.peers.get(m.id)?.name||'Guest';if(m.event==='left')this.peers.delete(m.id);else if(m.id!==this.id)this.peers.set(m.id,{name,state:m.state||{}});this.onPresence(this.peers);window.dispatchEvent(new CustomEvent('solvi:presence-change',{detail:{action:m.event||'joined',id:m.id,name,room:window.solviRoom||'main'}}));}
         if(m.type==='state'&&m.id!==this.id){this.peers.set(m.id,{name:m.name||this.peers.get(m.id)?.name||'Guest',state:m.state});this.onState(m.id,{...m.state,name:m.name||this.peers.get(m.id)?.name});}
         if(m.type==='signal'&&m.to===this.id)this.onSignal?.(m);
+        if(m.type==='lift-motion'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRemoteLiftMotion(m);
         if(m.type==='robot-motion'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRobotMotion(m);
         if(m.type==='robot-input'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRobotInput(m);
         if(m.type==='robot-action'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRemoteRobotAction(m);

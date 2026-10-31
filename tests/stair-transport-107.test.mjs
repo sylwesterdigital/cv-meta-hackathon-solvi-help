@@ -37,7 +37,7 @@ test('Invalid transport displacement is ignored rather than stopping animation f
 });
 test('Frame transport calls shared rider helper rather than vector-only lengthSq',()=>{
  const src=get('js/stair-transport.js');
- assert.match(src,/moveTransportRider\(item,body,delta\)/);
+ assert.match(src,/moveTransportRider\(item,body,\{x:delta.x\/n,y:delta.y\/n,z:delta.z\/n\}\)/);
  assert.doesNotMatch(src.slice(src.indexOf('function transfer(')),/delta\.lengthSq\(/);
  assert.match(src,/body\.setTranslation\(next,true\);body\.setNextKinematicTranslation\(next\)/);
  assert.ok(fs.existsSync(new URL('../assets/ui-icons/square.svg',import.meta.url)));

@@ -53,7 +53,7 @@ test('World tool offers an opt-in checkbox and side selector, with edit persiste
 });
 test('Server bounds new lift fields, retains legacy payloads, refuses unsupported fields',()=>{
  const server=source('backend/server.py');
- assert.match(server,/base_lift_keys\|\{'callButtons','callSide'\}/);
+ assert.match(server,/set\(lift\)-base_lift_keys-\{'callButtons','callSide','motion'\}/);
  assert.match(server,/\('callSide',\('left','right'\)\)/);
  assert.match(server,/\('callButtons',\) if 'callButtons' in lift/);
 });

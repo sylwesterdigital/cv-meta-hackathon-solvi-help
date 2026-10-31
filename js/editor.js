@@ -12,8 +12,10 @@ import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive} from './primitive-properties.js';
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
-import {makeOfficeStairs,rebuildOfficeStairs,sanitiseStairs,stairSegments} from './office-stairs.js';
-import {tickStairTransport,startLift} from './stair-transport.js';
+import {makeOfficeStairs,rebuildOfficeStairs,updateLiftPanel,sanitiseStairs,stairSegments} from './office-stairs.js';
+import {tickStairTransport,startLift,stopLift} from './stair-transport.js';
+import {liftHeightAt,liftBaseY,legacyLiftBaseY,safeLiftMotion} from './lift-sync.js';
+import {attachControlSwitcherDrag} from './control-switcher-drag.js';
 import {liftButtonRequest} from './lift-panel-state.js';
 import {stairGeometryKey} from './stair-extensions.js';
 import {makePortal,rebuildPortal} from './portal-geometry.js';
@@ -256,6 +258,7 @@ export class SceneEditor{
   const strafe=byId('robotStrafeSpeed');strafe.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotStrafeSpeed=Number(strafe.value);byId('robotStrafeLabel').textContent=Number(strafe.value).toFixed(1)+'×';this.queueSave(this.selected);};
   const turn=byId('robotTurnSpeed');turn.addEventListener('input',()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotTurnSpeed=Number(turn.value);byId('robotTurnLabel').textContent=Number(turn.value).toFixed(2)+'×';this.queueSave(this.selected);});
   const modeButton=byId('controlModeButton'),robotSelect=byId('controlledRobotSelect'),robotFaces=byId('controlledRobotFaces');
+  attachControlSwitcherDrag(byId('controlSwitcher'),byId('controlSwitcherDrag'));
   this.robotPortraitCache=new Map();
   this.controlledRobot=()=>{
    const robot=this.items.find(o=>o.userData.editorId===this.controlledRobotId&&o.userData.editorKind==='robot');
@@ -481,7 +484,7 @@ export class SceneEditor{
   for(const id of extraIds){field(id).addEventListener('change',rerender);if(['number','color'].includes(field(id).type))field(id).addEventListener('input',rerender);}
   field('stairLiftLevels').addEventListener('change',()=>this.refreshLiftLevels());
   field('stairLiftStart').onclick=()=>{const o=this.wallEditTarget;if(!o||o.userData.stairs?.variant!=='lift'||!this.canEdit(o))return;const level=Number(field('stairLiftTarget').value);this.activateLiftButton({parent:o,userData:{liftButton:true,liftLevel:level}});};
-  field('stairLiftStop').onclick=()=>{const o=this.wallEditTarget;if(o?.userData.stairRuntime){o.userData.stairRuntime.moving=false;field('stairLiftState').textContent='Stopped';}};
+  field('stairLiftStop').onclick=()=>{const o=this.wallEditTarget;if(o&&this.canEdit(o)&&stopLift(o)){window.solviRoomSocket?.send({type:'lift-motion',id:o.userData.editorId,...o.userData.stairs.lift.motion});this.queueSave(o);field('stairLiftState').textContent='Stopped';}};
   field('wallColor').addEventListener('input',rerender); // Input, not change: update while native colour picker is open.
   for(const id of ['stairCount','stairTread','stairRiser','wallCeilingHeight'])field(id).addEventListener('input',rerender);
   for(const id of ['wallSnap','wallGridStep','wallAngleStep'])field(id).addEventListener('change',()=>this.drawWallPreview());
@@ -543,7 +546,7 @@ export class SceneEditor{
    roof:{enabled:get('stairRoofEnabled'),walls:get('stairRoofWalls'),height:get('stairRoofHeight'),thickness:get('stairRoofThickness'),texture:get('stairRoofTexture'),color:get('stairRoofColor'),opacity:get('stairRoofOpacity')},
    supports:{enabled:get('stairSupportEnabled'),side:get('stairSupportSide'),every:get('stairSupportEvery'),width:get('stairSupportWidth'),texture:get('stairSupportTexture'),color:get('stairSupportColor'),opacity:get('stairSupportOpacity')},
    transport:{enabled:get('stairTransportEnabled'),speed:get('stairTransportSpeed'),direction:get('stairTransportDirection')==='-1'?-1:1},
-   lift:{levels:get('stairLiftLevels'),levelHeight:get('stairLiftLevelHeight'),cabinHeight:get('stairLiftCabinHeight'),callButtons:get('stairLiftCallButtons'),callSide:get('stairLiftCallSide'),target:this.wallEditTarget?.userData.stairs?.lift?.target||0,currentHeight:this.wallEditTarget?.userData.stairs?.lift?.currentHeight||0}
+   lift:{levels:get('stairLiftLevels'),levelHeight:get('stairLiftLevelHeight'),cabinHeight:get('stairLiftCabinHeight'),callButtons:get('stairLiftCallButtons'),callSide:get('stairLiftCallSide'),target:this.wallEditTarget?.userData.stairs?.lift?.target||0,currentHeight:this.wallEditTarget?.userData.stairs?.lift?.currentHeight||0,...(this.wallEditTarget?.userData.stairs?.lift?.motion?{motion:this.wallEditTarget.userData.stairs.lift.motion}:{})}
   });
  }
  refreshLiftLevels(){const select=byId('stairLiftTarget');if(!select)return;const previous=select.value;select.replaceChildren();const count=Math.max(2,Math.min(12,Number(byId('stairLiftLevels').value)||2));for(let i=0;i<count;i++){const option=document.createElement('option');option.value=String(i);option.textContent='Level '+(i+1);select.append(option);}select.value=Number(previous)<count?previous:'0';}
@@ -797,6 +800,7 @@ export class SceneEditor{
   const target=liftButtonRequest(device.userData.stairs?.lift,button);
   if(target===null)return false;
   const started=startLift(device,target);
+  window.solviRoomSocket?.send({type:'lift-motion',id:device.userData.editorId,...device.userData.stairs.lift.motion});
   // Destination changes are saved as a compact object update, not a geometry rebuild.
   this.queueSave(device);
   if(this.wallEditTarget===device){
@@ -805,6 +809,23 @@ export class SceneEditor{
   }
   return true;
  }
+  applyRemoteLiftMotion(packet){
+   const device=this.items.find(o=>o.userData.editorId===packet?.id&&o.userData.stairs?.variant==='lift');
+   if(!device)return false;
+   const incoming=safeLiftMotion(packet);if(!incoming||incoming.target>=device.userData.stairs.lift.levels)return false;
+   const runtime=device.userData.stairRuntime||{height:device.userData.stairs.lift.currentHeight||0};
+   if(runtime.motion&&incoming.startedAt<runtime.motion.startedAt)return false;
+   runtime.baseY??=liftBaseY(device.position.y,runtime.height);
+   // Avoid rebasing the same timeline after a slower scene revision arrives.
+   runtime.motion=incoming;runtime.target=incoming.target;runtime.moving=incoming.active;runtime.commanded=true;runtime.authority=false;
+   runtime.height=liftHeightAt(incoming,device.userData.stairs.lift.levelHeight,device.userData.stairs.lift.levels);
+   device.userData.stairRuntime=runtime;device.userData.stairs.lift.motion=incoming;
+   device.userData.stairs.lift.target=incoming.target;device.userData.stairs.lift.currentHeight=runtime.height;
+   device.position.y=runtime.baseY+runtime.height;
+   const body=this.physics?.bodies?.get(device.userData.editorId);if(body){const p=device.position;body.setTranslation({x:p.x,y:p.y,z:p.z},true);body.setNextKinematicTranslation({x:p.x,y:p.y,z:p.z});}
+   for(const child of device.children)if(child.userData.stairShaft)child.position.y=-runtime.height;
+   updateLiftPanel(device);return true;
+  }
  events(){
   const canvas=this.world.renderer.domElement;let startX,startY;
   window.addEventListener('keydown',e=>{if(!byId('wallPanel')||byId('wallPanel').hidden)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.code==='KeyZ'){e.preventDefault();e.stopImmediatePropagation();e.shiftKey?this.redoWall():this.undoWall();return;}if(cmd&&e.code==='KeyY'){e.preventDefault();e.stopImmediatePropagation();this.redoWall();return;}if(!this.wallDrawing)return;if(e.key==='Escape'){e.preventDefault();this.endWallDrawing();}else if(e.key==='Enter'&&!e.target?.closest?.('input,select,textarea')){e.preventDefault();this.finishWallStroke();}},true);
@@ -949,7 +970,8 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  add(kind,showGallery=true,lightType=undefined,persist=true){const object=objectFor(kind);if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
  const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.cameraDropPosition(3.2);object.position.x=point.x;object.position.z=point.z;if(kind!=='robot')object.position.y=Math.max(.8,point.y);
  object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;if(PRIMITIVE_FIELDS[kind])object.userData.primitive=sanitisePrimitive(kind);this.items.push(object);this.world.scene.add(object);this.physics.sync(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}if(kind==='model'&&object.userData.modelUrl)hydrateSceneModel(object);if(kind!=='model'&&persist){this.recordEdit(null,this.snapshot(object));this.queueSave(object);}return object;}
- select(obj){if(this.wallEditTarget&&this.wallEditTarget!==obj)this.endWallDrawing();if(this.selected&&this.selected!==obj)this.broadcastEdit(false);this.clearLightHelper();this.robotKeys?.clear();this.localRobotInput=null;this.selected=obj;
+ select(obj){if(this.wallEditTarget&&this.wallEditTarget!==obj)this.endWallDrawing();if(this.selected&&this.selected!==obj)this.broadcastEdit(false);this.clearLightHelper();this.robotKeys?.clear();this.localRobotInput=null;  this.selected=obj;
+  if(obj?.userData.editorKind==='robot'&&this.canEdit(obj)){this.controlledRobotId=obj.userData.editorId;this.controlMode='robot';}
   if(obj?.userData.editorKind==='robot')for(const key of ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'])this.world.keys.delete(key);
   // Robots are controlled with arrows, not a permanent transform gizmo.
   if(this.canTransform(obj)&&obj.userData.editorKind!=='robot')this.transform.attach(obj);
@@ -1061,6 +1083,12 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  beginSceneReplacement(){this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.controlledRobotId=null;this.robotKeys.clear();this.sceneRestorePhysics=this.physics.enabled;this.physics.clear();byId('propertiesPanel').hidden=true;}
  addSceneEntry(entry){if(!kinds.includes(entry.kind))return;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.robotCombat=combatSettings(entry.combat);o.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='curve'){o.userData.curve=cleanCurve(entry.curve);o.geometry.dispose();o.geometry=buildCurveGeometry(o.userData.curve);}if(entry.kind==='text')rebuildText(o,entry.text,()=>{if(this.items.includes(o))this.physics.sync(o);});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{});if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(entry.kind==='portal')rebuildPortal(o,entry.portal||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.userData.openings=entry.kind==='cube'?cleanOpenings(entry.openings):undefined;o.geometry=entry.kind==='cube'?cutCubeGeometry(o.userData.primitive,o.userData.openings):buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
+   if(entry.kind==='stairs'&&o.userData.stairs?.variant==='lift'){
+    const lift=o.userData.stairs.lift,h=Number(lift.currentHeight)||0;
+    const baseY=safeLiftMotion(lift.motion)?liftBaseY(o.position.y,h):legacyLiftBaseY(o.position.y,h);
+    o.userData.stairRuntime={baseY,height:h,target:lift.target,moving:!!lift.motion?.active,motion:safeLiftMotion(lift.motion),authority:false,commanded:true};
+    o.position.y=baseY+h;for(const child of o.children)if(child.userData.stairShaft)child.position.y=-h;updateLiftPanel(o);
+   }
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
    this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);if(entry.kind==='media')hydrateSceneMedia(o,this.world);this.physics.sync(o);}
@@ -1122,8 +1150,28 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     (movingRemote&&performance.now()-movingRemote.received<2400)||
     (this.controlMode==='robot'&&this.selected===obj&&this.canEdit(obj))||
     Boolean(obj.userData.robotImpactVelocity));
+  const incomingLift=entry.kind==='stairs'&&entry.stairs?.variant==='lift';
+  const liftBefore=incomingLift&&!isNew?obj.userData.stairRuntime:null;
+  const priorLiftBaseY=liftBefore?.baseY;
   if(!preserveRobotPose){obj.position.fromArray(entry.position);obj.rotation.fromArray(entry.rotation);}
-  obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'){if(stairGeometryKey(obj.userData.stairs)!==stairGeometryKey(entry.stairs))rebuildOfficeStairs(obj,entry.stairs||{});else if(entry.stairs)obj.userData.stairs=structuredClone(entry.stairs);}if(entry.kind==='portal'&&JSON.stringify(obj.userData.portal)!==JSON.stringify(cleanPortal(entry.portal)))rebuildPortal(obj,entry.portal||{});if(entry.kind==='curve'&&JSON.stringify(obj.userData.curve)!==JSON.stringify(cleanCurve(entry.curve))){obj.userData.curve=cleanCurve(entry.curve);obj.geometry.dispose();obj.geometry=buildCurveGeometry(obj.userData.curve);}if(entry.kind==='text'&&(isNew||JSON.stringify(obj.userData.text)!==JSON.stringify(cleanText(entry.text))))rebuildText(obj,entry.text,()=>{if(this.items.includes(obj))this.physics.sync(obj);});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive),holes=entry.kind==='cube'?cleanOpenings(entry.openings):[];if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)||JSON.stringify(obj.userData.openings||[])!==JSON.stringify(holes)){const prior=obj.geometry;obj.geometry=entry.kind==='cube'?cutCubeGeometry(next,holes):buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;if(entry.kind==='cube')obj.userData.openings=holes;}
+  obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'){if(stairGeometryKey(obj.userData.stairs)!==stairGeometryKey(entry.stairs))rebuildOfficeStairs(obj,entry.stairs||{});else if(entry.stairs)obj.userData.stairs=structuredClone(entry.stairs);}if(incomingLift){
+   const cfg=obj.userData.stairs?.lift;const motion=safeLiftMotion(cfg?.motion);
+   const height=Number(cfg?.currentHeight)||0;
+   const oldMotion=liftBefore?.motion;
+   if(oldMotion&&motion&&oldMotion.startedAt>motion.startedAt){
+    cfg.motion=oldMotion;cfg.target=liftBefore.target;
+   }
+   const effective=safeLiftMotion(cfg?.motion);
+   const baseY=priorLiftBaseY??(effective?liftBaseY(obj.position.y,height):legacyLiftBaseY(obj.position.y,height));
+   const runtime=liftBefore||{height,baseY,authority:false};
+   if(oldMotion&&effective&&effective.startedAt>oldMotion.startedAt)runtime.authority=false;
+   runtime.baseY=baseY;runtime.motion=effective;runtime.target=effective?.target??cfg.target;runtime.commanded=!!effective;runtime.moving=!!effective?.active;
+   runtime.height=effective?liftHeightAt(effective,cfg.levelHeight,cfg.levels):height;
+   obj.userData.stairRuntime=runtime;cfg.currentHeight=runtime.height;obj.position.y=baseY+runtime.height;
+   for(const child of obj.children)if(child.userData.stairShaft)child.position.y=-runtime.height;
+   updateLiftPanel(obj);
+  }
+  if(entry.kind==='portal'&&JSON.stringify(obj.userData.portal)!==JSON.stringify(cleanPortal(entry.portal)))rebuildPortal(obj,entry.portal||{});if(entry.kind==='curve'&&JSON.stringify(obj.userData.curve)!==JSON.stringify(cleanCurve(entry.curve))){obj.userData.curve=cleanCurve(entry.curve);obj.geometry.dispose();obj.geometry=buildCurveGeometry(obj.userData.curve);}if(entry.kind==='text'&&(isNew||JSON.stringify(obj.userData.text)!==JSON.stringify(cleanText(entry.text))))rebuildText(obj,entry.text,()=>{if(this.items.includes(obj))this.physics.sync(obj);});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive),holes=entry.kind==='cube'?cleanOpenings(entry.openings):[];if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)||JSON.stringify(obj.userData.openings||[])!==JSON.stringify(holes)){const prior=obj.geometry;obj.geometry=entry.kind==='cube'?cutCubeGeometry(next,holes):buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;if(entry.kind==='cube')obj.userData.openings=holes;}
   if(entry.color&&entry.kind!=='model'&&entry.kind!=='media'){obj.traverse(node=>{if(node.material?.color&&node.userData.editorKind!=='robot'){
    if(node.isMesh&&!node.userData.robotPlaceholder&&entry.kind==='robot')return;
    if(node.material.color.getHexString()!==entry.color.slice(1))node.material.color.set(entry.color);
@@ -1336,7 +1384,12 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
         o.userData.lastMissionSave=now;this.queueSave(o);
       }
     },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot)}));
-    this.physics.tick(dt);tickStairTransport(this,dt);tickPortals(this,dt);this.updateMountedMedia();
+    this.physics.tick(dt);
+    for(const bot of this.items){const y=bot.userData.liftRemoteTargetY;if(bot.userData.editorKind!=='robot'||!Number.isFinite(y)||this.physics.owns(bot))continue;
+     const delta=Math.max(-.16,Math.min(.16,(y-bot.position.y)*Math.min(1,dt*12)));if(Math.abs(delta)>.001){bot.position.y+=delta;const body=this.physics.bodies.get(bot.userData.editorId);if(body){const p=body.translation(),next={x:p.x,y:p.y+delta,z:p.z};body.setTranslation(next,true);body.setNextKinematicTranslation(next);}}
+     if(Math.abs(y-bot.position.y)<.02)delete bot.userData.liftRemoteTargetY;
+    }
+    tickStairTransport(this,dt);tickPortals(this,dt);this.updateMountedMedia();
     for(const r of this.items){if(r.userData.editorKind!=='robot')continue;const previous=previousRobotPositions.get(r.userData.editorId);if(!previous)continue;const distance=Math.hypot(r.position.x-previous.x,r.position.z-previous.z);r.userData.robotActualSpeed=distance/Math.max(.016,dt);}
     animateRobots(this.items,dt,(actor,kind,force,remote)=>{
       const hits=this.physics.applyCombat(actor,kind,force,remote);
@@ -1397,7 +1450,15 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
       this.remoteInput.set(packet.id,{f:0,t:0,r:0,b:0,s:packet.s??1.8,q:packet.q??2.5,u:packet.u??4,received:performance.now()});
     }else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,q:packet.q??2.5,u:packet.u??4,received:performance.now()});
   }
-  applyRobotMotion(state){this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});}
+  applyRobotMotion(state){
+   this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});
+   if(state.mode==='lift'){const robot=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===state.id);
+    const y=state.position?.[1];if(robot&&!this.physics.owns(robot)&&typeof y==='number'&&Number.isFinite(y)){
+     // Vertical transport is absent from the 2D robot input correction path.
+     robot.userData.liftRemoteTargetY=y;
+    }
+   }
+  }
   // Same live editor geometry drives the minimap and route planner. Footprints
   // are kept clear of robots and furniture; navigation never pushes objects.
   robotPathDebugVisible(robot){return robotPathVisible(robot?.userData?.editorId,sessionStorage);}

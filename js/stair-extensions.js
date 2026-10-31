@@ -1,5 +1,6 @@
 // Validated parametric additions to office stairs. This file intentionally has no DOM/Three dependency.
 const limit=(x,min,max,def)=>Number.isFinite(Number(x))?Math.max(min,Math.min(max,Number(x))):def;
+import {safeLiftMotion} from './lift-sync.js';
 const hex=(v,f)=>typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v)?v:f;
 const variants=new Set(['standard','advanced','escalator','walkway','lift']);
 export const STAIR_VARIANTS=[...variants];
@@ -19,7 +20,7 @@ export function cleanStairExtras(raw={}){
   supports:{enabled:supports.enabled===true,side:choice(supports.side,['both','left','right','center'],'both'),every:Math.round(limit(supports.every,1,16,4)),
    width:limit(supports.width,.04,.65,.12),color:hex(supports.color,'#8a939b'),opacity:limit(supports.opacity,.1,1,1),texture:choice(supports.texture,['none','concrete','bricks','plaster','metal'],'none')},
   transport:{speed:limit(transport.speed,.05,2.5,.5),direction:transport.direction===-1?-1:1,enabled:transport.enabled!==false},
-  lift:{levels:Math.round(limit(lift.levels,2,12,2)),levelHeight:limit(lift.levelHeight,1.8,8,3),target:Math.round(limit(lift.target,0,11,1)),cabinHeight:limit(lift.cabinHeight,1.8,4,2.4),currentHeight:limit(lift.currentHeight,0,96,0),callButtons:lift.callButtons===true,callSide:choice(lift.callSide,['left','right'],'right')}
+  lift:{levels:Math.round(limit(lift.levels,2,12,2)),levelHeight:limit(lift.levelHeight,1.8,8,3),target:Math.round(limit(lift.target,0,11,1)),cabinHeight:limit(lift.cabinHeight,1.8,4,2.4),currentHeight:limit(lift.currentHeight,0,96,0),callButtons:lift.callButtons===true,callSide:choice(lift.callSide,['left','right'],'right'),...(safeLiftMotion(lift.motion)?{motion:safeLiftMotion(lift.motion)}:{})}
  };
 }
 export function projectPath(points,x,z){
@@ -48,7 +49,7 @@ export function liftTargetHeight(lift,target){const l=cleanStairExtras({lift}).l
 // Runtime lift travel and conveyor velocity never invalidate mesh/collider topology.
 export function stairGeometryKey(raw={}){
  const data=JSON.parse(JSON.stringify(raw||{}));
- if(data.lift){delete data.lift.currentHeight;delete data.lift.target;}
+ if(data.lift){delete data.lift.currentHeight;delete data.lift.target;delete data.lift.motion;}
  if(data.transport)delete data.transport;
  return JSON.stringify(data);
 }

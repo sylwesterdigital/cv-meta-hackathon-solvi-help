@@ -2000,3 +2000,15 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 
 /* Compact portal properties, consistent with existing inspector folds. */
 .portal-settings{display:grid;gap:6px;padding:7px 3px 3px}.portal-settings label{display:flex;align-items:center;justify-content:space-between;gap:7px;font-size:12px}.portal-settings label input:not([type=checkbox]),.portal-settings select{width:105px;max-width:44%;min-width:0;padding:4px 5px}.portal-settings small{font-size:11px;line-height:1.35;opacity:.83}.portal-settings .portal-check{justify-content:flex-start}
+
+/* v0.2.111: draggable compact control window; selected robot is visible. */
+#controlSwitcher.control-switcher{left:130px;bottom:calc(50px + env(safe-area-inset-bottom));pointer-events:auto!important;background:rgba(14,27,40,.90)!important;border:1px solid var(--ui-border,#71809b);border-radius:12px;padding:5px!important;box-shadow:0 5px 16px #0006;max-width:calc(100vw - 20px)!important;width:max-content!important;}
+#controlSwitcher .robot-face-options{background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important;}
+#controlSwitcher .robot-face-choice{width:68px!important;max-width:68px!important;min-width:60px!important;padding:3px!important;}
+#controlSwitcher .robot-face-avatar{width:50px!important;height:50px!important;min-width:50px!important;}
+#controlSwitcher .robot-face-choice small{max-width:61px!important;font-size:10px!important;}
+#controlSwitcher .robot-face-choice[aria-pressed=true]{border:2px solid var(--solvi-accent,#c875e8)!important;background:color-mix(in srgb,var(--solvi-accent,#c875e8) 20%,transparent)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--solvi-accent,#c875e8) 30%,transparent)!important;}
+#controlSwitcher .control-switcher-action-row{display:flex;gap:4px;align-items:center;pointer-events:auto;}
+#controlSwitcher #controlSwitcherDrag{touch-action:none;cursor:grab;font-size:17px;line-height:1;min-width:29px;width:29px;height:30px;border:1px solid var(--ui-border,#71809b);background:var(--ui-panel,#102536);border-radius:7px;color:var(--ui-fg,#fff);padding:0;}
+#controlSwitcher #controlSwitcherDrag:active{cursor:grabbing;}
+#controlSwitcher #controlModeButton{flex:1;}

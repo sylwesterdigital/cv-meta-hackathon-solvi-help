@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.110",
+  "currentVersion": "0.2.111",
   "releases": [
+    {
+      "version": "0.2.111",
+      "publishedAt": "2026-10-31T16:44:37Z",
+      "changes": [
+        "Lift starts, stops and arrivals now use a server-authorized event and persistent motion timeline instead of frequent position snapshots",
+        "Lift clients animate the same height, floor readout, landing buttons, shaft and collision position without jumping on scene revisions",
+        "Robot riders are predicted locally and owner pose updates include lift elevation; scene persistence remains ownership-checked",
+        "Robot control switcher is draggable with 25% larger portraits, active-selection highlight and scene-to-control synchronization"
+      ]
+    },
     {
       "version": "0.2.110",
       "publishedAt": "2026-10-31T16:18:38Z",
@@ -330,17 +340,6 @@
         "Version the main.js entrypoint and styles.css URL to prevent stale top-level scripts/styles on browser reload.",
         "Retain procedural Office Space > Walls directly after Torus, robot pushing, wall editing and v0.2.79 scene features.",
         "Add two tests checking Office Space menu registration and versioned module resolution across all first-party imports."
-      ]
-    },
-    {
-      "version": "0.2.79",
-      "publishedAt": "2026-10-30T12:38:53Z",
-      "changes": [
-        "Add Office Space > Walls drawing in the Add menu with single-segment, multiple-node and freehand floor gestures, live wireframe previews and optional point simplification.",
-        "Create editable procedural office wall meshes with width, height, plaster/concrete/brick/glass materials, colour, opacity, static/dynamic/kinematic physics and segment-wise collision bodies.",
-        "Persist wall control points and material settings in room scenes, atomic object updates and realm archives; validate points and dimensions server-side.",
-        "Use bounded, ownership-checked Rapier capsule contact displacement for nearby idle robots, including forward/backward walking animation paced by measured movement.",
-        "Keep route planning collision checks aligned with individual wall segments rather than treating all open interior space as one solid wall bounding box."
       ]
     }
   ]
