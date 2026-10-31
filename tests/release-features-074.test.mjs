@@ -35,7 +35,7 @@ test('primitive properties are bounded and persisted across edits, load and scen
  assert.match(editor,/renderPrimitiveControls\(obj\)/);
  assert.match(editor,/primitive:PRIMITIVE_FIELDS/);
  assert.match(backend,/'primitive' in o/);
- assert.match(backend,/'media','primitive','wall','stairs','curve','openings','transformLocked'/);
+ assert.match(backend,/'media','primitive','wall','stairs','curve','text','openings','transformLocked'/);
 });
 
 test('realm gallery export/import supports JSON placeholders, full and assets gzip archives',()=>{

@@ -39,7 +39,7 @@ function imports(source) {
   return [...new Set(found)];
 }
 
-const queue = ['controls/OrbitControls.js', 'controls/TransformControls.js', 'loaders/GLTFLoader.js', 'loaders/FBXLoader.js', 'utils/SkeletonUtils.js', 'loaders/DRACOLoader.js', 'loaders/KTX2Loader.js', 'libs/meshopt_decoder.module.js', 'webxr/XRControllerModelFactory.js', 'webxr/XRHandModelFactory.js'];
+const queue = ['geometries/TextGeometry.js','loaders/FontLoader.js','controls/OrbitControls.js', 'controls/TransformControls.js', 'loaders/GLTFLoader.js', 'loaders/FBXLoader.js', 'utils/SkeletonUtils.js', 'loaders/DRACOLoader.js', 'loaders/KTX2Loader.js', 'libs/meshopt_decoder.module.js', 'webxr/XRControllerModelFactory.js', 'webxr/XRHandModelFactory.js'];
 const visited = new Set();
 while (queue.length) {
   const rel = queue.shift();
@@ -64,6 +64,7 @@ while (queue.length) {
     queue.push(dependency);
   }
 }
+for (const name of ['helvetiker','optimer','gentilis']) await copy(path.join(pkgRoot,'examples','fonts',name+'_regular.typeface.json'),path.join(vendor,'fonts',name+'_regular.typeface.json'));
 await cp(path.join(examples, 'libs', 'draco'), path.join(vendor, 'draco'), { recursive: true, force: true });
 await cp(path.join(examples, 'libs', 'basis'), path.join(vendor, 'basis'), {recursive:true,force:true});
 // Rapier 0.21 moved its self-contained ESM bundle under dist/rapier.mjs.

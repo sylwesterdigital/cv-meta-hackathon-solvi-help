@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.101',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.102',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -2958,6 +2958,15 @@ def valid_curve_geometry(curve):
         if not isinstance(val,(int,float)) or isinstance(val,bool) or not math.isfinite(val) or not low<=val<=high:return False
     return 'capEnds' not in curve or isinstance(curve['capEnds'],bool)
 
+def valid_text_geometry(text):
+    if not isinstance(text,dict) or len(text)>5:return False
+    if not isinstance(text.get('content'),str) or len(text['content'])>180:return False
+    if text.get('font') not in ('helvetiker','optimer','gentilis'):return False
+    for key,low,high in (('size',.05,12),('extrude',0,2),('bevel',0,.2)):
+        val=text.get(key)
+        if not isinstance(val,(int,float)) or isinstance(val,bool) or not math.isfinite(val) or not low<=val<=high:return False
+    return True
+
 def valid_cube_openings(openings):
     if not isinstance(openings,list) or len(openings)>8:return False
     for item in openings:
@@ -2991,6 +3000,7 @@ def set_scene():
     for o in objects:
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
         if 'curve' in o and (o['kind']!='curve' or not valid_curve_geometry(o.get('curve'))):return json_error('Invalid curve geometry')
+        if 'text' in o and (o['kind']!='text' or not valid_text_geometry(o['text'])):return json_error('Invalid text geometry')
         if 'openings' in o and (o['kind']!='cube' or not valid_cube_openings(o['openings'])):return json_error('Invalid cube openings')
         if o['kind']=='wall' and not valid_office_wall(o.get('wall')):return json_error('Invalid office wall')
         if o['kind']=='stairs' and not valid_office_stairs(o.get('stairs')):return json_error('Invalid office stairs')
@@ -3065,10 +3075,11 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','curve','openings','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','curve','text','openings','transformLocked') if key in obj}
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')
+        if 'text' in obj and (obj['kind']!='text' or not valid_text_geometry(obj['text'])):return json_error('Invalid text geometry')
         if 'openings' in obj and (obj['kind']!='cube' or not valid_cube_openings(obj['openings'])):return json_error('Invalid cube openings')
         if obj['kind']=='wall' and not valid_office_wall(obj.get('wall')):return json_error('Invalid office wall')
         if obj['kind']=='stairs' and not valid_office_stairs(obj.get('stairs')):return json_error('Invalid office stairs')

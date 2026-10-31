@@ -784,10 +784,11 @@ export class SolviWorld {
     this.extentCheck+=dt;if(this.extentCheck>3){this.extentCheck=0;this.updateWorldExtent();}
     // Never give OrbitControls ownership of a TransformControls gesture.
     const cameraAllowed=this.cameraOrbitGesture!==false; // Idle wheel gestures and active camera drags; no transform drags.
-    this.controls.enabled=!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.editorGizmoPointer&&cameraAllowed&&document.pointerLockElement!==this.renderer.domElement;
-    this.navigateCamera(dt);
-    if(!this.renderer.xr.isPresenting)this.controls.update();
-    this.updateXR();this.robotEditor?.tick(dt);this.updateFollowCamera(dt);this.updateVoiceRings(dt);updateSceneMedia(this,dt);this.robotEditor?.updateMediaHUDPosition?.();
+    const sketchLocked=Boolean(this.robotEditor?.curveDrawing||this.robotEditor?.faceDrawing);
+    this.controls.enabled=!sketchLocked&&!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.editorGizmoPointer&&cameraAllowed&&document.pointerLockElement!==this.renderer.domElement;
+    if(!sketchLocked)this.navigateCamera(dt);
+    if(!this.renderer.xr.isPresenting&&!sketchLocked)this.controls.update();
+    this.updateXR();this.robotEditor?.tick(dt);if(!sketchLocked)this.updateFollowCamera(dt);this.updateVoiceRings(dt);updateSceneMedia(this,dt);this.robotEditor?.updateMediaHUDPosition?.();
     if(this.onPose&&(!this.lastPose||performance.now()-this.lastPose>180)){
       this.lastPose=performance.now();const cam=this.renderer.xr.isPresenting?this.renderer.xr.getCamera():this.camera;
       const position=cam.getWorldPosition(new THREE.Vector3());

@@ -1898,3 +1898,9 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #surfaceDrawPanel.spatial-tool-status strong{white-space:nowrap;font-size:12px}
 #surfaceDrawPanel.spatial-tool-status span{color:#c6dfe9;font-size:12px}
 @media(max-width:650px){#surfaceDrawPanel.spatial-tool-status:not([hidden]){left:8px!important;right:8px!important;transform:none!important;width:auto!important;bottom:12px!important}}
+
+/* v0.2.102 — compact text geometry inspector */
+.text-geometry-settings{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 0}
+.text-geometry-settings label{min-width:0;display:flex;flex-direction:column;gap:3px;font-size:11px;color:#c8dce7}
+.text-geometry-settings label:first-child{grid-column:1/-1}
+.text-geometry-settings input,.text-geometry-settings select{width:100%;min-width:0;padding:6px 8px;border:1px solid #547084;border-radius:6px;background:#12253a;color:#f5fbff}

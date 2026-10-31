@@ -36,7 +36,7 @@ test('chase inertia is frame-rate independent and XR is excluded',()=>{
  const code=read('js/world.js');
  assert.match(code,/if\(this\.renderer\.xr\.isPresenting\|\|document\.pointerLockElement===this\.renderer\.domElement\|\|this\.cameraFollowMode==='free'\)return/);
  assert.match(code,/this\.editorDragging\|\|this\.editorGizmoPointer/);
- assert.match(code,/this\.updateXR\(\);this\.robotEditor\?\.tick\(dt\);this\.updateFollowCamera\(dt\)/);
+ assert.match(code,/this\.updateXR\(\);this\.robotEditor\?\.tick\(dt\);if\(!sketchLocked\)this\.updateFollowCamera\(dt\)/);
  assert.match(code,/this\.followOrbitOffset=localOrbitOffset\(this\.camera\.position,target,yaw\)/);
 });
 test('manual numpad camera views remain active in orbit-follow rather than being overwritten',()=>{

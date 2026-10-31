@@ -66,5 +66,5 @@ test('realm roundtrip remaps mounted media target IDs and retains curve/opening 
  const archive=read('backend/realm_archives.py');
  assert.match(archive,/remap\[oldid\]=copy\['id'\]/);
  assert.match(archive,/mount\['target'\]=remap\[mount\['target'\]\]/);
- assert.match(archive,/'curve','openings','transformLocked'/);
+ assert.match(archive,/'curve','text','openings','transformLocked'/);
 });

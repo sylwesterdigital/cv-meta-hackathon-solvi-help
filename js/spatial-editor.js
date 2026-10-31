@@ -79,10 +79,38 @@ export function startFaceDrawing(mode){
  this.cancelSpatialDrawing();this.faceDrawing={mode,object:obj,start:null,end:null,axis:null,side:null,phase:'drawing',previewGeometry:null,originalGeometry:null,pendingOpening:null,mount:null};$('surfaceDrawPanel').hidden=false;
  $('surfaceDrawTitle').textContent=mode==='opening'?'Cut rectangular opening · O':'Attach chat media · U';$('surfaceDrawStatus').textContent='Drag on '+obj.name+' · release to preview · Enter saves · Esc cancels';this.transform.detach();this.world.controls.enabled=false;$('spatialDrawShield').hidden=false;
 }
+// Map the pointer to NDC from the *rendered canvas*, not the viewport/HUD.
+// Update world matrices so this ray matches the camera actually used for rendering.
+export function spatialRay(editor,e){
+ const canvas=editor.world.renderer.domElement,box=canvas.getBoundingClientRect();
+ if(!box.width||!box.height)return null;
+ editor.world.camera.updateMatrixWorld?.(true);
+ editor.pointer.set(((e.clientX-box.left)/box.width)*2-1,1-((e.clientY-box.top)/box.height)*2);
+ editor.raycaster.setFromCamera(editor.pointer,editor.world.camera);
+ return editor.raycaster.ray;
+}
 function surfaceHit(editor,e,first=false){
- const st=editor.faceDrawing,obj=st.object,rect=editor.world.renderer.domElement.getBoundingClientRect();
- editor.pointer.set((e.clientX-rect.left)/rect.width*2,1-(e.clientY-rect.top)/rect.height*2);editor.raycaster.setFromCamera(editor.pointer,editor.world.camera);
- if(first){const hit=editor.raycaster.intersectObject(obj,false)[0];if(!hit?.face)return null;const normal=hit.face.normal.clone().normalize();st.axis=surfaceAxis(normal);st.side=Math.sign(normal[st.axis])||1;return obj.worldToLocal(hit.point.clone());}
+ const st=editor.faceDrawing,obj=st.object;
+ if(!spatialRay(editor,e))return null;
+ if(first){
+  // Use the selected primitive's analytic face rather than its triangles. This
+  // remains pickable even after a hole removes the front-face triangles.
+  obj.updateMatrixWorld(true);
+  const p=obj.userData.primitive||{},half=new THREE.Vector3((Number(p.width)||1)/2,(Number(p.height)||1)/2,(Number(p.depth)||1)/2);
+  if(obj.userData.editorKind==='plane'){
+   const normal=new THREE.Vector3(0,0,1).transformDirection(obj.matrixWorld),worldPoint=obj.localToWorld(new THREE.Vector3()),hitPoint=new THREE.Vector3();
+   if(!editor.raycaster.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(normal,worldPoint),hitPoint))return null;
+   const local=obj.worldToLocal(hitPoint);
+   if(Math.abs(local.x)>half.x||Math.abs(local.y)>half.y)return null;
+   st.axis='z';st.side=1;return local;
+  }
+  const localRay=editor.raycaster.ray.clone().applyMatrix4(obj.matrixWorld.clone().invert()),point=new THREE.Vector3();
+  if(!localRay.intersectBox(new THREE.Box3(half.clone().negate(),half),point))return null;
+  const distances=['x','y','z'].map(a=>Math.abs(Math.abs(point[a])-half[a]));
+  const axis=['x','y','z'][distances.indexOf(Math.min(...distances))];
+  st.axis=axis;st.side=Math.sign(point[axis])||1;
+  return point;
+ }
  if(!st.start)return null;
  obj.updateMatrixWorld(true);const size=obj.userData.primitive||{},axis=st.axis,side=st.side;
  const bound=axis==='x'?(Number(size.width)||1)/2:axis==='y'?(Number(size.height)||1)/2:obj.userData.editorKind==='plane'?0:(Number(size.depth)||1)/2;
@@ -151,7 +179,7 @@ export function spatialPointer(event){
   if(this.faceDrawing||this.curveDrawing)this.cancelSpatialDrawing();
   return true;
  }
- const pointFromEvent=()=>{const box=canvas.getBoundingClientRect();this.pointer.set((event.clientX-box.left)/box.width*2,1-(event.clientY-box.top)/box.height*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);return strokePoint(this.raycaster.ray,this.curveDrawing.plane);};
+ const pointFromEvent=()=>{const ray=spatialRay(this,event);return ray?strokePoint(ray,this.curveDrawing.plane):null;};
  if(this.curveDrawing){
   const d=this.curveDrawing;
   if(event.type==='pointerdown'&&event.button===0){
@@ -170,10 +198,10 @@ export function spatialPointer(event){
  if(event.type==='pointerdown'){
   if(st.phase==='preview'){this.cancelSpatialDrawing();return true;} // click anywhere to dismiss an unconfirmed sketch
   if(event.button!==0)return true;
-  const p=surfaceHit(this,event,true);if(!p){$('surfaceDrawStatus').textContent='Start drawing directly on the selected object face';return true;}
+  const p=surfaceHit(this,event,true);if(!p){$('surfaceDrawStatus').textContent='Aim at a visible face of the selected object, then drag';return true;}
   st.start=p;st.end=p;inputTarget.setPointerCapture?.(event.pointerId);drawFacePreview(this);return true;
  }
- if(event.type==='pointermove'&&st.start&&st.phase==='drawing'){st.end=surfaceHit(this,event)||st.end;drawFacePreview(this);return true;}
+ if(event.type==='pointermove'&&st.start&&st.phase==='drawing'){st.end=surfaceHit(this,event)||st.end;drawFacePreview(this);$('surfaceDrawStatus').textContent='Rectangle drawing · release to show '+(st.mode==='opening'?'real opening':'media frame');return true;}
  if(event.type==='pointerup'&&st.start&&st.phase==='drawing'){
   st.end=surfaceHit(this,event)||st.end;
   if(inputTarget.hasPointerCapture?.(event.pointerId))inputTarget.releasePointerCapture(event.pointerId);

@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.101",
+  "currentVersion": "0.2.102",
   "releases": [
+    {
+      "version": "0.2.102",
+      "publishedAt": "2026-10-31T05:19:29Z",
+      "changes": [
+        "Freeze camera during drawing and correct pointer-to-world ray mapping",
+        "Use analytic cube face raycast for openings and media rectangles (including pre-cut cubes)",
+        "Editable and persistent text geometry: content, font, size, extrusion and bevel with local typeface assets",
+        "Add regression tests for text geometry validation and camera lock"
+      ]
+    },
     {
       "version": "0.2.101",
       "publishedAt": "2026-10-31T05:02:32Z",
@@ -334,17 +344,6 @@
         "Guide distinct robot positions through opening views, direct evidence challenges and a final agreement/disagreement synthesis, with no forced false balance and a fixed maximum of seven model turns.",
         "Persist discussion sessions, source records and completed turns in SQLite; enforce sender/room/recipient verification, strict turn order, replay-safe deduplication and per-user start limits.",
         "Provide discussion progress and an in-composer Stop discussion action; retain exact model prompt and response records in per-robot diagnostic logs."
-      ]
-    },
-    {
-      "version": "0.2.69",
-      "publishedAt": "2026-10-29T23:51:43Z",
-      "changes": [
-        "Provide a compact Brains diagnostics console with Copy full log and Download JSON of every captured router/decision/model-I-O/route event in the current browser session.",
-        "Return the exact text sent in developer and user prompts plus model response text, usage, and response ID to the authorized requesting client, without credentials or raw base64 image bytes.",
-        "Log the deterministic movement parser decision, scene target and coordinates, planned route geometry/length, and actual measured robot route completion telemetry.",
-        "Require route endpoint proximity for actual arrival reporting; a chat plan or exhausted waypoint list is not independently proof of mission success.",
-        "Keep robot eye-camera request evidence as labelled frame metadata and text prompts, and reduce Brains panel paddings, camera display height, and excessive window width."
       ]
     }
   ]

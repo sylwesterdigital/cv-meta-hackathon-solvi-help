@@ -6,6 +6,7 @@ class V{
  constructor(x=0,y=0,z=0){Object.assign(this,{x,y,z});}
  clone(){return new V(this.x,this.y,this.z);}
  toArray(){return [this.x,this.y,this.z];}
+ negate(){this.x=-this.x;this.y=-this.y;this.z=-this.z;return this;}
  normalize(){return this;}
  transformDirection(){return this;}
  addScaledVector(n,t){this.x+=n.x*t;this.y+=n.y*t;this.z+=n.z*t;return this;}
@@ -22,7 +23,7 @@ class Node{
  traverse(fn){fn(this);for(const child of this.children)child.traverse(fn);}
 }
 class Material{dispose(){}}
-const THREE={Vector3:V,Plane:class{setFromNormalAndCoplanarPoint(){return this;}},BufferGeometry:Geometry,Float32BufferAttribute:class {constructor(values){this.values=values;}},
+const THREE={Vector3:V,Box3:class{constructor(min,max){this.min=min;this.max=max;}},Plane:class{setFromNormalAndCoplanarPoint(){return this;}},BufferGeometry:Geometry,Float32BufferAttribute:class {constructor(values){this.values=values;}},
  Mesh:Node,Group:Node,Line:Node,MeshBasicMaterial:Material,LineBasicMaterial:Material,DoubleSide:2};
 const ids=new Map();
 for(const id of ['spatialDrawShield','surfaceDrawPanel','surfaceDrawTitle','surfaceDrawStatus','curveDrawPanel'])ids.set(id,{hidden:true,textContent:''});
@@ -39,11 +40,11 @@ function fixture(){
  const shield=ids.get('spatialDrawShield');shield.setPointerCapture=(id)=>{shield.captured=id;};shield.hasPointerCapture=(id)=>shield.captured===id;shield.releasePointerCapture=()=>{shield.captured=null;};
  const original={old:true,dispose(){this.disposed=true;}};
  const obj={name:'Test cube',geometry:original,userData:{editorKind:'cube',primitive:{width:3,height:3,depth:3},editorId:'c1',openings:[],physics:{mode:'dynamic'}},
- updateMatrixWorld(){},worldToLocal:p=>p,localToWorld:p=>p};
+ updateMatrixWorld(){},matrixWorld:{clone:()=>({invert:()=>({})})},worldToLocal:p=>p,localToWorld:p=>p};
  let rayPosition=new V(0,0,1.5),saveCount=0,editCount=0;
  const editor={selected:obj,canEdit:()=>true,canTransform:()=>true,
  world:{renderer:{domElement:canvas},camera:{},scene:{add(){},remove(){}},controls:{enabled:true}},
- pointer:{set(x,y){this.x=x;this.y=y;}},raycaster:{setFromCamera(pointer){rayPosition=new V(pointer.x*1.3,pointer.y*1.3,1.5);this.ray={intersectPlane:(plane,point)=>{point.set(rayPosition.x,rayPosition.y,1.5);return point;}};},
+ pointer:{set(x,y){this.x=x;this.y=y;}},raycaster:{setFromCamera(pointer){rayPosition=new V(pointer.x*1.3,pointer.y*1.3,1.5);this.ray={clone:()=>({applyMatrix4:()=>({intersectBox:(box,point)=>point.set(rayPosition.x,rayPosition.y,1.5)})}),intersectPlane:(plane,point)=>{point.set(rayPosition.x,rayPosition.y,1.5);return point;}};},
  intersectObject:()=>[{face:{normal:new V(0,0,1)},point:rayPosition.clone()}]},
  transform:{detach(){},attach(){}},toast(){},physics:{sync(){}},snapshot:()=>({previous:true}),recordEdit(){editCount++;},queueSave(){saveCount++;},select(){},
  cancelSpatialDrawing(){api.cancelSpatialDrawing.call(this);},openChatMediaPicker(mount){this.pickedMount=mount;}};
