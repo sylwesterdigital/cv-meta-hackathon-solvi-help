@@ -1,6 +1,14 @@
 {
-  "currentVersion": "0.2.114",
+  "currentVersion": "0.2.115",
   "releases": [
+    {
+      "version": "0.2.115",
+      "publishedAt": "2026-10-31T19:22:04Z",
+      "changes": [
+        "Reissue the v0.2.114 WebXR surface teleport improvements under a strictly newer release version after the watcher rejected re-deployment of v0.2.114",
+        "Refresh all browser import-map and CSS cache keys, backend health version, installer default version and release metadata; no change to XR teleport behaviour"
+      ]
+    },
     {
       "version": "0.2.114",
       "publishedAt": "2026-10-31T18:24:18Z",
@@ -321,16 +329,6 @@
         "Drive pushed robot forward, backward or lateral step animations from actual capsule displacement with frame-limited motion; preserve remote action packets and owner-simulated dynamic bodies.",
         "Use collider world bounds rather than pivot distance for combat hits on spheres and furniture; keep physics impulses limited to movable bodies.",
         "Add six executable animation lifecycle tests and retain existing movement and backend route regression coverage."
-      ]
-    },
-    {
-      "version": "0.2.84",
-      "publishedAt": "2026-10-30T20:10:15Z",
-      "changes": [
-        "Fix the Flask scene-object POST route mistakenly registered on valid_robot_combat(settings), which returned 500 on any atomic object save.",
-        "Register /api/scene/object on patch_scene_object() and retain the combat validator as an undecorated utility.",
-        "Add Flask integration checks for route registration, valid robot combat persistence and invalid settings in both atomic and bulk scene writes.",
-        "Preserve v0.2.83 robot footsteps, push, combat, impulses, multiplayer actions and platform gravity without changing their behavior."
       ]
     }
   ]
