@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {projectPath,pathAt,liftTargetHeight} from './stair-extensions.js';
 import {stairSegments} from './office-stairs-math.js';
+import {moveTransportRider} from './transport-rider.js';
 const vec=new THREE.Vector3();
 function surfaceHeight(segments,along,total){
  if(!segments.length)return 0;
@@ -31,7 +32,7 @@ export function tickStairTransport(editor,dt){
     device.position.y=runtime.baseY+runtime.height;
     if(cfg.lift)cfg.lift.currentHeight=runtime.height;
     carry.y=device.position.y-oldY;
-    if(phys?.enabled){const body=phys.bodies.get(device.userData.editorId);body?.setNextKinematicTranslation({x:device.position.x,y:device.position.y,z:device.position.z});}
+    if(phys?.enabled){const body=phys.bodies.get(device.userData.editorId);if(body){const next={x:device.position.x,y:device.position.y,z:device.position.z};body.setTranslation(next,true);body.setNextKinematicTranslation(next);}}
     if(!runtime.moving||performance.now()-runtime.lastSave>1100){runtime.lastSave=performance.now();if(editor.canEdit(device))editor.queueSave(device);}
    }
   }
@@ -83,16 +84,10 @@ export function tickStairTransport(editor,dt){
  }
 }
 function transfer(editor,item,delta){
- if(delta.lengthSq()<1e-9)return;
- // Operate on the owned physics body as well as the Three object: avoid a
- // one-frame visual teleport followed by Rapier snapping the rider backwards.
- const phys=editor.physics,body=phys.bodies.get(item.userData.editorId);
- item.position.add(delta);
- if(body){const p=body.translation(),next={x:p.x+delta.x,y:p.y+delta.y,z:p.z+delta.z};
-  if(item.userData.editorKind==='robot')body.setNextKinematicTranslation(next);
-  else body.setTranslation(next,true);
- }
- const now=performance.now();if(now-(item.userData.lastTransportSave||0)>950){item.userData.lastTransportSave=now;editor.queueSave(item);}
+ const phys=editor.physics,body=phys?.bodies?.get(item.userData.editorId);
+ if(!moveTransportRider(item,body,delta))return;
+ const now=performance.now();
+ if(now-(item.userData.lastTransportSave||0)>950){item.userData.lastTransportSave=now;editor.queueSave(item);}
 }
 export function startLift(device,target){
  const config=device?.userData?.stairs;
