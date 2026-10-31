@@ -1864,3 +1864,26 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #smartChaseAngleControl{position:static!important;display:flex;gap:8px;align-items:center;max-width:100%;margin-top:8px;background:transparent!important;border:0!important;transform:none!important}
 #smartChaseAngleControl[hidden]{display:none!important}
 #smartChaseAngleControl input{min-width:65px;flex:1}
+
+/* v0.2.99: single active Objects highlight, surface sketches and 3D curve editor. */
+#sceneItems .scene-item-row.is-active{border-left:3px solid #75e8fa;border-radius:8px;background:#cdf6ff!important;box-shadow:inset 0 0 0 1px #8eeaff}
+#sceneItems .scene-item-row.is-active .scene-item-name,#sceneItems .scene-item-row.is-active button.scene-item-name.selected{color:#092b40!important;background:#dbfaff!important;font-weight:800!important;text-shadow:none!important}
+#sceneItems .scene-item-row.is-active .scene-item-lock,#sceneItems .scene-item-row.is-active .scene-item-delete{filter:brightness(.8)}
+#curveProperties .spatial-param-row{display:flex;gap:5px;align-items:center;margin:8px 0}
+#curveProperties .spatial-param-row select{flex:1;min-width:0}
+#curveProperties .spatial-param-row input{width:85px;min-width:70px}
+#curveProperties #curvePropertyRange{width:100%}
+.spatial-tool-window{position:fixed;z-index:120;top:115px;left:24px;width:min(335px,calc(100vw - 24px));max-height:80vh;overflow:auto;padding:12px;background:#112b39;border:1px solid #4b7b93;border-radius:12px;box-shadow:0 10px 40px #0008;color:#e5f5fc}
+.spatial-tool-body{display:grid;gap:8px}.spatial-tool-body label{display:flex;align-items:center;justify-content:space-between;gap:5px;font-size:12px}
+.spatial-tool-body input{min-width:65px;width:110px;max-width:50%;padding:7px;background:#112135;color:#f4faff;border:1px solid #517087;border-radius:6px}
+.spatial-actions{display:flex;align-items:center;gap:7px;justify-content:space-between;flex-wrap:wrap;margin-top:8px}
+.spatial-actions button{border-radius:7px;padding:7px 10px;background:#275267;color:white;border:1px solid #5486a2}
+#surfaceDrawPanel p{margin:8px 0;font-size:12px}
+.chat-media-picker{max-height:86vh;width:min(820px,95vw);display:flex;flex-direction:column;gap:10px}
+#chatMediaSearch{width:100%;padding:11px;background:#101d30;color:#edf9ff;border:1px solid #4e6c85;border-radius:8px}
+.chat-media-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:9px;overflow:auto;min-height:50px}
+.chat-media-card{display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:0;padding:7px;background:#1b3448;color:#e9faff;border:1px solid #33576c;border-radius:9px;text-align:left}
+.chat-media-thumb{width:100%;height:115px;border-radius:5px;overflow:hidden;display:grid;place-items:center;background:#071524;font-size:12px}
+.chat-media-thumb img{max-width:100%;max-height:100%;object-fit:contain}
+.chat-media-name{font-size:11px;overflow-wrap:anywhere;max-height:44px;overflow:hidden}
+@media(max-width:600px){.spatial-tool-window{top:65px;left:8px}.chat-media-results{grid-template-columns:repeat(2,minmax(0,1fr))}}

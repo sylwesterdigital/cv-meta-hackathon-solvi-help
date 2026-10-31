@@ -103,15 +103,22 @@ def read_archive(upload):
 def safe_scene(objects):
     if not isinstance(objects,list) or len(objects)>128:raise ValueError('Invalid object list')
     if len(json.dumps(objects,ensure_ascii=False))>1_200_000:raise ValueError('Scene metadata exceeds 1.2 MB')
-    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','combat','animationSpeed','physics','model','media','primitive','wall','stairs','transformLocked'}
-    clean=[]
+    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','combat','animationSpeed','physics','model','media','primitive','wall','stairs','curve','openings','transformLocked'}
+    clean=[];remap={}
     for obj in objects:
         if not isinstance(obj,dict) or obj.get('kind') not in KINDS:continue
         if any(not isinstance(obj.get(field),list) or len(obj[field])!=3 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or abs(v)>5000 for v in obj[field]) for field in ('position','rotation','scale')):continue
         copy={k:v for k,v in obj.items() if k in allowed}
+        if isinstance(copy.get('media'),dict):copy['media']=json.loads(json.dumps(copy['media']))
         if len(json.dumps(copy,ensure_ascii=False))>12000:continue
-        copy['id']=str(uuid.uuid4());copy['name']=str(copy.get('name','Object'))[:100]
+        oldid=str(copy.get('id') or '')
+        copy['id']=str(uuid.uuid4());remap[oldid]=copy['id'];copy['name']=str(copy.get('name','Object'))[:100]
         clean.append(copy)
+    for obj in clean:
+        if obj.get('kind')=='media' and isinstance(obj.get('media'),dict):
+            mount=obj['media'].get('mount')
+            if isinstance(mount,dict) and mount.get('target') in remap:
+                mount['target']=remap[mount['target']]
     return clean
 
 # Missing-asset reporting applies only to referenced media/model/avatar uploads.

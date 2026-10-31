@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.98",
+  "currentVersion": "0.2.99",
   "releases": [
+    {
+      "version": "0.2.99",
+      "publishedAt": "2026-10-31T04:22:44Z",
+      "changes": [
+        "Synchronize selection in Objects with a clearly highlighted inverted-color row and aria-current.",
+        "Add editable spatial 3D curves with per-point depth/elevation placement, control points, offset, extrusion thickness, rounded bevel, bevel resolution and path resolution; persist and clone in realms.",
+        "Add O to draw rectangular through-openings on cube faces. Build a true cutout mesh with internal tunnel surfaces, maintain undo/redo and static trimesh collision matching the opening.",
+        "Add U to draw media rectangles on cube and plane surfaces, with a searchable authenticated room-chat attachment browser for images, audio and video. Mounted frames follow source geometry transforms.",
+        "Validate all new curve/opening/mount payloads in both Flask scene routes; preserve mounted-media links and remap scene target IDs during realm archive imports.",
+        "Integrate new modules with versioned browser imports and add geometry, persistence and security regression tests."
+      ]
+    },
     {
       "version": "0.2.98",
       "publishedAt": "2026-10-31T03:56:23Z",
@@ -332,16 +344,6 @@
         "Expose robot floor route diagnostics immediately when robot Debug is enabled, including after a route has already been planned; show real A* waypoints, blocked attempts and scene obstacle footprints.",
         "Keep completed path diagnostics visible for fifteen seconds, distinguish heading guide from verified camera evidence, and add an explanatory status legend to robot Properties.",
         "Clear navigation debug visuals on scene reload, robot deletion and Stop; add regressions for vision routing and floor debug visibility."
-      ]
-    },
-    {
-      "version": "0.2.65",
-      "publishedAt": "2026-10-29T22:53:09Z",
-      "changes": [
-        "Add an Add to scene action to image and video attachments in chat, available from the attachment overflow menu.",
-        "Preserve uploaded media aspect ratio using real image/video dimensions so picture frames and screens are no longer squeezed into an incorrect ratio.",
-        "Render per-robot navigation debug overlays on the floor, including planned routes, obstacle outlines and a target visibility sector when robot debug is enabled.",
-        "Keep world-drop media uploads and scene-media persistence aligned with stored width/height metadata."
       ]
     }
   ]

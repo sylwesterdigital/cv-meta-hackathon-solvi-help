@@ -96,7 +96,7 @@ function applyAspect(mesh,width,height){
   if(mesh.userData.mediaWidth!==w||mesh.userData.mediaHeight!==h){
     const factor=2.8/Math.max(w,h);
     const previous=mesh.geometry;
-    mesh.geometry=new THREE.BoxGeometry(w*factor,h*factor,.06);
+    mesh.geometry=mesh.userData.media?.mount?new THREE.BoxGeometry(1,1,.06):new THREE.BoxGeometry(w*factor,h*factor,.06);
     previous?.dispose?.();
     window.solviEditor?.physics?.sync?.(mesh);
   }

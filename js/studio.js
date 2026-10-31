@@ -916,7 +916,7 @@ function configureDragging(){
   const panel=event.target.closest?.('#scenePanel,#propertiesPanel,#wallPanel,#addMenu,#chatPanel.windowed,#editorToolbox,#robotBrainsPanel,#diagnosticsPanel,#robotRoutinePanel');
   if(panel)toFront(panel);
  },true);
- const panelIds=['scenePanel','propertiesPanel','wallPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel','robotRoutinePanel'];
+ const panelIds=['scenePanel','propertiesPanel','wallPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel','robotRoutinePanel','curveDrawPanel','surfaceDrawPanel'];
  const save=(id,panel)=>{
    const rect=panel.getBoundingClientRect();
    const data={left:rect.left,top:rect.top,minimized:panel.classList.contains('minimized'),windowed:panel.classList.contains('windowed')};

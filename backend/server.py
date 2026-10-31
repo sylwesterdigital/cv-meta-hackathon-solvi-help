@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.98',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.99',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1026,6 +1026,29 @@ def upload():
             return json_error('User media quota exceeded (75 MB)',413)
         con.execute('INSERT INTO media VALUES(?,?,?,?,?,?,?)',(mid,user['id'],name,mime,str(disk),disk.stat().st_size,now()))
     return jsonify(media={'id':mid,'mime':mime,'name':name,'url':f'/api/media/{mid}'})
+
+@app.get('/api/media/room')
+def room_chat_media():
+    """Only media actually attached to conversation messages in the selected realm."""
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    room=selected_room(request.args.get('room','main'))
+    if not room:return json_error('Unknown room',404)
+    found=[];seen=set()
+    with db() as con:
+        for record in con.execute("SELECT media FROM messages WHERE room_id=? AND media != '[]' ORDER BY created DESC LIMIT 3000",(room,)).fetchall():
+            try:ids=json.loads(record['media'] or '[]')
+            except (TypeError,ValueError):continue
+            if not isinstance(ids,list):continue
+            for mid in ids[:12]:
+                if not isinstance(mid,str) or mid in seen or not re.fullmatch(r'[0-9a-f-]{8,80}',mid,re.I):continue
+                seen.add(mid)
+                row=con.execute('SELECT media.id,media.name,media.mime,media.created,users.name AS author FROM media JOIN users ON users.id=media.user_id WHERE media.id=?',(mid,)).fetchone()
+                if row and str(row['mime']).startswith(('image/','video/','audio/')):
+                    found.append({'id':row['id'],'name':row['name'],'mime':row['mime'],'created':row['created'],'author':row['author']})
+                if len(found)>=120:break
+            if len(found)>=120:break
+    return jsonify(media=found,room=room)
 
 @app.get('/api/media/<mid>')
 def get_media(mid):
@@ -2921,6 +2944,36 @@ def valid_office_stairs(stairs):
         if not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not lo<=v<=hi:return False
     return stairs.get('stepMode') in ('fixed','count') and isinstance(stairs.get('floating'),bool) and isinstance(stairs.get('color'),str) and re.fullmatch(r'#[0-9a-fA-F]{6}',stairs['color']) is not None
 
+def valid_curve_geometry(curve):
+    if not isinstance(curve,dict) or len(curve)>8:return False
+    points=curve.get('points')
+    if not isinstance(points,list) or not 2<=len(points)<=120:return False
+    if any(not isinstance(p,list) or len(p)!=3 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or abs(v)>500 for v in p) for p in points):return False
+    for key,low,high in (('offset',-3,3),('extrude',.01,5),('bevel',0,1),('bevelResolution',1,12),('resolution',8,250)):
+        val=curve.get(key)
+        if not isinstance(val,(int,float)) or isinstance(val,bool) or not math.isfinite(val) or not low<=val<=high:return False
+    return True
+
+def valid_cube_openings(openings):
+    if not isinstance(openings,list) or len(openings)>8:return False
+    for item in openings:
+        if not isinstance(item,dict) or item.get('axis') not in ('x','y','z') or len(item)>6:return False
+        for key,low,high in (('u',-30,30),('v',-30,30),('width',.06,30),('height',.06,30)):
+            val=item.get(key)
+            if not isinstance(val,(int,float)) or isinstance(val,bool) or not math.isfinite(val) or not low<=val<=high:return False
+    return True
+
+def valid_surface_mount(mount):
+    if not isinstance(mount,dict) or len(mount)>8:return False
+    if not isinstance(mount.get('target'),str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',mount['target']):return False
+    for key in ('localPoint','localNormal'):
+        point=mount.get(key)
+        if not isinstance(point,list) or len(point)!=3 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or abs(v)>500 for v in point):return False
+    for key in ('width','height'):
+        val=mount.get(key)
+        if not isinstance(val,(int,float)) or isinstance(val,bool) or not math.isfinite(val) or not .06<=val<=30:return False
+    return True
+
 @app.put('/api/scene')
 def set_scene():
     user,msg,status=actor()
@@ -2933,6 +2986,8 @@ def set_scene():
     allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs'}
     for o in objects:
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
+        if 'curve' in o and (o['kind']!='curve' or not valid_curve_geometry(o.get('curve'))):return json_error('Invalid curve geometry')
+        if 'openings' in o and (o['kind']!='cube' or not valid_cube_openings(o['openings'])):return json_error('Invalid cube openings')
         if o['kind']=='wall' and not valid_office_wall(o.get('wall')):return json_error('Invalid office wall')
         if o['kind']=='stairs' and not valid_office_stairs(o.get('stairs')):return json_error('Invalid office stairs')
         if 'primitive' in o:
@@ -2946,6 +3001,7 @@ def set_scene():
             with db() as con:
                 row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone()
             if not row or row['mime']!=media.get('mime'):return json_error('Missing uploaded media reference')
+            if 'mount' in media and not valid_surface_mount(media['mount']):return json_error('Invalid media surface mount')
         if o['kind']=='robot':
             if 'combat' in o and not valid_robot_combat(o['combat']):return json_error('Invalid robot combat controls')
             if 'animationSpeed' in o and not valid_robot_animation_speed(o['animationSpeed']):return json_error('Invalid robot animation speed')
@@ -3005,9 +3061,11 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','curve','openings','transformLocked') if key in obj}
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
+        if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')
+        if 'openings' in obj and (obj['kind']!='cube' or not valid_cube_openings(obj['openings'])):return json_error('Invalid cube openings')
         if obj['kind']=='wall' and not valid_office_wall(obj.get('wall')):return json_error('Invalid office wall')
         if obj['kind']=='stairs' and not valid_office_stairs(obj.get('stairs')):return json_error('Invalid office stairs')
         if 'primitive' in obj:
@@ -3021,6 +3079,7 @@ def patch_scene_object():
             if not isinstance(media,dict) or not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id',''))) or not str(media.get('mime','')).startswith(('image/','video/','audio/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):return json_error('Invalid media surface')
             with db() as con:media_row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone()
             if not media_row or media_row['mime']!=media.get('mime'):return json_error('Missing uploaded media reference')
+            if 'mount' in media and not valid_surface_mount(media['mount']):return json_error('Invalid media surface mount')
         if obj['kind']!='model' and obj.get('model'):return json_error('Unexpected model reference')
         avatar=str(obj.get('avatar',''))
         if avatar and not (avatar=='./assets/solvi-character.glb' or (re.fullmatch(r'\./assets/avatars/[A-Za-z0-9_-]+\.glb',avatar) or re.fullmatch(r'/api/avatars/[0-9a-f]{32}\.glb',avatar))):

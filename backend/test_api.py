@@ -28,6 +28,17 @@ assert valid_robot_combat({'punch': {'key':'KeyP', 'force':6.0}, 'kick': {'key':
 assert not valid_robot_combat({'punch': {'key':'Key-P', 'force':6.0}})
 assert not valid_robot_combat({'kick': {'key':'KeyK', 'force':float('nan')}})
 print('PASS: combat validator separate from Flask route and scene-object POST correctly registered')
+from server import valid_curve_geometry, valid_cube_openings, valid_surface_mount
+_curve={'points':[[0,0,0],[1,0,2]],'offset':0,'extrude':.15,'bevel':.02,'bevelResolution':4,'resolution':30}
+assert valid_curve_geometry(_curve)
+assert not valid_curve_geometry({**_curve,'points':[[0,0,0],[float('inf'),0,0]]})
+assert valid_cube_openings([{'axis':'z','u':0,'v':0,'width':.4,'height':.6}])
+assert not valid_cube_openings([{'axis':'z','u':0,'v':0,'width':float('nan'),'height':.6}])
+assert valid_surface_mount({'target':'model-abc123','localPoint':[0,0,.5],'localNormal':[0,0,1],'width':1,'height':1})
+assert not valid_surface_mount({'target':'model-abc123','localPoint':[0,0,float('inf')],'localNormal':[0,0,1],'width':1,'height':1})
+assert '/api/media/room' in {r.rule for r in app.url_map.iter_rules()}
+print('PASS: 3D curves, cube cutouts, mounted media bounds and room-media browser')
+
 from server import robot_command_clause
 _multiples=[{'id':'e','name':'Elox'},{'id':'c','name':'Cybert'}]
 _split='@Elox go to Black Sofa and @Cybert please follow Elox'
