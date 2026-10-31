@@ -1,3 +1,4 @@
+import {confirmAction,exactNameAction,textEntry} from './app-dialogs.js';
 import {makeRealmCards,captureRealmPreview} from './realm-gallery.js';
 import {mentionQuery,mentionCandidates,insertMention} from './chat-mentions.js';
 import {renderChatAttachment,ensureChatMediaViewer} from './chat-attachments.js';
@@ -37,7 +38,13 @@ function establishTabChannel(uid){
 }
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null,adminExpiresAt=0;
-let cachedMessages=[],chatSignature='',lastBubbleEntry=null;let renderingChat=false,followChat=true;const roomActivities=new Map();const chatMediaURLs=new Set();const sharedPortraits=new Map();
+let cachedMessages=[],chatSignature='',lastBubbleEntry=null;let renderingChat=false,followChat=true;let chatEpoch=0,chatLoadSerial=0,chatClearingRoom=null;
+function invalidateChatRoom(room,{dropTraces=false}={}){
+ chatEpoch++;chatLoadSerial++;chatSignature='';cachedMessages=[];lastBubbleEntry=null;initialRoomLoads.delete(room);
+ if(dropTraces){for(let i=localBrainTrace.length-1;i>=0;i--)if(localBrainTrace[i].room===room)localBrainTrace.splice(i,1);roomActivities.delete(room);}
+ if(room===activeRoom){releaseChatAttachments();$('chatFeed').replaceChildren();updateChatPageDown();}
+}
+const roomActivities=new Map();const chatMediaURLs=new Set();const sharedPortraits=new Map();
 function clearPortraitCache(){for(const value of sharedPortraits.values())if(value.url)URL.revokeObjectURL(value.url);sharedPortraits.clear();}
 const runningRobotTasks=new Map();const localBrainTrace=[];const initialRoomLoads=new Set();
 let activeRoom=localStorage.getItem('solvi-last-realm')||sessionStorage.getItem('solvi-room')||'main';window.solviRoom=activeRoom;window.solviRoomPolicy={objects:'open',robots:'open',physics:0};let sessionPrompt=false;
@@ -190,7 +197,7 @@ async function submitProfile(){const fields=profileFields();if(!fields.name){$('
 }
 function safeTime(t){const d=new Date(t||Date.now());return isNaN(+d)?'':d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
 async function bubble(entry){
- const roomAtBubble=activeRoom;const feed=$('chatFeed');const role=entry.role==='assistant'?'assistant':'user';
+ const renderEpoch=chatEpoch;const roomAtBubble=activeRoom;const feed=$('chatFeed');const role=entry.role==='assistant'?'assistant':'user';
  const mine=role==='user'&&(entry.user_id===me?.id||(!entry.user_id&&entry.speaker===me?.name));
  const previous=lastBubbleEntry;
  let wrap=feed.lastElementChild, panel=wrap?.querySelector('.chat-bubble');
@@ -212,7 +219,7 @@ async function bubble(entry){
   const name=document.createElement('strong');name.textContent=role==='assistant'?(entry.speaker||entry.model||'Meta Model API'):(entry.speaker||me?.name||'Guest');
   const date=document.createElement('time');date.textContent=safeTime(entry.created);meta.append(name,date);panel.append(meta);
   const robotPortrait=role==='assistant'?window.solviEditor?.items?.find(o=>o.userData.editorKind==='robot'&&o.name===entry.speaker)?.userData.robotBrain?.portrait:null;
-  if((robotPortrait||entry.avatar)&&online&&auth){api.mediaBlob(robotPortrait||entry.avatar).then(url=>{pic.textContent='';const img=document.createElement('img');img.src=url;img.alt='';img.className='chat-profile-image';pic.append(img);}).catch(()=>{});}
+  if((robotPortrait||entry.avatar)&&online&&auth){api.mediaBlob(robotPortrait||entry.avatar).then(url=>{if(renderEpoch!==chatEpoch||roomAtBubble!==activeRoom||!pic.isConnected)return;pic.textContent='';const img=document.createElement('img');img.src=url;img.alt='';img.className='chat-profile-image';pic.append(img);}).catch(()=>{});}
   if(entry.isBrainTrace)wrap.classList.add('brain-trace');
   wrap.append(pic,panel);feed.append(wrap);
  }else{panel.querySelector('time').textContent=safeTime(entry.created);}
@@ -227,7 +234,7 @@ async function bubble(entry){
  for(const [index,id] of mids.entries()){
   const slot=document.createElement('div');slot.className='chat-attachment';slot.textContent='Loading attachment…';mediaContainer.append(slot);slots.push(slot);
   if(online&&auth)observeChatAttachment(slot,()=>chatMediaInfo(id).then(info=>{
-    if(!slot.isConnected||roomAtBubble!==activeRoom)return;
+    if(!slot.isConnected||roomAtBubble!==activeRoom||renderEpoch!==chatEpoch)return;
     chatMediaURLs.add(info.url);
     renderChatAttachment(slot,info,detail=>ensureChatMediaViewer().showFile(detail),{addToScene:info=>addChatMediaToScene({...info,author:entry.speaker,created:entry.created})});
     // A robot 360/180 scan includes the stitched panorama plus its source
@@ -255,7 +262,7 @@ function observeChatAttachment(slot,load){
 }
 function chatMediaInfo(id){
  const key=String(id);if(chatAttachmentCache.has(key))return chatAttachmentCache.get(key);
- const promise=api.mediaBlobInfo(key).catch(error=>{if(chatAttachmentCache.get(key)===promise)chatAttachmentCache.delete(key);throw error;});
+ const generation=chatEpoch;const promise=api.mediaBlobInfo(key).then(info=>{if(generation!==chatEpoch){URL.revokeObjectURL(info.url);throw Error('Chat view changed');}return info;}).catch(error=>{if(chatAttachmentCache.get(key)===promise)chatAttachmentCache.delete(key);throw error;});
  // One authenticated GET per media ID while viewing this realm; reuse its blob URL.
  chatAttachmentCache.set(key,promise);return promise;
 }
@@ -637,7 +644,7 @@ async function recordIntroGif(){
  }catch(error){$('profileStatus').textContent='GIF failed: '+error.message;closeProfileCamera();}
 }
 async function logoutProfile(){
- if(!confirm('Log out and clear this device’s SOLVI session?'))return;
+ if(!await confirmAction('Log out and clear this device’s SOLVI session?',{title:'Sign out'}))return;
  const oldAuth=auth;
  try{if(online&&oldAuth)await api.req('/api/logout',{method:'POST',body:'{}'});}
  catch(error){$('profileStatus').textContent='Server logout failed: '+error.message;return;}
@@ -668,8 +675,10 @@ async function stats(){const token=activeAdminToken();if(!token)return;try{const
 async function loadMessages(){
  if(!online||!auth)return;
  try{
-   const room=activeRoom;const data=await api.req('/api/messages?room='+encodeURIComponent(room));
-   if(room!==activeRoom)return;
+   const room=activeRoom,epoch=chatEpoch,request=++chatLoadSerial;
+   if(chatClearingRoom===room)return;
+   const data=await api.req('/api/messages?room='+encodeURIComponent(room));
+   if(room!==activeRoom||epoch!==chatEpoch||request!==chatLoadSerial||chatClearingRoom===room)return;
    const messages=data.messages||[];
    const nextSignature=room+':'+messages.map(m=>m.id+':'+m.text).join('|')+':'+readPreferences().group;
    if(nextSignature===chatSignature)return;
@@ -684,13 +693,13 @@ async function loadMessages(){
     // Persistent chat, presence and local debug events belong to ONE timeline.
     // Appending traces after history made older debug events appear at the bottom.
     for(const item of chatTimeline([...messages,...debugEntries],roomActivities.get(room)||[])){
-     if(room!==activeRoom)break;
+     if(room!==activeRoom||epoch!==chatEpoch||request!==chatLoadSerial)break;
      if(item.type==='message')await bubble(item.entry);
      else if(item.type==='presence')chatSystemLine(item.entry.name+(item.entry.action==='left'?' left the room':' joined the room'));
      else chatSystemLine(item.text,item.type);
     }
    }finally{suppressRobotSpeech=false;renderingChat=false;}
-   if(room!==activeRoom)return;
+   if(room!==activeRoom||epoch!==chatEpoch||request!==chatLoadSerial)return;
    if(wasFollowing)scrollChatToLatest(true);else{feed.scrollTop=oldScrollTop;followChat=false;updateChatPageDown();}
    initialRoomLoads.add(room);
    if(newcomers.length)playCue('incoming');
@@ -723,13 +732,13 @@ async function clearAllRoomChat(){
  if(!activeAdminToken())return toast('Unlock Administrator in Profile');
  const room=activeRoom, title=$('roomSelect').selectedOptions[0]?.textContent||room;
  if(!exportedChatRooms.has(room))return toast('Export the full realm chat transcript before clearing it.');
- if(!window.confirm(`Permanently remove ALL chat messages from "${title}"? Export the full transcript first. Other realms and scene objects are unaffected.`))return;
- const exact=window.prompt(`Type the exact realm name to confirm deletion: ${title}`);
- if(exact!==title)return toast('Chat deletion cancelled: realm name did not match.');
- const status=$('adminChatStatus');status.textContent='Deleting messages…';
+ if(!await exactNameAction(`Permanently remove ALL chat messages from "${title}"? A full transcript export is required. Other realms, scene objects and uploaded media are unaffected.`,title,{title:'Clear realm conversation',confirmLabel:'Delete realm chat'}))return;
+ const status=$('adminChatStatus');status.textContent='Deleting messages…';chatClearingRoom=room;chatLoadSerial++;
  try{const result=await api.req('/api/admin/room-chat/clear',{method:'POST',body:JSON.stringify({room,exact_name:exact,confirm:true})});
-  status.textContent=`Deleted ${result.deleted} messages in ${title}.`;exportedChatRooms.delete(room);if(room===activeRoom){chatSignature='';cachedMessages=[];lastBubbleEntry=null;initialRoomLoads.delete(room);$('chatFeed').replaceChildren();await loadMessages();}
+  status.textContent=`Deleted ${result.deleted} messages in ${title}.`;exportedChatRooms.delete(room);invalidateChatRoom(room,{dropTraces:true});
  }catch(e){status.textContent='Delete failed: '+e.message;}
+ finally{if(chatClearingRoom===room)chatClearingRoom=null;}
+ if(room===activeRoom)await loadMessages();
 }
 async function configureRooms(){
  const select=$('roomSelect');if(!select)return;
@@ -748,7 +757,7 @@ async function configureRooms(){
    $('roomChatTitle').textContent=realmTitle+' · messages';
    const nav=$('realmGalleryButton'),navLabel=nav?.querySelector('.ui-button-label');
    if(navLabel)navLabel.textContent=realmTitle;else if(nav)nav.textContent=realmTitle;
-   chatSignature='';cachedMessages=[];lastBubbleEntry=null;followChat=true;releaseChatAttachments();$('chatFeed').replaceChildren();updateChatPageDown();playCue('leave');
+   invalidateChatRoom(activeRoom);followChat=true;playCue('leave');
    window.dispatchEvent(new CustomEvent('solvi:room-changed',{detail:{room:activeRoom}}));
  };
 }
@@ -854,8 +863,8 @@ function setupWorldSettings(){
   void environmentAutosave.flush(activeRoom);void policyAutosave.flush(activeRoom);
  };
  $('worldSettingsDrawer').onpointerdown=e=>{if(e.target===$('worldSettingsDrawer'))$('closeWorldSettings').click();};
- $('resetWorldEnvironment').onclick=()=>{
-  if(!window.confirm('Restore the default room appearance? This change will save automatically.'))return;
+ $('resetWorldEnvironment').onclick=async()=>{
+  if(!await confirmAction('Restore the default room appearance? This change will save automatically.',{title:'Reset room appearance'}))return;
   fillEnvironmentFields(ENVIRONMENT_DEFAULTS);
   window.solviEditor?.world?.applyEnvironment(ENVIRONMENT_DEFAULTS);
   environmentAutosave.update(activeRoom,ENVIRONMENT_DEFAULTS,{immediate:true});
@@ -893,15 +902,15 @@ function configureDragging(){
  const toFront=panel=>{
   if(!panel||panel.hidden)return;
   // Rebase occasionally; z-index never grows without bound during long sessions.
-  if(windowZ>6000){windowZ=210;for(const id of ['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel'])document.getElementById(id)?.style.removeProperty('--solvi-window-z');}
+  if(windowZ>6000){windowZ=210;for(const id of ['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel','robotRoutinePanel'])document.getElementById(id)?.style.removeProperty('--solvi-window-z');}
   panel.style.setProperty('--solvi-window-z',String(++windowZ));
  };
  window.solviBringWindowToFront=toFront;
  document.addEventListener('pointerdown',event=>{
-  const panel=event.target.closest?.('#scenePanel,#propertiesPanel,#wallPanel,#addMenu,#chatPanel.windowed,#editorToolbox,#robotBrainsPanel,#diagnosticsPanel');
+  const panel=event.target.closest?.('#scenePanel,#propertiesPanel,#wallPanel,#addMenu,#chatPanel.windowed,#editorToolbox,#robotBrainsPanel,#diagnosticsPanel,#robotRoutinePanel');
   if(panel)toFront(panel);
  },true);
- const panelIds=['scenePanel','propertiesPanel','wallPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel'];
+ const panelIds=['scenePanel','propertiesPanel','wallPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel','robotRoutinePanel'];
  const save=(id,panel)=>{
    const rect=panel.getBoundingClientRect();
    const data={left:rect.left,top:rect.top,minimized:panel.classList.contains('minimized'),windowed:panel.classList.contains('windowed')};
@@ -977,7 +986,7 @@ function setupNewRoom(){
  $('realmArchiveFile').onchange=async event=>{
   const file=event.target.files?.[0];event.target.value='';if(!file)return;
   const confirmText=archiveImportMode==='realm'?'Create a new realm from this archive?':'Import media/models into the selected realm?';
-  if(!window.confirm(confirmText))return;
+  if(!await confirmAction(confirmText,{title:'Import realm archive',confirmLabel:'Import'}))return;
   const data=new FormData();data.append('file',file);data.append('mode',archiveImportMode);
   if(archiveImportMode==='assets')data.append('room',selectedArchiveRoom());
   $('realmArchiveStatus').textContent='Importing and validating archive…';
@@ -994,15 +1003,14 @@ function setupNewRoom(){
  };
  $('realmRenameButton').onclick=async()=>{
   const card=selectedCard();if(!card?.canManage)return;
-  const title=window.prompt('New realm name',card.title);if(!title||title.trim()===card.title)return;
+  const title=await textEntry('New realm name',card.title);if(!title||title.trim()===card.title)return;
   try{await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'PATCH',body:JSON.stringify({title:title.trim()})});await refreshRealms();}
   catch(e){$('realmArchiveStatus').textContent=e.message;toast(e.message);}
  };
  $('realmDeleteButton').onclick=async()=>{
   const card=selectedCard();if(!card?.canManage||card.id==='main')return;
-  if(!window.confirm(`Permanently delete realm "${card.title}" and its objects, messages and settings? This cannot be undone.`))return;
-  const exact=window.prompt(`Second confirmation: type exactly "${card.title}" to delete it.`);
-  if(exact!==card.title){toast('Deletion cancelled: realm name did not match.');return;}
+  if(!await exactNameAction(`Permanently delete realm "${card.title}" and its objects, messages and settings. This cannot be undone.`,card.title,{title:'Delete realm permanently',confirmLabel:'Delete realm'}))return;
+  const exact=card.title;
   try{await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'DELETE',body:JSON.stringify({confirm_title:exact})});
    try{localStorage.removeItem('solvi-realm-preview-v1-'+card.id);}catch{}
    if(activeRoom===card.id){activeRoom='main';window.solviRoom='main';}
@@ -1107,7 +1115,7 @@ function setupSettings(){
  }catch(e){$('diagnosticsOutput').textContent=e.message+'\nUnlock Administrator access from Profile, then retry.';}};
  $('analyzeDiagnostics').onclick=async()=>{
    if(!activeAdminToken()){$('diagnosticsOutput').textContent='Unlock Administrator access in Profile first.';return;}
-   if(!window.confirm('Send the sanitized backend event metadata to the Meta Model API for analysis? This incurs API charges.'))return;
+   if(!await confirmAction('Send sanitized backend event metadata to the Meta Model API for analysis? This incurs API charges.',{title:'Paid diagnostic analysis',confirmLabel:'Send to Meta'}))return;
    $('diagnosticsOutput').textContent='Requesting Meta diagnostic analysis…';
    try{const response=await api.req('/api/ai/analyze-logs',{method:'POST',headers:{'X-Solvi-Admin':adminToken},body:JSON.stringify({confirm:true})});
      $('diagnosticsOutput').textContent=(response.analysis||'No analysis text returned')+'\n\nEstimated cost: US$'+Number(response.usage?.estimated_usd||0).toFixed(6);
@@ -1330,7 +1338,7 @@ function bindUI(world){
    }
  });
  window.addEventListener('solvi:chat-updated',loadMessages);
- window.addEventListener('solvi:room-chat-cleared',()=>{chatSignature='';cachedMessages=[];initialRoomLoads.delete(activeRoom);releaseChatAttachments();$('chatFeed').replaceChildren();void loadMessages();});
+ window.addEventListener('solvi:room-chat-cleared',event=>{const room=event.detail?.room||activeRoom;invalidateChatRoom(room,{dropTraces:true});if(room===activeRoom&&chatClearingRoom!==room)void loadMessages();});
  $('chatButton').onclick=()=>window.solviSetChatMode?.('overlay');
  $('profileButton').onclick=()=>{fillProfile(me||stored());$('profileBackdrop').classList.toggle('profile-drawer-mode',!!me);$('profilePanelTitle').textContent=me?.name||'Sign in';$('profilePanelNote').textContent=me?'Profile & media':'Create profile';refreshProfileAdminUI();show('profileBackdrop',true);$('settingsDrawer').hidden=true;};
  $('closeProfile').onclick=()=>{closeProfileCamera();if(me&&auth)show('profileBackdrop',false);else{$('profileStatus').textContent='Sign in to continue.';$('profileName').focus();}};

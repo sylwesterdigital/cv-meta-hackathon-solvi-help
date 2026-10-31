@@ -1,3 +1,4 @@
+import {confirmAction} from './app-dialogs.js';
 import * as THREE from 'three';
 import {clone as cloneSkeleton} from 'three/addons/utils/SkeletonUtils.js';
 import {loadSceneAsset} from './scene-models.js';
@@ -85,7 +86,7 @@ export function setupAssetGallery(editor){
  $('assetGalleryNext').onclick=()=>{if((page+1)*PAGE_SIZE<filtered().length){page++;render();}};
  $('assetGalleryExport').onclick=async()=>{try{status.textContent='Preparing selected assets…';await downloadLibrarySelection('models',selection());status.textContent='Asset ZIP downloaded.';}catch(error){status.textContent='Export failed: '+error.message;}};
  $('assetGalleryDelete').onclick=async()=>{
-  const chosen=selection();if(!chosen.length||!window.confirm(selectionPrompt(chosen,'models')))return;
+  const chosen=selection();if(!chosen.length||!await confirmAction(selectionPrompt(chosen,'models'),{title:'Delete assets permanently',confirmLabel:'Delete selected',danger:true}))return;
   try{
    if(chosen.some(asset=>asset.canManage!==true)&&!window.solviIsAdmin?.())throw Error('Only the uploader or administrator can delete a model. Unlock administrator access in Profile, then retry.');
    await deleteLibrarySelection('models',chosen);collection=collection.filter(asset=>!selected.has(asset.id));selected.clear();render();status.textContent='Selected unused assets deleted.';

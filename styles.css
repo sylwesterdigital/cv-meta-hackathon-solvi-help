@@ -1828,3 +1828,22 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 .admin-chat-controls[hidden]{display:none!important}
 .admin-chat-controls>button{font-size:12px;min-height:28px;padding:4px 8px}
 .admin-chat-controls>span{color:var(--ui-muted,#acc3cf)}
+
+/* v0.2.97: robot routines use the same moveable-window affordance as Brains. */
+#robotRoutinePanel.robot-routine-panel{right:auto;left:min(40vw,480px);top:90px;display:flex;flex-direction:column;overflow:hidden;padding:0;max-height:min(82vh,760px);width:min(420px,calc(100vw - 24px));z-index:var(--solvi-window-z,580)}
+#robotRoutinePanel .panel-title.drag-handle{display:flex;align-items:center;justify-content:space-between;cursor:grab;touch-action:none;user-select:none;padding:10px 12px;flex-shrink:0}
+#robotRoutinePanel .robot-routine-controls{overflow-y:auto;min-height:0;display:grid;gap:8px;padding:12px}
+#robotRoutinePanel .robot-routine-controls>label{min-width:0}
+@media(max-width:650px){#robotRoutinePanel.robot-routine-panel{max-width:calc(100vw - 16px);width:calc(100vw - 16px);left:8px;top:70px}}
+/* Confirmation and exact-name deletion dialogs are app UI, not suppressible browser alerts. */
+.solvi-action-dialog{position:fixed;z-index:10000;margin:auto;inset:0;color:var(--ui-fg,#edf6ff);background:var(--ui-panel,#122c3a);border:1px solid color-mix(in srgb,currentColor 27%,transparent);box-shadow:0 14px 64px #0009;border-radius:14px;padding:0;max-width:min(480px,calc(100vw - 24px));width:100%}
+.solvi-action-dialog::backdrop{background:rgba(0,0,0,.68)}
+.solvi-action-card{display:grid;gap:14px;padding:20px}
+.solvi-action-card h2{font-size:18px;margin:0}
+.solvi-action-card p{font-size:14px;white-space:pre-wrap;margin:0;line-height:1.5}
+.solvi-action-card input{min-width:0;width:100%;min-height:40px;box-sizing:border-box;background:var(--ui-bg,#0d1d2d);color:inherit;border:1px solid #617b90;border-radius:7px;padding:8px 10px}
+.solvi-action-buttons{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.solvi-action-buttons button{min-height:38px;white-space:normal}
+.solvi-danger-button:not(:disabled){background:#b94141;color:white}
+.solvi-primary-button:not(:disabled){background:#6bd4e6;color:#101b26}
+.solvi-action-buttons button:disabled{opacity:.4;cursor:not-allowed}

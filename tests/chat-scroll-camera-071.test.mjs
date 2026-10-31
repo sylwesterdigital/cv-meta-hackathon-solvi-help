@@ -5,12 +5,12 @@ import {freeCameraAxes} from '../js/camera-key-movement.js';
 import {atChatBottom,chatNextPage,chatTimeline} from '../js/chat-timeline.js';
 const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 
-test('Shift+forward climbs while travelling, Shift+backwards descends while travelling',()=>{
- assert.deepEqual(freeCameraAxes(new Set(['ArrowUp','ShiftLeft'])),{forward:1,side:0,vertical:1,boost:2.4});
- assert.deepEqual(freeCameraAxes(new Set(['ArrowDown','ShiftRight'])),{forward:-1,side:0,vertical:-1,boost:2.4});
+test('Shift+Up/Down climbs or descends without horizontal travel',()=>{
+ assert.deepEqual(freeCameraAxes(new Set(['ArrowUp','ShiftLeft'])),{forward:0,side:0,vertical:1,boost:2.4});
+ assert.deepEqual(freeCameraAxes(new Set(['ArrowDown','ShiftRight'])),{forward:0,side:0,vertical:-1,boost:2.4});
  assert.deepEqual(freeCameraAxes(new Set(['ArrowUp','ArrowRight','PageDown'])),{forward:1,side:1,vertical:-1,boost:1});
  assert.deepEqual(freeCameraAxes(new Set(['ArrowUp'])),{forward:1,side:0,vertical:0,boost:1});
- assert.deepEqual(freeCameraAxes(new Set(['ShiftLeft','ArrowUp','PageDown'])),{forward:1,side:0,vertical:0,boost:2.4});
+ assert.deepEqual(freeCameraAxes(new Set(['ShiftLeft','ArrowUp','PageDown'])),{forward:0,side:0,vertical:0,boost:2.4});
  const code=read('js/world.js');assert.match(code,/freeCameraAxes\(this.keys\)/);assert.match(code,/this.cameraVelocity.lerp\(desired/);
 });
 

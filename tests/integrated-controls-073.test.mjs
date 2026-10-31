@@ -9,7 +9,7 @@ test('camera bookmarks persist by user and realm and offer shareable teleport',(
  assert.match(server,/user_id=\?/);
  assert.match(server,/@app\.get\('\/api\/bookmarks\/<bid>'\)/);
  for(const id of ['bookmarksToolButton','cameraBookmarkCapture','cameraBookmarkRealm','cameraBookmarkExport','cameraBookmarkImport','cameraBookmarkClear'])assert.ok(html.includes(`id="${id}"`));
- assert.match(client,/Teleport/);assert.match(client,/Share in chat/);assert.match(client,/confirm\(/);
+ assert.match(client,/Teleport/);assert.match(client,/Share in chat/);assert.match(client,/confirmAction\(/);
 });
 test('integration keys are verified read-only, Tripo check does not launch a generation task',()=>{
  const backend=read('backend/server.py');
@@ -37,7 +37,7 @@ test('robot recurring routines are explicit session-only and bounded',()=>{
  const routine=read('js/robot-routines.js'),html=read('index.html');
  assert.match(routine,/setInterval/);assert.match(routine,/window\.addEventListener\('solvi:room-changed',stopAll\)/);
  assert.match(routine,/editor\.routeRobot/);
- assert.match(routine,/confirm\('This recurring discussion sends billable AI requests/);
+ assert.match(routine,/confirmAction\('This recurring discussion sends billable AI requests/);
  assert.match(html,/id="routineToolButton"/);
 });
 test('XR controller ray chooses media before floor teleport and renders only while targeted',()=>{

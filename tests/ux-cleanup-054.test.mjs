@@ -25,8 +25,8 @@ test('room rename and double confirmation delete require owner/admin and protect
  assert.match(backend,/room_id=='main'/);
  assert.match(backend,/confirm_title/);
  assert.match(backend,/old\['owner_id'\]!=user\['id'\]/);
- assert.match(js,/window\.confirm\(`Permanently delete realm/);
- assert.match(js,/Second confirmation: type exactly/);
+ assert.match(js,/exactNameAction\(`Permanently delete realm/);
+ assert.match(js,/confirmLabel:'Delete realm'/);
  assert.match(tests,/PASS: realm ownership, rename/);
 });
 test('model gallery and avatar gallery share a single GPU context, no repeated forceContextLoss',()=>{

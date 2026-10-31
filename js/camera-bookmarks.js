@@ -1,3 +1,4 @@
+import {confirmAction,textEntry} from './app-dialogs.js';
 // Per-user, per-realm camera bookmark gallery. All writes require authenticated backend.
 const $=id=>document.getElementById(id);
 const validID=id=>/^[a-f0-9-]{36}$/.test(String(id||''));
@@ -28,7 +29,7 @@ export function initCameraBookmarks({world,api,room,getRooms,uploadFile,post,toa
    const actions=document.createElement('div');actions.className='bookmark-actions';
    const go=document.createElement('button');go.type='button';go.textContent='Teleport';go.onclick=()=>travel(record).catch(e=>toast(e.message));
    const share=document.createElement('button');share.type='button';share.textContent='Share in chat';share.onclick=async()=>{try{await post({text:`Camera bookmark: ${record.title} #bookmark=${record.id}`,media:[record.media_id],room:record.room});toast('Bookmark posted to chat');}catch(e){toast(e.message);}};
-   const del=document.createElement('button');del.type='button';del.textContent='Delete';del.onclick=async()=>{if(!confirm(`Delete bookmark “${record.title}”?`))return;await api.req('/api/bookmarks/'+record.id,{method:'DELETE'});await refresh();};
+   const del=document.createElement('button');del.type='button';del.textContent='Delete';del.onclick=async()=>{if(!await confirmAction(`Delete bookmark “${record.title}”?`,{title:'Delete camera bookmark',confirmLabel:'Delete',danger:true}))return;await api.req('/api/bookmarks/'+record.id,{method:'DELETE'});await refresh();};
    actions.append(go,share,del);card.append(image,heading,date,actions);grid.append(card);
   }
  };
@@ -39,7 +40,7 @@ export function initCameraBookmarks({world,api,room,getRooms,uploadFile,post,toa
  const captureBookmark=async({quick=false}={})=>{
   if(!api.auth())return toast('Sign in to save camera bookmarks');
   if(world.renderer.xr?.isPresenting)return toast('Capture a desktop view outside XR mode');
-  const title=quick?`View · ${new Date().toLocaleString()}`:prompt('Bookmark title',`View · ${new Date().toLocaleTimeString()}`);if(!title?.trim())return;
+  const title=quick?`View · ${new Date().toLocaleString()}`:await textEntry('Bookmark title',`View · ${new Date().toLocaleTimeString()}`);if(!title?.trim())return;
   try{const pose={position:world.camera.position.toArray(),target:world.controls.target.toArray()};
    world.renderer.render(world.scene,world.camera);
    const blob=await new Promise((resolve,reject)=>world.renderer.domElement.toBlob(b=>b?resolve(b):reject(Error('Camera screenshot failed')),'image/jpeg',0.85));
@@ -61,7 +62,7 @@ export function initCameraBookmarks({world,api,room,getRooms,uploadFile,post,toa
   }catch(e){toast(e.message);}
  };
  $('cameraBookmarkClear').onclick=async()=>{const which=realm.value;const title=realm.selectedOptions[0]?.textContent||which;
-  if(!confirm(`Remove ALL your camera bookmarks in “${title}”? This cannot be undone.`))return;
+  if(!await confirmAction(`Remove ALL your camera bookmarks in “${title}”? This cannot be undone.`,{title:'Clear camera bookmarks',confirmLabel:'Delete all',danger:true}))return;
   await api.req('/api/bookmarks?room='+encodeURIComponent(which),{method:'DELETE'});await refresh();};
  window.addEventListener('solvi:bookmark-teleport',async event=>{const id=event.detail?.id;if(!validID(id))return;try{const result=await api.req('/api/bookmarks/'+id);await travel(result.bookmark);}catch(e){toast(e.message);}});
  window.addEventListener('solvi:room-changed',()=>{if(!panel.hidden)refresh().catch(()=>{});});

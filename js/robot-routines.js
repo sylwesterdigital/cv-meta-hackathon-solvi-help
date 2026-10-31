@@ -1,3 +1,4 @@
+import {confirmAction} from './app-dialogs.js';
 // Explicitly opt-in, in-tab robot recurring actions. Not a server scheduler.
 const $=id=>document.getElementById(id);
 export function initRobotRoutines({editor,room,toast,postDiscussion,captureObservation}){
@@ -33,12 +34,12 @@ export function initRobotRoutines({editor,room,toast,postDiscussion,captureObser
  $('routineToolButton').onclick=()=>{panel.hidden=false;refresh();};
  $('routineClose').onclick=()=>panel.hidden=true;
  agent.onchange=refresh;
- $('routineStart').onclick=()=>{
+ $('routineStart').onclick=async()=>{
   const bot=candidates().find(o=>o.userData.editorId===agent.value),goal=editor.items.find(o=>o.userData.editorId===target.value);
   if(!bot||!goal||bot===goal)return toast('Choose different robot and target');
   const mode=action.value;const seconds=mode==='follow'?Math.max(6,Number(cadence.value)||10):Math.max(60,Number(cadence.value)||120);
   if(mode==='discuss'&&!topic.value.trim())return toast('Enter a discussion subject first');
-  if(mode==='discuss'&&!confirm('This recurring discussion sends billable AI requests while this browser tab is open. Start?'))return;
+  if(mode==='discuss'&&!await confirmAction('This recurring discussion sends billable AI requests while this browser tab is open.',{title:'Start recurring AI discussion?',confirmLabel:'Start discussion'}))return;
   stop(bot.userData.editorId);
   const task={robotId:bot.userData.editorId,robotName:bot.name,targetId:goal.userData.editorId,targetName:goal.name,action:mode,interval:seconds,topic:topic.value.trim().slice(0,240),room:room(),lastRun:0,busy:false,timer:null};
   routines.set(task.robotId,task);task.timer=setInterval(()=>tick(task),task.interval*1000);tick(task);refresh();

@@ -29,7 +29,7 @@ test('Chat portraits and attachments reuse a single pending media request per ID
  assert.match(studio,/sharedPortraits\.set\(key,item\)/);
  assert.match(studio,/chatAttachmentCache\.set\(key,promise\)/);
  assert.match(studio,/new IntersectionObserver\(entries=>/);
- assert.match(studio,/if\(!slot\.isConnected\|\|roomAtBubble!==activeRoom\)return/);
+ assert.match(studio,/if\(!slot\.isConnected\|\|roomAtBubble!==activeRoom\|\|renderEpoch!==chatEpoch\)return/);
 });
 test('Admin chat export and clear use backend session and exact realm confirmation',()=>{
  const server=text('backend/server.py'),studio=text('js/studio.js');

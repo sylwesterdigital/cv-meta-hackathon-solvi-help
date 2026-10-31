@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.96",
+  "currentVersion": "0.2.97",
   "releases": [
+    {
+      "version": "0.2.97",
+      "publishedAt": "2026-10-31T03:32:32Z",
+      "changes": [
+        "Make Robot routines a persistent-position draggable SOLVI floating panel with accessible scrollable controls on desktop and mobile.",
+        "Use application-native accessible dialogs rather than browser confirm/prompt across robot discussions, realm/scene deletion, chat clear, avatars, assets, bookmarks, profile logout, theme reset and diagnostics.",
+        "Make Shift+ArrowUp/ArrowDown move the free camera vertically only, without simultaneous forward/backward travel; preserve PageUp/PageDown vertical movement.",
+        "Fix admin chat clearing races: invalidate all in-flight older message requests and cached media/portrait callbacks, remove transient traces/presence entries for the cleared realm, and ignore stale responses after room switches.",
+        "Add regression coverage for camera axes, draggable routines, native-dialog replacement, async message invalidation and attachment cleanup."
+      ]
+    },
     {
       "version": "0.2.96",
       "publishedAt": "2026-10-31T02:45:14Z",
@@ -330,14 +341,6 @@
         "Replace the misleading Drop 3D model overlay text with a general file-drop hint covering chat attachments, 3D media surfaces and GLB/FBX import.",
         "Prevent duplicate file attachments caused by the chat composer drop handler and the document-wide drop handler both handling one drop.",
         "Support Escape, cancel, backdrop dismiss, keyboard focus containment and preview URL cleanup; add release regression tests."
-      ]
-    },
-    {
-      "version": "0.2.63",
-      "publishedAt": "2026-10-29T18:06:03Z",
-      "changes": [
-        "Reissue the complete scene media, drag-and-drop chat and video-screen release under v0.2.63 because the deployment watcher had already recorded v0.2.62 as deployed and rejects duplicate version numbers.",
-        "Preserve all v0.2.62 scene-media and HLS endpoint code unchanged; update frontend, backend, installer, release catalog and manifest version in lockstep."
       ]
     }
   ]

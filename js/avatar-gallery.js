@@ -1,3 +1,4 @@
+import {confirmAction} from './app-dialogs.js';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
@@ -95,7 +96,7 @@ export function setupAvatarGallery(editor){
    inform('Administrator access required. Open Profile → Administrator access, unlock, then retry.',true);
    window.solviOpenAdminProfile?.();return;
   }
-  if(!window.confirm(selectionPrompt(chosen,'avatars')))return;
+  if(!await confirmAction(selectionPrompt(chosen,'avatars'),{title:'Delete avatars permanently',confirmLabel:'Delete selected',danger:true}))return;
   const button=$('avatarGalleryDelete');button.disabled=true;
   let removed=0,replacedRobots=0;const failures=[];
   for(const [i,avatar] of chosen.entries()){

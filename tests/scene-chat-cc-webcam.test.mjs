@@ -12,7 +12,7 @@ test('chat has a draggable/minimizable composer, last-message scroll and attach 
 test('object list has filtered search, select all and guarded persistent bulk delete',()=>{
  const html=src('index.html'),js=src('js/editor.js');
  for(const id of ['sceneBulkToggle','sceneBulkRow','sceneObjectSearch','sceneObjectFilter','sceneSelectAll','sceneDeleteSelected','sceneDeleteAll'])assert.ok(html.includes(`id="${id}"`),id);
- for(const f of ['visibleSceneItems(){','removeBulk(all){','this.canEdit(o)','window.confirm(','this.remove();','bulk-mode'])assert.ok(js.includes(f),f);
+ for(const f of ['visibleSceneItems(){','removeBulk(all){','this.canEdit(o)','confirmAction(','this.remove();','bulk-mode'])assert.ok(js.includes(f),f);
 });
 test('CC has bounded browser recognition recovery and fallback to Ubuntu Whisper',()=>{
  const code=src('js/voice-captions.js');
