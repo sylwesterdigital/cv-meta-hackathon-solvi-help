@@ -89,7 +89,7 @@ const api={
   }
   const res=await fetch(url,{...options,headers,cache:'no-store'});
   const data=await res.json().catch(()=>({error:'Invalid server response'}));
-  if(!res.ok){if([401,409].includes(res.status)&&auth)needSignIn(data.error||'Session expired or active in another window.');
+  if(!res.ok){if((res.status===401||(res.status===409&&/active (?:in another|session|tab)|session.*(?:expired|conflict)|signed in elsewhere/i.test(data.error||'')))&&auth)needSignIn(data.error||'Session expired or active in another window.');
     if(res.status===403&&url.includes('/api/admin/stats')){adminToken=null;show('adminBackdrop',true);$('adminStats').textContent='Admin session expired. Enter the administrator password again.';}
     throw Error(data.error||`${res.status} ${res.statusText}`);}
   return data;
@@ -100,6 +100,12 @@ const api={
 window.solviAPI=api;
 // Shared library admin deletion requires an explicitly unlocked admin session.
 window.solviLibraryAdminToken=()=>adminToken;
+window.solviLibraryUnlockAdmin=async password=>{
+ if(!password)throw Error('Enter your administrator password. Ordinary sign-in does not grant server-wide deletion rights.');
+ const data=await api.req('/api/admin/login',{method:'POST',body:JSON.stringify({password})});
+ adminToken=data.token;
+ return true;
+};
 function profileFields(){return {name:$('profileName').value.trim(),email:$('profileEmail').value.trim(),bio:$('profileBio').value.trim(),links:$('profileLinks').value.trim(),color:$('profileColor').value};}
 function fillProfile(o){$('profileName').value=o?.name||'';$('profileEmail').value=o?.email||'';$('profileBio').value=o?.bio||'';$('profileLinks').value=o?.links||'';$('profileColor').value=o?.color||'#69c5e5';$('profileIdentity').textContent=o?.id||'New profile';}
 async function checkBackend(){try{const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),2500);const res=await fetch('/api/health',{cache:'no-store',signal:controller.signal});clearTimeout(timeout);
@@ -853,16 +859,24 @@ function setupNewRoom(){
   try{if(online&&auth)window.solviRoomCards=(await api.req('/api/rooms',{headers:adminToken?{'X-Solvi-Admin':adminToken}:{}})).rooms||window.solviRoomCards;}
   catch(error){toast(error.message);}
   holder.replaceChildren(makeRealmCards(window.solviRoomCards||[{id:'main',title:'Main realm'}],activeRoom));
-  show('realmGalleryBackdrop',true);
+  updateRealmActions();show('realmGalleryBackdrop',true);
  }
  const selectedArchiveRoom=()=>holder.querySelector('.realm-export-check:checked')?.dataset.room||'';
- holder.addEventListener('change',event=>{if(!event.target.matches('.realm-export-check'))return;for(const check of holder.querySelectorAll('.realm-export-check'))if(check!==event.target)check.checked=false;});
+ const selectedCard=()=> (window.solviRoomCards||[]).find(r=>r.id===selectedArchiveRoom());
+ const updateRealmActions=()=>{const card=selectedCard(),manage=!!card?.canManage;
+  $('realmCloneButton').disabled=!card;
+  $('realmRenameButton').disabled=!manage;
+  $('realmDeleteButton').disabled=!manage||card?.id==='main';
+  $('realmExportButton').disabled=!card;
+  $('realmImportAssetsButton').disabled=!manage;
+ };
+ holder.addEventListener('change',event=>{if(!event.target.matches('.realm-export-check'))return;for(const check of holder.querySelectorAll('.realm-export-check'))if(check!==event.target)check.checked=false;updateRealmActions();});
  const exportRealm=async()=>{
   const id=selectedArchiveRoom();if(!id)return toast('Select a realm checkbox to export');
   const mode=$('realmExportMode').value,button=$('realmExportButton');button.disabled=true;$('realmArchiveStatus').textContent='Preparing '+mode+' archive…';
   try{
    const response=await fetch('/api/realms/'+encodeURIComponent(id)+'/export?mode='+encodeURIComponent(mode),{headers:{Authorization:'Bearer '+auth.token,'X-Solvi-Tab':tab}});
-   if(!response.ok)throw Error((await response.json()).error||'Export unavailable');
+   if(!response.ok){const info=await response.json();throw Error((info.error||'Export unavailable')+(info.missing?.length?' Missing: '+info.missing.join(', '):''));}
    const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=id+(mode==='json'?'.realm.json':'-'+mode+'.tar.gz');link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
    $('realmArchiveStatus').textContent='Export complete · '+(blob.size/1048576).toFixed(1)+' MB';
   }catch(e){$('realmArchiveStatus').textContent=e.message;toast(e.message);}finally{button.disabled=false;}
@@ -878,31 +892,35 @@ function setupNewRoom(){
   const data=new FormData();data.append('file',file);data.append('mode',archiveImportMode);
   if(archiveImportMode==='assets')data.append('room',selectedArchiveRoom());
   $('realmArchiveStatus').textContent='Importing and validating archive…';
-  try{const out=await api.req('/api/realms/import',{method:'POST',body:data});$('realmArchiveStatus').textContent=`Imported ${out.media} media and ${out.models} models · ${out.room}`;await configureRooms();await openGallery();}
+  try{const out=await api.req('/api/realms/import',{method:'POST',body:data});await configureRooms();await openGallery();$('realmArchiveStatus').textContent=`Import complete: ${out.objects||0} scene objects, ${out.media} media, ${out.models} models, ${out.avatars||0} avatars · ${out.room}`;}
+  catch(e){$('realmArchiveStatus').textContent='Import failed; no partial realm created. '+e.message;toast(e.message);}
+ };
+ const refreshRealms=async()=>{await configureRooms();await openGallery();};
+ $('realmCloneButton').onclick=async()=>{
+  const card=selectedCard();if(!card)return;
+  const btn=$('realmCloneButton');btn.disabled=true;$('realmArchiveStatus').textContent='Cloning '+card.title+'…';
+  try{const out=await api.req('/api/rooms/'+encodeURIComponent(card.id)+'/clone',{method:'POST'});
+   await refreshRealms();$('realmArchiveStatus').textContent='Cloned '+card.title+' → '+out.room.title+' · '+out.objects+' objects; existing media and models kept';
+  }catch(e){$('realmArchiveStatus').textContent=e.message;toast(e.message);}finally{updateRealmActions();}
+ };
+ $('realmRenameButton').onclick=async()=>{
+  const card=selectedCard();if(!card?.canManage)return;
+  const title=window.prompt('New realm name',card.title);if(!title||title.trim()===card.title)return;
+  try{await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'PATCH',headers:adminToken?{'X-Solvi-Admin':adminToken}:{},body:JSON.stringify({title:title.trim()})});await refreshRealms();}
   catch(e){$('realmArchiveStatus').textContent=e.message;toast(e.message);}
  };
- holder.addEventListener('click',async event=>{
-  const control=event.target.closest('button.realm-card-action');
-  if(control){
-   const card=(window.solviRoomCards||[]).find(r=>r.id===control.dataset.room);if(!card)return;
-   const headers=adminToken?{'X-Solvi-Admin':adminToken}:{};
-   try{
-    if(control.dataset.action==='rename'){
-     const title=window.prompt('New realm name',card.title);if(!title||title.trim()===card.title)return;
-     await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'PATCH',headers,body:JSON.stringify({title:title.trim()})});
-    }else{
-     if(card.id==='main')return;
-     if(!window.confirm(`Permanently delete realm "${card.title}" and its objects, messages and settings? This cannot be undone.`))return;
-     const exact=window.prompt(`Second confirmation: type exactly "${card.title}" to delete it.`);
-     if(exact!==card.title){toast('Deletion cancelled: realm name did not match.');return;}
-     await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'DELETE',headers,body:JSON.stringify({confirm_title:exact})});
-     try{localStorage.removeItem('solvi-realm-preview-v1-'+card.id);}catch{}
-     if(activeRoom===card.id){activeRoom='main';window.solviRoom='main';}
-    }
-    await configureRooms();await openGallery();
-   }catch(error){toast(error.message);}
-   return;
-  }
+ $('realmDeleteButton').onclick=async()=>{
+  const card=selectedCard();if(!card?.canManage||card.id==='main')return;
+  if(!window.confirm(`Permanently delete realm "${card.title}" and its objects, messages and settings? This cannot be undone.`))return;
+  const exact=window.prompt(`Second confirmation: type exactly "${card.title}" to delete it.`);
+  if(exact!==card.title){toast('Deletion cancelled: realm name did not match.');return;}
+  try{await api.req('/api/rooms/'+encodeURIComponent(card.id),{method:'DELETE',headers:adminToken?{'X-Solvi-Admin':adminToken}:{},body:JSON.stringify({confirm_title:exact})});
+   try{localStorage.removeItem('solvi-realm-preview-v1-'+card.id);}catch{}
+   if(activeRoom===card.id){activeRoom='main';window.solviRoom='main';}
+   await refreshRealms();$('realmArchiveStatus').textContent='Deleted realm '+card.title;
+  }catch(e){$('realmArchiveStatus').textContent=e.message;toast(e.message);}
+ };
+ holder.addEventListener('click',event=>{
   const btn=event.target.closest('button.realm-card');if(!btn)return;
   if(![...$('roomSelect').options].some(o=>o.value===btn.dataset.room))return;
   $('roomSelect').value=btn.dataset.room;$('roomSelect').dispatchEvent(new Event('change'));

@@ -24,3 +24,37 @@ try:read_archive(Bad())
 except ValueError:pass
 else:raise AssertionError('Tar traversal must be rejected')
 print('PASS: portable realm archive round trip, placeholders, and traversal prevention')
+
+# A real uploaded GLB must round-trip through the gzip archive with its id intact.
+import sqlite3, tempfile, struct
+from realm_archives import asset_manifest,missing_realm_assets,validate_archive_inventory
+with tempfile.TemporaryDirectory() as root:
+    store=Path(root)
+    payload=b'{}'+b'  '
+    glb=b'glTF'+struct.pack('<II',2,20+len(payload))+struct.pack('<I',len(payload))+b'JSON'+payload
+    model_id='a'*32
+    (store/'test.glb').write_bytes(glb)
+    conn=sqlite3.connect(':memory:');conn.row_factory=sqlite3.Row
+    conn.execute('CREATE TABLE media(id TEXT,path TEXT)')
+    conn.execute('CREATE TABLE scene_models(id TEXT,filename TEXT,extension TEXT,title TEXT)')
+    conn.execute('CREATE TABLE avatar_library(id TEXT,filename TEXT)')
+    conn.execute('INSERT INTO scene_models VALUES(?,?,?,?)',(model_id,str(store/'test.glb'),'glb','Test Model'))
+    scene=[{'id':'item1','kind':'model','name':'Imported furnished model','model':'/api/scene/models/'+model_id+'.glb',
+            'position':[0,0,0],'rotation':[0,0,0],'scale':[1,1,1]}]
+    media,models,avatars=asset_manifest(scene,conn)
+    assert len(models)==1 and not missing_realm_assets(scene,media,models,avatars)
+    manifest={'format':'solvi-realm-archive-v1','mode':'full','objects':scene,'media':[],
+              'models':[{'id':model_id,'title':'Test Model','extension':'glb'}],'avatars':[]}
+    data=archive_bytes(manifest,media,models,avatars)
+    file=type('Input',(),{'stream':io.BytesIO(data),'content_length':len(data)})()
+    meta,mfiles,model_files,afiles=read_archive(file)
+    assert model_files[model_id]==glb
+    assert validate_archive_inventory(meta,mfiles,model_files,afiles)==[]
+    assert 'missing models file' in str(validate_archive_inventory(meta,mfiles,{},afiles))
+    assert missing_realm_assets(scene,[],[],[])==['model:/api/scene/models/'+model_id+'.glb']
+    json_meta={'format':'solvi-realm-archive-v1','mode':'json','objects':scene_placeholders(scene),'media':[],'models':[],'avatars':[]}
+    assert validate_archive_inventory(json_meta,{},{},{})==[]
+    assert json_meta['objects'][0]['kind']=='cube'
+    # World with locally unavailable asset cannot be exported as a complete archive.
+    assert missing_realm_assets(scene,*asset_manifest(scene,conn))==[]
+print('PASS: complete model archive restores original bytes and missing inventory fails explicitly')

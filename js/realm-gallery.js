@@ -25,13 +25,6 @@ export function makeRealmCards(rooms,active,storage=localStorage){
    else avatar.textContent=(user.name||'?').slice(0,1).toUpperCase();faces.append(avatar);
   }
   image.append(title,faces);card.append(image);const tile=document.createElement('div');tile.className='realm-card-tile';tile.append(card);const chooser=document.createElement('label');chooser.className='realm-selection';const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className='realm-export-check';checkbox.dataset.room=room.id;checkbox.setAttribute('aria-label','Select realm '+room.title);chooser.append(checkbox,document.createTextNode('Select'));tile.append(chooser);grid.append(tile);
-  if(room.canManage){
-   const controls=document.createElement('div');controls.className='realm-card-controls';
-   const rename=document.createElement('button');rename.type='button';rename.className='realm-card-action';rename.dataset.action='rename';rename.dataset.room=room.id;rename.textContent='Rename';
-   const remove=document.createElement('button');remove.type='button';remove.className='realm-card-action';remove.dataset.action='delete';remove.dataset.room=room.id;remove.textContent='Delete';remove.disabled=room.id==='main';
-   controls.append(rename,remove);tile.append(controls);
-   card.classList.add('realm-card-managed');
-  }
  }
  return grid;
 }

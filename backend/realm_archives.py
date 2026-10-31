@@ -17,6 +17,9 @@ def scene_placeholders(objects):
             if wall.get('texture')=='custom':
                 wall['texture']='plaster';wall['textureMediaId']=''
             item['wall']=wall
+        if item.get('kind')=='robot':
+            item['avatar']='/assets/solvi-character.glb'
+            brain=dict(item.get('brain') or {});brain['portrait']='';item['brain']=brain
         if item.get('kind') in ('model','media'):
             item.pop('media',None);item.pop('model',None)
             item['kind']='cube';item['primitive']={'width':1,'height':1,'depth':0.1}
@@ -100,7 +103,7 @@ def read_archive(upload):
 def safe_scene(objects):
     if not isinstance(objects,list) or len(objects)>128:raise ValueError('Invalid object list')
     if len(json.dumps(objects,ensure_ascii=False))>1_200_000:raise ValueError('Scene metadata exceeds 1.2 MB')
-    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','physics','model','media','primitive','wall','stairs','transformLocked'}
+    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','combat','animationSpeed','physics','model','media','primitive','wall','stairs','transformLocked'}
     clean=[]
     for obj in objects:
         if not isinstance(obj,dict) or obj.get('kind') not in KINDS:continue
@@ -110,3 +113,61 @@ def safe_scene(objects):
         copy['id']=str(uuid.uuid4());copy['name']=str(copy.get('name','Object'))[:100]
         clean.append(copy)
     return clean
+
+# Missing-asset reporting applies only to referenced media/model/avatar uploads.
+# Built-in /assets files ship with SOLVI itself, and are kept as built-in references.
+def _scene_refs(objects):
+    media=set();models=set();avatars=set()
+    for item in objects:
+        if not isinstance(item,dict):continue
+        kind=item.get('kind')
+        if kind=='model':models.add(str(item.get('model') or ''))
+        if kind=='media':
+            media.add(str((item.get('media') or {}).get('id') or ''))
+            speaker=str((item.get('media') or {}).get('model') or '')
+            if speaker:models.add(speaker)
+        if kind=='wall' and (item.get('wall') or {}).get('texture')=='custom':
+            media.add(str((item.get('wall') or {}).get('textureMediaId') or ''))
+        if kind=='robot':
+            face=str((item.get('brain') or {}).get('portrait') or '')
+            if re.fullmatch(r'[0-9a-f-]{36}',face):media.add(face)
+            avatar=str(item.get('avatar') or '')
+            if avatar:avatars.add(avatar)
+    return media,models,avatars
+
+def missing_realm_assets(objects,media_rows,model_rows,avatar_rows):
+    mids,urls,avurls=_scene_refs(objects)
+    found_m={row['id'] for row in media_rows}
+    found_model={row['id'] for row in model_rows}
+    found_avatar={row['id'] for row in avatar_rows}
+    missing=[]
+    for ident in sorted(mids):
+        if ident not in found_m:missing.append('media:'+ident[:80])
+    for url in sorted(urls):
+        if url.startswith(('/assets/','./assets/')):continue
+        match=re.fullmatch(r'/api/scene/models/([0-9a-f]{32})\.(glb|fbx)',url)
+        if not match or match[1] not in found_model:missing.append('model:'+url[:120])
+    for url in sorted(avurls):
+        if url.startswith(('/assets/','./assets/')):continue
+        match=re.fullmatch(r'/api/avatars/([0-9a-f]{32})\.glb',url)
+        if not match or match[1] not in found_avatar:missing.append('avatar:'+url[:120])
+    return missing[:40]
+
+def validate_archive_inventory(meta,media_files,model_files,avatar_files):
+    """Reject damaged full archives before creating any realm or model files."""
+    if meta.get('mode')=='json':return []  # Explicit primitives-only export.
+    issues=[]
+    groups=(('media',media_files),('models',model_files),('avatars',avatar_files))
+    for kind,files in groups:
+        entries=meta.get(kind,[])
+        if not isinstance(entries,list):return ['invalid '+kind+' inventory']
+        ids=[str(row.get('id','')) for row in entries if isinstance(row,dict)]
+        if len(ids)!=len(entries) or len(set(ids))!=len(ids):issues.append('invalid or duplicate '+kind+' records')
+        for key in ids:
+            if key not in files:issues.append('missing '+kind+' file: '+key[:80])
+        for key in files:
+            if key not in ids:issues.append('unlisted '+kind+' file: '+key[:80])
+    if meta.get('mode')=='full':
+        def mockrows(items):return [{'id':str(x.get('id'))} for x in items if isinstance(x,dict)]
+        issues.extend(missing_realm_assets(meta.get('objects',[]),mockrows(meta.get('media',[])),mockrows(meta.get('models',[])),mockrows(meta.get('avatars',[]))))
+    return issues[:40]

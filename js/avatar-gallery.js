@@ -10,11 +10,17 @@ const safe=a=>typeof a?.url==='string'&&(a.url.startsWith('./assets/')||/^\/api\
 export function setupAvatarGallery(editor){
  const backdrop=$('avatarGalleryBackdrop'),grid=$('avatarGalleryGrid'),status=$('avatarGalleryStatus');
  const search=$('avatarGallerySearch'),edit=$('avatarGalleryEdit'),bulk=$('avatarGalleryBulk'),count=$('avatarGallerySelected');
- const selected=new Set();let editing=false,collection=[],renderGeneration=0,previewObserver=null,lanes=[Promise.resolve(),Promise.resolve()],nextLane=0;
+ const selected=new Set();const notice=$('avatarGalleryNotice'),adminPanel=$('avatarGalleryAdmin'),adminStatus=$('avatarGalleryAdminStatus');let editing=false,collection=[],renderGeneration=0,previewObserver=null,lanes=[Promise.resolve(),Promise.resolve()],nextLane=0;
  const enqueue=task=>{const lane=nextLane++%lanes.length;lanes[lane]=lanes[lane].catch(()=>{}).then(task);};
  const available=()=>filterLibrary(collection.filter(safe),search.value);
  function selection(){return available().filter(a=>selected.has(a.url));}
- function buttons(){const n=selection().length;count.textContent=n+' selected';$('avatarGalleryExport').disabled=!n;$('avatarGalleryDelete').disabled=!n;bulk.hidden=!editing;edit.setAttribute('aria-pressed',String(editing));edit.textContent=editing?'Done':'Edit';}
+ function buttons(){const n=selection().length;count.textContent=n+' selected';$('avatarGalleryExport').disabled=!n;$('avatarGalleryDelete').disabled=!n;bulk.hidden=!editing;edit.setAttribute('aria-pressed',String(editing));edit.textContent=editing?'Done':'Edit';adminPanel.hidden=!(editing&&(!window.solviLibraryAdminToken?.()||selection().some(a=>a.bundled)));
+  adminStatus.textContent=window.solviLibraryAdminToken?.()?'Administrator unlocked for this session.':'Server-wide deletion of bundled avatars requires Admin unlock.';}
+ function inform(message,error=false){notice.textContent=message;notice.hidden=!message;notice.classList.toggle('error',error);status.textContent=message;}
+ async function refreshAfterChange(){
+  const listing=await window.solviAPI.req('/api/avatars',{headers:window.solviLibraryAdminToken?.()?{'X-Solvi-Admin':window.solviLibraryAdminToken()}:{}});
+  collection=[...(listing.bundled||[]),...(listing.avatars||[])];render();
+ }
  const close=()=>{backdrop.hidden=true;renderGeneration++;previewObserver?.disconnect();previewObserver=null;selected.clear();editing=false;buttons();};
  $('closeAvatarGallery').onclick=close;backdrop.addEventListener('pointerdown',e=>{if(e.target===backdrop)close();});
  const chooser=useSelected=>{const robot=editor.selected?.userData.editorKind==='robot'&&editor.canEdit(editor.selected)?editor.selected:null;return robot&&useSelected?robot:editor.add('robot',false);};
@@ -71,7 +77,7 @@ export function setupAvatarGallery(editor){
   }else for(const [canvas,avatar,meta] of previews){if(generation!==renderGeneration||backdrop.hidden)break;await thumbnail(canvas,avatar,generation,meta);}
   buttons();
  }
- async function open(){backdrop.hidden=false;selected.clear();editing=false;search.value='';buttons();status.textContent='Select to place or edit multiple avatars.';
+ async function open(){backdrop.hidden=false;selected.clear();editing=false;search.value='';inform('');buttons();status.textContent='Select to place or edit multiple avatars.';
   try{
    const listing=await window.solviAPI.req('/api/avatars',{headers:window.solviLibraryAdminToken?.()?{'X-Solvi-Admin':window.solviLibraryAdminToken()}: {}});
    if(backdrop.hidden)return;
@@ -83,14 +89,39 @@ export function setupAvatarGallery(editor){
  search.addEventListener('input',()=>{selected.clear();render();});
  $('avatarGallerySelectAll').onclick=()=>{for(const avatar of available().filter(a=>a.id!=='solvi-character').slice(0,40))selected.add(avatar.url);render();};
  $('avatarGalleryExport').onclick=async()=>{try{status.textContent='Preparing selected avatars…';await downloadLibrarySelection('avatars',selection());status.textContent='Avatar ZIP downloaded.';}catch(error){status.textContent=error.message;}};
- $('avatarGalleryDelete').onclick=async()=>{
-  const chosen=selection();if(!chosen.length||!window.confirm(selectionPrompt(chosen,'avatars')))return;
+ $('avatarGalleryAdminUnlock').onclick=async()=>{
+  const password=$('avatarGalleryAdminPassword').value;
   try{
-   if(chosen.some(a=>!a.bundled&&a.canManage!==true))throw Error('Only an uploader or administrator can delete uploaded avatars. Export is available for all.');
-   await deleteLibrarySelection('avatars',chosen);
-   collection=collection.filter(a=>!selected.has(a.url));selected.clear();render();
-   status.textContent='Selected avatars permanently deleted from the server.';
-  }catch(error){status.textContent='Delete failed: '+error.message;}
+   adminStatus.textContent='Checking administrator access…';
+   await window.solviLibraryUnlockAdmin(password);
+   $('avatarGalleryAdminPassword').value='';
+   adminStatus.textContent='Administrator unlocked.';
+   inform('Administrator access unlocked. Select avatars and choose Delete selected.');
+   await refreshAfterChange();
+  }catch(error){adminStatus.textContent='Admin unlock failed: '+error.message;inform(adminStatus.textContent,true);}
+  finally{buttons();}
+ };
+ $('avatarGalleryDelete').onclick=async()=>{
+  const chosen=selection();if(!chosen.length)return;
+  const blocked=chosen.filter(a=>a.bundled&&!window.solviLibraryAdminToken?.());
+  if(blocked.length){
+   adminPanel.hidden=false;inform('Deleting bundled avatars requires the administrator password, not just an ordinary account login. Unlock Admin above, then retry.',true);
+   $('avatarGalleryAdminPassword').focus();return;
+  }
+  if(!window.confirm(selectionPrompt(chosen,'avatars')))return;
+  const button=$('avatarGalleryDelete');button.disabled=true;
+  let removed=0;const failures=[];
+  for(const [i,avatar] of chosen.entries()){
+   inform(`Deleting avatar ${i+1} of ${chosen.length}: ${avatar.label||avatar.id}…`);
+   try{
+    if(!avatar.bundled&&avatar.canManage!==true&&!window.solviLibraryAdminToken?.())throw Error('Not owned by this user; administrator permission required');
+    await deleteLibrarySelection('avatars',[avatar]);
+    selected.delete(avatar.url);collection=collection.filter(a=>a.url!==avatar.url);removed++;
+   }catch(error){failures.push(`${avatar.label||avatar.id}: ${error.message}`);}
+  }
+  try{await refreshAfterChange();}catch(error){failures.push('Gallery refresh: '+error.message);render();}
+  const message=`${removed} of ${chosen.length} avatars permanently deleted from the server.`+(failures.length?' Not deleted: '+failures.join(' | '):'');
+  inform(message,failures.length>0);button.disabled=false;buttons();
  };
  $('avatarsButton').onclick=open;$('openAvatarGallery').onclick=open;
  $('uploadRobotAvatar').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;

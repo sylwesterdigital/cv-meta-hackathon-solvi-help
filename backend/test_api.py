@@ -154,6 +154,14 @@ assert c.post('/api/rooms',headers=headers,json={'id':'temporary-realm','title':
 assert c.delete('/api/rooms/temporary-realm',headers=headers,json={'confirm_title':'wrong'}).status_code==400
 assert c.delete('/api/rooms/temporary-realm',headers=headers,json={'confirm_title':'Temporary Realm'}).status_code==200
 assert not any(r['id']=='temporary-realm' for r in c.get('/api/rooms',headers=headers).get_json()['rooms'])
+clone_a=c.post('/api/rooms/lab/clone',headers=headers)
+assert clone_a.status_code==200,(clone_a.status_code,clone_a.data)
+assert clone_a.get_json()['room']['title']=='Renamed laboratory copy (1)'
+clone_b=c.post('/api/rooms/lab/clone',headers=headers)
+assert clone_b.status_code==200,(clone_b.status_code,clone_b.data)
+assert clone_b.get_json()['room']['title']=='Renamed laboratory copy (2)'
+assert c.post('/api/rooms/not-a-realm/clone',headers=headers).status_code==404
+assert c.get('/api/scene?room='+clone_a.get_json()['room']['id'],headers=headers).status_code==200
 print('PASS: realm ownership, rename, protected main realm and exact-name double-confirmation delete')
 assert c.post('/api/message',headers=headers,json={'room':'lab','text':'Only lab'}).status_code==200
 main=c.get('/api/messages?room=main',headers=headers).get_json()['messages']

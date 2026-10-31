@@ -11,7 +11,7 @@ test('bundled avatar deletion requires an administrator and is permanent across 
  assert.match(install,/prune_removed_avatars\.py/);
  assert.match(install,/chown www-data:www-data \/var\/www\/solvi\.help\/assets\/avatars/);
  assert.match(svc,/ReadWritePaths=\/var\/www\/solvi\.help\/assets\/avatars/);
- assert.match(read('js/avatar-gallery.js'),/deleteLibrarySelection\('avatars',chosen\)/);
+ assert.match(read('js/avatar-gallery.js'),/deleteLibrarySelection\('avatars',\[avatar\]\)/);
  assert.doesNotMatch(read('js/avatar-gallery.js'),/saveHidden|localStorage/);
 });
 test('assets use bounded page rendering and fixed-height isolated cards',()=>{

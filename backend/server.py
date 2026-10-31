@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.91',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.92',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -617,6 +617,45 @@ def rename_room(room_id):
         con.execute('UPDATE rooms SET title=? WHERE id=?',(title,room_id))
     publish({'type':'realm-updated','room':room_id,'title':title},room_id=room_id)
     return jsonify(room={'id':room_id,'title':title})
+
+@app.post('/api/rooms/<room_id>/clone')
+def clone_room(room_id):
+    """Copy a realm atomically, retaining the same immutable model/media references.
+
+    Assets are shared server-side, not re-uploaded or silently omitted. The
+    existing model deletion guards protect references held by cloned realms.
+    """
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    with db() as con:
+        origin=con.execute('SELECT id,title FROM rooms WHERE id=?',(room_id,)).fetchone()
+        if not origin:return json_error('Realm not found',404)
+        con.execute('BEGIN IMMEDIATE') if not con.in_transaction else None
+        if con.execute('SELECT COUNT(*) AS n FROM rooms').fetchone()['n']>=100:return json_error('Realm capacity reached',409)
+        titles={r['title'].casefold() for r in con.execute('SELECT title FROM rooms')}
+        slugs={r['id'] for r in con.execute('SELECT id FROM rooms')}
+        new_id=new_title=None
+        stem=re.sub(r'[^a-z0-9_-]+','-',room_id.lower()).strip('-')[:26] or 'realm'
+        for n in range(1,101):
+            candidate_title=(origin['title'][:65]+' copy ('+str(n)+')')[:80]
+            candidate_id=(stem+'-copy-'+str(n))[:40]
+            if candidate_title.casefold() not in titles and candidate_id not in slugs:
+                new_id,new_title=candidate_id,candidate_title;break
+        if not new_id:return json_error('No available clone name',409)
+        source=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+        objects=json.loads(source['payload'] if source else '[]')
+        if not isinstance(objects,list) or len(objects)>128:return json_error('Invalid source scene',409)
+        objects=json.loads(json.dumps(objects))
+        for obj in objects:
+            if isinstance(obj,dict):obj['owner']=user['id']
+        policy=con.execute('SELECT objects,robots,physics FROM room_policies WHERE room_id=?',(room_id,)).fetchone()
+        env=con.execute('SELECT payload FROM room_environments WHERE room_id=?',(room_id,)).fetchone()
+        con.execute('INSERT INTO rooms(id,title,created,owner_id) VALUES(?,?,?,?)',(new_id,new_title,now(),user['id']))
+        con.execute('INSERT INTO room_scenes(room_id,revision,payload) VALUES(?,?,?)',(new_id,0,json.dumps(objects,separators=(',',':'))))
+        con.execute('INSERT INTO room_policies(room_id,objects,robots,physics) VALUES(?,?,?,?)',
+                    (new_id,policy['objects'] if policy else 'open',policy['robots'] if policy else 'open',policy['physics'] if policy else 0))
+        if env:con.execute('INSERT INTO room_environments(room_id,payload) VALUES(?,?)',(new_id,env['payload']))
+    return jsonify(room={'id':new_id,'title':new_title},objects=len(objects),assets='shared server references',ok=True)
 
 @app.delete('/api/rooms/<room_id>')
 def delete_room(room_id):
@@ -3185,7 +3224,7 @@ def websocket(ws):
 
 # Realm portability. The archive contains only assets referenced by the exported scene,
 # and import never extracts caller-supplied paths or executes uploaded content.
-from realm_archives import archive_bytes, asset_manifest, read_archive, safe_scene, scene_placeholders
+from realm_archives import archive_bytes, asset_manifest, read_archive, safe_scene, scene_placeholders, missing_realm_assets, validate_archive_inventory
 
 @app.get('/api/realms/<room_id>/export')
 def export_realm(room_id):
@@ -3201,12 +3240,17 @@ def export_realm(room_id):
         env=con.execute('SELECT payload FROM room_environments WHERE room_id=?',(rid,)).fetchone()
         objects=json.loads(entry['payload'] if entry else '[]')
         media,models,avatars=asset_manifest(objects,con)
+        missing=missing_realm_assets(objects,media,models,avatars)
+    if mode in ('full','assets') and missing:
+        return jsonify(error='Realm export cannot include every referenced asset. Resolve missing files before export.',missing=missing),409
     meta={'format':'solvi-realm-archive-v1','name':realm['title'],'origin':rid,
           'objects':[] if mode=='assets' else (scene_placeholders(objects) if mode=='json' else objects),
           'environment':json.loads(env['payload'] if env else '{}'),'mode':mode,
-          'media':[{'id':r['id'],'name':r['name'],'mime':r['mime']} for r in media],
-          'models':[{'id':r['id'],'title':r['title'],'extension':r['extension']} for r in models],
-          'avatars':[{'id':r['id'],'title':r['title']} for r in avatars]}
+          'media':[{'id':r['id'],'name':r['name'],'mime':r['mime']} for r in media] if mode!='json' else [],
+          'models':[{'id':r['id'],'title':r['title'],'extension':r['extension']} for r in models] if mode!='json' else [],
+          'avatars':[{'id':r['id'],'title':r['title']} for r in avatars] if mode!='json' else []} 
+    if mode=='full' and len(objects)>128:
+        return json_error('Full export exceeds scene import limit (128 objects)',409)
     if mode=='json':
         body=json.dumps(meta,ensure_ascii=False,indent=2).encode()
         return send_file(io.BytesIO(body),mimetype='application/json',as_attachment=True,download_name=rid+'.realm.json')
@@ -3225,6 +3269,7 @@ def import_realm_archive():
     if not isinstance(meta,dict) or meta.get('format')!='solvi-realm-archive-v1':return json_error('Not a SOLVI realm archive')
     mode=request.form.get('mode','realm')
     if mode not in ('realm','assets'):return json_error('Invalid import mode')
+    if mode=='realm' and meta.get('mode')=='assets':return json_error('Assets-only archive cannot create a complete realm; use Import assets to selected',422)
     target=request.form.get('room','') if mode=='assets' else ''
     if mode=='assets':
         if selected_room(target)!=target:return json_error('Target realm missing',404)
@@ -3236,7 +3281,12 @@ def import_realm_archive():
             if con.execute('SELECT 1 FROM rooms WHERE id=?',(target,)).fetchone():target=(target[:31]+'-'+secrets.token_hex(3))[:39]
             if con.execute('SELECT COUNT(*) AS n FROM rooms').fetchone()['n']>=100:return json_error('Realm capacity reached',409)
     descriptors=meta.get('media',[]);models=meta.get('models',[]);avatars=meta.get('avatars',[])
+    # v0.2.92 JSON placeholder exports listed inventory metadata without embedding files.
+    # They intentionally import as primitives and must not attempt to restore those bytes.
+    if meta.get('mode')=='json':descriptors=[];models=[];avatars=[]
     if not isinstance(descriptors,list) or not isinstance(models,list) or not isinstance(avatars,list) or len(descriptors)+len(models)+len(avatars)>200:return json_error('Invalid asset inventory')
+    archive_issues=validate_archive_inventory(meta,media_files,model_files,avatar_files)
+    if archive_issues:return jsonify(error='Import aborted: archive contains missing, invalid, or unsupported asset files; nothing was imported.',missing=archive_issues),422
     media_map={};model_map={};avatar_map={}
     saved=[]
     try:
@@ -3244,60 +3294,78 @@ def import_realm_archive():
             for desc in descriptors:
                 if not isinstance(desc,dict):continue
                 old=str(desc.get('id',''));content=media_files.get(old);mime=str(desc.get('mime',''))
-                if content is None or mime not in MEDIA_TYPES or len(content)>12*1024*1024:continue
+                if content is None or mime not in MEDIA_TYPES or len(content)>12*1024*1024:raise ValueError('Media file cannot be restored: '+old)
                 signature=content[:16]
                 checks={'image/png':signature.startswith(b'\x89PNG'),'image/jpeg':signature.startswith(b'\xff\xd8'),'image/gif':signature.startswith((b'GIF87a',b'GIF89a')),'image/webp':signature.startswith(b'RIFF') and signature[8:12]==b'WEBP'}
-                if mime in checks and not checks[mime]:continue
+                if mime in checks and not checks[mime]:raise ValueError('Invalid media signature: '+old)
                 user_media_bytes=con.execute('SELECT COALESCE(SUM(size),0) AS n FROM media WHERE user_id=?',(user['id'],)).fetchone()['n']
-                if user_media_bytes+len(content)>75*1024*1024:continue
+                if user_media_bytes+len(content)>75*1024*1024:raise ValueError('Import exceeds media storage quota; no realm was created')
                 new=str(uuid.uuid4());dest=STATE/'media'/(new+MEDIA_TYPES[mime]);dest.write_bytes(content);saved.append(dest)
                 con.execute('INSERT INTO media VALUES(?,?,?,?,?,?,?)',(new,user['id'],Path(str(desc.get('name','imported'))) .name[:120],mime,str(dest),len(content),now()))
                 media_map[old]=new
             for desc in models:
                 if not isinstance(desc,dict):continue
                 old=str(desc.get('id',''));content=model_files.get(old);ext=str(desc.get('extension',''))
-                if content is None or ext not in ('glb','fbx') or len(content)>20*1024*1024:continue
-                if ext=='glb' and not (len(content)>=20 and content[:4]==b'glTF' and int.from_bytes(content[8:12],'little')==len(content)):continue
-                if ext=='fbx' and not (content.startswith(b'Kaydara FBX Binary  \x00\x1a\x00') or content[:256].lstrip().startswith((b'; FBX',b'FBXHeaderExtension:'))):continue
+                if content is None or ext not in ('glb','fbx') or len(content)>20*1024*1024:raise ValueError('Model file cannot be restored: '+old)
+                if ext=='glb' and not (len(content)>=20 and content[:4]==b'glTF' and int.from_bytes(content[8:12],'little')==len(content)):raise ValueError('Invalid GLB: '+old)
+                if ext=='fbx' and not (content.startswith(b'Kaydara FBX Binary  \x00\x1a\x00') or content[:256].lstrip().startswith((b'; FBX',b'FBXHeaderExtension:'))):raise ValueError('Invalid FBX: '+old)
                 new=secrets.token_hex(16);dest=STATE/'scene-models'/(new+'.'+ext);dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(content);saved.append(dest)
                 con.execute('INSERT INTO scene_models VALUES(?,?,?,?,?,?,?)',(new,user['id'],str(desc.get('title','Model'))[:80],now(),str(dest),len(content),ext));model_map[old]='/api/scene/models/'+new+'.'+ext
             for desc in avatars:
                 if not isinstance(desc,dict):continue
                 old=str(desc.get('id',''));content=avatar_files.get(old)
-                if content is None or len(content)>20*1024*1024 or len(content)<20 or content[:4]!=b'glTF' or int.from_bytes(content[8:12],'little')!=len(content):continue
+                if content is None or len(content)>20*1024*1024 or len(content)<20 or content[:4]!=b'glTF' or int.from_bytes(content[8:12],'little')!=len(content):raise ValueError('Avatar file cannot be restored: '+old)
                 new=secrets.token_hex(16);dest=STATE/'avatar-library'/(new+'.glb');dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(content);saved.append(dest)
                 con.execute('INSERT INTO avatar_library VALUES(?,?,?,?,?,?)',(new,user['id'],str(desc.get('title','Avatar'))[:60],now(),str(dest),len(content)))
                 avatar_map[old]='/api/avatars/'+new+'.glb'
             if mode=='realm':
                 objects=safe_scene(meta.get('objects',[]))
+                if len(objects)!=len(meta.get('objects',[])):
+                    raise ValueError('Some scene objects are unsupported or invalid; export/import cannot silently omit them')
                 for obj in objects:
                     obj['owner']=user['id']
                     if obj['kind']=='model':
-                        obj['model']=model_map.get(str(obj.get('model','')),'')
-                        if not obj['model']:obj.update(kind='cube',name='Placeholder · '+str(obj.get('name',''))[:70],primitive={'width':1,'height':1,'depth':.1});obj.pop('model',None)
+                        original_model=str(obj.get('model',''))
+                        model_match=re.fullmatch(r'/api/scene/models/([0-9a-f]{32})\.(?:glb|fbx)',original_model)
+                        if original_model.startswith(('/assets/','./assets/')):
+                            obj['model']=original_model
+                        else:
+                            obj['model']=model_map.get(model_match[1],'') if model_match else ''
+                        if not obj['model']:raise ValueError('Missing model mapping during import: '+str(obj.get('name','model')))
                     if obj['kind']=='media':
                         record=obj.get('media') or {};record['id']=media_map.get(str(record.get('id','')),'')
-                        if not record['id']:obj.update(kind='cube',name='Placeholder · '+str(obj.get('name',''))[:70],primitive={'width':1,'height':1,'depth':.1});obj.pop('media',None)
+                        if not record['id']:raise ValueError('Missing media mapping during import: '+str(obj.get('name','media')))
+                        speaker=str(record.get('model',''))
+                        if speaker and not speaker.startswith(('/assets/','./assets/')):
+                            speaker_match=re.fullmatch(r'/api/scene/models/([0-9a-f]{32})\.(?:glb|fbx)',speaker)
+                            record['model']=model_map.get(speaker_match[1],'') if speaker_match else ''
+                            if not record['model']:raise ValueError('Missing speaker model mapping during import: '+str(obj.get('name','media')))
+                        obj['media']=record
                     if obj['kind']=='wall':
                         wall=obj.get('wall') or {}
                         if wall.get('texture')=='custom':
                             wall['textureMediaId']=media_map.get(str(wall.get('textureMediaId','')),'')
-                            if not wall['textureMediaId']:wall['texture']='plaster'
+                            if not wall['textureMediaId']:raise ValueError('Missing wall texture during import: '+str(obj.get('name','wall')))
                         obj['wall']=wall
                     if obj['kind']=='robot':
                         brain=obj.get('brain') or {};brain['portrait']=media_map.get(str(brain.get('portrait','')),'');obj['brain']=brain
                         avatar_match=re.fullmatch(r'/api/avatars/([0-9a-f]{32})\.glb',str(obj.get('avatar','')))
-                        if avatar_match:obj['avatar']=avatar_map.get(avatar_match[1],'/assets/solvi-character.glb')
+                        if avatar_match:
+                            obj['avatar']=avatar_map.get(avatar_match[1],'')
+                            if not obj['avatar']:raise ValueError('Missing avatar mapping during import: '+str(obj.get('name','robot')))
                 title=str(meta.get('name','Imported realm'))[:80]
                 con.execute('INSERT INTO rooms(id,title,created,owner_id) VALUES(?,?,?,?)',(target,title,now(),user['id']))
                 con.execute('INSERT INTO room_scenes(room_id,revision,payload) VALUES(?,?,?)',(target,0,json.dumps(objects)))
                 con.execute('INSERT INTO room_policies(room_id) VALUES(?)',(target,))
                 env=meta.get('environment') if isinstance(meta.get('environment'),dict) else {}
                 con.execute('INSERT INTO room_environments(room_id,payload) VALUES(?,?)',(target,json.dumps(env)[:20000]))
+    except ValueError as exc:
+        for item in saved:item.unlink(missing_ok=True)
+        return json_error('Import aborted without creating a partial realm: '+str(exc),422)
     except BaseException:
         for item in saved:item.unlink(missing_ok=True)
         raise
-    return jsonify(ok=True,room=target,media=len(media_map),models=len(model_map),avatars=len(avatar_map))
+    return jsonify(ok=True,room=target,media=len(media_map),models=len(model_map),avatars=len(avatar_map),objects=len(objects) if mode=='realm' else 0,missing=[],complete=True)
 
 @app.get('/')
 def index():return send_from_directory(ROOT,'index.html')

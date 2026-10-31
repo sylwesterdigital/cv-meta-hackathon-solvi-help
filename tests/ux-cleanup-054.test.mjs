@@ -13,10 +13,10 @@ test('chat has one overlay/window/hidden cycle and never strands the reopen cont
 });
 test('realm cards use photographs as full-card backgrounds with overlaid name and participant icons',()=>{
  const renderer=read('js/realm-gallery.js'),css=read('styles.css');
- for(const token of ['realm-card-image','realm-card-title','realm-card-people','realm-card-avatar','realm-card-controls'])assert.ok(renderer.includes(token));
+ for(const token of ['realm-card-image','realm-card-title','realm-card-people','realm-card-avatar','realm-selection'])assert.ok(renderer.includes(token));
  assert.doesNotMatch(renderer,/image\.textContent='3D'/);
  assert.match(css,/\.realm-card-grid \.realm-card-image::after/);
- assert.match(renderer,/room\.canManage/);
+ assert.doesNotMatch(renderer,/realm-card-action/); // Rename/delete now appear once in selected-realm toolbar.
 });
 test('room rename and double confirmation delete require owner/admin and protect main',()=>{
  const backend=read('backend/server.py'),js=read('js/studio.js'),tests=read('backend/test_api.py');

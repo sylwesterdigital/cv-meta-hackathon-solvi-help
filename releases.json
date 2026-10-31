@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.91",
+  "currentVersion": "0.2.92",
   "releases": [
+    {
+      "version": "0.2.92",
+      "publishedAt": "2026-10-31T01:47:17Z",
+      "changes": [
+        "Replace per-realm repeated Rename and Delete controls with one selected-realm toolbar, including Clone, Rename and protected Delete.",
+        "Clone rooms in the SQLite backend using unique copy names and shared immutable model/media references; retain environment and ownership permissions.",
+        "Correct full realm archive import GLB model and speaker URL remapping to restored model UUIDs, and refuse damaged, incomplete or unsupported files instead of silently omitting scene objects.",
+        "Validate export asset inventories and missing server files; report precise failures before creating an incomplete imported realm.",
+        "Make avatar deletion results and permission errors visible at the top of the gallery, with inline Admin unlock for server-bundled avatars.",
+        "Delete requested avatars independently after one confirmation, preserving any referenced files and clearly listing why each refused item was retained.",
+        "Fix shared API error handling so generic HTTP 409 conflict does not incorrectly force account reauthentication."
+      ]
+    },
     {
       "version": "0.2.91",
       "publishedAt": "2026-10-31T01:29:37Z",
@@ -330,14 +343,6 @@
         "Teach robot conversational models to use @handles when addressing another participant and to avoid unneeded or self-perpetuating mentions; relay model suggestions but never allow generated text to command physical robot actions.",
         "Respect requested sofa/chair colours and numeric identifiers in robot navigation, preventing Grey Sofa 1 instructions from selecting a nearby Black Sofa 2.",
         "Add JavaScript and backend regression tests for attachment formats, viewer safety, @handle routing, relay deduplication and exact-object targeting."
-      ]
-    },
-    {
-      "version": "0.2.59",
-      "publishedAt": "2026-10-29T15:28:10Z",
-      "changes": [
-        "Fix backend integration regression: update mocked robot speech synthesizer to accept the gender argument introduced in v0.2.58, and test profile fallback, explicit voice gender, and preview overrides.",
-        "Carry forward v0.2.58 physics, chat alignment, voice management, mission ownership and bounded robot navigation enhancements without changing their behavior."
       ]
     }
   ]
