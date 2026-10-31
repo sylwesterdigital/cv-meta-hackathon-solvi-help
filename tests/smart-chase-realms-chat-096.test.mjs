@@ -22,7 +22,7 @@ test('Realm restoration and guarded asynchronous scene switching',()=>{
  const studio=text('js/studio.js'),editor=text('js/editor.js');
  assert.match(studio,/solvi-last-realm-/);
  assert.match(studio,/Promise\.all\(\[loadWorldSettings\(\),editor\.load\(\)\]\)/);
- assert.match(editor,/if\(room!==\(window\.solviRoom\|\|'main'\)\)return/);
+ assert.match(editor,/if\(ticket!==this\.sceneLoadTicket\|\|room!==\(window\.solviRoom\|\|'main'\)\)return/);
 });
 test('Chat portraits and attachments reuse a single pending media request per ID',()=>{
  const studio=text('js/studio.js');

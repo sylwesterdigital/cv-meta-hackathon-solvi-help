@@ -30,7 +30,7 @@ test('separate robot path and chat debug toggles and chat Shift+Arrow history',(
 test('recorded media supports review and explicit attach or blue scene orb',()=>{
  const studio=read('js/studio.js'),html=read('index.html');
  for(const id of ['composerRecorderTime','composerRecorderLevel','composerRecorderStop','composerRecorderCancel','composerRecorderPreview','composerRecorderAttach','composerRecorderScene'])assert.ok(html.includes(`id="${id}"`));
- assert.match(studio,/new MediaRecorder\(recordStream/);assert.match(studio,/recordingCancelled/);assert.match(studio,/shape:'orb'/);
+ assert.match(studio,/new MediaRecorder\(recordStream/);assert.match(studio,/recordingCancelled/);assert.match(studio,/shape:m\.mime\?\.startsWith\('video\/'\)\?'screen':'orb'/);
  assert.match(read('js/scene-media.js'),/SphereGeometry\(\.42/);
 });
 test('robot recurring routines are explicit session-only and bounded',()=>{

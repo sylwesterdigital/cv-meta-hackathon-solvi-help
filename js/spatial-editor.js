@@ -170,7 +170,12 @@ function commitFace(editor){const st=editor.faceDrawing;if(st?.phase!=='preview'
   editor.physics.sync(obj);editor.recordEdit(before,editor.snapshot(obj));editor.queueSave(obj);
   editor.cancelSpatialDrawing();editor.select(obj);editor.toast('Opening confirmed and saved');return;
  }
- if(st.mode==='media'&&st.mount){const mount=structuredClone(st.mount);editor.cancelSpatialDrawing();editor.openChatMediaPicker(mount);}
+ if(st.mode==='media'&&st.mount){
+  const mount=structuredClone(st.mount),direct=editor.surfaceDirectMedia;
+  editor.cancelSpatialDrawing();
+  if(direct){editor.surfaceDirectMedia=null;editor.addSceneMedia(direct,{mount,shape:'screen'});editor.toast('Recorded media attached to surface');}
+  else editor.openChatMediaPicker(mount);
+ }
 }
 export function spatialPointer(event){
  const canvas=this.world.renderer.domElement,shield=$('spatialDrawShield');

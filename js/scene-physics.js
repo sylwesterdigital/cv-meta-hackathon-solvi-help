@@ -15,7 +15,7 @@ export class ScenePhysics{
   this.remoteTargets=new Map();this.localSequence=new Map();this.remoteSequence=new Map();this.loading=null;this.generation=0;
  }
  async setEnabled(enabled){
-  if(!enabled){this.generation++;this.enabled=false;this.clear();return;}
+  if(!enabled){if(!this.enabled&&!this.world&&!this.loading)return;this.generation++;this.enabled=false;this.clear();return;}
   if(this.enabled&&this.world)return;
   if(this.loading)return this.loading.then(()=>this.enabled?undefined:this.setEnabled(true));
   const generation=++this.generation;

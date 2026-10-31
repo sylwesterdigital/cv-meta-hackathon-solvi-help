@@ -15,8 +15,8 @@ test('my chat messages align to right and other speakers left with edge avatars'
  assert.match(css,/#chatFeed \.chat-row\.theirs \.chat-bubble::before\{left:-7px/);
 });
 test('room physics is preserved while scene is rehydrated and owned dynamic bodies do not reset their pose',()=>{
- assert.match(editor,/const restorePhysics=this\.physics\.enabled;this\.physics\.clear\(\)/);
- assert.match(editor,/if\(restorePhysics\)this\.physics\.setEnabled\(true\)/);
+ assert.match(editor,/this\.sceneRestorePhysics=this\.physics\.enabled;this\.physics\.clear\(\)/);
+ assert.match(editor,/if\(this\.sceneRestorePhysics\)this\.physics\.setEnabled\(true\)/);
  assert.match(physics,/type==='dynamic'\?R\.RigidBodyDesc\.dynamic\(\)/);
  assert.match(physics,/if\(type==='dynamic'\)body\.wakeUp\(\)/);
  assert.match(physics,/Owner-controlled dynamic bodies must integrate gravity between scene updates/);

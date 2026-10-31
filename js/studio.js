@@ -39,9 +39,9 @@ function establishTabChannel(uid){
 }
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null,adminExpiresAt=0;
-let cachedMessages=[],chatSignature='',lastBubbleEntry=null;let renderingChat=false,followChat=true;let chatEpoch=0,chatLoadSerial=0,chatClearingRoom=null;
+let chatVisibleLimit=180;let cachedMessages=[],chatSignature='',lastBubbleEntry=null;let renderingChat=false,followChat=true;let chatEpoch=0,chatLoadSerial=0,chatClearingRoom=null;
 function invalidateChatRoom(room,{dropTraces=false}={}){
- chatEpoch++;chatLoadSerial++;chatSignature='';cachedMessages=[];lastBubbleEntry=null;initialRoomLoads.delete(room);
+ chatEpoch++;chatLoadSerial++;chatSignature='';chatVisibleLimit=180;cachedMessages=[];lastBubbleEntry=null;initialRoomLoads.delete(room);
  if(dropTraces){for(let i=localBrainTrace.length-1;i>=0;i--)if(localBrainTrace[i].room===room)localBrainTrace.splice(i,1);roomActivities.delete(room);}
  if(room===activeRoom){releaseChatAttachments();$('chatFeed').replaceChildren();updateChatPageDown();}
 }
@@ -534,24 +534,32 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
 let recordingCancelled=false,recordingFile=null,recordingUrl='',recordingSeconds=0,recordTick=null,recordingAudioContext=null,recordAnalyser=null,recordAnimation=0;
 function recordingUIVisible(on){const panel=$('composerRecorderPanel');if(panel)panel.hidden=!on;}
 function cleanupRecording(){const preview=$('composerRecorderLivePreview');if(preview){preview.pause();preview.srcObject=null;preview.hidden=true;}clearTimeout(recTimer);clearInterval(recordTick);recordTick=null;cancelAnimationFrame(recordAnimation);recordAnimation=0;recordStream?.getTracks().forEach(t=>t.stop());recordStream=null;recordingAudioContext?.close().catch(()=>{});recordingAudioContext=null;recordAnalyser=null;}
-function discardRecording(){if(recorder?.state==='recording'){recordingCancelled=true;recorder.stop();}cleanupRecording();recordingFile=null;if(recordingUrl)URL.revokeObjectURL(recordingUrl);recordingUrl='';$('composerRecorderPlayer')?.replaceChildren();recordingUIVisible(false);}
+function discardRecording(){if(recorder&&['recording','paused'].includes(recorder.state)){recordingCancelled=true;recorder.stop();}cleanupRecording();recordingFile=null;if(recordingUrl)URL.revokeObjectURL(recordingUrl);recordingUrl='';$('composerRecorderPlayer')?.replaceChildren();recordingUIVisible(false);}
 function formatRecordingTime(seconds){const s=Math.max(0,Math.floor(seconds));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
-async function startRecording(video,forIntro=false){if(recorder?.state==='recording'){recorder.stop();return;}
+async function startRecording(video,forIntro=false,sourceStream=null){if(recorder?.state==='recording'||recorder?.state==='paused'){recorder.stop();return;}
  if(!online){toast('Recording requires a connected backend');return;}
  if(recordingFile)discardRecording();
- try{recordStream=await navigator.mediaDevices.getUserMedia({video,audio:true});recordingCancelled=false;
+ try{
+  if(typeof MediaRecorder==='undefined')throw Error('Recording is unavailable in this browser');
+  if(sourceStream){
+   recordStream=new MediaStream(sourceStream.getVideoTracks().map(track=>track.clone()));
+   if(!recordStream.getVideoTracks().length)throw Error('No camera or virtual-view track to record');
+   // Microphone permission is separate. A denied microphone must not block video capture.
+   try{const microphone=await navigator.mediaDevices.getUserMedia({audio:true});for(const track of microphone.getAudioTracks())recordStream.addTrack(track);}catch{}
+  }else recordStream=await navigator.mediaDevices.getUserMedia({video,audio:true});
+  recordingCancelled=false;
   const livePreview=$('composerRecorderLivePreview');if(video){livePreview.srcObject=recordStream;livePreview.hidden=false;livePreview.muted=true;livePreview.playsInline=true;livePreview.play().catch(()=>{livePreview.title='Webcam preview unavailable';});}else{livePreview.srcObject=null;livePreview.hidden=true;}
   const preferences=video?['video/webm;codecs=vp8,opus','video/webm','video/mp4']:['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus'];
   const mime=preferences.find(m=>MediaRecorder.isTypeSupported(m))||'';
-  const chunks=[];recorder=new MediaRecorder(recordStream,mime?{mimeType:mime}:{});recKind=forIntro?'intro':video?'video':'audio';
+  const chunks=[];recorder=new MediaRecorder(recordStream,{...(mime?{mimeType:mime}:{}),...(video?{videoBitsPerSecond:900_000,audioBitsPerSecond:64_000}: {audioBitsPerSecond:64_000})});recKind=forIntro?'intro':video?'video':'audio';
   recordingSeconds=0;$('composerRecorderTime').textContent='00:00';$('composerRecorderLive').textContent=video?'● Recording video':'● Recording audio';
-  $('composerRecorderPreview').hidden=true;$('composerRecorderStop').hidden=false;
+  $('composerRecorderPreview').hidden=true;$('composerRecorderStop').hidden=false;$('composerRecorderPause').hidden=false;$('composerRecorderPause').textContent='Pause';$('webcamPause').disabled=false;$('webcamStop').disabled=false;$('webcamRecord').textContent='Recording…';
   recordingUIVisible(true);
   recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
   recorder.onstop=async()=>{
    const type=recorder.mimeType.split(';')[0]||(video?'video/webm':'audio/webm');const extension=type.includes('mp4')?'mp4':type.includes('ogg')?'ogg':'webm';
    const file=new File([new Blob(chunks,{type})],`${recKind}-${Date.now()}.${extension}`,{type});
-   cleanupRecording();recorder=null;
+   cleanupRecording();recorder=null;$('webcamPause').disabled=true;$('webcamStop').disabled=true;$('webcamRecord').textContent='Record';$('composerRecorderPause').hidden=true;
    if(recordingCancelled){recordingUIVisible(false);return;}
    if(recKind==='intro'){try{const m=await uploadFile(file);const out=await api.req('/api/profile/intro',{method:'POST',body:JSON.stringify({id:m.id})});$('profileStatus').textContent='Intro video saved';$('introPreview').src=await api.mediaBlob(out.media.id);$('introPreview').hidden=false;}catch(e){toast(e.message);}recordingUIVisible(false);return;}
    recordingFile=file;recordingUrl=URL.createObjectURL(file);const player=document.createElement(video?'video':'audio');player.src=recordingUrl;player.controls=true;player.preload='metadata';if(video){player.playsInline=true;player.style.maxHeight='145px';}const mount=$('composerRecorderPlayer');mount.replaceChildren(player);
@@ -559,18 +567,36 @@ async function startRecording(video,forIntro=false){if(recorder?.state==='record
    $('composerRecorderPreview').hidden=false;$('composerRecorderStop').hidden=true;
   };
   recorder.start(250);
-  const began=performance.now();recordTick=setInterval(()=>{recordingSeconds=(performance.now()-began)/1000;$('composerRecorderTime').textContent=formatRecordingTime(recordingSeconds);},150);
+  let lastTick=performance.now();recordTick=setInterval(()=>{const now=performance.now();if(recorder?.state==='recording')recordingSeconds+=(now-lastTick)/1000;lastTick=now;$('composerRecorderTime').textContent=formatRecordingTime(recordingSeconds);},150);
   try{recordingAudioContext=new AudioContext();const source=recordingAudioContext.createMediaStreamSource(recordStream);recordAnalyser=recordingAudioContext.createAnalyser();recordAnalyser.fftSize=256;source.connect(recordAnalyser);const samples=new Uint8Array(recordAnalyser.fftSize);const meter=()=>{if(!recordAnalyser)return;recordAnalyser.getByteTimeDomainData(samples);const rms=Math.sqrt(samples.reduce((sum,value)=>sum+((value-128)/128)**2,0)/samples.length);$('composerRecorderLevel').value=Math.min(1,rms*5);recordAnimation=requestAnimationFrame(meter);};meter();}catch{}
-  recTimer=setTimeout(()=>{if(recorder?.state==='recording')recorder.stop();},45000);
+  recTimer=setTimeout(()=>{if(recorder&&['recording','paused'].includes(recorder.state))recorder.stop();},45000);
  }catch(e){cleanupRecording();recordingUIVisible(false);toast(e.message);}
 }
 function setupRecordingControls(){
- $('composerRecorderStop').onclick=()=>recorder?.state==='recording'&&recorder.stop();
+ const stop=()=>{if(recorder&&['recording','paused'].includes(recorder.state))recorder.stop();};
+ const pause=()=>{if(!recorder)return;if(recorder.state==='recording'){recorder.pause();$('composerRecorderPause').textContent='Resume';$('webcamPause').textContent='Resume';$('composerRecorderLive').textContent='Paused';}else if(recorder.state==='paused'){recorder.resume();$('composerRecorderPause').textContent='Pause';$('webcamPause').textContent='Pause';$('composerRecorderLive').textContent='● Recording';}};
+ $('composerRecorderStop').onclick=stop;
+ $('composerRecorderPause').onclick=pause;
+ $('webcamStop').onclick=stop;$('webcamPause').onclick=pause;
+ $('webcamRecord').onclick=()=>{const source=$('facePreview').srcObject;if(!source||!source.active){toast('Open My camera first');return;}void startRecording(true,false,source);};
+ $('webcamXRRecord').onclick=()=>{
+  const canvas=window.solviEditor?.world?.renderer?.domElement;
+  if(!canvas?.captureStream){toast('Virtual-view recording is unavailable in this browser');return;}
+  if(canvas.width<1||canvas.height<1){toast('Virtual view is not rendering');return;}
+  // Capture only the browser canvas, not the Quest passthrough cameras.
+  void startRecording(true,false,canvas.captureStream(15));
+ };
  $('composerRecorderCancel').onclick=discardRecording;
  $('composerRecorderDiscard').onclick=discardRecording;
  $('composerRecorderAttach').onclick=async()=>{if(!recordingFile)return;try{const m=await uploadFile(recordingFile);pending.push(m);pending=pending.slice(-3);updatePending();discardRecording();toast('Recording attached to chat — press Send');}catch(e){toast(e.message);}};
- $('composerRecorderScene').onclick=async()=>{if(!recordingFile)return;try{const m=await uploadFile(recordingFile);const editor=window.solviEditor;if(!editor)throw Error('Scene editor unavailable');editor.addSceneMedia(m,{shape:'orb',loop:false,autoplayDistance:0});discardRecording();toast('Recorded media orb added to the scene');}catch(e){toast(e.message);}};
- window.addEventListener('pagehide',()=>{recordingCancelled=true;if(recorder?.state==='recording')recorder.stop();cleanupRecording();});
+ $('composerRecorderScene').onclick=async()=>{if(!recordingFile)return;try{const m=await uploadFile(recordingFile);const editor=window.solviEditor;if(!editor)throw Error('Scene editor unavailable');editor.addSceneMedia(m,{shape:m.mime?.startsWith('video/')?'screen':'orb',loop:false,autoplayDistance:0});discardRecording();toast('Recording added to scene');}catch(e){toast(e.message);}};
+ $('composerRecorderFrame').onclick=async()=>{if(!recordingFile)return;try{
+  const editor=window.solviEditor;if(!editor)throw Error('Scene editor unavailable');
+  if(!['cube','plane'].includes(editor.selected?.userData.editorKind)||!editor.canEdit(editor.selected))throw Error('Select an editable cube or plane first');
+  const m=await uploadFile(recordingFile);editor.surfaceDirectMedia=m;
+  discardRecording();editor.startFaceDrawing('media');toast('Drag on the selected surface, then Enter to attach the recording');
+ }catch(e){toast(e.message);}};
+ window.addEventListener('pagehide',()=>{recordingCancelled=true;if(recorder&&['recording','paused'].includes(recorder.state))recorder.stop();cleanupRecording();});
 }
 // Profile photo and intro GIF deliberately use the same visible, video-only webcam.
 // A user explicitly sees and controls the captured frame; permission failures are surfaced.
@@ -701,11 +727,20 @@ async function loadMessages(){
     const debugEntries=localBrainTrace.filter(x=>x.room===room&&robotDebugAllowed(x.robotId)).slice(-100);
     // Persistent chat, presence and local debug events belong to ONE timeline.
     // Appending traces after history made older debug events appear at the bottom.
-    for(const item of chatTimeline([...messages,...debugEntries],roomActivities.get(room)||[])){
+    // Initial room changes render a bounded window; older rows can be requested
+    // without overwhelming the main thread or initiating every media download.
+    const timeline=chatTimeline([...messages,...debugEntries],roomActivities.get(room)||[]);
+    const hiddenCount=Math.max(0,timeline.length-chatVisibleLimit);
+    if(hiddenCount){const older=document.createElement('button');older.type='button';older.className='chat-load-older';older.textContent=`Show earlier messages (${hiddenCount} remaining)`;
+     older.onclick=()=>{chatVisibleLimit+=180;chatSignature='';void loadMessages();};feed.append(older);}
+    let painted=0;
+    for(const item of timeline.slice(-chatVisibleLimit)){
      if(room!==activeRoom||epoch!==chatEpoch||request!==chatLoadSerial)break;
      if(item.type==='message')await bubble(item.entry);
      else if(item.type==='presence')chatSystemLine(item.entry.name+(item.entry.action==='left'?' left the room':' joined the room'));
      else chatSystemLine(item.text,item.type);
+     // Yield an actual frame, not just a microtask, on large realm histories.
+     if(++painted%16===0)await new Promise(resolve=>requestAnimationFrame(resolve));
     }
    }finally{suppressRobotSpeech=false;renderingChat=false;}
    if(room!==activeRoom||epoch!==chatEpoch||request!==chatLoadSerial)return;
@@ -794,12 +829,15 @@ function readEnvironmentFields(){
  return normalizeEnvironment(input);
 }
 function readWorldPolicyFields(){return {objects:$('worldObjectsPolicy').value,robots:$('worldRobotsPolicy').value,physics:Number($('worldPhysicsEnabled').value)};}
+let lastAppliedPhysics=null,lastAppliedPolicyRoom=null,lastAppliedEnvironmentRoom=null;
 function applyWorldPolicy(policy){
+ const old=window.solviRoomPolicy||{};
  window.solviRoomPolicy={objects:policy.objects||'open',robots:policy.robots||'open',physics:Number(policy.physics)||0};
  for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=window.solviRoomPolicy[key];
  $('worldPhysicsEnabled').value=String(window.solviRoomPolicy.physics);
- window.solviEditor?.physics.setEnabled(Boolean(window.solviRoomPolicy.physics)).then(()=>window.solviEditor?.updateInspector()).catch(e=>toast('Physics unavailable: '+e.message));
- window.solviEditor?.refreshList();
+ const nextPhysics=Boolean(window.solviRoomPolicy.physics);
+ if(lastAppliedPhysics!==nextPhysics){lastAppliedPhysics=nextPhysics;window.solviEditor?.physics.setEnabled(nextPhysics).then(()=>window.solviEditor?.updateInspector()).catch(e=>toast('Physics unavailable: '+e.message));}
+ if(old.objects!==window.solviRoomPolicy.objects||old.robots!==window.solviRoomPolicy.robots||old.physics!==window.solviRoomPolicy.physics)window.solviEditor?.refreshList();
 }
 function autosaveWorldStatus(){
  const status=$('worldSettingsStatus');if(!status)return;
@@ -814,13 +852,18 @@ function useRoomEnvironment(value){
  savedRoomEnvironment=normalizeEnvironment(value);
  const live=environmentAutosave?.draft(activeRoom)||savedRoomEnvironment;
  fillEnvironmentFields(live);
- window.solviEditor?.world?.applyEnvironment(live);
+ const world=window.solviEditor?.world;
+ if(world&&JSON.stringify(world.environment)!==JSON.stringify(live))world.applyEnvironment(live);
 }
 async function loadRoomEnvironment(){
  const requestedRoom=activeRoom;
  // Pending drafts are authoritative until the server confirms them. Never roll
  // an unsaved change back when opening the drawer or loading the room.
- useRoomEnvironment(ENVIRONMENT_DEFAULTS);
+ // Avoid flashing the default world and rebuilding GPU textures on every open.
+ if(lastAppliedEnvironmentRoom!==requestedRoom){
+  lastAppliedEnvironmentRoom=requestedRoom;
+  useRoomEnvironment(environmentAutosave?.draft(requestedRoom)||ENVIRONMENT_DEFAULTS);
+ }
  if(!online||!auth){
   let local=null;try{local=JSON.parse(localStorage.getItem('solvi-local-environment-'+requestedRoom)||'null');}catch{}
   if(requestedRoom===activeRoom&&local)useRoomEnvironment(local);
@@ -835,7 +878,12 @@ async function loadWorldSettings(){
  environmentAutosave?.restore(requestedRoom);policyAutosave?.restore(requestedRoom);
  const draft=policyAutosave?.draft(requestedRoom);
  let localPolicy=null;if(!online||!auth){try{localPolicy=JSON.parse(localStorage.getItem('solvi-local-policy-'+requestedRoom)||'null');}catch{}}
- applyWorldPolicy(draft||localPolicy||{objects:'open',robots:'open',physics:0});
+ // Opening World Settings in the same realm must never briefly turn physics off.
+ // Only apply an initial default when entering a different realm; prefer a draft.
+ if(lastAppliedPolicyRoom!==requestedRoom){
+  lastAppliedPolicyRoom=requestedRoom;
+  applyWorldPolicy(draft||localPolicy||{objects:'open',robots:'open',physics:0});
+ }else if(draft)applyWorldPolicy(draft);
  if(online&&auth){try{
    const data=await api.req('/api/room/settings?room='+encodeURIComponent(requestedRoom));
    if(requestedRoom!==activeRoom)return;
@@ -865,8 +913,9 @@ function setupWorldSettings(){
  const retryPending=()=>{environmentAutosave.retry(activeRoom);policyAutosave.retry(activeRoom);};
  $('worldSettingsButton').onclick=()=>{
   $('worldSettingsDrawer').hidden=false;
-  if(environmentAutosave.pending(activeRoom)||policyAutosave.pending(activeRoom))retryPending();
-  else void loadWorldSettings();
+  // Always refresh settings asynchronously, retaining the current GPU state.
+  // Do not trigger pending writes simply by opening the drawer.
+  void loadWorldSettings();
   autosaveWorldStatus();
  };
  $('closeWorldSettings').onclick=()=>{
@@ -1312,8 +1361,8 @@ function bindUI(world){
  window.addEventListener('solvi:room-changed',async event=>{
   const current=++realmSwitchVersion,room=event.detail.room;
   // Keep the new realm title accurate and prevent late responses from another room.
-  editor.revision=0;editor.apply([]);
-  await Promise.all([loadWorldSettings(),editor.load()]);
+   editor.revision=0; // Keep the previous realm visible until the new scene response arrives.
+   await Promise.all([loadWorldSettings(),editor.load()]);
   if(current!==realmSwitchVersion||room!==activeRoom)return;
   await loadMessages();
  });

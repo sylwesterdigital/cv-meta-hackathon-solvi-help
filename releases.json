@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.103",
+  "currentVersion": "0.2.104",
   "releases": [
+    {
+      "version": "0.2.104",
+      "publishedAt": "2026-10-31T06:05:17Z",
+      "changes": [
+        "Realm transitions: defer replacing the old scene until the next realm data arrives, reject stale responses and build objects in frame-sized batches",
+        "World Settings: avoid redundant floor-texture reapplication, physics resets and scene-list rebuilds when no setting changed",
+        "Chat: render the latest 180 entries initially, progressively load older history, yield frames during long timelines and retain full transcript exports",
+        "Chat controls: center the downward navigation arrow and enlarge participant avatars by 50 percent",
+        "Robot Control: replace the visible dropdown with selectable robot portrait/initial buttons above the controller",
+        "My Camera: Record, Pause/Resume and Stop buttons reuse the active webcam video; recorded clips can be attached to chat, added to the scene or drawn onto a selected cube/plane as a media frame",
+        "Virtual view capture: optional canvas captureStream recording with MediaRecorder on supported browsers, with a 15 fps capture target and conservative video bitrate; not guaranteed to include Quest passthrough"
+      ]
+    },
     {
       "version": "0.2.103",
       "publishedAt": "2026-10-31T05:46:03Z",
@@ -333,17 +346,6 @@
         "Add a compact in-world media interaction HUD with Play/Pause and Mute/Unmute that only appears while interacting with a selected media object.",
         "Animate speaker wave rings while audio is playing and keep inspector controls for video/image media while adding audio-specific settings.",
         "Update release metadata and extend automated tests for audio media support."
-      ]
-    },
-    {
-      "version": "0.2.71",
-      "publishedAt": "2026-10-30T00:27:52Z",
-      "changes": [
-        "Support free-camera Shift+ArrowUp to travel forward and climb smoothly, and Shift+ArrowDown to travel backward and descend smoothly while preserving PageUp/PageDown altitude keys and inertia.",
-        "Restore reliable chat-wheel scrolling in overlay mode near message content and throughout the floating window while keeping the rest of the scene clickable.",
-        "Add a round next-page chat down-arrow at the feed bottom which hides when the latest messages are reached, without yanking readers back to the bottom on every update.",
-        "Show subtle local date and hourly separators in conversation history, plus live participant joined/left indicators from actual WebSocket presence events.",
-        "Extend JavaScript regression coverage for camera diagonal altitude, chat pagination, timeline separators, pointer interaction and WebSocket presence names."
       ]
     }
   ]

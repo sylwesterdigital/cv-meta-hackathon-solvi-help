@@ -183,6 +183,13 @@ export class SolviWorld {
     const bounds=new THREE.Box3();
     for(const object of items){
       if(!object?.visible)continue;
+      // Loaded GLBs and skinned robots can have thousands of descendants.
+      // Their world positions are sufficient for the far-plane estimate.
+      if(['robot','model'].includes(object.userData?.editorKind)){
+        const p=object.position;
+        max=Math.max(max,Math.hypot(p.x,p.y,p.z)+12);
+        continue;
+      }
       bounds.setFromObject(object);
       if(bounds.isEmpty())continue;
       const x=Math.max(Math.abs(bounds.min.x),Math.abs(bounds.max.x));

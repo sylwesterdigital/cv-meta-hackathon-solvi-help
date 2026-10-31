@@ -248,7 +248,8 @@ export class SceneEditor{
   }
   const strafe=byId('robotStrafeSpeed');strafe.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotStrafeSpeed=Number(strafe.value);byId('robotStrafeLabel').textContent=Number(strafe.value).toFixed(1)+'×';this.queueSave(this.selected);};
   const turn=byId('robotTurnSpeed');turn.addEventListener('input',()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotTurnSpeed=Number(turn.value);byId('robotTurnLabel').textContent=Number(turn.value).toFixed(2)+'×';this.queueSave(this.selected);});
-  const modeButton=byId('controlModeButton'),robotSelect=byId('controlledRobotSelect');
+  const modeButton=byId('controlModeButton'),robotSelect=byId('controlledRobotSelect'),robotFaces=byId('controlledRobotFaces');
+  this.robotPortraitCache=new Map();
   this.syncControlSwitcher=()=>{
    const robots=this.items.filter(o=>o.userData.editorKind==='robot'&&this.canEdit(o));
    const current=robotSelect.value;
@@ -257,7 +258,26 @@ export class SceneEditor{
    if(this.controlMode==='robot'&&selectedId&&robots.some(o=>o.userData.editorId===selectedId))robotSelect.value=selectedId;
    else if(robots.some(o=>o.userData.editorId===current))robotSelect.value=current;
    else if(selectedId&&robots.some(o=>o.userData.editorId===selectedId))robotSelect.value=selectedId;
-   robotSelect.hidden=this.controlMode!=='robot'||robots.length===0;
+   robotSelect.hidden=true; // Accessible legacy select remains available to screen readers, but not visually used.
+   const signature=robots.map(o=>[o.userData.editorId,o.name,o.userData.robotBrain?.portrait||''].join(':')).join('|');
+   if(this.robotFacesSignature!==signature){
+    this.robotFacesSignature=signature;robotFaces.replaceChildren();
+    for(const bot of robots){
+     const button=document.createElement('button');button.type='button';button.className='robot-face-choice';button.dataset.robotId=bot.userData.editorId;
+     button.title='Control '+bot.name;button.setAttribute('aria-label','Control '+bot.name);
+     const face=document.createElement('span');face.className='robot-face-avatar';face.textContent=bot.name.trim().slice(0,2).toUpperCase()||'R';
+     button.append(face);const name=document.createElement('small');name.textContent=bot.name;button.append(name);
+     const portrait=bot.userData.robotBrain?.portrait;
+     if(portrait&&window.solviAPI?.mediaBlob){
+      let request=this.robotPortraitCache.get(portrait);
+      if(!request){request=window.solviAPI.mediaBlob(portrait).catch(()=>null);this.robotPortraitCache.set(portrait,request);}
+      request.then(url=>{if(url&&button.isConnected&&button.dataset.robotId===bot.userData.editorId){const image=document.createElement('img');image.src=url;image.alt='';face.replaceChildren(image);}});
+     }
+     button.onclick=()=>{if(this.canEdit(bot))this.select(bot);};robotFaces.append(button);
+    }
+   }
+   robotFaces.hidden=this.controlMode!=='robot'||robots.length===0;
+   for(const btn of robotFaces.children)btn.setAttribute('aria-pressed',String(btn.dataset.robotId===robotSelect.value));
    modeButton.textContent=this.controlMode==='robot'?'Robot control':'Scene control';
    modeButton.setAttribute('aria-pressed',String(this.controlMode==='robot'));
    modeButton.title=this.controlMode==='robot'?'Switch arrows to scene navigation':'Switch arrows to selected robot';
@@ -902,11 +922,35 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   updateMediaHUDPosition(){const hud=byId('mediaInteractionHud');if(!hud)return;const obj=this.selected;if(!obj||obj.userData?.editorKind!=='media'){hud.hidden=true;return;}const pos=obj.getWorldPosition(new THREE.Vector3());pos.y+=0.9;pos.project(this.world.camera);if(pos.z>1){hud.hidden=true;return;}const rect=this.world.renderer.domElement.getBoundingClientRect();const x=(pos.x*.5+.5)*rect.width+rect.left,y=(-pos.y*.5+.5)*rect.height+rect.top;hud.style.left=`${x}px`;hud.style.top=`${y}px`;hud.hidden=false;byId('mediaHudPlay').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaHudMute').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';}
 
   serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed??2.5):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed??1.8):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed??4):undefined,combat:o.userData.editorKind==='robot'?combatSettings(o.userData.robotCombat):undefined,animationSpeed:o.userData.editorKind==='robot'?animationSpeedSettings(o.userData.robotAnimationSpeed):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined,media:o.userData.editorKind==='media'?structuredClone(o.userData.media||{}):undefined,primitive:PRIMITIVE_FIELDS[o.userData.editorKind]?structuredClone(o.userData.primitive||sanitisePrimitive(o.userData.editorKind)):undefined,curve:o.userData.editorKind==='curve'?structuredClone(cleanCurve(o.userData.curve)):undefined,text:o.userData.editorKind==='text'?structuredClone(cleanText(o.userData.text)):undefined,openings:o.userData.editorKind==='cube'?cleanOpenings(o.userData.openings):undefined,wall:o.userData.editorKind==='wall'?structuredClone(o.userData.wall):undefined,stairs:o.userData.editorKind==='stairs'?structuredClone(o.userData.stairs):undefined}));}
- apply(data){this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;const restorePhysics=this.physics.enabled;this.physics.clear();byId('propertiesPanel').hidden=true;for(const entry of data){if(!kinds.includes(entry.kind))continue;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.robotCombat=combatSettings(entry.combat);o.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='curve'){o.userData.curve=cleanCurve(entry.curve);o.geometry.dispose();o.geometry=buildCurveGeometry(o.userData.curve);}if(entry.kind==='text')rebuildText(o,entry.text,()=>{if(this.items.includes(o))this.physics.sync(o);});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{});if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.userData.openings=entry.kind==='cube'?cleanOpenings(entry.openings):undefined;o.geometry=entry.kind==='cube'?cutCubeGeometry(o.userData.primitive,o.userData.openings):buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
+ beginSceneReplacement(){this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.sceneRestorePhysics=this.physics.enabled;this.physics.clear();byId('propertiesPanel').hidden=true;}
+ addSceneEntry(entry){if(!kinds.includes(entry.kind))return;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.robotCombat=combatSettings(entry.combat);o.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='curve'){o.userData.curve=cleanCurve(entry.curve);o.geometry.dispose();o.geometry=buildCurveGeometry(o.userData.curve);}if(entry.kind==='text')rebuildText(o,entry.text,()=>{if(this.items.includes(o))this.physics.sync(o);});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{});if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.userData.openings=entry.kind==='cube'?cleanOpenings(entry.openings):undefined;o.geometry=entry.kind==='cube'?cutCubeGeometry(o.userData.primitive,o.userData.openings):buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
-   this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);if(entry.kind==='media')hydrateSceneMedia(o,this.world);this.physics.sync(o);}this.refreshList();if(restorePhysics)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));}
+   this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);if(entry.kind==='media')hydrateSceneMedia(o,this.world);this.physics.sync(o);}
+ endSceneReplacement(){this.refreshList();if(this.sceneRestorePhysics)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));}
+ apply(data){this.beginSceneReplacement();for(const entry of data)this.addSceneEntry(entry);this.endSceneReplacement();}
+ async applyCooperatively(data,stillCurrent){
+  // Both disposal and hydration are chunked. Removing a large room in one
+  // synchronous loop can stall the Chromium renderer as readily as creating it.
+  const batch=10,previous=[...this.items];
+  this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);
+  this.history.clear();this.clearLightHelper();this.transform.detach();
+  this.items=[];this.selected=null;this.sceneRestorePhysics=this.physics.enabled;
+  this.physics.clear();byId('propertiesPanel').hidden=true;
+  for(let i=0;i<previous.length;i++){
+   const old=previous[i];this.world.scene.remove(old);this.disposeObject(old);
+   if(i%batch===batch-1)await new Promise(resolve=>requestAnimationFrame(resolve));
+  }
+  if(!stillCurrent())return false;
+  for(let i=0;i<data.length;i++){
+   if(!stillCurrent())return false;
+   this.addSceneEntry(data[i]);
+   if(i%batch===batch-1)await new Promise(resolve=>requestAnimationFrame(resolve));
+  }
+  if(!stillCurrent())return false;this.endSceneReplacement();return true;
+ }
+
  disposeObject(obj){
   if(obj.userData.editorKind==='wall')obj.userData.wallTextureSource=null;
   if(obj.userData.editorKind==='model'){invalidateSceneModel(obj);return;}
@@ -958,7 +1002,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   const avatar=entry.avatar||DEFAULT_ROBOT_AVATAR;
   if(entry.kind==='light')setLight(obj,entry.light||{});obj.userData.robotSpeed=entry.speed??1.8;obj.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;obj.userData.robotTurnSpeed=entry.turnSpeed??4;obj.userData.robotBrain=structuredClone(entry.brain||{});obj.userData.robotCombat=combatSettings(entry.combat);obj.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);obj.userData.physics=physicsOptions(entry.physics);this.physics.sync(obj);
   if(entry.kind==='model'&&(isNew||obj.userData.modelUrl!==entry.model)){if(!isNew)invalidateSceneModel(obj);obj.userData.modelUrl=entry.model;hydrateSceneModel(obj);}
-  if(entry.kind==='media'){obj.userData.media=structuredClone(entry.media||obj.userData.media||{});if(!isNew)disposeSceneMedia(obj);hydrateSceneMedia(obj,this.world);}
+  if(entry.kind==='media'){const incoming=entry.media||obj.userData.media||{};const changed=isNew||JSON.stringify(obj.userData.media)!==JSON.stringify(incoming);if(changed){obj.userData.media=structuredClone(incoming);if(!isNew)disposeSceneMedia(obj);hydrateSceneMedia(obj,this.world);}}
   if(entry.kind==='robot'&&(isNew||obj.userData.avatarUrl!==avatar)){
    obj.userData.avatarUrl=avatar;
    if(!isNew){for(const child of [...obj.children])if(!child.userData.robotPlaceholder)obj.remove(child);
@@ -982,18 +1026,19 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(this.world.editorDragging||this.pendingSaves.size){this.toast('Room changed: finish editing, then Load.');return;}
   this.load();
  }
- async load(){const api=window.solviAPI;const local=localStorage.getItem('solvi-scene-'+(window.solviRoom||'main'));
+ async load(){const ticket=this.sceneLoadTicket=(this.sceneLoadTicket||0)+1;const api=window.solviAPI;const local=localStorage.getItem('solvi-scene-'+(window.solviRoom||'main')); 
   if(!api?.online){if(local)this.apply(JSON.parse(local));this.toast('Local scene loaded (not shared)');return;}
   try{
    const room=window.solviRoom||'main';
    const data=await api.req('/api/scene?room='+encodeURIComponent(room));
-   if(room!==(window.solviRoom||'main'))return;this.revision=data.revision;
+   if(ticket!==this.sceneLoadTicket||room!==(window.solviRoom||'main'))return;this.revision=data.revision;
    if(this.lastLoadedRoom===room&&this.items.length){
     // Merge revisions without destroying every GLB and its animation mixer.
     const next=new Set((data.objects||[]).map(o=>o.id));
     for(const entry of data.objects||[])this.applyObjectPatch({action:'upsert',object:entry});
     for(const old of [...this.items])if(!next.has(old.userData.editorId))this.applyObjectPatch({action:'remove',id:old.userData.editorId});
-   }else this.apply(data.objects);
+   }else if(!await this.applyCooperatively(data.objects||[],()=>ticket===this.sceneLoadTicket&&room===(window.solviRoom||'main')))return;
+   if(ticket!==this.sceneLoadTicket||room!==(window.solviRoom||'main'))return;
    this.lastLoadedRoom=room;
    this.toast('Shared scene loaded');
   }catch(e){this.toast(e.message);}}
