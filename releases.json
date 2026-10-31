@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.109",
+  "currentVersion": "0.2.110",
   "releases": [
+    {
+      "version": "0.2.110",
+      "publishedAt": "2026-10-31T16:18:38Z",
+      "changes": [
+        "Add paired portal Entry and Exit, each movable independently in the realm",
+        "True doorway frames with static piecewise colliders, colour, texture and opacity",
+        "Automatic or button-triggered portal teleport with bounded delay, scene mouse and WebXR controls",
+        "Robot/object and XR/free-camera transport, physics sync, loop cooldown, Web Audio chime and portal glow",
+        "Reduce z-fighting on adjacent procedural stairs, roof/wall panels and overlays"
+      ]
+    },
     {
       "version": "0.2.109",
       "publishedAt": "2026-10-31T15:46:56Z",
@@ -330,18 +341,6 @@
         "Persist wall control points and material settings in room scenes, atomic object updates and realm archives; validate points and dimensions server-side.",
         "Use bounded, ownership-checked Rapier capsule contact displacement for nearby idle robots, including forward/backward walking animation paced by measured movement.",
         "Keep route planning collision checks aligned with individual wall segments rather than treating all open interior space as one solid wall bounding box."
-      ]
-    },
-    {
-      "version": "0.2.78",
-      "publishedAt": "2026-10-30T05:37:02Z",
-      "changes": [
-        "Render robot head-camera JPEGs with the same far-distance nebula and star sky shader as the interactive world instead of clipping the sky to black.",
-        "Merge per-robot debug and persisted chat messages into one timestamp-sorted timeline, preserving chronological position and date/hour markers.",
-        "Let robots already overlapping another robot move safely away from it, while still blocking any new penetration or collision.",
-        "Add verified partial approaches when no collision-free exact route exists; try up to 95 percent of the direct route, and report stopped-short rather than arrived or seated.",
-        "Repair the Flask integration trace assertion to find the named parser result instead of relying on its historic list position.",
-        "Add regression coverage for safe partial stopping, camera sky visibility, timestamped debug sorting, and parser trace compatibility."
       ]
     }
   ]

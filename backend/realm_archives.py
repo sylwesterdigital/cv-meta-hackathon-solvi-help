@@ -5,7 +5,7 @@ from pathlib import Path
 MAX_ARCHIVE_BYTES=94*1024*1024
 MAX_ENTRY_BYTES=20*1024*1024
 MAX_TOTAL_BYTES=87*1024*1024
-KINDS={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs'}
+KINDS={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','portal'}
 
 def scene_placeholders(objects):
     output=[]
@@ -103,7 +103,7 @@ def read_archive(upload):
 def safe_scene(objects):
     if not isinstance(objects,list) or len(objects)>128:raise ValueError('Invalid object list')
     if len(json.dumps(objects,ensure_ascii=False))>1_200_000:raise ValueError('Scene metadata exceeds 1.2 MB')
-    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','combat','animationSpeed','physics','model','media','primitive','wall','stairs','curve','text','openings','transformLocked'}
+    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','combat','animationSpeed','physics','model','media','primitive','wall','stairs','portal','curve','text','openings','transformLocked'}
     clean=[];remap={}
     for obj in objects:
         if not isinstance(obj,dict) or obj.get('kind') not in KINDS:continue
@@ -115,6 +115,8 @@ def safe_scene(objects):
         copy['id']=str(uuid.uuid4());remap[oldid]=copy['id'];copy['name']=str(copy.get('name','Object'))[:100]
         clean.append(copy)
     for obj in clean:
+        if obj.get('kind')=='portal' and isinstance(obj.get('portal'),dict):
+            cfg=obj['portal'];cfg['partner']=remap.get(cfg.get('partner'),cfg.get('partner',''))
         if obj.get('kind')=='media' and isinstance(obj.get('media'),dict):
             mount=obj['media'].get('mount')
             if isinstance(mount,dict) and mount.get('target') in remap:

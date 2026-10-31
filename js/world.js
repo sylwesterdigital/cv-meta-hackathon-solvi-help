@@ -518,7 +518,7 @@ export class SolviWorld {
       controller.addEventListener('selectstart',async()=>{
         if(!this.renderer.xr.isPresenting)return;
         const selection=this.xrRaycast(controller);
-        if(selection.liftButton){this.robotEditor?.activateLiftButton(selection.liftButton);return;}
+        if(selection.liftButton){if(selection.liftButton.userData.portalButton)this.robotEditor?.activatePortalButton(selection.liftButton);else this.robotEditor?.activateLiftButton(selection.liftButton);return;}
         if(selection.menu){const action=selection.menu.userData.action;if(action==='room'){const select=document.getElementById('roomSelect');if(select&&select.options.length>1){select.selectedIndex=(select.selectedIndex+1)%select.options.length;select.dispatchEvent(new Event('change'));}}else window.solviEditor?.add(action);return;}
         const mediaTarget=selection.mediaTarget||this.xrMediaTarget;
         if((selection.mediaButton||selection.mediaTarget)&&mediaTarget){
@@ -553,7 +553,7 @@ export class SolviWorld {
   xrRaycast(controller){
     controller.updateWorldMatrix(true,false);
     this.raycaster.setFromXRController(controller);
-    const liftButton=this.robotEditor?.hitLiftButton?.(this.raycaster)||null;
+    const liftButton=this.robotEditor?.hitLiftButton?.(this.raycaster)||this.robotEditor?.hitPortalButton?.(this.raycaster)||null;
     const menu=this.raycaster.intersectObjects(this.xrButtons,false)[0]?.object;
     const mediaButton=this.xrMediaControls?.visible?this.raycaster.intersectObjects(this.xrMediaButtons,false)[0]?.object:null;
     const floor=this.raycaster.intersectObject(this.floor,false)[0];

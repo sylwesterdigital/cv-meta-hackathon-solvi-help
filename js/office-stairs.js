@@ -52,9 +52,9 @@ function stairDecoration(group,s,segments){
  }
  if(roof.enabled){const mat=material(roof);for(const st of segments){
   const y=st.top+roof.height;
-  box(group,{x:st.x,z:st.z,y,width:st.depth,height:roof.thickness,depth:st.width+.2,yaw:st.yaw},mat);
+  box(group,{x:st.x,z:st.z,y,width:Math.max(.05,st.depth-.018),height:roof.thickness,depth:st.width+.18,yaw:st.yaw},mat);
   if(roof.walls)for(const side of [-1,1]){const offset=side*(st.width/2+.08);
-   box(group,{x:st.x-Math.sin(st.yaw)*offset,z:st.z-Math.cos(st.yaw)*offset,y:st.top+roof.height/2,width:st.depth,height:roof.height,depth:.12,yaw:st.yaw},mat);
+   box(group,{x:st.x-Math.sin(st.yaw)*offset,z:st.z-Math.cos(st.yaw)*offset,y:st.top+roof.height/2,width:Math.max(.05,st.depth-.018),height:Math.max(.05,roof.height-.025),depth:.10,yaw:st.yaw},mat);
   }
  }}
 }
@@ -166,7 +166,7 @@ export function rebuildOfficeStairs(group,params={}){
   for(const spec of segments){box(group,{x:spec.x,y:spec.y,z:spec.z,width:spec.depth,height:spec.height,depth:spec.width,yaw:spec.yaw},mat,'stairTread');}
   if(s.variant!=='standard')stairDecoration(group,s,segments);
   if(['escalator','walkway'].includes(s.variant)&&segments.length){
-   const indicatorMat=new THREE.MeshBasicMaterial({color:'#49c7d8',transparent:true,opacity:.63,depthWrite:false});
+   const indicatorMat=new THREE.MeshBasicMaterial({color:'#49c7d8',transparent:true,opacity:.63,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
    for(let i=0;i<Math.min(16,segments.length);i++){
     const st=segments[Math.floor(i*segments.length/Math.min(16,segments.length))];
     const indicator=box(group,{x:st.x,y:st.top+.026,z:st.z,width:.055,height:.015,depth:Math.min(.24,st.width*.45),yaw:st.yaw},indicatorMat,'transportMarker');

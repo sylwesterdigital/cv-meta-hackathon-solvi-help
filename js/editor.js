@@ -16,6 +16,9 @@ import {makeOfficeStairs,rebuildOfficeStairs,sanitiseStairs,stairSegments} from 
 import {tickStairTransport,startLift} from './stair-transport.js';
 import {liftButtonRequest} from './lift-panel-state.js';
 import {stairGeometryKey} from './stair-extensions.js';
+import {makePortal,rebuildPortal} from './portal-geometry.js';
+import {cleanPortal,pairedPortal} from './portal-core.js';
+import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
 import {robotPathVisible} from './robot-debug.js';
@@ -33,7 +36,7 @@ import {cleanText} from './text-parameters.js';
 import {cleanOpenings,cutCubeGeometry,surfaceAxis,rectangleFromSurface} from './cube-openings.js';
 import {setupSpatialTools,renderCurveControls,startCurveDrawing,startFaceDrawing,spatialPointer,cancelSpatialDrawing,openChatMediaPicker,updateMountedMedia} from './spatial-editor.js';
 
-const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs'];
+const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','portal'];
 const byId=id=>document.getElementById(id);
 const material=(color='#8bc3ff')=>new THREE.MeshStandardMaterial({color,roughness:.7,side:THREE.DoubleSide});
 const xyz=v=>[+v.x.toFixed(4),+v.y.toFixed(4),+v.z.toFixed(4)];
@@ -63,6 +66,7 @@ function objectFor(kind){
  case 'model':object=makeSceneModel();break;
  case 'wall':object=makeOfficeWall();break;
  case 'stairs':object=makeOfficeStairs();break;
+ case 'portal':object=makePortal();break;
  case 'media':object=makeSceneMedia();break;
  case 'light':{object=new THREE.Group();const icon=new THREE.Mesh(new THREE.SphereGeometry(.125,12,8),new THREE.MeshBasicMaterial({color:'#ffe3a2',depthTest:false}));icon.userData.lightMarker=true;object.add(icon);setLight(object,{type:'point',intensity:2,range:10,decay:2,color:'#d0efff'});break;}
  default:throw Error('Unsupported kind');
@@ -126,13 +130,13 @@ export class SceneEditor{
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','escalator','moving walkway','lift']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','escalator','moving walkway','lift']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';const head=document.createElement('div');head.className='add-fixed-head';head.append(bar);const content=document.createElement('div');content.className='add-scroll-content';menu.append(head,content);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';head.append(search);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
   search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
-   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else if(k==='media frame'){this.add('media');}else if(k==='walls'){this.startWallDrawing('wall');}else if(k==='closed room'){this.startWallDrawing('wall',true);}else if(k==='stairs'){this.startWallDrawing('stairs');}else if(k==='stairs advanced'){this.startWallDrawing('stairs',false,'advanced');}else if(k==='escalator'){this.startWallDrawing('stairs',false,'escalator');}else if(k==='moving walkway'){this.startWallDrawing('stairs',false,'walkway');}else if(k==='lift'){this.addLift();}else if(k==='draw curve in 3d'){this.startCurveDrawing();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}content.append(group);}
-  this.setupWallControls();this.setupSpatialTools();this.setupTextGeometryControls();
+   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else if(k==='media frame'){this.add('media');}else if(k==='walls'){this.startWallDrawing('wall');}else if(k==='closed room'){this.startWallDrawing('wall',true);}else if(k==='stairs'){this.startWallDrawing('stairs');}else if(k==='stairs advanced'){this.startWallDrawing('stairs',false,'advanced');}else if(k==='escalator'){this.startWallDrawing('stairs',false,'escalator');}else if(k==='moving walkway'){this.startWallDrawing('stairs',false,'walkway');}else if(k==='lift'){this.addLift();}else if(k==='paired portal'){this.addPortalPair();}else if(k==='draw curve in 3d'){this.startCurveDrawing();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}content.append(group);}
+  this.setupWallControls();this.setupSpatialTools();this.setupTextGeometryControls();this.setupPortalControls();
   const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton','assetsButton'])toolbox.append(byId(id));
   byId('importModelButton').onclick=()=>byId('modelImportFile').click();byId('quickModelImport').onclick=()=>byId('modelImportFile').click();
   byId('modelImportFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(f)await this.importModel(f);e.target.value='';});
@@ -762,6 +766,13 @@ export class SceneEditor{
   this.skipNextWallPanel=true;this.select(wall);this.skipNextWallPanel=false;
   this.refreshList();this.recordEdit(null,this.snapshot(wall));this.queueSave(wall);this.toast('Office wall created');
  }
+ hitPortalButton(raycaster){
+  const buttons=[];for(const item of this.items)if(item.userData.editorKind==='portal')item.traverse(o=>{if(o.userData.portalButton)buttons.push(o);});
+  const hit=raycaster.intersectObjects(buttons,false)[0];if(!hit)return null;
+  const front=raycaster.intersectObjects(this.items,true)[0];if(front&&front.distance<hit.distance-.02&&!front.object.userData.portalButton)return null;
+  return hit.object;
+ }
+ activatePortalButton(button){return activatePortalButton(this,button);}
  hitLiftButton(raycaster){
   const buttons=[];
   for(const lift of this.items){
@@ -807,7 +818,7 @@ export class SceneEditor{
    if(e.button!==0||this.wallDrawing||this.faceDrawing||this.curveDrawing)return;
    this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
    this.raycaster.setFromCamera(this.pointer,this.world.camera);
-   const button=this.hitLiftButton(this.raycaster);
+   const button=this.hitLiftButton(this.raycaster)||this.hitPortalButton(this.raycaster);
    if(!button)return;
    liftPress={id:e.pointerId,x:e.clientX,y:e.clientY};
    this.world.controls.enabled=false;e.preventDefault();e.stopImmediatePropagation();
@@ -818,8 +829,8 @@ export class SceneEditor{
    if(Math.hypot(e.clientX-initial.x,e.clientY-initial.y)<12){
     this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
     this.raycaster.setFromCamera(this.pointer,this.world.camera);
-    const button=this.hitLiftButton(this.raycaster);
-    if(button)this.activateLiftButton(button);
+    const button=this.hitLiftButton(this.raycaster)||this.hitPortalButton(this.raycaster);
+    if(button)(button.userData.portalButton?this.activatePortalButton(button):this.activateLiftButton(button));
    }
    e.solviObjectPicked=true;e.preventDefault();e.stopImmediatePropagation();
   },true);
@@ -950,7 +961,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(obj)this.broadcastEdit(true);}
  updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;byId('inspectorValueSlider').hidden=true;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
   this.syncTransformLockControls(obj);
-  this.renderPrimitiveControls(obj);this.renderCurveControls(obj);this.renderTextGeometryControls(obj);
+  this.renderPrimitiveControls(obj);this.renderCurveControls(obj);this.renderTextGeometryControls(obj);this.renderPortalControls(obj);
   byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();this.updateCombatPhysicsHint();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;this.syncPhysicsSurface?.();byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';byId('mediaObjectControls').hidden=obj.userData.editorKind!=='media';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
@@ -1046,9 +1057,9 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
   updateMediaHUDPosition(){const hud=byId('mediaInteractionHud');if(!hud)return;const obj=this.selected;if(!obj||obj.userData?.editorKind!=='media'){hud.hidden=true;return;}const pos=obj.getWorldPosition(new THREE.Vector3());pos.y+=0.9;pos.project(this.world.camera);if(pos.z>1){hud.hidden=true;return;}const rect=this.world.renderer.domElement.getBoundingClientRect();const x=(pos.x*.5+.5)*rect.width+rect.left,y=(-pos.y*.5+.5)*rect.height+rect.top;hud.style.left=`${x}px`;hud.style.top=`${y}px`;hud.hidden=false;byId('mediaHudPlay').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaHudMute').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';}
 
-  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed??2.5):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed??1.8):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed??4):undefined,combat:o.userData.editorKind==='robot'?combatSettings(o.userData.robotCombat):undefined,animationSpeed:o.userData.editorKind==='robot'?animationSpeedSettings(o.userData.robotAnimationSpeed):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined,media:o.userData.editorKind==='media'?structuredClone(o.userData.media||{}):undefined,primitive:PRIMITIVE_FIELDS[o.userData.editorKind]?structuredClone(o.userData.primitive||sanitisePrimitive(o.userData.editorKind)):undefined,curve:o.userData.editorKind==='curve'?structuredClone(cleanCurve(o.userData.curve)):undefined,text:o.userData.editorKind==='text'?structuredClone(cleanText(o.userData.text)):undefined,openings:o.userData.editorKind==='cube'?cleanOpenings(o.userData.openings):undefined,wall:o.userData.editorKind==='wall'?structuredClone(o.userData.wall):undefined,stairs:o.userData.editorKind==='stairs'?structuredClone(o.userData.stairs):undefined}));}
+  serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed??2.5):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed??1.8):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed??4):undefined,combat:o.userData.editorKind==='robot'?combatSettings(o.userData.robotCombat):undefined,animationSpeed:o.userData.editorKind==='robot'?animationSpeedSettings(o.userData.robotAnimationSpeed):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined,media:o.userData.editorKind==='media'?structuredClone(o.userData.media||{}):undefined,primitive:PRIMITIVE_FIELDS[o.userData.editorKind]?structuredClone(o.userData.primitive||sanitisePrimitive(o.userData.editorKind)):undefined,curve:o.userData.editorKind==='curve'?structuredClone(cleanCurve(o.userData.curve)):undefined,text:o.userData.editorKind==='text'?structuredClone(cleanText(o.userData.text)):undefined,openings:o.userData.editorKind==='cube'?cleanOpenings(o.userData.openings):undefined,wall:o.userData.editorKind==='wall'?structuredClone(o.userData.wall):undefined,stairs:o.userData.editorKind==='stairs'?structuredClone(o.userData.stairs):undefined,portal:o.userData.editorKind==='portal'?cleanPortal(o.userData.portal):undefined}));}
  beginSceneReplacement(){this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.controlledRobotId=null;this.robotKeys.clear();this.sceneRestorePhysics=this.physics.enabled;this.physics.clear();byId('propertiesPanel').hidden=true;}
- addSceneEntry(entry){if(!kinds.includes(entry.kind))return;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.robotCombat=combatSettings(entry.combat);o.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='curve'){o.userData.curve=cleanCurve(entry.curve);o.geometry.dispose();o.geometry=buildCurveGeometry(o.userData.curve);}if(entry.kind==='text')rebuildText(o,entry.text,()=>{if(this.items.includes(o))this.physics.sync(o);});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{});if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.userData.openings=entry.kind==='cube'?cleanOpenings(entry.openings):undefined;o.geometry=entry.kind==='cube'?cutCubeGeometry(o.userData.primitive,o.userData.openings):buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
+ addSceneEntry(entry){if(!kinds.includes(entry.kind))return;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.robotCombat=combatSettings(entry.combat);o.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);o.userData.physics=physicsOptions(entry.physics);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='curve'){o.userData.curve=cleanCurve(entry.curve);o.geometry.dispose();o.geometry=buildCurveGeometry(o.userData.curve);}if(entry.kind==='text')rebuildText(o,entry.text,()=>{if(this.items.includes(o))this.physics.sync(o);});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{});if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(entry.kind==='portal')rebuildPortal(o,entry.portal||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.userData.openings=entry.kind==='cube'?cleanOpenings(entry.openings):undefined;o.geometry=entry.kind==='cube'?cutCubeGeometry(o.userData.primitive,o.userData.openings):buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
@@ -1112,7 +1123,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     (this.controlMode==='robot'&&this.selected===obj&&this.canEdit(obj))||
     Boolean(obj.userData.robotImpactVelocity));
   if(!preserveRobotPose){obj.position.fromArray(entry.position);obj.rotation.fromArray(entry.rotation);}
-  obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'){if(stairGeometryKey(obj.userData.stairs)!==stairGeometryKey(entry.stairs))rebuildOfficeStairs(obj,entry.stairs||{});else if(entry.stairs)obj.userData.stairs=structuredClone(entry.stairs);}if(entry.kind==='curve'&&JSON.stringify(obj.userData.curve)!==JSON.stringify(cleanCurve(entry.curve))){obj.userData.curve=cleanCurve(entry.curve);obj.geometry.dispose();obj.geometry=buildCurveGeometry(obj.userData.curve);}if(entry.kind==='text'&&(isNew||JSON.stringify(obj.userData.text)!==JSON.stringify(cleanText(entry.text))))rebuildText(obj,entry.text,()=>{if(this.items.includes(obj))this.physics.sync(obj);});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive),holes=entry.kind==='cube'?cleanOpenings(entry.openings):[];if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)||JSON.stringify(obj.userData.openings||[])!==JSON.stringify(holes)){const prior=obj.geometry;obj.geometry=entry.kind==='cube'?cutCubeGeometry(next,holes):buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;if(entry.kind==='cube')obj.userData.openings=holes;}
+  obj.scale.fromArray(entry.scale);if(entry.kind==='wall'&&JSON.stringify(obj.userData.wall)!==JSON.stringify(entry.wall))rebuildOfficeWall(obj,entry.wall||{});if(entry.kind==='stairs'){if(stairGeometryKey(obj.userData.stairs)!==stairGeometryKey(entry.stairs))rebuildOfficeStairs(obj,entry.stairs||{});else if(entry.stairs)obj.userData.stairs=structuredClone(entry.stairs);}if(entry.kind==='portal'&&JSON.stringify(obj.userData.portal)!==JSON.stringify(cleanPortal(entry.portal)))rebuildPortal(obj,entry.portal||{});if(entry.kind==='curve'&&JSON.stringify(obj.userData.curve)!==JSON.stringify(cleanCurve(entry.curve))){obj.userData.curve=cleanCurve(entry.curve);obj.geometry.dispose();obj.geometry=buildCurveGeometry(obj.userData.curve);}if(entry.kind==='text'&&(isNew||JSON.stringify(obj.userData.text)!==JSON.stringify(cleanText(entry.text))))rebuildText(obj,entry.text,()=>{if(this.items.includes(obj))this.physics.sync(obj);});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive),holes=entry.kind==='cube'?cleanOpenings(entry.openings):[];if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)||JSON.stringify(obj.userData.openings||[])!==JSON.stringify(holes)){const prior=obj.geometry;obj.geometry=entry.kind==='cube'?cutCubeGeometry(next,holes):buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;if(entry.kind==='cube')obj.userData.openings=holes;}
   if(entry.color&&entry.kind!=='model'&&entry.kind!=='media'){obj.traverse(node=>{if(node.material?.color&&node.userData.editorKind!=='robot'){
    if(node.isMesh&&!node.userData.robotPlaceholder&&entry.kind==='robot')return;
    if(node.material.color.getHexString()!==entry.color.slice(1))node.material.color.set(entry.color);
@@ -1325,7 +1336,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
         o.userData.lastMissionSave=now;this.queueSave(o);
       }
     },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot)}));
-    this.physics.tick(dt);tickStairTransport(this,dt);this.updateMountedMedia();
+    this.physics.tick(dt);tickStairTransport(this,dt);tickPortals(this,dt);this.updateMountedMedia();
     for(const r of this.items){if(r.userData.editorKind!=='robot')continue;const previous=previousRobotPositions.get(r.userData.editorId);if(!previous)continue;const distance=Math.hypot(r.position.x-previous.x,r.position.z-previous.z);r.userData.robotActualSpeed=distance/Math.max(.016,dt);}
     animateRobots(this.items,dt,(actor,kind,force,remote)=>{
       const hits=this.physics.applyCombat(actor,kind,force,remote);
@@ -1612,4 +1623,38 @@ SceneEditor.prototype.setupTextGeometryControls=function(){
 SceneEditor.prototype.renderTextGeometryControls=function(obj){
  const fold=byId('textProperties');if(!fold)return;fold.hidden=obj?.userData.editorKind!=='text';if(fold.hidden)return;
  const p=cleanText(obj.userData.text);for(const key of ['Content','Font','Size','Extrude','Bevel']){const el=byId('textGeometry'+key);el.value=p[key[0].toLowerCase()+key.slice(1)];el.disabled=!this.canEdit(obj);}
+};
+
+SceneEditor.prototype.addPortalPair=function(){
+ const entry=this.add('portal',false,undefined,false),exit=this.add('portal',false,undefined,false);
+ entry.name='Portal Entry';exit.name='Portal Exit';
+ entry.userData.portal=cleanPortal({...entry.userData.portal,role:'entry',partner:exit.userData.editorId});
+ exit.userData.portal=cleanPortal({...exit.userData.portal,role:'exit',partner:entry.userData.editorId});
+ entry.userData.physics=physicsOptions({mode:'static'});exit.userData.physics=physicsOptions({mode:'static'});
+ // Place both above the same floor: changing positions later is independent.
+ const ahead=this.cameraDropPosition(3.6);entry.position.set(ahead.x,.05,ahead.z);
+ exit.position.copy(entry.position);exit.position.x+=5;exit.position.z+=1;
+ rebuildPortal(entry,entry.userData.portal);rebuildPortal(exit,exit.userData.portal);
+ this.physics.sync(entry);this.physics.sync(exit);this.select(entry);this.refreshList();
+ for(const o of [entry,exit]){this.recordEdit(null,this.snapshot(o));this.queueSave(o);}
+ this.toast('Portal pair created · Move Entry and Exit separately in Objects');return [entry,exit];
+};
+SceneEditor.prototype.setupPortalControls=function(){
+ const ids=['portalMode','portalDelay','portalWidth','portalHeight','portalDepth','portalOpeningWidth','portalOpeningHeight','portalColor','portalTexture','portalOpacity','portalSound'];
+ for(const id of ids)document.getElementById(id)?.addEventListener('change',()=>{
+  const o=this.selected;if(o?.userData.editorKind!=='portal'||!this.canEdit(o))return;
+  const before=this.snapshot(o),v=id.replace('portal',''),key=v[0].toLowerCase()+v.slice(1);
+  const control=document.getElementById(id),value=control.type==='checkbox'?control.checked:control.value;
+  o.userData.portal=cleanPortal({...o.userData.portal,[key]:value});
+  rebuildPortal(o,o.userData.portal);this.physics.sync(o);this.recordEdit(before,this.snapshot(o));this.queueSave(o);this.updateInspector();
+ });
+};
+SceneEditor.prototype.renderPortalControls=function(obj){
+ const fold=document.getElementById('portalProperties');if(!fold)return;fold.hidden=obj?.userData.editorKind!=='portal';if(fold.hidden)return;
+ const cfg=cleanPortal(obj.userData.portal);obj.userData.portal=cfg;
+ document.getElementById('portalRole').textContent=cfg.role==='entry'?'Entry · sends to Exit':'Exit · destination';
+ document.getElementById('portalPairStatus').textContent=pairedPortal(this.items,obj)?'Linked pair':'Missing partner · restore or create pair';
+ for(const key of ['mode','delay','width','height','depth','openingWidth','openingHeight','color','texture','opacity','sound']){
+  const id='portal'+key[0].toUpperCase()+key.slice(1),el=document.getElementById(id);if(el){if(el.type==='checkbox')el.checked=cfg[key];else el.value=String(cfg[key]);el.disabled=!this.canEdit(obj)||cfg.role==='exit'&&['mode','delay','sound'].includes(key);}
+ }
 };

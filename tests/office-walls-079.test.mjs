@@ -37,7 +37,7 @@ test('wall editor has real floor drawing modes, persisted shapes and per-segment
  const editor=read('js/editor.js'),physics=read('js/scene-physics.js'),html=read('index.html'),server=read('backend/server.py'),archive=read('backend/realm_archives.py');
  for(const id of ['wallPanel','wallDrawMode','wallWidth','wallHeight','wallTexture','wallColor','wallOpacity','wallPhysics','wallSmooth','wallConfirm'])assert.ok(html.includes(`id="${id}"`),id);
  assert.match(editor,/startWallDrawing\(kind='wall',closed=false,variant='standard'\)/);assert.match(editor,/wallPointer\(event\)/);assert.match(editor,/wall:o\.userData\.editorKind==='wall'/);
- assert.match(physics,/\(kind==='wall'\|\|kind==='stairs'\)\&\&object\.children\.length/);
+ assert.match(physics,/\(kind==='wall'\|\|kind==='stairs'\|\|kind==='portal'\)\&\&object\.children\.length/);
  assert.match(physics,/tryPushRobot\(/);assert.match(server,/valid_office_wall/);assert.match(archive,/['"]wall['"]/);
  assert.match(editor,/\['wall','stairs'\]\.includes\(o\.userData\.editorKind\)\)return o\.children/);
 });

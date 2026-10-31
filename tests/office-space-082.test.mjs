@@ -55,7 +55,7 @@ test('stairs and walls are persisted, patched, validated and use separate physic
  assert.match(js,/if\(entry\.kind==='stairs'\)rebuildOfficeStairs/);
  assert.match(js,/kind==='stairs'\)\{if\(stairGeometryKey\(obj\.userData\.stairs\)/);
  assert.match(api,/def valid_office_stairs\(stairs\)/);assert.match(api,/if obj\['kind'\]=='stairs' and not valid_office_stairs/);
- assert.match(physics,/kind==='stairs'\)\&\&object\.children\.length/);
+ assert.match(physics,/kind==='portal'\)\&\&object\.children\.length/);
  assert.match(physics,/segment\.userData\.stairTread/);
  assert.match(archive,/['"]stairs['"]/);
 });

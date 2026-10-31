@@ -1997,3 +1997,6 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #wallPanel .stair-fold .wall-check{display:flex;align-items:center;gap:5px}
 #wallPanel .stair-fold input[type=color]{height:28px;width:100%;min-width:0;padding:2px}
 #wallPanel .stair-fold button{font-size:11px;min-height:28px;padding:4px 6px}
+
+/* Compact portal properties, consistent with existing inspector folds. */
+.portal-settings{display:grid;gap:6px;padding:7px 3px 3px}.portal-settings label{display:flex;align-items:center;justify-content:space-between;gap:7px;font-size:12px}.portal-settings label input:not([type=checkbox]),.portal-settings select{width:105px;max-width:44%;min-width:0;padding:4px 5px}.portal-settings small{font-size:11px;line-height:1.35;opacity:.83}.portal-settings .portal-check{justify-content:flex-start}

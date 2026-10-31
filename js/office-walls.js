@@ -36,7 +36,7 @@ export function rebuildOfficeWall(group,settings){
  for(const seg of wallSegments(s)){
   const tex=s.texture==='glass'||s.texture==='custom'?(retain?prior.texture||null:null):wallPresetTexture(s.texture);
   const glass=s.texture==='glass';
-  const material=new THREE.MeshPhysicalMaterial({color:s.color,map:tex,roughness:glass?.12:.82,metalness:0,transparent:s.opacity<1||glass,opacity:s.opacity,transmission:glass?.76:0,ior:1.45,thickness:glass?s.width:0,depthWrite:s.opacity>.98&&!glass,side:THREE.DoubleSide});
+  const material=new THREE.MeshPhysicalMaterial({color:s.color,map:tex,roughness:glass?.12:.82,metalness:0,transparent:s.opacity<1||glass,opacity:s.opacity,transmission:glass?.76:0,ior:1.45,thickness:glass?s.width:0,depthWrite:s.opacity>.98&&!glass,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1,side:THREE.DoubleSide});
   const mesh=new THREE.Mesh(new THREE.BoxGeometry(seg.length,s.height,s.width),material);mesh.position.set(seg.x,s.height/2,seg.z);mesh.rotation.y=seg.yaw;mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData.wallSegment=true;group.add(mesh);
  }
  if(s.texture==='custom'&&s.textureMediaId&&!retain)loadCustomWallTexture(group,s.textureMediaId);
