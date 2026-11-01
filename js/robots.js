@@ -297,7 +297,9 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     else if(data.robotReaction){
       const reaction=data.robotReaction;reaction.elapsed=(reaction.elapsed||0)+Math.max(0,dt);
       if(reaction.elapsed<reaction.duration){mode=landingClipFor(reaction.clip,[...data.robotAnimator?.actions?.keys?.()||[]]);}
-      else if(reaction.next){data.robotReaction={clip:reaction.next,elapsed:0,duration:.85};mode=reaction.next;data.robotPlaying=null;}
+      // Ignore legacy queued Stand Up after Hard Landing. The landing clip
+      // already rises to standing; only other reactions (e.g. combat) may chain.
+      else if(reaction.next&&reaction.clip!=='hardLanding'){data.robotReaction={clip:reaction.next,elapsed:0,duration:.85};mode=reaction.next;data.robotPlaying=null;}
       else data.robotReaction=null;
     }else if(data.robotFallActive)mode=data.robotFallMode||'falling';
     else if(!shot||shot.elapsed>=shot.duration){

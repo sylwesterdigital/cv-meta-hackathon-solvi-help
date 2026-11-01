@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.124",
+  "currentVersion": "0.2.125",
   "releases": [
+    {
+      "version": "0.2.125",
+      "publishedAt": "2026-11-01T00:22:39Z",
+      "changes": [
+        "Hard Landing has its own complete recovery: after a hard fall (>2.5 m), play Hard Landing then return directly to Idle/locomotion; do not queue a redundant Stand Up.",
+        "Ignore a legacy queued Stand Up after Hard Landing while preserving separate Stand Up recovery for severe combat impacts.",
+        "Add an executable hard-landing lifecycle regression and preserve all existing transport, portals, scene, backend and avatar files."
+      ]
+    },
     {
       "version": "0.2.124",
       "publishedAt": "2026-10-31T23:11:04Z",
@@ -305,17 +314,6 @@
         "Make avatar deletion results and permission errors visible at the top of the gallery, with inline Admin unlock for server-bundled avatars.",
         "Delete requested avatars independently after one confirmation, preserving any referenced files and clearly listing why each refused item was retained.",
         "Fix shared API error handling so generic HTTP 409 conflict does not incorrectly force account reauthentication."
-      ]
-    },
-    {
-      "version": "0.2.91",
-      "publishedAt": "2026-10-31T01:29:37Z",
-      "changes": [
-        "Permanently delete selected bundled avatars from the Ubuntu server and public catalog with explicit administrator authorization, not browser-only hiding.",
-        "Protect avatars still used in any realm or profile, and preserve the default SOLVI fallback avatar; owners can still remove unused uploads.",
-        "Persist bundled-avatar deletion tombstones and reapply them after future static-file deployments so removed models do not reappear.",
-        "Repair Asset library overlapping cards with a fixed responsive portrait grid and pages of 12 items, keeping selection and export operations.",
-        "Add backend integration and frontend regression tests for destructive deletion permissions, redeployment persistence, and gallery layout."
       ]
     }
   ]

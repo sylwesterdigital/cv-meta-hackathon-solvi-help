@@ -32,6 +32,24 @@ test('walking cadence uses current resolved speed, no contact push for fixed obs
  assert.match(physics,/target\.userData\.physics\?\.mode!=='dynamic'/);
  assert.match(physics,/noteDynamicPush\(object,delta,desiredHorizontal\)/);
 });
+test('Hard Landing finishes directly into Idle without playing a second Stand Up',()=>{
+ const {anim,bot,calls}=harness();
+ const cfg=bot.userData;
+ cfg.robotMode='idle';cfg.robotActualSpeed=0;cfg.robotLocalMotion=false;
+ cfg.robotAnimator.actions=new Map([['hardLanding',{}],['idle',{}],['standUp',{}]]);
+ cfg.robotReaction={clip:'hardLanding',duration:1.25,elapsed:0,next:null};
+ anim([bot],.25);
+ assert(calls.some(c=>c[0]==='once'&&c[1]==='hardLanding'));
+ anim([bot],1.01);
+ assert.equal(cfg.robotReaction,null);
+ assert(calls.some(c=>c[0]==='play'&&c[1]==='idle'));
+ assert(!calls.some(c=>c[1]==='standUp'));
+ // Old clients may still have queued Stand Up on an active Hard Landing.
+ cfg.robotPlaying=null;cfg.robotReaction={clip:'hardLanding',duration:1.25,elapsed:1.2,next:'standUp'};
+ anim([bot],.1);
+ assert.equal(cfg.robotReaction,null);
+ assert(!calls.some(c=>c[1]==='standUp'));
+});
 test('jump remains in the mixer until explicit ground confirmation',()=>{
  const {anim,bot,calls}=harness();
  bot.userData.robotJumpActive=true;

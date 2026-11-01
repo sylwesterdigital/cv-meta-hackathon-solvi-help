@@ -430,7 +430,9 @@ export class ScenePhysics{
    const fallHeight=Math.max(0,(state.airStartY??p.y)-resolved.y);
    if((object.userData.robotFallActive||state.jumpStarted)&&now-state.airStartAt>120){
     const heavy=fallHeight>2.5;
-    object.userData.robotReaction={clip:landingAnimationKind(fallHeight),duration:heavy?1.25:.58,elapsed:0,next:heavy?'standUp':null};
+    // Hard Landing contains its own get-up motion. After this one-shot finishes,
+    // return directly to Idle/locomotion; never queue a second Stand Up clip.
+    object.userData.robotReaction={clip:landingAnimationKind(fallHeight),duration:heavy?1.25:.58,elapsed:0,next:null};
     object.userData.robotPlaying=null;
    }
    object.userData.robotFallActive=false;
