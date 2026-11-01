@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.130",
+  "currentVersion": "0.2.131",
   "releases": [
+    {
+      "version": "0.2.131",
+      "publishedAt": "2026-11-01T03:08:43Z",
+      "changes": [
+        "Route go_to commands for Advanced and Standard stairs around obstacles to the physically accessible low first-step entrance, instead of selecting the high or side face of a stair object.",
+        "Use actual staircase control points and complete world transform, preserve continuous obstacle-checked routes, and report blocked when the low entrance cannot be reached rather than claiming partial success.",
+        "Make robot command planning and arrival feedback distinguish reaching the low entrance from climbing; retain existing navigation and collision physics for unrelated objects.",
+        "Add five executed stair entry tests plus backend parser regression and refresh all browser/module/backend/release versions."
+      ]
+    },
     {
       "version": "0.2.130",
       "publishedAt": "2026-11-01T02:56:09Z",
@@ -297,18 +307,6 @@
         "Add U to draw media rectangles on cube and plane surfaces, with a searchable authenticated room-chat attachment browser for images, audio and video. Mounted frames follow source geometry transforms.",
         "Validate all new curve/opening/mount payloads in both Flask scene routes; preserve mounted-media links and remap scene target IDs during realm archive imports.",
         "Integrate new modules with versioned browser imports and add geometry, persistence and security regression tests."
-      ]
-    },
-    {
-      "version": "0.2.98",
-      "publishedAt": "2026-10-31T03:56:23Z",
-      "changes": [
-        "Repair chat attachment observer/cache ReferenceError; correct admin chat clear request exact-name, invalidate cleared room and prevent pre-clear transcript replay.",
-        "Lock airborne robot heading and horizontal velocity from takeoff until physics confirms landing, including remote prediction; shift into Run after two seconds of continuous forward input.",
-        "Move Chase Smart angle threshold control into selected Robot Properties and switch Chase/Chase Smart to Orbit Follow on intentional camera drag.",
-        "Add S/M/L responsive grid size switchers to Avatar and Asset galleries, persisted per-browser.",
-        "Replace primitive geometry steppers with a single property selector, numeric value and shared live range slider; unify inspector styling.",
-        "Emit once-per-missing-clip diagnostic for avatar actions to local Brain debug events; add regression tests for chat, gallery, air-motion and controls."
       ]
     }
   ]

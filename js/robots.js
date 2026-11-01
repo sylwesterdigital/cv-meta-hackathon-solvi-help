@@ -181,7 +181,8 @@ export function tickRobots(items,dt,onMove=()=>{}){
           }
           robot.userData.robotMission=null;
           window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName||'',
-            status:mission.kind==='go_sit'?(clip?'sitting':'procedural-sitting'):mission.kind==='coffee_visit'?'coffee-visit':'arrived'}}));
+            status:mission.kind==='go_sit'?(clip?'sitting':'procedural-sitting'):mission.kind==='coffee_visit'?'coffee-visit':'arrived',
+            ...(mission.destinationPart?{destinationPart:mission.destinationPart}:{})}}));
         }
       }
       else{

@@ -23,6 +23,7 @@ import {makePortal,rebuildPortal} from './portal-geometry.js';
 import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
+import {planRobotLowStairApproach} from './robot-stair-approach.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
 import {robotPathVisible} from './robot-debug.js';
 import {plannedRouteLength,newMovementTelemetry,sampleMovementTelemetry,missionMovementEvidence,shouldRejectClaimedArrival} from './robot-telemetry.js';
@@ -1557,7 +1558,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     }).filter(Boolean);
   }
   routeRobot(robot,point){
-    const {preserveMission=false,quiet=false}=arguments[2]||{};
+    const {preserveMission=false,quiet=false,wholePath=false}=arguments[2]||{};
     if(!robot||!point)return false;
     const allObstacles=this.navigationObstacles(robot);
     // A robot already standing within another robot's clearance zone must be
@@ -1567,7 +1568,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     const obstacles=allObstacles.filter(o=>o.kind!=='robot'||!pathBlocked(start.x,start.z,[o],.30));
     const distance=Math.hypot(point.x-start.x,point.z-start.z);
     if(distance>600){this.toast('Robot route exceeds 600 m safety limit');return false;}
-    const steps=Math.max(1,Math.ceil(distance/18));
+    const steps=wholePath?1:Math.max(1,Math.ceil(distance/18));
     const waypoints=[];let previous=start;
     for(let i=1;i<=steps;i++){
       const target={x:start.x+(point.x-start.x)*i/steps,z:start.z+(point.z-start.z)*i/steps};
@@ -1711,18 +1712,31 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     const start={x:robot.position.x,z:robot.position.z};
     const bounds2d={minX:center.x-size.x/2,maxX:center.x+size.x/2,minZ:center.z-size.z/2,maxZ:center.z+size.z/2};
     const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot'||!pathBlocked(start.x,start.z,[o],.30));
-    const approach=planRobotApproach(start,bounds2d,obstacles);
-    const partial=!approach?planRobotPartialApproach(start,bounds2d,obstacles):null;
+    // Ordinary targets can be approached from any navigable side. Stairs are
+    // directional: their first path point is the low, physically accessible
+    // landing. Do not use the upper/side edge as a successful destination.
+    const isStairEntrance=target.userData.editorKind==='stairs'&&
+      ['standard','advanced'].includes(target.userData.stairs?.variant);
+    const projectStairPoint=p=>{
+      const world=target.localToWorld(new THREE.Vector3(p.x,0,p.z));
+      return {x:world.x,z:world.z};
+    };
+    const approach=isStairEntrance?
+      planRobotLowStairApproach(start,target.userData.stairs,obstacles,projectStairPoint):
+      planRobotApproach(start,bounds2d,obstacles);
+    // A partial route to the *wrong* side of a staircase is misleading.
+    const partial=!approach&&!isStairEntrance?planRobotPartialApproach(start,bounds2d,obstacles):null;
     robot.userData.robotMission={kind:command.kind,taskId:command.id,targetName:target.name,targetId:target.userData.editorId,
-      origin:{x:robot.position.x,z:robot.position.z},leg:0,lastTargetCheck:0};
+      origin:{x:robot.position.x,z:robot.position.z},leg:0,lastTargetCheck:0,
+      ...(isStairEntrance?{destinationPart:'low stair entrance'}:{})};
     if(!approach&&!partial){
       const nearby=obstacles.map(o=>({name:o.name||'Unknown object',kind:o.kind||'object',distance:+Math.hypot((o.minX+o.maxX)/2-start.x,(o.minZ+o.maxZ)/2-start.z).toFixed(2)})).sort((a,b)=>a.distance-b.distance).slice(0,8);
       robot.userData.robotDebugRoute={start,waypoints:[],obstacles,destination:{x:center.x,z:center.z},blocked:true};
       if(this.robotPathDebugVisible(robot))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
-      window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'blocked',target:target.name,reason:'No reachable safe approach from any tested side',nearby_obstacles:nearby,obstacles:obstacles.length,waypoints:0,start,destination:{x:center.x,z:center.z},taskId:command.id}}));
+      window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'blocked',target:target.name,reason:isStairEntrance?'Low stair entrance inaccessible; no route through high/side faces':'No reachable safe approach from any tested side',nearby_obstacles:nearby,obstacles:obstacles.length,waypoints:0,start,destination:{x:center.x,z:center.z},taskId:command.id}}));
       const mission=robot.userData.robotMission;robot.userData.robotMission=null;
       robot.userData.robotGoal=null;robot.userData.robotMode='idle';
-      window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked',reason:'No reachable approach point'}}));
+      window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked',reason:isStairEntrance?'Low stair entrance inaccessible':'No reachable approach point'}}));
       this.toast(robot.name+': no safe route to any side of '+target.name);return false;
     }
     if(partial){
@@ -1737,8 +1751,10 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
        taskId:command.id,reason:'Exact target approach occupied: safely advancing toward the nearest reachable stand-off point'}}));
       return true;
     }
-    if(!this.routeRobot(robot,approach.point))return false;
-    this.toast(robot.name+' → '+target.name+' (A* chose a reachable approach from multiple sides)');
+    if(!this.routeRobot(robot,approach.point,isStairEntrance?{wholePath:true}:undefined))return false;
+    this.toast(isStairEntrance?
+      robot.name+' → '+target.name+' (routing around the high/side faces to the accessible bottom entrance)':
+      robot.name+' → '+target.name+' (A* chose a reachable approach from multiple sides)');
     return true;
   }
   robot(){return this.selected?.userData.editorKind==='robot'?this.selected:null;}

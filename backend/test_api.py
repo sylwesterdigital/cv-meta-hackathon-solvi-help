@@ -42,6 +42,16 @@ assert not valid_surface_mount({'target':'model-abc123','localPoint':[0,0,float(
 assert '/api/media/room' in {r.rule for r in app.url_map.iter_rules()}
 print('PASS: 3D curves, cube cutouts, mounted media bounds and room-media browser')
 
+from server import plan_robot_command, stair_approach_instruction
+_test_stair={'id':'stair_advanced_01','kind':'stairs','name':'Stairs advanced','position':[0,0,0],
+             'stairs':{'variant':'advanced','points':[[0,0],[14,0]]}}
+assert 'low entrance at the first step' in stair_approach_instruction(_test_stair)
+_stair_command,_stair_ack=plan_robot_command('go to the beginning of Stairs advanced',
+    {'id':'bot_01','name':'Zuck','position':[10,0,0]},[_test_stair])
+assert _stair_command['kind']=='go_to' and _stair_command['target_id']=='stair_advanced_01'
+assert 'low entrance' in _stair_ack and 'not claim to have climbed' in _stair_ack
+print('PASS: named staircase navigation explicitly targets the accessible low entrance')
+
 from server import robot_command_clause
 _multiples=[{'id':'e','name':'Elox'},{'id':'c','name':'Cybert'}]
 _split='@Elox go to Black Sofa and @Cybert please follow Elox'

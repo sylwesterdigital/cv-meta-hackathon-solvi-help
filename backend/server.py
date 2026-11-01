@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.130',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.131',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1869,6 +1869,14 @@ def robot_voice_catalog(robot):
     base='Local Ubuntu voices'+(' (language, gender, voice): '+', '.join(voice_names[:18]) if voice_names else ' use supported languages en/pl/de/fr/es; masculine and feminine eSpeak variants can be selected')+'. '
     return base+'For actual device voices or available ElevenLabs account voices, select this robot in Objects → Properties → Voice. There you can list, test, and save named voices. Say @'+str(robot.get('name','Robot')).split()[0]+' use a female voice or use a male voice to set the local voice presentation.'
 
+def stair_approach_instruction(target):
+    """Deterministic instruction for a stair target; the planner owns the route."""
+    config=target.get('stairs') or {}
+    if target.get('kind')=='stairs' and config.get('variant','standard') in ('standard','advanced') and len(config.get('points') or [])>=2:
+        return ('I will go around the inaccessible high end and sides, reach the low entrance at the first step of '
+                +str(target.get('name','the stairs'))[:80]+', and stop there. I will not claim to have climbed the stairs.')
+    return None
+
 def plan_robot_command(text,robot,objects):
     """Return a *suggested* action, never model-provided executable instructions."""
     words=re.sub(r'^\s*CC\s*:\s*','',text,flags=re.I).casefold()
@@ -1941,7 +1949,8 @@ def plan_robot_command(text,robot,objects):
             name=str(target['name'])[:100]
             sit=bool(re.search(r'\bsit\b',words))
             return {'kind':'go_sit' if sit else 'go_to','target_id':target['id'],'target_name':name},(
-                'I’ll move toward '+name+(' and try sitting.' if sit else '.') )
+                stair_approach_instruction(target) or
+                ('I’ll move toward '+name+(' and try sitting.' if sit else '.')) )
     # Users routinely misspell object labels. Resolve only a UNIQUE near-exact
     # scene name in a destination request; never substitute a different colour,
     # number, or one of several plausible objects.
@@ -1973,7 +1982,7 @@ def plan_robot_command(text,robot,objects):
             matches=[o for score,o in fuzzy if score==best]
             if len(matches)==1:
                 target=matches[0];label=str(target.get('name',''))[:100]
-                return {'kind':'go_to','target_id':target['id'],'target_name':label},('I matched that destination to '+label+'. I will plan a collision-checked route before moving.')
+                return {'kind':'go_to','target_id':target['id'],'target_name':label},(stair_approach_instruction(target) or 'I matched that destination to '+label+'. I will plan a collision-checked route before moving.')
             return None,'I found multiple possible destinations. Please clarify the exact object; I have not started moving.'
     # Relative-distance imperatives are real movement requests, not social chatter.
     # "go further 10 meters" and "continue another 5 m" follow current heading.
@@ -2587,7 +2596,7 @@ def robot_react():
                 instruction=('Speak as the fictional 3D-world character named '+robot['name'][:70]+'. '
                     'Write ONE concise, factual first-person execution plan (under 130 characters) grounded ONLY in the confirmed operation. No jokes, slogans, fictional digressions or invented locations unless the user explicitly requests them. '
                     'Do not claim the robot already sees, found or reached anything. No invented locations. '
-                    'The command is executed separately from your text. Character notes: '+json.dumps(notes,ensure_ascii=False)[:2700])
+                    'The command is executed separately from your text. For stairs, the destination is the accessible bottom entrance, NOT the high end or side; approaching does NOT mean climbing. Never claim a stair ascent without a verified ascent task. Character notes: '+json.dumps(notes,ensure_ascii=False)[:2700])
                 plan_prompt='Human message: '+text[:500]+'\nConfirmed operation: '+json.dumps(command,ensure_ascii=False)[:450]+'\nScene evidence: '+source
                 plan_response=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,'input':[
                     {'role':'developer','content':[{'type':'input_text','text':instruction}]},
@@ -2619,8 +2628,11 @@ def robot_react():
         if command:
             command={**command,'id':str(uuid.uuid4()),'room':room_id,'robot_id':robot['id']}
             with robot_task_lock:
+                named_destination=next((obj for obj in objects if obj.get('id')==command.get('target_id')),None)
+                is_low_stair_destination=bool(named_destination and stair_approach_instruction(named_destination))
                 ROBOT_TASKS[command['id']]={'user_id':user['id'],'robot_id':robot['id'],'robot_name':robot['name'][:100],
                     'room':room_id,'kind':command['kind'],'target':command.get('target_name',command.get('target_phrase',''))[:100],
+                    'destination_part':'low stair entrance' if is_low_stair_destination else '',
                     'created':time.time(),'done':False}
                 for tid,info in list(ROBOT_TASKS.items()):
                     if time.time()-info['created']>900:ROBOT_TASKS.pop(tid,None)
@@ -2733,6 +2745,9 @@ def robot_task_result():
       'stopped':'I stopped.',
       'failed':f'I could not finish the task involving {target}.',
       'blocked':f'I could not find a route to {target} without crossing an occupied or blocked area after obstacle reassessment. I stopped without moving an obstacle.'}
+    if task.get('destination_part')=='low stair entrance':
+        replies['arrived']=f'I reached the accessible bottom entrance of {target}, beside the first low step. I have not climbed the stairs.'
+        replies['blocked']=f'I could not reach the bottom entrance of {target} without a collision. I did not approach the high end or climb from the side.'
     answer=replies[state]
     if state=='arrived' and task['kind']=='random_action':
         answer='I completed my random movement sequence without pushing objects. I can idle or continue when assigned a new objective.'

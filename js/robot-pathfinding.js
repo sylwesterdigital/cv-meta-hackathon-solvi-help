@@ -88,6 +88,14 @@ export function planRobotPath(start,end,obstacles=[],options={}){
  return result;
 }
 
+// Compare planned stair approaches by the REAL routed distance, not straight-line
+// distance to the inaccessible high end or side.
+export function plannedPathLength(start,waypoints=[]){
+ let length=0,previous=start;
+ for(const next of waypoints){length+=Math.hypot(next.x-previous.x,next.z-previous.z);previous=next;}
+ return length;
+}
+
 // Choose a safe stand-off position by checking the *entire navigable route* to
 // several sides of a target. A single nearest-edge goal often lies behind
 // another robot or a couch: that is not proof that the target is unreachable.
