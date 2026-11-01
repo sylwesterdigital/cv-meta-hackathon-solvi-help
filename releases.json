@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.136",
+  "currentVersion": "0.2.137",
   "releases": [
+    {
+      "version": "0.2.137",
+      "publishedAt": "2026-11-01T05:22:54Z",
+      "changes": [
+        "Correct Rapier 0.21 ray hit timeOfImpact lookup when a robot dismounts from the top of a ladder or a climbable surface.",
+        "Reject missing, infinite, negative or out-of-range hit distances before writing a robot landing position; remain attached if unsupported.",
+        "Recover any non-finite camera pose before Three.js AudioListener render and stop following the invalid robot until stable.",
+        "Add four executable regression tests for successful and invalid Rapier-shaped landing hits and camera recovery."
+      ]
+    },
     {
       "version": "0.2.136",
       "publishedAt": "2026-11-01T04:50:37Z",
@@ -292,17 +302,6 @@
         "Robot Control: replace the visible dropdown with selectable robot portrait/initial buttons above the controller",
         "My Camera: Record, Pause/Resume and Stop buttons reuse the active webcam video; recorded clips can be attached to chat, added to the scene or drawn onto a selected cube/plane as a media frame",
         "Virtual view capture: optional canvas captureStream recording with MediaRecorder on supported browsers, with a 15 fps capture target and conservative video bitrate; not guaranteed to include Quest passthrough"
-      ]
-    },
-    {
-      "version": "0.2.103",
-      "publishedAt": "2026-10-31T05:46:03Z",
-      "changes": [
-        "Media frames: choose realm chat attachments, camera-bookmark screenshots, uploaded media, live webcam photos or a recorded webcam clip",
-        "Chat composer: show a live webcam preview during video recording and recorded video playback after stopping",
-        "Procedural walls: convert individual wall segments to static editable cubes with true O-key cuttable openings and trimesh colliders",
-        "New robot messages: progressive typing and a subtle bubble entrance animation (history and reduced-motion users unaffected)",
-        "Compact chat audio play/seek/mute UI; signed expiring HLS VOD access for audio and video on native-HLS browsers; authenticated blob fallback elsewhere"
       ]
     }
   ]

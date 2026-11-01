@@ -409,10 +409,14 @@ export class ScenePhysics{
    topPoint.addScaledVector(inward,-.49);
    const ray=new this.runtime.Ray({x:topPoint.x,y:topPoint.y,z:topPoint.z},{x:0,y:-1,z:0});
    const hit=this.world.castRay(ray,1.45,true,undefined,undefined,capsule);
-   if(!hit)return false;
-   const floorY=topPoint.y-hit.toi;
+   // Rapier >= 0.13 reports timeOfImpact; its old .toi property is undefined.
+   // Never install NaN as the robot position: camera-follow propagates it into
+   // Three.js AudioListener, which would abort every render frame.
+   const distance=hit?.timeOfImpact;
+   if(!Number.isFinite(distance)||distance<0||distance>1.45)return false;
+   const floorY=topPoint.y-distance;
    const expected=ladder.localToWorld(new THREE.Vector3(0,ride.topY,0)).y;
-   if(Math.abs(floorY-expected)>.35)return false;
+   if(!Number.isFinite(floorY)||!Number.isFinite(expected)||!Number.isFinite(topPoint.x)||!Number.isFinite(topPoint.z)||Math.abs(floorY-expected)>.35)return false;
    robot.position.set(topPoint.x,floorY+.035,topPoint.z);
    robot.userData.robotMode='idle';
    return true;
@@ -425,9 +429,10 @@ export class ScenePhysics{
    const top=ladder.localToWorld(local);
    const ray=new this.runtime.Ray({x:top.x,y:top.y,z:top.z},{x:0,y:-1,z:0});
    const hit=this.world.castRay(ray,1.4,true,undefined,undefined,capsule);
-   if(!hit)continue;
-   const floorY=top.y-hit.toi,expected=ladder.localToWorld(new THREE.Vector3(0,cfgHeight,0)).y;
-   if(Math.abs(floorY-expected)>.38)continue;
+   const distance=hit?.timeOfImpact;
+   if(!Number.isFinite(distance)||distance<0||distance>1.4)continue;
+   const floorY=top.y-distance,expected=ladder.localToWorld(new THREE.Vector3(0,cfgHeight,0)).y;
+   if(!Number.isFinite(floorY)||!Number.isFinite(expected)||!Number.isFinite(top.x)||!Number.isFinite(top.z)||Math.abs(floorY-expected)>.38)continue;
    robot.position.set(top.x,floorY+.035,top.z);
    robot.userData.robotMode='idle';
    return true;

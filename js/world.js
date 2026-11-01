@@ -51,6 +51,8 @@ export class SolviWorld {
     this.controls.minPolarAngle=.02;this.controls.maxPolarAngle=Math.PI-.02;
     this.controls.minDistance=.35;this.controls.maxDistance=1500;
     this.controls.update();
+    // A bad robot/surface transform must never reach the camera's AudioListener.
+    this.lastFiniteCameraPose={position:this.camera.position.clone(),quaternion:this.camera.quaternion.clone(),target:this.controls.target.clone()};
     this.localHeadRotation=[0,0,0];this.localBody={};this.localVoiceLevel=0;this.localVoiceBands=[0,0,0];
     this.clock=new THREE.Clock();
     this.character=new THREE.Group();this.scene.add(this.character);
@@ -740,6 +742,10 @@ export class SolviWorld {
     if(!robot){this.followRobotId=null;this.followOrbitOffset=null;this.refreshFollowButton();return;}
     if(this.editorDragging||this.editorGizmoPointer)return;
     const anchor=followAnchor(robot),yaw=robot.rotation.y,id=robot.userData.editorId;
+    if(![anchor.x,anchor.y,anchor.z,yaw].every(Number.isFinite)){
+      this.cameraFollowMode='free';this.followRobotId=null;this.followOrbitOffset=null;
+      return;
+    }
     if(id!==this.followRobotId){
       this.followRobotId=id;this.smartFollowYaw=yaw;this.smartChaseEngaged=false;
       const currentDistance=Math.hypot(this.camera.position.x-anchor.x,this.camera.position.z-anchor.z);
@@ -859,7 +865,31 @@ export class SolviWorld {
     const delta=this.cameraVelocity.clone().multiplyScalar(dt);
     this.camera.position.add(delta);this.controls.target.add(delta);
   }
+  repairCameraPose(){
+    const finiteVector=v=>v&&[v.x,v.y,v.z].every(Number.isFinite);
+    const finiteQuaternion=q=>q&&[q.x,q.y,q.z,q.w].every(Number.isFinite);
+    if(finiteVector(this.camera.position)&&finiteQuaternion(this.camera.quaternion)&&finiteVector(this.controls.target)){
+      this.lastFiniteCameraPose={position:this.camera.position.clone(),quaternion:this.camera.quaternion.clone(),target:this.controls.target.clone()};
+      return false;
+    }
+    // Preserve rendering and audio even if a future gameplay system injects
+    // invalid coordinates. Do not let OrbitControls continue following them.
+    const saved=this.lastFiniteCameraPose;
+    if(saved){
+      this.camera.position.copy(saved.position);this.camera.quaternion.copy(saved.quaternion);
+      this.controls.target.copy(saved.target);
+    }else{
+      this.camera.position.set(5,3.7,7.5);this.camera.quaternion.identity();
+      this.controls.target.set(0,1,0);
+    }
+    this.cameraVelocity.set(0,0,0);
+    this.cameraFollowMode='free';this.followRobotId=null;this.followOrbitOffset=null;
+    this.controls.update();
+    if(!this.reportedInvalidCamera){console.error('SOLVI prevented non-finite camera pose from crashing Three.js audio');this.reportedInvalidCamera=true;}
+    return true;
+  }
   frame(){
+    this.repairCameraPose();
     const dt=Math.min(.05,this.clock.getDelta());
     this.skyClock+=dt*this.environment.skySpeed;
     if(this.skyDome?.visible){this.skyDome.position.copy(this.camera.position);this.skyDome.material.uniforms.uTime.value=this.skyClock;}
@@ -870,7 +900,7 @@ export class SolviWorld {
     this.controls.enabled=!sketchLocked&&!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.editorGizmoPointer&&cameraAllowed&&document.pointerLockElement!==this.renderer.domElement;
     if(!sketchLocked)this.navigateCamera(dt);
     if(!this.renderer.xr.isPresenting&&!sketchLocked)this.controls.update();
-    this.updateXR();this.robotEditor?.tick(dt);if(!sketchLocked)this.updateFollowCamera(dt);this.updateVoiceRings(dt);updateSceneMedia(this,dt);this.robotEditor?.updateMediaHUDPosition?.();
+    this.updateXR();this.robotEditor?.tick(dt);if(!sketchLocked)this.updateFollowCamera(dt);this.repairCameraPose();this.updateVoiceRings(dt);updateSceneMedia(this,dt);this.robotEditor?.updateMediaHUDPosition?.();
     if(this.onPose&&(!this.lastPose||performance.now()-this.lastPose>180)){
       this.lastPose=performance.now();const cam=this.renderer.xr.isPresenting?this.renderer.xr.getCamera():this.camera;
       const position=cam.getWorldPosition(new THREE.Vector3());
