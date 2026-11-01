@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.134",
+  "currentVersion": "0.2.135",
   "releases": [
+    {
+      "version": "0.2.135",
+      "publishedAt": "2026-11-01T04:26:23Z",
+      "changes": [
+        "Prevent a render-loop crash after ladder or climbable-surface dismount: reject non-finite stair path positions and never read an undefined transport tread .top.",
+        "Add a per-avatar Climb speed (0.20\u20134.00 m/s) to the existing compact Robot speed dropdown and shared slider; apply it to ascending, descending, and the authored climbing animation rate.",
+        "Persist Climb speed in scene creation, duplication, patches and multiplayer; enforce finite range validation in both backend scene endpoints.",
+        "Add executable regression coverage for invalid conveyor marker/path coordinates, missing stair segments, controlled climbing rates and persistence; preserve all existing stair and fall behaviours."
+      ]
+    },
     {
       "version": "0.2.134",
       "publishedAt": "2026-11-01T04:14:02Z",
@@ -293,16 +303,6 @@
         "Use analytic cube face raycast for openings and media rectangles (including pre-cut cubes)",
         "Editable and persistent text geometry: content, font, size, extrusion and bevel with local typeface assets",
         "Add regression tests for text geometry validation and camera lock"
-      ]
-    },
-    {
-      "version": "0.2.101",
-      "publishedAt": "2026-10-31T05:02:32Z",
-      "changes": [
-        "Capture O/U and freehand pointer drags on a full-view transparent drawing layer so SOLVI HUDs cannot intercept the gesture; keep the camera locked until the tool ends.",
-        "Replace the large surface popup and unnecessary Confirm button with a passive compact instruction hint. Drag directly, release to preview, press Enter to keep, or Escape/click elsewhere to discard.",
-        "Show a filled translucent rectangle and bright border during opening and media drags; show the real cut-through cube immediately on release before saving, with restoration on cancel.",
-        "Ensure media frame stays visible after release until Enter opens realm chat attachments; add interaction tests for preview, commit and unsaved cancellation."
       ]
     }
   ]

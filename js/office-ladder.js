@@ -70,8 +70,9 @@ export function ladderProximity(ladder,robot){
  if(distance>.60&&facingToward<.25)return null;
  return {local,cfg,side};
 }
-export function ladderClimbStep(y,input,dt,height){
- const direction=Math.sign(Number(input)||0),delta=Math.min(.06,Math.max(0,Number(dt)||0))*1.25*direction;
+export function ladderClimbStep(y,input,dt,height,speed=1.25){
+ const climbRate=Number.isFinite(Number(speed))?Math.max(.2,Math.min(4,Number(speed))):1.25;
+ const direction=Math.sign(Number(input)||0),delta=Math.min(.06,Math.max(0,Number(dt)||0))*climbRate*direction;
  return Math.max(0,Math.min(height,Number(y)+delta));
 }
 // Caller is responsible for checking for an actual upper-floor surface. Never
@@ -105,7 +106,7 @@ export function stepLadderRobot(robot,objects,verticalInput,dt,{upperSurface=nul
  const side=ride.side===-1?-1:1;
  const maxY=surface?ride.topY:cfg.height;
  const minY=surface?ride.bottomY:0;
- ride.y=ladderClimbStep(ride.y-minY,verticalInput,dt,maxY-minY)+minY;
+ ride.y=ladderClimbStep(ride.y-minY,verticalInput,dt,maxY-minY,robot.userData.robotClimbSpeed??1.25)+minY;
  // Stay offset from the real contact surface, or the ladder rungs.
  const target=ladder.localToWorld(new THREE.Vector3(Number(ride.x)||0,ride.y,surface?Number(ride.z)||0:.44*side));
  if(ride.y>=maxY-.02&&verticalInput>0&&upperSurface?.(ladder,robot,target)){

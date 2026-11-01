@@ -1,5 +1,13 @@
 import {projectPath,pathAt} from './stair-extensions.js';
 // Pure support and synchronisation helpers shared by scene and headset transport.
+// Never use NaN as an array index: a malformed movement coordinate can arise
+// briefly on a climbing dismount, stale network pose, or moving transport.
+export function surfaceHeight(segments,along,total){
+ if(!Array.isArray(segments)||!segments.length||!Number.isFinite(along)||!Number.isFinite(total)||total<=0)return null;
+ const index=Math.min(segments.length-1,Math.max(0,Math.floor(along/total*segments.length)));
+ const height=segments[index]?.top;
+ return Number.isFinite(height)?height:null;
+}
 export function conveyorSupport(local,top,width,{jumping=false,margin=.11}={}){
  if(jumping||!local||![local.x,local.y,local.z,top,width].every(Number.isFinite))return false;
  return width>.3&&Math.abs(local.y-top)<.38;
@@ -16,15 +24,15 @@ export function conveyorStep(local,config,segments,dt){
  if(!local||!Array.isArray(segments)||!segments.length||!config||!Number.isFinite(dt)||dt<=0)return null;
  const path=config.points||[],projected=projectPath(path,local.x,local.z);
  if(!projected||projected.distance>config.width/2-.11)return null;
- const index=Math.min(segments.length-1,Math.max(0,Math.floor(projected.along/Math.max(.001,projected.total)*segments.length)));
- const top=segments[index].top;
- if(!conveyorSupport(local,top,config.width))return null;
+ const top=surfaceHeight(segments,projected.along,projected.total);
+ if(top===null||!conveyorSupport(local,top,config.width))return null;
  const speed=Math.min(2.5,Math.max(.05,config.transport?.speed||.5));
  const along=Math.max(0,Math.min(projected.total,projected.along+Math.min(.05,dt)*speed*(config.transport?.direction===-1?-1:1)));
  const next=pathAt(path,along),previous=pathAt(path,projected.along);
  if(!next||!previous)return null;
- const nextIndex=Math.min(segments.length-1,Math.max(0,Math.floor(along/Math.max(.001,projected.total)*segments.length)));
- return {x:next.x-previous.x,y:segments[nextIndex].top-local.y,z:next.z-previous.z};
+ const nextTop=surfaceHeight(segments,along,projected.total);
+ if(nextTop===null)return null;
+ return {x:next.x-previous.x,y:nextTop-local.y,z:next.z-previous.z};
 }
 // Eye height is controlled by the user and must not be assumed to be 1.6 m.
 // The XR reference space tracks the user's virtual standing-surface elevation.

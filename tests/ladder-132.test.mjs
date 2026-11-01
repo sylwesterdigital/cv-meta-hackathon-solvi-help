@@ -161,3 +161,22 @@ test('multiplayer position corrections cannot pull an attached avatar off a ladd
  const editor=readFileSync(new URL('../js/editor.js',import.meta.url),'utf8');
  assert.match(editor,/if\(obj\.userData\.robotLadderRide\)\{this\.remoteCorrections\.delete\(id\);continue;\}/);
 });
+
+test('climbing speed changes actual ascent and descent rate with safe bounds',()=>{
+ const {ladderClimbStep,makeLadder,stepLadderRobot}=loadedLadder();
+ assert.equal(ladderClimbStep(1,1,.05,8,.5),1.025);
+ assert.equal(ladderClimbStep(1,-1,.05,8,3),.85);
+ assert.equal(ladderClimbStep(1,1,.05,8),1.0625);
+ assert.equal(ladderClimbStep(1,1,.05,8,Number.NaN),1.0625);
+ assert.equal(ladderClimbStep(1,1,.05,8,50),1.2);
+ const ladder=makeLadder({height:8});ladder.userData.editorId='ladder-speed-test';
+ const robot={position:{x:0,y:1,z:.44,clone(){return {...this};},copy(p){Object.assign(this,p);}},rotation:{y:Math.PI},userData:{robotClimbSpeed:.5}};
+ assert.equal(stepLadderRobot(robot,[ladder],1,.05),true);
+ const y=robot.position.y;
+ assert.ok(Math.abs(y-1.025)<1e-7);
+ robot.userData.robotClimbSpeed=3;
+ assert.equal(stepLadderRobot(robot,[ladder],1,.05),true);
+ assert.ok(Math.abs(robot.position.y-y-.15)<1e-7);
+ assert.equal(stepLadderRobot(robot,[ladder],-1,.05),true);
+ assert.ok(Math.abs(robot.position.y-y)<1e-7);
+});

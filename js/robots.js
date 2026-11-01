@@ -355,7 +355,7 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     }
     const tune=animationSpeedSettings(data.robotAnimationSpeed);
     if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){/* playOnce owns rate */}
-    else if(mode==='climbLadder')animator?.setPlaybackSpeed(1);
+    else if(mode==='climbLadder')animator?.setPlaybackSpeed(Math.max(.3,Math.min(3.2,(Number(data.robotClimbSpeed)||1.25)/1.25)));
     else if(data.robotPushState&&now-data.robotPushState.at<420&&mode===data.robotPushState.kind)animator?.setPlaybackSpeed(data.robotPushState.rate);
     else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode)){
       const key=mode==='run'?'run':'walk';

@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.134',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.135',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3211,6 +3211,7 @@ def set_scene():
             if 'combat' in o and not valid_robot_combat(o['combat']):return json_error('Invalid robot combat controls')
             if 'animationSpeed' in o and not valid_robot_animation_speed(o['animationSpeed']):return json_error('Invalid robot animation speed')
             if 'turnSpeed' in o and (not isinstance(o['turnSpeed'],(float,int)) or isinstance(o['turnSpeed'],bool) or not math.isfinite(o['turnSpeed']) or not 0<=o['turnSpeed']<=10):return json_error('Invalid robot turn speed')
+            if 'climbSpeed' in o and (not isinstance(o['climbSpeed'],(float,int)) or isinstance(o['climbSpeed'],bool) or not math.isfinite(o['climbSpeed']) or not .2<=o['climbSpeed']<=4):return json_error('Invalid robot climb speed')
             brain=o.get('brain',{})
             if not isinstance(brain,dict) or any((k in ('initiative','initiativeVision') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision') and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch','gender','voiceGender'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8,'gender':12,'voiceGender':12}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
             if brain.get('portrait') and not re.fullmatch(r'[0-9a-f-]{36}',brain['portrait']):return json_error('Invalid portrait reference')
@@ -3266,7 +3267,7 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','portal','curve','text','openings','climbable','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','climbSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','portal','curve','text','openings','climbable','transformLocked') if key in obj}
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')
@@ -3298,6 +3299,7 @@ def patch_scene_object():
         if 'speed' in obj and (not isinstance(obj['speed'],(float,int)) or not math.isfinite(obj['speed']) or not 0<=obj['speed']<=10):return json_error('Invalid robot speed')
         if 'strafeSpeed' in obj and (not isinstance(obj['strafeSpeed'],(float,int)) or not math.isfinite(obj['strafeSpeed']) or not 0<=obj['strafeSpeed']<=10):return json_error('Invalid strafe speed')
         if 'turnSpeed' in obj and (not isinstance(obj['turnSpeed'],(float,int)) or isinstance(obj['turnSpeed'],bool) or not math.isfinite(obj['turnSpeed']) or not 0<=obj['turnSpeed']<=10):return json_error('Invalid turn speed')
+        if 'climbSpeed' in obj and (not isinstance(obj['climbSpeed'],(float,int)) or isinstance(obj['climbSpeed'],bool) or not math.isfinite(obj['climbSpeed']) or not .2<=obj['climbSpeed']<=4):return json_error('Invalid climb speed')
         if 'brain' in obj:
             if obj['kind']!='robot' or not isinstance(obj['brain'],dict):return json_error('Invalid robot brain')
             limits={'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8,'gender':12,'voiceGender':12}

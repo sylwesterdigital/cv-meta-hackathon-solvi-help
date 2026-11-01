@@ -24,7 +24,7 @@ export function cleanStairExtras(raw={}){
  };
 }
 export function projectPath(points,x,z){
- if(!Array.isArray(points)||points.length<2)return null;
+ if(!Array.isArray(points)||points.length<2||!Number.isFinite(x)||!Number.isFinite(z))return null;
  let best=null,total=0;const parts=[];
  for(let i=1;i<points.length;i++){
   const a=points[i-1],b=points[i],dx=b[0]-a[0],dz=b[1]-a[1],length=Math.hypot(dx,dz);if(length<.01)continue;
@@ -36,7 +36,7 @@ export function projectPath(points,x,z){
  return best;
 }
 export function pathAt(points,along){
- if(!Array.isArray(points)||points.length<2)return null;
+ if(!Array.isArray(points)||points.length<2||!Number.isFinite(along))return null;
  let left=along;
  for(let i=1;i<points.length;i++){
   const a=points[i-1],b=points[i],dx=b[0]-a[0],dz=b[1]-a[1],l=Math.hypot(dx,dz);if(l<.01)continue;

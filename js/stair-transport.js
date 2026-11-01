@@ -6,13 +6,8 @@ import {updateLiftPanel} from './office-stairs.js';
 import {liftChime} from './lift-chimes.js';
 import {liftHeightAt,liftMotionFinished,motionSnapshot,liftBaseY,safeLiftMotion} from './lift-sync.js';
 import {canCarryLiftRider} from './lift-rider.js';
-import {conveyorSupport,xrCabinSupport,conveyorPhase,conveyorStep,xrConveyorFoot} from './transport-support.js';
+import {conveyorSupport,xrCabinSupport,conveyorPhase,conveyorStep,xrConveyorFoot,surfaceHeight} from './transport-support.js';
 const vec=new THREE.Vector3();
-function surfaceHeight(segments,along,total){
- if(!segments.length)return 0;
- const index=Math.min(segments.length-1,Math.max(0,Math.floor(along/Math.max(.001,total)*segments.length)));
- return segments[index].top;
-}
 // Moving structures use static collision geometry for stairs/conveyors and bounded
 // surface velocity for carried bodies. The lift has a kinematic moving cabin.
 export function tickStairTransport(editor,dt){
@@ -78,8 +73,8 @@ export function tickStairTransport(editor,dt){
   for(const child of device.children){if(!child.userData.transportMarker)continue;
    const total=projectPath(pts,pts[0]?.[0]||0,pts[0]?.[1]||0)?.total||1;
    const dist=(((child.userData.transportPhase+runtime.phase)%1)+1)%1*total;
-   const at=pathAt(pts,dist);if(!at)continue;
-   child.position.set(at.x,surfaceHeight(segments,dist,total)+.026,at.z);
+   const at=pathAt(pts,dist),top=surfaceHeight(segments,dist,total);if(!at||top===null)continue;
+   child.position.set(at.x,top+.026,at.z);
   }
   if(variant!=='lift'&&transport.enabled===false)continue;
   device.updateMatrixWorld(true);
@@ -144,6 +139,7 @@ export function tickStairTransport(editor,dt){
    const projected=projectPath(pts,local.x,local.z);
    if(!projected||projected.distance>cfg.width/2-.11)continue;
    const top=surfaceHeight(segments,projected.along,projected.total);
+   if(top===null)continue;
    // A mesh below a stair flight is NOT a rider on the treads.
    if(!conveyorSupport(local,top,cfg.width,{jumping:!!item.userData.robotJumpActive}))continue;
    if(item.userData.editorKind==='robot'){
@@ -153,8 +149,10 @@ export function tickStairTransport(editor,dt){
    const nextAlong=Math.max(0,Math.min(projected.total,projected.along+step*speed*(transport.direction===-1?-1:1)));
    const next=pathAt(pts,nextAlong);if(!next)continue;
    const nextTop=surfaceHeight(segments,nextAlong,projected.total);
+   if(nextTop===null)continue;
    const currentWorld=device.localToWorld(new THREE.Vector3(local.x,local.y,local.z));
    const centre=pathAt(pts,projected.along);
+   if(!centre)continue;
    // Keep the foot (or primitive bottom) on the surface as it advances.
    // This also corrects small stale ground offsets after remote scene updates.
    const destination=device.localToWorld(new THREE.Vector3(local.x+next.x-centre.x,nextTop,local.z+next.z-centre.z));
