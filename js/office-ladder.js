@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {wallPresetTexture} from './office-walls.js';
+import {climbSurfaceProximity} from './climbable-surfaces.js';
 
 const clamp=(v,def,min,max)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):def;
 export function sanitiseLadder(raw={}){
@@ -44,13 +45,30 @@ export function rebuildLadder(group,raw){
 }
 export function makeLadder(raw={}){const group=new THREE.Group();group.name='Ladder';rebuildLadder(group,raw);return group;}
 
+// Climbing is activated by the Ladder object kind and the Up/Down input,
+// before the capsule can become stuck on its physical rungs. A ladder can
+// be approached from either face, including after the character controller
+// has stopped horizontal motion against a rung.
 export function ladderProximity(ladder,robot){
- if(ladder?.userData?.editorKind!=='ladder'||!robot)return null;
+ if(ladder?.userData?.editorKind!=='ladder'||!robot?.position)return null;
  ladder.updateMatrixWorld(true);
  const local=ladder.worldToLocal(robot.position.clone());
  const cfg=sanitiseLadder(ladder.userData.ladder);
- if(Math.abs(local.x)>cfg.width*.5+.32||local.z<.05||local.z>.85||local.y<-.25||local.y>cfg.height+.12)return null;
- return {local,cfg};
+ // Work in local metres so moved, rotated and scaled ladders keep a usable
+ // entry zone. Keep acquisition close to the bars, not a room-sized trigger.
+ const side=local.z<0?-1:1;
+ const distance=Math.abs(local.z);
+ const withinWidth=Math.abs(local.x)<=cfg.width*.5+.35;
+ const withinHeight=local.y>=-.4&&local.y<=cfg.height+.18;
+ const withinReach=distance<=1.10;
+ if(!withinWidth||!withinHeight||!withinReach)return null;
+ // At normal approach distance, face the ladder rather than snapping a
+ // passer-by travelling along it. At capsule contact (<=.6 m) also accept
+ // a sideways character whose movement is already blocked by the bars.
+ const relativeYaw=(Number(robot.rotation?.y)||0)-(Number(ladder.rotation?.y)||0);
+ const facingToward=side===1?-Math.cos(relativeYaw):Math.cos(relativeYaw);
+ if(distance>.60&&facingToward<.25)return null;
+ return {local,cfg,side};
 }
 export function ladderClimbStep(y,input,dt,height){
  const direction=Math.sign(Number(input)||0),delta=Math.min(.06,Math.max(0,Number(dt)||0))*1.25*direction;
@@ -60,24 +78,37 @@ export function ladderClimbStep(y,input,dt,height){
 // release a visitor into empty air at the top of an unsupported ladder.
 export function stepLadderRobot(robot,objects,verticalInput,dt,{upperSurface=null}={}){
  let ride=robot?.userData?.robotLadderRide||null;
- let ladder=ride&&objects.find(o=>o.userData.editorId===ride.id&&o.userData.editorKind==='ladder');
+ let ladder=ride&&objects.find(o=>o.userData.editorId===ride.id&&(ride.kind==='surface'?o.userData.climbable:o.userData.editorKind==='ladder'));
  if(!ladder){
   delete robot.userData.robotLadderRide;
   if((robot.userData.robotLadderCooldown||0)>performance.now()||!verticalInput)return false;
   for(const candidate of objects){if(candidate.userData.editorKind!=='ladder')continue;
    const near=ladderProximity(candidate,robot);
    if(near&&(verticalInput>0||near.local.y>.3&&verticalInput<0)){
-    ladder=candidate;ride={id:candidate.userData.editorId,y:Math.max(0,near.local.y)};break;
+    ladder=candidate;ride={id:candidate.userData.editorId,y:Math.max(0,near.local.y),side:near.side,
+     x:Math.max(-Math.max(0,near.cfg.width/2-.37),Math.min(Math.max(0,near.cfg.width/2-.37),near.local.x))};break;
+   }
+  }
+  if(!ladder){
+   // Other objects are climbable only when opted in by their editor. A
+   // forward raycast must touch an actual near-vertical surface mesh.
+   for(const candidate of objects){
+    const mount=climbSurfaceProximity(candidate,robot);
+    if(!mount||!(verticalInput>0||verticalInput<0&&mount.y>mount.bottomY+.3))continue;
+    ladder=candidate;ride=mount;break;
    }
   }
   if(!ladder)return false;
  }
- const cfg=sanitiseLadder(ladder.userData.ladder);
- const previous=ride.y;
- ride.y=ladderClimbStep(ride.y,verticalInput,dt,cfg.height);
- // Stick to a consistent front face and keep feet clear of the rungs.
- const target=ladder.localToWorld(new THREE.Vector3(0,ride.y,.43));
- if(ride.y>=cfg.height-.02&&verticalInput>0&&upperSurface?.(ladder,robot,target)){
+ const surface=ride.kind==='surface';
+ const cfg=surface?null:sanitiseLadder(ladder.userData.ladder);
+ const side=ride.side===-1?-1:1;
+ const maxY=surface?ride.topY:cfg.height;
+ const minY=surface?ride.bottomY:0;
+ ride.y=ladderClimbStep(ride.y-minY,verticalInput,dt,maxY-minY)+minY;
+ // Stay offset from the real contact surface, or the ladder rungs.
+ const target=ladder.localToWorld(new THREE.Vector3(Number(ride.x)||0,ride.y,surface?Number(ride.z)||0:.44*side));
+ if(ride.y>=maxY-.02&&verticalInput>0&&upperSurface?.(ladder,robot,target)){
   delete robot.userData.robotLadderRide;
   robot.userData.robotLadderCooldown=performance.now()+700;
   robot.userData.robotLadderDismount=true;
@@ -85,10 +116,10 @@ export function stepLadderRobot(robot,objects,verticalInput,dt,{upperSurface=nul
   return true;
  }
  robot.position.copy(target);
- robot.rotation.y=ladder.rotation.y+Math.PI;
+ robot.rotation.y=surface?ride.yaw:ladder.rotation.y+(side===1?Math.PI:0);
  robot.userData.robotLadderRide=ride;
  robot.userData.robotLadderSpeed=verticalInput;
- robot.userData.robotMode=verticalInput&&!(ride.y>=cfg.height-.02&&verticalInput>0)&&!(ride.y<=0&&verticalInput<0)&&robot.userData.robotAnimator?.actions?.has('climbLadder')?'climbLadder':'idle';
+ robot.userData.robotMode=verticalInput&&!(ride.y>=maxY-.02&&verticalInput>0)&&!(ride.y<=minY&&verticalInput<0)&&robot.userData.robotAnimator?.actions?.has('climbLadder')?'climbLadder':'idle';
  robot.userData.robotVelocity=0;robot.userData.robotLateral=0;
  return true;
 }

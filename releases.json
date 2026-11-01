@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.132",
+  "currentVersion": "0.2.134",
   "releases": [
+    {
+      "version": "0.2.134",
+      "publishedAt": "2026-11-01T04:14:02Z",
+      "changes": [
+        "Prefer the authored Climbing Up Wall animation for every avatar climbing a ladder; keep Climbing Ladder and Climb as fallbacks when missing.",
+        "Add a compact opt-in Climbable checkbox on walls, models (including trees), and supported procedural objects, saved in scenes and preserved on duplication.",
+        "Manual Up/Down climbing now attaches to the actual nearby front-facing vertical surface mesh; Space detaches into Rapier gravity and top dismount requires physical support.",
+        "Include multi-client climb state, strict backend bool validation, browser cache mapping, and six executable surface-climb regression tests."
+      ]
+    },
     {
       "version": "0.2.132",
       "publishedAt": "2026-11-01T03:49:48Z",
@@ -293,18 +303,6 @@
         "Replace the large surface popup and unnecessary Confirm button with a passive compact instruction hint. Drag directly, release to preview, press Enter to keep, or Escape/click elsewhere to discard.",
         "Show a filled translucent rectangle and bright border during opening and media drags; show the real cut-through cube immediately on release before saving, with restoration on cancel.",
         "Ensure media frame stays visible after release until Enter opens realm chat attachments; add interaction tests for preview, commit and unsaved cancellation."
-      ]
-    },
-    {
-      "version": "0.2.100",
-      "publishedAt": "2026-10-31T04:48:45Z",
-      "changes": [
-        "Replace click-by-click curve placement with continuous pointer-drag drawing projected onto a locked screen-facing, XZ floor, XY, or YZ plane. Orbit is disabled only while drawing.",
-        "Add Fill end caps checkbox to extruded/beveled curves; persist and validate capEnds for saved and imported curves.",
-        "Repair O cube openings: true through-hole geometry previews immediately after the drag, Enter / Confirm persists the cutout and exact static trimesh; Escape or canvas click restores the original mesh without saving.",
-        "Repair U face media mounting: confirm frame rectangle before choosing authenticated realm chat media, and persist the mount with the first object save rather than in a later racing update.",
-        "Add seven tiny deterministic procedural textures to World Settings floor: concrete, soil, tarmac, sand, tiles, gradient tiles, and random tiles. Respect floor colour and room-scoped environment save.",
-        "Add regression tests for stroke projection and sampling, open curve caps, floor style normalization and geometry preview/media persistence."
       ]
     }
   ]

@@ -397,10 +397,31 @@ export class ScenePhysics{
   ladder.updateMatrixWorld(true);
   const cfg=ladder.userData.ladder;
   const capsule=this.colliders.get(robot.userData.editorId);
-  // Test the floor BEHIND the upper rung, not the empty space in front.
-  for(const z of [-.5,-.82]){
+  // Test the platform on the opposite side from the climber. The ladder
+  // can be entered from either face, including when rotated in the scene.
+  const ride=robot.userData.robotLadderRide;
+  if(ride?.kind==='surface'){
+   // A wall/tree top is walkable only if Rapier actually finds support.
+   // Probe slightly inside the touched surface, not the empty air in front.
+   const topPoint=ladder.localToWorld(new THREE.Vector3(Number(ride.x)||0,ride.topY+.6,Number(ride.z)||0));
+   const inward=new THREE.Vector3(Number(ride.normal?.x)||0,0,Number(ride.normal?.z)||0);
+   if(inward.lengthSq()<.1)return false;
+   topPoint.addScaledVector(inward,-.49);
+   const ray=new this.runtime.Ray({x:topPoint.x,y:topPoint.y,z:topPoint.z},{x:0,y:-1,z:0});
+   const hit=this.world.castRay(ray,1.45,true,undefined,undefined,capsule);
+   if(!hit)return false;
+   const floorY=topPoint.y-hit.toi;
+   const expected=ladder.localToWorld(new THREE.Vector3(0,ride.topY,0)).y;
+   if(Math.abs(floorY-expected)>.35)return false;
+   robot.position.set(topPoint.x,floorY+.035,topPoint.z);
+   robot.userData.robotMode='idle';
+   return true;
+  }
+  const exitSide=ride?.side===-1?1:-1;
+  const x=Number(ride?.x)||0;
+  for(const z of [.5,.82].map(distance=>exitSide*distance)){
    const cfgHeight=Number(cfg?.height)||3;
-   const local=new THREE.Vector3(0,cfgHeight+.55,z);
+   const local=new THREE.Vector3(x,cfgHeight+.55,z);
    const top=ladder.localToWorld(local);
    const ray=new this.runtime.Ray({x:top.x,y:top.y,z:top.z},{x:0,y:-1,z:0});
    const hit=this.world.castRay(ray,1.4,true,undefined,undefined,capsule);

@@ -17,7 +17,7 @@ function loadedLadder(){
  class Mesh{constructor(geometry,material){this.geometry=geometry;this.material=material;this.position=new Vector3();this.userData={};}}
  class MeshStandardMaterial{constructor(config){this.config=config;}dispose(){}}
  const THREE={Vector3,Group,BoxGeometry,Mesh,MeshStandardMaterial};
- return new Function('THREE','wallPresetTexture',source+'\nreturn {sanitiseLadder,ladderRungHeights,makeLadder,rebuildLadder,ladderProximity,ladderClimbStep,stepLadderRobot,releaseLadder};')(THREE,()=>null);
+ return new Function('THREE','wallPresetTexture','climbSurfaceProximity',source+'\nreturn {sanitiseLadder,ladderRungHeights,makeLadder,rebuildLadder,ladderProximity,ladderClimbStep,stepLadderRobot,releaseLadder};')(THREE,()=>null,()=>null);
 }
 test('ladder object includes two rails, adjustable rungs and retained material',()=>{
  const {makeLadder,rebuildLadder,ladderRungHeights}=loadedLadder();
@@ -97,5 +97,67 @@ test('ladder interface saves, restores, validates and only uses proper +/- contr
  assert.match(physics,/landAtLadderTop\(/);
  assert.match(backend,/def valid_office_ladder/);
  assert.match(backend,/not valid_office_ladder\(obj\.get\('ladder'\)\)/);
- assert.match(anim,/climbLadder:\['climbing ladder','climb ladder','climbing up wall'/);
+ assert.match(anim,/climbLadder:\['climbing up wall','climb up wall','climbing wall'/);
+});
+
+test('Arrow Up recognises an approaching ladder before the capsule contacts its rungs',()=>{
+ const {makeLadder,ladderProximity,stepLadderRobot}=loadedLadder();
+ const ladder=makeLadder();ladder.userData.editorId='ladder-approach';
+ const robot={position:{x:0,y:0,z:1,clone(){return {...this};},copy(p){Object.assign(this,p);}},rotation:{y:Math.PI},userData:{}};
+ assert.equal(ladderProximity(ladder,robot)?.side,1);
+ assert.equal(stepLadderRobot(robot,[ladder],1,1/60),true);
+ assert.equal(robot.userData.robotLadderRide?.id,'ladder-approach');
+ assert.equal(robot.userData.robotLadderRide?.side,1);
+ assert.ok(Math.abs(robot.position.z-.44)<1e-8);
+});
+
+test('back-face approach climbs instead of being rejected by a one-sided trigger',()=>{
+ const {makeLadder,stepLadderRobot}=loadedLadder();
+ const ladder=makeLadder();ladder.userData.editorId='ladder-back';
+ const robot={position:{x:0,y:0,z:-.95,clone(){return {...this};},copy(p){Object.assign(this,p);}},rotation:{y:0},userData:{}};
+ assert.equal(stepLadderRobot(robot,[ladder],1,1/60),true);
+ assert.equal(robot.userData.robotLadderRide.side,-1);
+ assert.ok(Math.abs(robot.position.z+.44)<1e-8);
+ assert.equal(robot.rotation.y,0);
+});
+
+test('a collision-stopped character can attach from either face without needing to penetrate the ladder',()=>{
+ const {makeLadder,stepLadderRobot}=loadedLadder();
+ const ladder=makeLadder();ladder.userData.editorId='ladder-contact';
+ const robot={position:{x:0,y:0,z:-.36,clone(){return {...this};},copy(p){Object.assign(this,p);}},rotation:{y:1.4},userData:{}};
+ assert.equal(stepLadderRobot(robot,[ladder],1,1/60),true);
+ assert.equal(robot.userData.robotLadderRide.side,-1);
+});
+
+test('ladder entry retains safe left/right location along a wide ladder',()=>{
+ const {makeLadder,stepLadderRobot}=loadedLadder();
+ const ladder=makeLadder({width:3});ladder.userData.editorId='ladder-wide';
+ const robot={position:{x:.8,y:0,z:.75,clone(){return {...this};},copy(p){Object.assign(this,p);}},rotation:{y:Math.PI},userData:{}};
+ assert.equal(stepLadderRobot(robot,[ladder],1,1/60),true);
+ assert.ok(Math.abs(robot.position.x-.8)<1e-8);
+ assert.ok(Math.abs(robot.userData.robotLadderRide.x-.8)<1e-8);
+});
+
+test('a distant or sideways passer-by is not pulled onto a ladder',()=>{
+ const {makeLadder,stepLadderRobot}=loadedLadder();
+ const ladder=makeLadder();ladder.userData.editorId='ladder-no-snap';
+ const robot={position:{x:0,y:0,z:1.6,clone(){return {...this};},copy(p){Object.assign(this,p);}},rotation:{y:Math.PI},userData:{}};
+ assert.equal(stepLadderRobot(robot,[ladder],1,1/60),false);
+ robot.position.z=1.0;robot.rotation.y=Math.PI/2;
+ assert.equal(stepLadderRobot(robot,[ladder],1,1/60),false);
+ robot.rotation.y=Math.PI;robot.position.x=2;
+ assert.equal(stepLadderRobot(robot,[ladder],1,1/60),false);
+});
+
+test('top dismount detects a supporting platform on the opposite face from the entry',()=>{
+ const src=readFileSync(new URL('../js/scene-physics.js',import.meta.url),'utf8');
+ assert.match(src,/const exitSide=ride\?\.side===-1\?1:-1/);
+ assert.match(src,/new THREE\.Vector3\(x,cfgHeight\+\.55,z\)/);
+ assert.match(src,/object\.userData\.robotLadderRide/);
+});
+
+
+test('multiplayer position corrections cannot pull an attached avatar off a ladder',()=>{
+ const editor=readFileSync(new URL('../js/editor.js',import.meta.url),'utf8');
+ assert.match(editor,/if\(obj\.userData\.robotLadderRide\)\{this\.remoteCorrections\.delete\(id\);continue;\}/);
 });

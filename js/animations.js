@@ -12,7 +12,7 @@ export const MOTION_ALIASES=Object.freeze({
   landing:['landing','jump landing','falling to landing','fall to landing'],
   hardLanding:['hard landing','landing hard','falling flat impact','fall flat impact','falling back death'],
   push:['pushing','push'],
-  climbLadder:['climbing ladder','climb ladder','climbing up wall','climbing wall','climbing','climb'],
+  climbLadder:['climbing up wall','climb up wall','climbing wall','climbing ladder','climb ladder','climbing','climb'],
   falling:['falling','fall','falling idle'],
   fallingIdle:['falling idle','fall idle','falling loop'],
   fallingLanding:['falling to landing','fall to landing','landing','land','falling idle'],

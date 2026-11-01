@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.132',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.134',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3190,6 +3190,7 @@ def set_scene():
         if 'curve' in o and (o['kind']!='curve' or not valid_curve_geometry(o.get('curve'))):return json_error('Invalid curve geometry')
         if 'text' in o and (o['kind']!='text' or not valid_text_geometry(o['text'])):return json_error('Invalid text geometry')
         if 'openings' in o and (o['kind']!='cube' or not valid_cube_openings(o['openings'])):return json_error('Invalid cube openings')
+        if 'climbable' in o and (o['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','model','wall') or not isinstance(o['climbable'],bool)):return json_error('Invalid climbable flag')
         if o['kind']=='wall' and not valid_office_wall(o.get('wall')):return json_error('Invalid office wall')
         if o['kind']=='stairs' and not valid_office_stairs(o.get('stairs')):return json_error('Invalid office stairs')
         if o['kind']=='ladder' and not valid_office_ladder(o.get('ladder')):return json_error('Invalid ladder')
@@ -3265,12 +3266,13 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','portal','curve','text','openings','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','portal','curve','text','openings','climbable','transformLocked') if key in obj}
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')
         if 'text' in obj and (obj['kind']!='text' or not valid_text_geometry(obj['text'])):return json_error('Invalid text geometry')
         if 'openings' in obj and (obj['kind']!='cube' or not valid_cube_openings(obj['openings'])):return json_error('Invalid cube openings')
+        if 'climbable' in obj and (obj['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','model','wall') or not isinstance(obj['climbable'],bool)):return json_error('Invalid climbable flag')
         if obj['kind']=='wall' and not valid_office_wall(obj.get('wall')):return json_error('Invalid office wall')
         if obj['kind']=='stairs' and not valid_office_stairs(obj.get('stairs')):return json_error('Invalid office stairs')
         if obj['kind']=='ladder' and not valid_office_ladder(obj.get('ladder')):return json_error('Invalid ladder')
