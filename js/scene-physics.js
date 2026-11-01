@@ -1,4 +1,4 @@
-import {landingReactionFor,easedStepOffset} from './animation-tuning.js';
+import {landingReactionFor,easedStepOffset,isLevelJumpLanding,jumpResumeMode} from './animation-tuning.js';
 import * as THREE from 'three';
 import {physicsOptions} from './physics-options.js';
 import {stairGeometryKey} from './stair-extensions.js';
@@ -429,10 +429,16 @@ export class ScenePhysics{
   }else if(state.airStartAt){
    const fallHeight=Math.max(0,(state.airStartY??p.y)-resolved.y);
    if((object.userData.robotFallActive||state.jumpStarted)&&now-state.airStartAt>120){
-    // Only a genuinely extreme drop with authored Falling Flat Impact AND
-    // Stand Up clips runs the full two-stage recovery. Ordinary Hard Landing
-    // already includes standing up and must never chain an extra Stand Up.
-    object.userData.robotReaction=landingReactionFor(fallHeight,object.userData.robotAnimator?.clipNames||[]);
+    // A level jump resumes the existing gait immediately; a real drop still
+    // receives Landing, Hard Landing or extreme impact/recovery as applicable.
+    // The rule is shared by every avatar and does not depend on its GLB clips.
+    if(isLevelJumpLanding({jumpStarted:state.jumpStarted,fallHeight,fallActive:object.userData.robotFallActive})){
+     object.userData.robotReaction=null;
+    }else{
+     // Only genuinely extreme falls with authored impact AND stand-up clips
+     // use two recovery animations. Hard Landing already includes standing up.
+     object.userData.robotReaction=landingReactionFor(fallHeight,object.userData.robotAnimator?.clipNames||[]);
+    }
     object.userData.robotPlaying=null;
    }
    object.userData.robotFallActive=false;
@@ -456,13 +462,18 @@ export class ScenePhysics{
   if(state.jumpStarted&&state.wasAirborne&&state.grounded&&!jump&&state.verticalSpeed<=.05){
     state.jumpStarted=false;state.wasAirborne=false;
     object.userData.robotJumpActive=false;
-    object.userData.robotMode='idle';object.userData.robotArrived=true;
+    // Do not insert an Idle frame between a running jump and resumed running.
+    object.userData.robotMode=jumpResumeMode(object.userData);
+    delete object.userData.robotJumpReturnMode;
+    object.userData.robotArrived=true;
   }
   // Low ceilings may prevent ascent. Still retain the jump pose through its
   // minimum launch interval, instead of dropping to walk after one frame.
   if(state.jumpStarted&&!state.wasAirborne&&state.grounded&&!jump&&
      performance.now()-(state.jumpStartedAt||0)>500){
     state.jumpStarted=false;object.userData.robotJumpActive=false;
+    object.userData.robotMode=jumpResumeMode(object.userData);
+    delete object.userData.robotJumpReturnMode;
   }
   // Publish short owner-controlled follow-up poses for impacted idle robots.
   // The peer interpolates these, rather than periodically snapping to saved positions.

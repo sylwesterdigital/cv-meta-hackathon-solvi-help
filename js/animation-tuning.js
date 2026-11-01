@@ -25,6 +25,22 @@ export function landingAnimationKind(fallHeight){
 // authored clip names, not aliased fallback actions: "hard landing" might itself
 // resolve to Falling Flat Impact, but must never trigger an extra Stand Up.
 export const EXTREME_FALL_HEIGHT=8;
+// A deliberate jump that lands back at almost the same elevation is a
+// continuation of locomotion, NOT a separate Landing clip. This is independent
+// of the avatar and of which Mixamo animations happen to exist in its GLB.
+export const LEVEL_JUMP_LANDING_TOLERANCE=.35;
+export function isLevelJumpLanding({jumpStarted=false,fallHeight=0,fallActive=false}={}){
+ return Boolean(jumpStarted)&&!fallActive&&Number.isFinite(Number(fallHeight))&&
+  Math.max(0,Number(fallHeight))<=LEVEL_JUMP_LANDING_TOLERANCE;
+}
+export function jumpResumeMode(data={}){
+ const velocity=Number(data.robotVelocity)||0,lateral=Number(data.robotLateral)||0;
+ if(velocity<-.35)return 'walkBackward';
+ if(velocity>.35)return data.robotJumpReturnMode==='run'&&velocity>1.4?'run':'walk';
+ if(lateral>.35)return 'strafeLeft';
+ if(lateral<-.35)return 'strafeRight';
+ return 'idle';
+}
 export function landingReactionFor(fallHeight,clipNames=[]){
  const height=Math.max(0,Number(fallHeight)||0);
  const names=clipNames.map(name=>String(name||'').split('__')[0].trim().toLowerCase().replace(/[\s_-]+/g,' '));

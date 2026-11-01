@@ -6,7 +6,7 @@ import {MotionController,computeMode} from './animations.js';
 import {pathBlocked} from './robot-pathfinding.js';
 import {footfallRate,combatPhase} from './robot-combat.js';
 import {permittedRobotLocomotion} from './robot-contact.js';
-import {animationSpeedSettings,jumpAnimationKind,landingClipFor,gaitCadence,continuousGaitMode} from './animation-tuning.js';
+import {animationSpeedSettings,jumpAnimationKind,landingClipFor,gaitCadence,continuousGaitMode,jumpResumeMode} from './animation-tuning.js';
 
 const loader=new GLTFLoader();
 const draco=new DRACOLoader();draco.setDecoderPath('./vendor/three/draco/');loader.setDRACOLoader(draco);
@@ -75,6 +75,10 @@ export function robotAction(robot,mode){
   const previouslyMoving=!inPlaceJump&&(Math.abs(Number(robot.userData.robotVelocity)||0)>.35||
     Math.abs(Number(robot.userData.robotActualSpeed)||0)>.35||
     Boolean(robot.userData.robotGoal)||['walk','run','strafeLeft','strafeRight'].includes(robot.userData.robotMode));
+  if(mode==='jump'){
+    const prior=robot.userData.robotMode;
+    robot.userData.robotJumpReturnMode=prior==='run'?'run':previouslyMoving?'walk':'idle';
+  }
   robot.userData.robotMode=mode;interruptRobotMission(robot);
   if(mode==='walk'||mode==='run'){
     const forward=new THREE.Vector3(0,0,mode==='run'?4:2.3).applyQuaternion(robot.quaternion);
@@ -112,7 +116,13 @@ export function tickRobots(items,dt,onMove=()=>{}){
     }
     if(mode==='jump'&&robot.userData.jumpVel!==undefined&&!robot.userData.physicsCharacterActive){
       robot.position.y+=robot.userData.jumpVel*dt;robot.userData.jumpVel-=12.5*dt;
-      if(robot.position.y<=(robot.userData.groundY??0)){robot.position.y=robot.userData.groundY??0;delete robot.userData.jumpVel;robot.userData.robotJumpActive=false;robot.userData.robotReaction={clip:'landing',duration:.52,elapsed:0};robot.userData.robotPlaying=null;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;
+      if(robot.position.y<=(robot.userData.groundY??0)){
+       robot.position.y=robot.userData.groundY??0;delete robot.userData.jumpVel;
+       robot.userData.robotJumpActive=false;robot.userData.robotReaction=null;
+       robot.userData.robotPlaying=null;
+       mode=jumpResumeMode(robot.userData);robot.userData.robotMode=mode;
+       delete robot.userData.robotJumpReturnMode;
+       robot.userData.robotArrived=true;
         const mission=robot.userData.robotMission;
         if(mission?.kind==='jump'){robot.userData.robotMission=null;
           window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,

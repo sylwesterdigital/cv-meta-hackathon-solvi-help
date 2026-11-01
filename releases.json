@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.126",
+  "currentVersion": "0.2.127",
   "releases": [
+    {
+      "version": "0.2.127",
+      "publishedAt": "2026-11-01T01:36:54Z",
+      "changes": [
+        "All robot and avatar types now resume their prior active gait directly after a deliberate near-level jump (<=0.35m net elevation change), without additional Landing or forced Idle.",
+        "Rapier and non-Rapier jump completion paths retain per-robot run/walk/backward/strafe intent; genuine falls preserve Landing, Hard Landing, and extreme Falling Flat Impact then Stand Up.",
+        "Five new level-jump regression tests; existing 40-floor lifts, portals and network transport retained."
+      ]
+    },
     {
       "version": "0.2.126",
       "publishedAt": "2026-11-01T00:42:15Z",
@@ -302,15 +311,6 @@
         "Add server-side POST /api/admin/logout to revoke the temporary administrator token without signing out the ordinary profile; keep admin tokens in tab memory only and expire after the server window.",
         "Refresh editor and gallery permission controls when administrator access changes, while maintaining all server-side protection and permanent-delete confirmations.",
         "Include extensive LLM_HANDOVER.md covering SOLVI architecture, operations, history, deployment/test failures, security, UX/physics priorities and future context transfer."
-      ]
-    },
-    {
-      "version": "0.2.94",
-      "publishedAt": "2026-10-31T02:06:22Z",
-      "changes": [
-        "Fix Flask integration test after legitimate avatar-deletion scene revision increments; isolate realm revision assertions.",
-        "Keep server-side avatar fallback migrations and cross-realm revision updates without resetting saved history.",
-        "Preserve permanent avatar deletion, realm cloning, complete archive imports, and all v0.2.93 features."
       ]
     }
   ]
