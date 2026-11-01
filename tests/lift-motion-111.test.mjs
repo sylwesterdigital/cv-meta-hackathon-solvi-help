@@ -56,10 +56,11 @@ test('Robot ownership for persistence is unchanged while lift spectators can ren
 });
 test('Robot portrait selector is draggable and scene selection updates active robot',()=>{
  const html=source('index.html'),editor=source('js/editor.js'),styles=source('styles.css');
- assert.match(html,/id="controlSwitcherDrag"/);
+ assert.doesNotMatch(html,/id="controlSwitcherDrag"/);
+ assert.match(html,/id="robotFacesSmaller"/);assert.match(html,/id="robotFacesLarger"/);
  assert.match(editor,/attachControlSwitcherDrag\(byId\('controlSwitcher'\)/);
  assert.match(editor,/if\(obj\?\.userData.editorKind==='robot'&&this.canEdit\(obj\)\)\{this.controlledRobotId=obj.userData.editorId/);
- assert.match(styles,/#controlSwitcher \.robot-face-avatar\{width:50px!important/);
+ assert.match(styles,/#controlSwitcher \.robot-face-avatar\{width:var\(--robot-face-size/);
  assert.deepEqual(clampSwitcherPosition(-100,1000,200,100,900,700),{x:4,y:596});
 });
 

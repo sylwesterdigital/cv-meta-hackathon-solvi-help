@@ -16,6 +16,7 @@ import {makeOfficeStairs,rebuildOfficeStairs,updateLiftPanel,updateConveyorContr
 import {tickStairTransport,startLift,stopLift} from './stair-transport.js';
 import {liftHeightAt,liftBaseY,legacyLiftBaseY,safeLiftMotion} from './lift-sync.js';
 import {attachControlSwitcherDrag} from './control-switcher-drag.js';
+import {isEditMode} from './edit-mode.js';
 import {liftButtonRequest} from './lift-panel-state.js';
 import {stairGeometryKey} from './stair-extensions.js';
 import {makePortal,rebuildPortal} from './portal-geometry.js';
@@ -123,7 +124,12 @@ export class SceneEditor{
   window.addEventListener('solvi:robot-model-ready',e=>{if(this.selected?.userData.editorId===e.detail.id)this.updateInspector();});
   this.curveDrawing=null;this.curvePreview=null;this.faceDrawing=null;this.facePreview=null;this.mediaPickerURLs=[];
   this.wallDrawing=null;this.wallPreview=null;this.wallEditTarget=null;this.wallEditOriginal=null;this.wallTextureMediaId="";this.wallSessionHistory=new EditHistory(120);this.wallStateLast=null;this.wallRestoring=false;this.wallPreviewCustom=null;this.wallPreviewTextureId='';this.wallPreviewTextureReq=0;
-  this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();this.refreshList();this.avatarGallery=setupAvatarGallery(this);this.assetGallery=setupAssetGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.robotActionSeq=0;this.lastRobotCombat=0;this.remoteActionSequences=new Map();this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
+  this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();
+  window.addEventListener('solvi:edit-mode-changed',e=>{
+   if(!e.detail?.enabled){this.transform.detach();this.world.editorGizmoPointer=false;this.world.editorDragging=false;this.endWallDrawing?.();}
+   else if(isEditMode()&&this.selected&&this.canTransform(this.selected)&&this.selected.userData.editorKind!=='robot')this.transform.attach(this.selected);
+   this.updateInspector();
+  });this.refreshList();this.avatarGallery=setupAvatarGallery(this);this.assetGallery=setupAssetGallery(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.robotActionSeq=0;this.lastRobotCombat=0;this.remoteActionSequences=new Map();this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
   window.addEventListener('solvi:robot-task-update',event=>{const detail=event.detail||{},id=detail.robotId;const robot=this.items.find(o=>o.userData.editorId===id);
     if(robot){const audit=missionMovementEvidence(robot.userData.robotTelemetry,robot,robot.userData.robotDebugRoute,detail.status);
       if(audit){detail.routeTelemetry=audit;if(shouldRejectClaimedArrival(audit,detail.status))detail.status='failed';}
@@ -258,7 +264,18 @@ export class SceneEditor{
   const strafe=byId('robotStrafeSpeed');strafe.oninput=()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotStrafeSpeed=Number(strafe.value);byId('robotStrafeLabel').textContent=Number(strafe.value).toFixed(1)+'×';this.queueSave(this.selected);};
   const turn=byId('robotTurnSpeed');turn.addEventListener('input',()=>{if(!this.selected||!this.canEdit(this.selected))return;this.selected.userData.robotTurnSpeed=Number(turn.value);byId('robotTurnLabel').textContent=Number(turn.value).toFixed(2)+'×';this.queueSave(this.selected);});
   const modeButton=byId('controlModeButton'),robotSelect=byId('controlledRobotSelect'),robotFaces=byId('controlledRobotFaces');
-  attachControlSwitcherDrag(byId('controlSwitcher'),byId('controlSwitcherDrag'));
+  attachControlSwitcherDrag(byId('controlSwitcher'));
+  const switcher=byId('controlSwitcher');
+  const faceSizeKey='solvi-robot-face-size-v1';
+  let faceSize=50;
+  try{faceSize=Math.max(32,Math.min(84,Number(localStorage.getItem(faceSizeKey))||50));}catch{}
+  const setFaceSize=(size)=>{faceSize=Math.max(32,Math.min(84,size));switcher.style.setProperty('--robot-face-size',faceSize+'px');
+   byId('robotFacesSmaller').disabled=faceSize<=32;byId('robotFacesLarger').disabled=faceSize>=84;
+   try{localStorage.setItem(faceSizeKey,String(faceSize));}catch{}
+  };
+  byId('robotFacesSmaller').onclick=()=>setFaceSize(faceSize-6);
+  byId('robotFacesLarger').onclick=()=>setFaceSize(faceSize+6);
+  setFaceSize(faceSize);
   this.robotPortraitCache=new Map();
   this.controlledRobot=()=>{
    const robot=this.items.find(o=>o.userData.editorId===this.controlledRobotId&&o.userData.editorKind==='robot');
@@ -674,7 +691,7 @@ export class SceneEditor{
   if(this.wallPreview){this.world.scene.remove(this.wallPreview);this.disposeObject(this.wallPreview);this.wallPreview=null;}
   if(byId('wallPanel'))byId('wallPanel').hidden=true;
   this.world.controls.enabled=true;
-  if(this.selected&&this.canTransform(this.selected)&&this.selected.userData.editorKind!=='robot')this.transform.attach(this.selected);
+  if(isEditMode()&&this.selected&&this.canTransform(this.selected)&&this.selected.userData.editorKind!=='robot')this.transform.attach(this.selected);
  }
  groundPoint(event){
   const canvas=this.world.renderer.domElement,rect=canvas.getBoundingClientRect();
@@ -951,6 +968,7 @@ export class SceneEditor{
   window.addEventListener('keydown',e=>{
    if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||document.activeElement?.isContentEditable)return;
    const cmd=e.metaKey||e.ctrlKey;
+   if(!isEditMode()&&(cmd||e.shiftKey||['KeyG','KeyR','KeyS','KeyX','KeyO','KeyU'].includes(e.code)||e.key==='Delete'||e.key==='Backspace'))return;
    if(cmd&&e.code==='KeyZ'){e.preventDefault();e.shiftKey?this.redo():this.undo();return;}
    if(cmd&&e.code==='KeyY'){e.preventDefault();this.redo();return;}
    if(e.metaKey||e.ctrlKey||e.altKey)return;
@@ -968,7 +986,7 @@ export class SceneEditor{
   window.addEventListener('keyup',e=>{this.robotKeys.delete(e.code);});
   window.addEventListener('blur',()=>{this.robotKeys.clear();this.walkHeldSince=null;this.broadcastEdit(false);});
  }
- canTransform(obj){return mayTransform(obj,this.canEdit(obj));}
+ canTransform(obj){return isEditMode()&&mayTransform(obj,this.canEdit(obj));}
  canEdit(obj){if(!obj)return false;const policy=window.solviRoomPolicy||{objects:'open',robots:'open'};const type=obj.userData.editorKind==='robot'?'robots':'objects';if(policy[type]!=='owned')return true;if(window.solviIsAdmin?.())return true;const uid=window.solviAPI?.auth()?.profile?.id;return !obj.userData.ownerId||obj.userData.ownerId===uid;}
  duplicate(){
   if(!this.selected)return;if(!this.canEdit(this.selected))return this.toast('Owner only');const source=this.selected,entry=this.snapshot(source);if(!entry)return;
@@ -1009,14 +1027,14 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(obj?.userData.editorKind==='robot'&&this.canEdit(obj)){this.controlledRobotId=obj.userData.editorId;this.controlMode='robot';}
   if(obj?.userData.editorKind==='robot')for(const key of ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'])this.world.keys.delete(key);
   // Robots are controlled with arrows, not a permanent transform gizmo.
-  if(this.canTransform(obj)&&obj.userData.editorKind!=='robot')this.transform.attach(obj);
+  if(isEditMode()&&this.canTransform(obj)&&obj.userData.editorKind!=='robot')this.transform.attach(obj);
   else{this.transform.detach();if(!this.canEdit(obj))this.toast('Read-only object · owned by another user');}
   this.updateInspector();this.refreshList();this.updateRobotDebugStatus();
-  if(['wall','stairs'].includes(obj?.userData.editorKind)&&!this.wallDrawing&&!this.skipNextWallPanel)this.openWallPanel(obj);else if(this.wallEditTarget)this.endWallDrawing();
+  if(isEditMode()&&['wall','stairs'].includes(obj?.userData.editorKind)&&!this.wallDrawing&&!this.skipNextWallPanel)this.openWallPanel(obj);else if(this.wallEditTarget)this.endWallDrawing();
   window.dispatchEvent(new CustomEvent('solvi:properties-robot-selected',{detail:{robotId:obj?.userData.editorKind==='robot'?obj.userData.editorId:null}}));
   // Selection must never move the camera; numpad presets and zoom remain explicit.
-  if(obj)this.broadcastEdit(true);}
- updateInspector(){const obj=this.selected;byId('objectInspector').hidden=!obj;byId('inspectorValueSlider').hidden=true;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
+  if(obj&&isEditMode())this.broadcastEdit(true);}
+ updateInspector(){const obj=this.selected;if(!isEditMode()){byId('objectInspector').hidden=true;byId('propertiesPanel').hidden=true;byId('inspectorValueSlider').hidden=true;return;}byId('objectInspector').hidden=!obj;byId('inspectorValueSlider').hidden=true;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
   this.syncTransformLockControls(obj);
   this.renderPrimitiveControls(obj);this.renderCurveControls(obj);this.renderTextGeometryControls(obj);this.renderPortalControls(obj);
   byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();this.updateCombatPhysicsHint();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;this.syncPhysicsSurface?.();byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';byId('mediaObjectControls').hidden=obj.userData.editorKind!=='media';if(obj.userData.editorKind==='robot'){byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;}
@@ -1063,7 +1081,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   const locked=!isTransformLocked(obj);
   obj.userData.transformLocked=locked;
   if(locked&&this.transform.object===obj){this.transform.detach();this.world.editorGizmoPointer=false;this.world.editorDragging=false;}
-  if(obj===this.selected){this.syncTransformLockControls(obj);if(!locked&&obj.userData.editorKind!=='robot')this.transform.attach(obj);}
+  if(obj===this.selected){this.syncTransformLockControls(obj);if(isEditMode()&&!locked&&obj.userData.editorKind!=='robot')this.transform.attach(obj);}
   this.queueSave(obj);this.refreshList();this.toast(locked?'Transform locked · '+obj.name:'Transform unlocked · '+obj.name);
  }
  updateCombatPhysicsHint(){
@@ -1252,7 +1270,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   }
   if(this.selected===obj){
    if(isTransformLocked(obj)&&this.transform.object===obj)this.transform.detach();
-   if(!isTransformLocked(obj)&&this.canTransform(obj)&&obj.userData.editorKind!=='robot'&&this.transform.object!==obj)this.transform.attach(obj);
+   if(isEditMode()&&!isTransformLocked(obj)&&this.canTransform(obj)&&obj.userData.editorKind!=='robot'&&this.transform.object!==obj)this.transform.attach(obj);
    if(byId('propertiesPanel')&&!byId('propertiesPanel').hidden)this.updateInspector();
   }
   this.refreshList();

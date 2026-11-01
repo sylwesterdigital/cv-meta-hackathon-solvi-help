@@ -1,4 +1,5 @@
 import {setupResponsiveUI} from './ui-controls.js';
+import {initEditMode} from './edit-mode.js';
 import {initMinimap} from './minimap.js';
 import {initStudio} from './studio.js';
 import {SolviWorld} from './world.js';
@@ -8,7 +9,7 @@ import {initMedia} from './media.js';
 import {setupFaceTracking} from './face-tracking.js';
 import {setupVoiceCaptions} from './voice-captions.js';
 
-initDevLog();initMedia();
+initDevLog();initMedia();initEditMode();
 const world=new SolviWorld(document.getElementById('viewport'),(status)=>{
   if(!status.loaded){const toast=document.getElementById('toast');toast.textContent='Model load issue: '+status.error;toast.hidden=false;}
 });

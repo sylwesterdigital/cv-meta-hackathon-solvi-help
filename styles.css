@@ -2025,3 +2025,36 @@ html[data-button-labels='icon'] button[data-ui-icon]>.ui-button-label{display:no
 #controlSwitcher #controlSwitcherDrag{touch-action:none;cursor:grab;font-size:17px;line-height:1;min-width:29px;width:29px;height:30px;border:1px solid var(--ui-border,#71809b);background:var(--ui-panel,#102536);border-radius:7px;color:var(--ui-fg,#fff);padding:0;}
 #controlSwitcher #controlSwitcherDrag:active{cursor:grabbing;}
 #controlSwitcher #controlModeButton{flex:1;}
+
+/* v0.2.130: Exploration defaults to an uncluttered, non-editing world. */
+html:not(.solvi-edit-mode) #propertiesPanel,
+html:not(.solvi-edit-mode) #scenePanel,
+html:not(.solvi-edit-mode) #wallPanel,
+html:not(.solvi-edit-mode) #editorToolbox,
+html:not(.solvi-edit-mode) #addMenu,
+html:not(.solvi-edit-mode) #toolsToggleButton,
+html:not(.solvi-edit-mode) #addObjectButton,
+html:not(.solvi-edit-mode) #objectsButton,
+html:not(.solvi-edit-mode) #avatarsButton,
+html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
+.profile-edit-mode-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;margin:7px 0;border:1px solid var(--ui-border,#62778b);border-radius:12px;cursor:pointer;}
+.profile-edit-mode-info{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.profile-edit-mode-info small{font-size:11px;opacity:.72;line-height:1.4;}
+.profile-edit-mode-row input{position:absolute;opacity:0;width:1px;height:1px;}
+.profile-edit-mode-track{flex:none;width:48px;height:28px;background:#646b78;border-radius:20px;position:relative;transition:background .15s;}
+.profile-edit-mode-track::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 4px #0006;transition:transform .15s;}
+.profile-edit-mode-row input:checked+.profile-edit-mode-track{background:var(--solvi-accent,#66badc);}
+.profile-edit-mode-row input:checked+.profile-edit-mode-track::after{transform:translateX(20px);}
+.profile-edit-mode-row input:focus-visible+.profile-edit-mode-track{outline:2px solid var(--solvi-accent,#66badc);outline-offset:3px;}
+#controlSwitcher #controlSwitcherDrag{display:none!important;}
+#controlSwitcher.control-switcher{touch-action:none;cursor:grab;}
+#controlSwitcher.control-switcher:active{cursor:grabbing;}
+#controlSwitcher button,#controlSwitcher select{cursor:pointer;touch-action:manipulation;}
+#controlSwitcher .robot-face-avatar{width:var(--robot-face-size,50px)!important;height:var(--robot-face-size,50px)!important;min-width:var(--robot-face-size,50px)!important;}
+#controlSwitcher .robot-face-choice{width:calc(var(--robot-face-size,50px) + 16px)!important;max-width:calc(var(--robot-face-size,50px) + 16px)!important;min-width:calc(var(--robot-face-size,50px) + 16px)!important;}
+#controlSwitcher .robot-face-choice small{max-width:calc(var(--robot-face-size,50px) + 12px)!important;}
+#controlSwitcher .robot-face-size-actions{display:flex;gap:2px;align-items:center;}
+#controlSwitcher .robot-face-size-actions button{min-width:21px;width:21px;height:23px;min-height:23px;font-size:14px;padding:0;border-radius:6px;line-height:1;}
+.brain-voice-config .brain-voice-values label{white-space:nowrap!important;word-break:keep-all!important;overflow-wrap:normal!important;flex-shrink:0!important;}
+.brain-voice-config .brain-voice-values{flex-wrap:wrap;gap:6px 10px;}
+.brain-voice-config .brain-voice-values input{width:60px;min-width:52px;}
