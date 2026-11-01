@@ -83,7 +83,7 @@ export class ScenePhysics{
   const inverse=object.getWorldQuaternion(new THREE.Quaternion()).invert();
   const vertex=new THREE.Vector3();let triangles=0,overflow=false;
   object.traverse(mesh=>{
-   if(!mesh.isMesh||mesh.userData.lightMarker||!mesh.geometry||overflow||mesh.userData.portalVisualOnly||mesh.userData.portalFrameFx||mesh.userData.portalInner||mesh.userData.portalGlow||mesh.userData.portalParticles||mesh.userData.portalButton||mesh.userData.wallOverlay)return;
+   if(!mesh.isMesh||(mesh.userData.wallGlass&&mesh.userData.wallSegment===false)||mesh.userData.wallWindowButton||mesh.userData.lightMarker||!mesh.geometry||overflow||mesh.userData.portalVisualOnly||mesh.userData.portalFrameFx||mesh.userData.portalInner||mesh.userData.portalGlow||mesh.userData.portalParticles||mesh.userData.portalButton||mesh.userData.wallOverlay)return;
    if(object.userData.editorKind==='portal'&&!mesh.userData.portalFrame)return;
    const geom=mesh.geometry,attribute=geom.getAttribute('position');if(!attribute)return;
    const index=geom.getIndex(),count=index?index.count:attribute.count;
@@ -180,6 +180,24 @@ export class ScenePhysics{
    // enclosing AABB that incorrectly blocks an open room / U-shaped wall.
    for(const segment of object.children){
     if(segment.userData.portalVisualOnly)continue; // Orb event horizon is a trigger, not a rigid wall.
+    if(segment.userData.wallCeiling){
+     const attr=segment.geometry.getAttribute('position'),index=segment.geometry.getIndex();
+     const verts=new Float32Array(attr.array.length);
+     for(let i=0;i<attr.count;i++){
+      verts[3*i]=attr.getX(i)*object.scale.x;
+      verts[3*i+1]=attr.getY(i)*object.scale.y;
+      verts[3*i+2]=attr.getZ(i)*object.scale.z;
+     }
+     const indices=index?new Uint32Array(index.array):Uint32Array.from({length:attr.count},(_,i)=>i);
+     try{
+      const roof=R.ColliderDesc.trimesh(verts,indices)
+       .setTranslation(segment.position.x*object.scale.x,segment.position.y*object.scale.y,segment.position.z*object.scale.z)
+       .setFriction(opts.friction).setRestitution(opts.restitution);
+      const roofCollider=this.world.createCollider(roof,body);
+      if(!collider)collider=roofCollider;
+     }catch(error){console.warn('Ceiling collider unavailable:',error);}
+     continue;
+    }
     if(!segment.userData.portalFrame&&!segment.userData.wallSegment&&!segment.userData.stairTread&&!segment.userData.ladderBar&&!(segment.userData.stairStructure&&segment.geometry?.type==='BoxGeometry'&&kind==='stairs'&&['advanced','escalator','walkway'].includes(object.userData.stairs?.variant)))continue;
     const size=segment.geometry.parameters;
     const scale=object.scale;

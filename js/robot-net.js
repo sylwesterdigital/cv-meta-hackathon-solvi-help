@@ -16,7 +16,7 @@ export function signedAngle(a,b){return Math.atan2(Math.sin(a-b),Math.cos(a-b));
 export function stepRobotMotion(state,input,dt){
  const time=clamp(Number(dt)||0,0,.065);
  const speedFactor=clamp(Number(input?.s)||1,.35,3);
- const target=(Number(input?.f)||0)*(input?.r?2.8:1.2)*speedFactor;
+ const target=(Number(input?.f)||0)*(input?.r?clamp(Number(input?.runMultiplier)||2.8,1,5):1.2)*speedFactor;
  const oldVelocity=Number(state.velocity)||0;
  // Braking and reversal take place before accelerating in the opposite direction.
  const braking=oldVelocity*target<0||Math.abs(target)<.001;
@@ -47,7 +47,7 @@ export function stepRobotMotion(state,input,dt){
 // Convenience wrapper for older client consumers; stateful simulation uses stepRobotMotion.
 export function stepIntent(x,z,yaw,input,dt){return stepRobotMotion({x,z,yaw,velocity:Number(input?.v)||0},input,dt);}
 export function packetFor(id,i,object,final=false){return {type:'robot-input',id,f:i.f,t:i.t,r:i.r,b:i.b||0,m:final?0:1,
-  x:+object.position.x.toFixed(2),z:+object.position.z.toFixed(2),y:+object.position.y.toFixed(2),yaw:+object.rotation.y.toFixed(3),s:+(i.s||1).toFixed(2),q:+(i.q||1.8).toFixed(2),u:+(i.u||1).toFixed(2),j:i.j?1:0};}
+  x:+object.position.x.toFixed(2),z:+object.position.z.toFixed(2),y:+object.position.y.toFixed(2),yaw:+object.rotation.y.toFixed(3),s:+(i.s||1).toFixed(2),runMultiplier:+(i.runMultiplier||2.8).toFixed(2),q:+(i.q||1.8).toFixed(2),u:+(i.u||1).toFixed(2),j:i.j?1:0};}
 
 // Integrate the same input on every client and blend *one-off residual errors*.
 // Unlike chasing a fixed packet position every frame, this never drags a moving

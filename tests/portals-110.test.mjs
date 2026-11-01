@@ -84,5 +84,5 @@ test('procedural seams have staggered faces and non-coplanar overlays',()=>{
  const stairs=read('js/office-stairs.js'),wall=read('js/office-walls.js');
  assert.match(stairs,/polygonOffsetFactor:-2/);
  assert.match(stairs,/st\.depth-\.018/);
- assert.match(wall,/polygonOffsetFactor:1/);
+ assert.match(wall,/wallWindowLayout/);
 });

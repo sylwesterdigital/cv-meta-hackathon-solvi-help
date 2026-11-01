@@ -64,5 +64,5 @@ test('climbing speed is adjustable per avatar, used for wall and ladder movement
  assert.match(robots,/Number\(data\.robotClimbSpeed\)\|\|1\.25/);
  assert.match(backend,/Invalid robot climb speed/);
  assert.match(backend,/Invalid climb speed/);
- assert.match(backend,/'turnSpeed','climbSpeed','combat'/);
+ assert.match(backend,/'turnSpeed','runMultiplier','climbSpeed','combat'/);
 });

@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.138',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.139',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3059,6 +3059,24 @@ def valid_office_wall(wall):
     if not isinstance(media_id,str) or (media_id and not re.fullmatch(r'[0-9a-f-]{36}',media_id,re.I)):return False
     if wall.get('texture')=='custom' and not media_id:return False
     if not isinstance(wall.get('color'),str) or not re.fullmatch('#[0-9a-fA-F]{6}',wall['color']):return False
+    if 'windows' in wall:
+        w=wall['windows']
+        if not isinstance(w,dict) or set(w)-{'enabled','openable','minWidth','minHeight','widthRatio','heightRatio','color','opacity','openIds'}:return False
+        if not isinstance(w.get('enabled'),bool) or not isinstance(w.get('openable'),bool):return False
+        if not isinstance(w.get('color'),str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',w['color']):return False
+        for key,lo,hi in (('minWidth',1.2,15),('minHeight',1,10),('widthRatio',.15,.7),('heightRatio',.2,.75),('opacity',.08,.85)):
+            v=w.get(key)
+            if not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not lo<=v<=hi:return False
+        open_ids=w.get('openIds')
+        if not isinstance(open_ids,list) or len(open_ids)>160 or any(not isinstance(x,int) or isinstance(x,bool) or not 0<=x<320 for x in open_ids):return False
+    if 'ceiling' in wall:
+        c=wall['ceiling']
+        if not isinstance(c,dict) or set(c)-{'enabled','thickness','texture','color','autoLiftOpenings'}:return False
+        if not isinstance(c.get('enabled'),bool) or not isinstance(c.get('autoLiftOpenings'),bool):return False
+        if c.get('texture') not in {'plaster','concrete','bricks','glass'}:return False
+        if not isinstance(c.get('color'),str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',c['color']):return False
+        v=c.get('thickness')
+        if not isinstance(v,(float,int)) or isinstance(v,bool) or not math.isfinite(v) or not .05<=v<=.6:return False
     return isinstance(wall.get('smooth',False),bool) and isinstance(wall.get('closed',False),bool)
 
 def valid_office_ladder(ladder):
@@ -3214,6 +3232,7 @@ def set_scene():
             if 'combat' in o and not valid_robot_combat(o['combat']):return json_error('Invalid robot combat controls')
             if 'animationSpeed' in o and not valid_robot_animation_speed(o['animationSpeed']):return json_error('Invalid robot animation speed')
             if 'turnSpeed' in o and (not isinstance(o['turnSpeed'],(float,int)) or isinstance(o['turnSpeed'],bool) or not math.isfinite(o['turnSpeed']) or not 0<=o['turnSpeed']<=10):return json_error('Invalid robot turn speed')
+            if 'runMultiplier' in o and (not isinstance(o['runMultiplier'],(float,int)) or isinstance(o['runMultiplier'],bool) or not math.isfinite(o['runMultiplier']) or not 1<=o['runMultiplier']<=5):return json_error('Invalid run multiplier')
             if 'climbSpeed' in o and (not isinstance(o['climbSpeed'],(float,int)) or isinstance(o['climbSpeed'],bool) or not math.isfinite(o['climbSpeed']) or not .2<=o['climbSpeed']<=4):return json_error('Invalid robot climb speed')
             brain=o.get('brain',{})
             if not isinstance(brain,dict) or any((k in ('initiative','initiativeVision') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision') and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch','gender','voiceGender'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8,'gender':12,'voiceGender':12}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
@@ -3270,7 +3289,7 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','climbSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','portal','curve','text','openings','climbable','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','portal','curve','text','openings','climbable','transformLocked') if key in obj}
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')
@@ -3302,6 +3321,7 @@ def patch_scene_object():
         if 'speed' in obj and (not isinstance(obj['speed'],(float,int)) or not math.isfinite(obj['speed']) or not 0<=obj['speed']<=10):return json_error('Invalid robot speed')
         if 'strafeSpeed' in obj and (not isinstance(obj['strafeSpeed'],(float,int)) or not math.isfinite(obj['strafeSpeed']) or not 0<=obj['strafeSpeed']<=10):return json_error('Invalid strafe speed')
         if 'turnSpeed' in obj and (not isinstance(obj['turnSpeed'],(float,int)) or isinstance(obj['turnSpeed'],bool) or not math.isfinite(obj['turnSpeed']) or not 0<=obj['turnSpeed']<=10):return json_error('Invalid turn speed')
+        if 'runMultiplier' in obj and (not isinstance(obj['runMultiplier'],(float,int)) or isinstance(obj['runMultiplier'],bool) or not math.isfinite(obj['runMultiplier']) or not 1<=obj['runMultiplier']<=5):return json_error('Invalid run multiplier')
         if 'climbSpeed' in obj and (not isinstance(obj['climbSpeed'],(float,int)) or isinstance(obj['climbSpeed'],bool) or not math.isfinite(obj['climbSpeed']) or not .2<=obj['climbSpeed']<=4):return json_error('Invalid climb speed')
         if 'brain' in obj:
             if obj['kind']!='robot' or not isinstance(obj['brain'],dict):return json_error('Invalid robot brain')
@@ -3577,9 +3597,9 @@ def websocket(ws):
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
                 try:
                     f=int(msg.get('f',0));t=int(msg.get('t',0));r=int(msg.get('r',0));reverse=int(msg.get('b',0));moving=int(msg.get('m',0))
-                    x=float(msg.get('x',0));y=float(msg.get('y',0));z=float(msg.get('z',0));yaw=float(msg.get('yaw',0));speed=float(msg.get('s',1));strafe=float(msg.get('q',1.8));turn=float(msg.get('u',1));jump=int(msg.get('j',0));seq=int(msg.get('seq',0) or 0)
+                    x=float(msg.get('x',0));y=float(msg.get('y',0));z=float(msg.get('z',0));yaw=float(msg.get('yaw',0));speed=float(msg.get('s',1));run_multiplier=float(msg.get('runMultiplier',2.8));strafe=float(msg.get('q',1.8));turn=float(msg.get('u',1));jump=int(msg.get('j',0));seq=int(msg.get('seq',0) or 0)
                 except (ValueError,TypeError,OverflowError):continue
-                if any(v not in (-1,0,1) for v in (f,t)) or r not in (0,1) or reverse not in (0,1) or moving not in (0,1) or jump not in (0,1) or not math.isfinite(speed) or not .35<=speed<=3 or not math.isfinite(strafe) or not .5<=strafe<=4 or not math.isfinite(turn) or not .25<=turn<=4:continue
+                if any(v not in (-1,0,1) for v in (f,t)) or r not in (0,1) or reverse not in (0,1) or moving not in (0,1) or jump not in (0,1) or not math.isfinite(speed) or not .35<=speed<=3 or not math.isfinite(run_multiplier) or not 1<=run_multiplier<=5 or not math.isfinite(strafe) or not .5<=strafe<=4 or not math.isfinite(turn) or not .25<=turn<=4:continue
                 if not all(math.isfinite(v) and abs(v)<1000 for v in (x,y,z,yaw)):continue
                 with db() as con:
                     row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
@@ -3588,7 +3608,7 @@ def websocket(ws):
                 if not controlled or not may_edit(uid,controlled,room_policy(room_id),ws_admin_enabled()):continue
                 publish({'type':'robot-input','room':room_id,'by':uid,'id':identifier,
                         'f':f,'t':t,'r':r,'b':reverse,'m':moving,'x':round(x,2),'y':round(y,2),
-                        'z':round(z,2),'yaw':round(yaw,3),'s':round(speed,2),'q':round(strafe,2),'u':round(turn,2),'j':jump,'seq':max(0,min(2147483647,seq))},except_id=uid,room_id=room_id)
+                        'z':round(z,2),'yaw':round(yaw,3),'s':round(speed,2),'runMultiplier':round(run_multiplier,2),'q':round(strafe,2),'u':round(turn,2),'j':jump,'seq':max(0,min(2147483647,seq))},except_id=uid,room_id=room_id)
             elif msg.get('type')=='physics-state':
                 if time.monotonic()-last_physics<.115:continue
                 last_physics=time.monotonic()

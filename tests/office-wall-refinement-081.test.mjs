@@ -33,9 +33,9 @@ test('wall editor draws pointer marker and temporary wireframe but edits saved w
  assert.match(editor,/new THREE\.RingGeometry\(/);
  assert.match(editor,/wireframe:true,depthTest:false/);
  assert.match(editor,/snapWallPoint\(raw,anchor,config\)/);
- assert.match(editor,/rebuildOfficeWall\(obj,this\.readWallOptions\(obj\.userData\.wall\?\.points\)\)/);
+ assert.match(editor,/rebuildOfficeWall\(obj,this\.readWallOptions\(obj\.userData\.wall\?\.points\),this\.liftObjects\(\)\)/);
  assert.match(editor,/this\.wallEditOriginal=null;this\.recordEdit\(before,this\.snapshot\(target\)\)/);
- assert.match(editor,/rebuildOfficeWall\(original\.object,original\.wall\)/);
+ assert.match(editor,/rebuildOfficeWall\(original\.object,original\.wall,this\.liftObjects\(\)\)/);
  assert.doesNotMatch(editor,/const preview=makeOfficeWall\(this\.readWallOptions\(obj\.userData\.wall/);
 });
 test('compact panel supports snapping, smoothing, authenticated texture upload and standard drag',()=>{

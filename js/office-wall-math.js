@@ -9,7 +9,20 @@ export function sanitiseWall(raw={}){
  const texture=[...presets,'custom'].includes(raw.texture)?raw.texture:'plaster';
  const textureMediaId=typeof raw.textureMediaId==='string'&&/^[0-9a-f-]{36}$/i.test(raw.textureMediaId)?raw.textureMediaId:'';
  const color=typeof raw.color==='string'&&/^#[0-9a-fA-F]{6}$/.test(raw.color)?raw.color:'#c6d1dc';
- return {points:unique,closed:raw.closed===true,width:num('width',.16,.05,1.5),height:num('height',2.8,.3,10),texture,textureMediaId,color,opacity:num('opacity',texture==='glass'?.4:1,.08,1),smooth:raw.smooth!==false};
+ const windowRaw=raw.windows&&typeof raw.windows==='object'?raw.windows:{};
+ const ceilingRaw=raw.ceiling&&typeof raw.ceiling==='object'?raw.ceiling:{};
+ const bool=(v)=>v===true;
+ const hex=(v,f)=>typeof v==='string'&&/^#[0-9a-fA-F]{6}$/.test(v)?v:f;
+ const validTexture=(v,f)=>['plaster','concrete','bricks','glass'].includes(v)?v:f;
+ const windows={enabled:bool(windowRaw.enabled),openable:windowRaw.openable!==false,
+  minWidth:clamp(Number(windowRaw.minWidth)||2.5,1.2,15),minHeight:clamp(Number(windowRaw.minHeight)||2.2,1,10),
+  widthRatio:clamp(Number(windowRaw.widthRatio)||.36,.15,.7),heightRatio:clamp(Number(windowRaw.heightRatio)||.42,.2,.75),
+  color:hex(windowRaw.color,'#b6ecfc'),opacity:clamp(Number(windowRaw.opacity)||.42,.08,.85),
+  openIds:Array.isArray(windowRaw.openIds)?windowRaw.openIds.filter(v=>Number.isInteger(v)&&v>=0&&v<320).slice(0,160):[]};
+ const ceiling={enabled:bool(ceilingRaw.enabled),thickness:clamp(Number(ceilingRaw.thickness)||.16,.05,.6),
+  texture:validTexture(ceilingRaw.texture,'plaster'),color:hex(ceilingRaw.color,'#e1e7eb'),
+  autoLiftOpenings:ceilingRaw.autoLiftOpenings!==false};
+ return {windows,ceiling,points:unique,closed:raw.closed===true,width:num('width',.16,.05,1.5),height:num('height',2.8,.3,10),texture,textureMediaId,color,opacity:num('opacity',texture==='glass'?.4:1,.08,1),smooth:raw.smooth!==false};
 }
 export function simplifyWallPoints(points,tolerance=.13){
  if(points.length<3)return points.slice();const sqTol=tolerance*tolerance;
@@ -51,3 +64,23 @@ export function smoothWallPoints(points,tolerance=.18){
  if(result.length>80)result=Array.from({length:80},(_,i)=>result[Math.round(i*(result.length-1)/79)]);
  return result;
 }
+
+// Window openings are distributed by *segment length*, never overlapping corners.
+export function wallWindowLayout(length,height,windows){
+ if(!windows?.enabled||length<windows.minWidth||height<windows.minHeight)return [];
+ const count=Math.min(8,Math.max(1,Math.floor(length/windows.minWidth)));
+ const cell=length/count;
+ const width=Math.min(cell*.72,Math.max(.45,cell*windows.widthRatio));
+ const openingHeight=Math.min(height*.73,Math.max(.45,height*windows.heightRatio));
+ const bottom=Math.max(.20,(height-openingHeight)*.54);
+ return Array.from({length:count},(_,i)=>({x:-length/2+cell*(i+.5),width,height:openingHeight,bottom}));
+}
+export function pointWithinPolygon([px,py],points){
+ let inside=false;
+ for(let i=0,j=points.length-1;i<points.length;j=i++){
+  const [xi,yi]=points[i], [xj,yj]=points[j];
+  if((yi>py)!==(yj>py)&&px<(xj-xi)*(py-yi)/(yj-yi)+xi)inside=!inside;
+ }
+ return inside;
+}
+// In-plane, axis-aligned opening; a lift outside the polygon never cuts the ceiling.
