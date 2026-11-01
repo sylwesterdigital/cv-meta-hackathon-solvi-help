@@ -10,7 +10,10 @@ export function sanitiseLadder(raw={}){
  const rungs=Math.round(clamp(raw.rungs,Math.max(3,Math.floor((height-.3)/rungSpacing)),3,240));
  const color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#a5b9c8';
  const texture=['none','metal','concrete','bricks','plaster'].includes(raw.texture)?raw.texture:'metal';
- return {width,height,rungMode,rungSpacing,rungs,color,texture};
+ // Distance from the rung plane to the robot foot pivot, measured along the
+ // ladder's local normal. Supports both faces and follows object rotation.
+ const adhesion=clamp(raw.adhesion,.30,.12,.85);
+ return {width,height,rungMode,rungSpacing,rungs,color,texture,adhesion};
 }
 export function ladderRungHeights(cfg){
  const data=sanitiseLadder(cfg),heights=[];
@@ -70,6 +73,20 @@ export function ladderProximity(ladder,robot){
  if(distance>.60&&facingToward<.25)return null;
  return {local,cfg,side};
 }
+// Compute facing and body pitch from the actual world-space ladder axes.
+// Unlike a fixed Euler X tilt, this follows the ladder after any Y/Z rotation
+// and also correctly reverses the pitch when climbing the opposite face.
+export function ladderClimbPose(ladder,side=1){
+ const base=ladder.localToWorld(new THREE.Vector3(0,0,0));
+ const top=ladder.localToWorld(new THREE.Vector3(0,1,0));
+ const outward=ladder.localToWorld(new THREE.Vector3(0,0,side===-1?-1:1));
+ const fx=base.x-outward.x,fz=base.z-outward.z;
+ const horizontal=Math.hypot(fx,fz);
+ const upX=top.x-base.x,upY=top.y-base.y,upZ=top.z-base.z;
+ const yaw=horizontal>.0001?Math.atan2(fx,fz):Number(ladder.rotation?.y)||0;
+ const pitch=horizontal>.0001?Math.atan2((upX*fx+upZ*fz)/horizontal,upY):0;
+ return {yaw,pitch:Number.isFinite(pitch)?Math.max(-1.15,Math.min(1.15,pitch)):0};
+}
 export function ladderClimbStep(y,input,dt,height,speed=1.25){
  const climbRate=Number.isFinite(Number(speed))?Math.max(.2,Math.min(4,Number(speed))):1.25;
  const direction=Math.sign(Number(input)||0),delta=Math.min(.06,Math.max(0,Number(dt)||0))*climbRate*direction;
@@ -82,6 +99,7 @@ export function stepLadderRobot(robot,objects,verticalInput,dt,{upperSurface=nul
  let ladder=ride&&objects.find(o=>o.userData.editorId===ride.id&&(ride.kind==='surface'?o.userData.climbable:o.userData.editorKind==='ladder'));
  if(!ladder){
   delete robot.userData.robotLadderRide;
+  robot.userData.robotLadderVisualPitch=0;
   if((robot.userData.robotLadderCooldown||0)>performance.now()||!verticalInput)return false;
   for(const candidate of objects){if(candidate.userData.editorKind!=='ladder')continue;
    const near=ladderProximity(candidate,robot);
@@ -108,20 +126,23 @@ export function stepLadderRobot(robot,objects,verticalInput,dt,{upperSurface=nul
  const minY=surface?ride.bottomY:0;
  ride.y=ladderClimbStep(ride.y-minY,verticalInput,dt,maxY-minY,robot.userData.robotClimbSpeed??1.25)+minY;
  // Stay offset from the real contact surface, or the ladder rungs.
- const target=ladder.localToWorld(new THREE.Vector3(Number(ride.x)||0,ride.y,surface?Number(ride.z)||0:.44*side));
+ const target=ladder.localToWorld(new THREE.Vector3(Number(ride.x)||0,ride.y,surface?Number(ride.z)||0:cfg.adhesion*side));
  if(ride.y>=maxY-.02&&verticalInput>0&&upperSurface?.(ladder,robot,target)){
   delete robot.userData.robotLadderRide;
   robot.userData.robotLadderCooldown=performance.now()+700;
   robot.userData.robotLadderDismount=true;
+  robot.userData.robotLadderVisualPitch=0;
   robot.userData.robotMode='idle';
   return true;
  }
  robot.position.copy(target);
- robot.rotation.y=surface?ride.yaw:ladder.rotation.y+(side===1?Math.PI:0);
+ const pose=surface?{yaw:ride.yaw,pitch:0}:ladderClimbPose(ladder,side);
+ robot.rotation.y=pose.yaw;
+ robot.userData.robotLadderVisualPitch=pose.pitch;
  robot.userData.robotLadderRide=ride;
  robot.userData.robotLadderSpeed=verticalInput;
  robot.userData.robotMode=verticalInput&&!(ride.y>=maxY-.02&&verticalInput>0)&&!(ride.y<=minY&&verticalInput<0)&&robot.userData.robotAnimator?.actions?.has('climbLadder')?'climbLadder':'idle';
  robot.userData.robotVelocity=0;robot.userData.robotLateral=0;
  return true;
 }
-export function releaseLadder(robot){if(!robot?.userData?.robotLadderRide)return false;delete robot.userData.robotLadderRide;robot.userData.robotLadderCooldown=performance.now()+650;robot.userData.robotLadderSpeed=0;robot.userData.robotMode='falling';robot.userData.robotFallActive=true;return true;}
+export function releaseLadder(robot){if(!robot?.userData?.robotLadderRide)return false;delete robot.userData.robotLadderRide;robot.userData.robotLadderVisualPitch=0;robot.userData.robotLadderCooldown=performance.now()+650;robot.userData.robotLadderSpeed=0;robot.userData.robotMode='falling';robot.userData.robotFallActive=true;return true;}

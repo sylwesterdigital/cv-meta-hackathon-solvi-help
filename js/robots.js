@@ -36,7 +36,7 @@ export async function hydrateRobot(group){
     // movement heading uses +Z. Correct *the visual*, not the heading/group.
     // Other GLBs are left unchanged until their catalog has a facing entry.
     model.userData.sitBaseY=model.position.y;
-    const avatarVisual=new THREE.Group();avatarVisual.userData.robotVisual=true;
+    const avatarVisual=new THREE.Group();avatarVisual.userData.robotVisual=true;avatarVisual.rotation.order='YXZ';
     if((group.userData.avatarUrl||DEFAULT_ROBOT_AVATAR)===DEFAULT_ROBOT_AVATAR)avatarVisual.rotation.y=Math.PI;
     avatarVisual.add(model);group.add(avatarVisual);
     group.userData.robotAnimator=new MotionController(THREE,model,gltf.animations);
@@ -370,7 +370,17 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     }else animator?.setPlaybackSpeed(1);
     animator?.update(dt);
     const visual=robot.children.find(c=>c.userData.robotVisual);
-    if(visual){const lean=(data.robotLateral||0)*-.075;visual.rotation.z+=(lean-visual.rotation.z)*Math.min(1,dt*5);visual.position.y=Number(data.robotVisualStepOffset)||0;}
+    if(visual){
+      const lean=data.robotLadderRide?0:(data.robotLateral||0)*-.075;
+      visual.rotation.z+=(lean-visual.rotation.z)*Math.min(1,dt*5);
+      // Align the *avatar model*, not the physics capsule, to the ladder's
+      // world-space incline. The default avatar's 180-degree mesh correction
+      // reverses local pitch, so account for that when applying the lean.
+      const incline=data.robotLadderRide?(Number(data.robotLadderVisualPitch)||0):0;
+      const pitch=incline*(Math.cos(visual.rotation.y)<0?-1:1);
+      visual.rotation.x+=(pitch-visual.rotation.x)*Math.min(1,Math.max(0,dt)*14);
+      visual.position.y=Number(data.robotVisualStepOffset)||0;
+    }
     if(robot.userData.robotSeated&&robot.userData.robotSitPose==='procedural'){
       const visualModel=visual?.children[0];
       if(visualModel){visualModel.position.y+=(Math.max(-.40,(visualModel.userData.sitBaseY??visualModel.position.y)-.32)-visualModel.position.y)*Math.min(1,dt*4);

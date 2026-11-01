@@ -1056,10 +1056,10 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   byId('objectColor').value=color?'#'+color.getHexString():'#88bbdd';byId('texturePreset').value=obj.userData.textureName||'none';
  }
  setupLadderControls(){
-  for(const id of ['ladderWidth','ladderHeight','ladderRungSpacing','ladderRungs','ladderRungMode','ladderTexture','ladderColor']){
+  for(const id of ['ladderWidth','ladderHeight','ladderAdhesion','ladderRungSpacing','ladderRungs','ladderRungMode','ladderTexture','ladderColor']){
    const el=byId(id);if(!el)continue;
    el.addEventListener('change',()=>{const obj=this.selected;if(obj?.userData.editorKind!=='ladder'||!this.canEdit(obj))return;
-    const before=this.snapshot(obj),raw={...obj.userData.ladder,width:byId('ladderWidth').value,height:byId('ladderHeight').value,rungMode:byId('ladderRungMode').value,rungSpacing:byId('ladderRungSpacing').value,rungs:byId('ladderRungs').value,texture:byId('ladderTexture').value,color:byId('ladderColor').value};
+    const before=this.snapshot(obj),raw={...obj.userData.ladder,width:byId('ladderWidth').value,height:byId('ladderHeight').value,adhesion:byId('ladderAdhesion').value,rungMode:byId('ladderRungMode').value,rungSpacing:byId('ladderRungSpacing').value,rungs:byId('ladderRungs').value,texture:byId('ladderTexture').value,color:byId('ladderColor').value};
     rebuildLadder(obj,raw);this.physics.sync(obj);this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.renderLadderControls(obj);
    });
   }
@@ -1067,7 +1067,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  renderLadderControls(obj){
   const section=byId('ladderProperties');if(!section)return;const ladder=obj?.userData.editorKind==='ladder';section.hidden=!ladder;if(!ladder)return;
   const cfg=sanitiseLadder(obj.userData.ladder);
-  for(const [key,id] of Object.entries({width:'ladderWidth',height:'ladderHeight',rungSpacing:'ladderRungSpacing',rungs:'ladderRungs',rungMode:'ladderRungMode',texture:'ladderTexture',color:'ladderColor'})){byId(id).value=cfg[key];byId(id).disabled=!this.canEdit(obj);}
+  for(const [key,id] of Object.entries({width:'ladderWidth',height:'ladderHeight',adhesion:'ladderAdhesion',rungSpacing:'ladderRungSpacing',rungs:'ladderRungs',rungMode:'ladderRungMode',texture:'ladderTexture',color:'ladderColor'})){byId(id).value=cfg[key];byId(id).disabled=!this.canEdit(obj);}
   byId('ladderRungSpacingRow').hidden=cfg.rungMode==='count';byId('ladderRungCountRow').hidden=cfg.rungMode!=='count';
  }
  renderPrimitiveControls(obj){

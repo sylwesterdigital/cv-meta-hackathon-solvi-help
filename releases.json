@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.135",
+  "currentVersion": "0.2.136",
   "releases": [
+    {
+      "version": "0.2.136",
+      "publishedAt": "2026-11-01T04:50:37Z",
+      "changes": [
+        "Add an editable Ladder Adhesion distance (0.12\u20130.85 m; default 0.30 m) that positions avatars relative to the rungs on both sides.",
+        "Align the climbing avatar visual with the ladder world-space inclination, including rotated objects and both faces, while leaving the upright Rapier capsule unchanged.",
+        "Straighten the avatar when it releases or dismounts; preserve Climbing Up Wall priority, climbing speed and existing ladder traversal.",
+        "Validate and persist the adhesion setting, accept older saved ladders, and include attachment, visual tilt and backend regression tests."
+      ]
+    },
     {
       "version": "0.2.135",
       "publishedAt": "2026-11-01T04:26:23Z",
@@ -293,16 +303,6 @@
         "Procedural walls: convert individual wall segments to static editable cubes with true O-key cuttable openings and trimesh colliders",
         "New robot messages: progressive typing and a subtle bubble entrance animation (history and reduced-motion users unaffected)",
         "Compact chat audio play/seek/mute UI; signed expiring HLS VOD access for audio and video on native-HLS browsers; authenticated blob fallback elsewhere"
-      ]
-    },
-    {
-      "version": "0.2.102",
-      "publishedAt": "2026-10-31T05:19:29Z",
-      "changes": [
-        "Freeze camera during drawing and correct pointer-to-world ray mapping",
-        "Use analytic cube face raycast for openings and media rectangles (including pre-cut cubes)",
-        "Editable and persistent text geometry: content, font, size, extrusion and bevel with local typeface assets",
-        "Add regression tests for text geometry validation and camera lock"
       ]
     }
   ]

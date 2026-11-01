@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.135',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.136',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3062,10 +3062,13 @@ def valid_office_wall(wall):
     return isinstance(wall.get('smooth',False),bool) and isinstance(wall.get('closed',False),bool)
 
 def valid_office_ladder(ladder):
-    if not isinstance(ladder,dict) or len(ladder)>8:return False
+    if not isinstance(ladder,dict) or len(ladder)>9:return False
     for key,lo,hi in (('width',.45,4),('height',1,40),('rungSpacing',.15,.6),('rungs',3,320)):
         value=ladder.get(key)
         if not isinstance(value,(float,int)) or isinstance(value,bool) or not math.isfinite(value) or not lo<=value<=hi:return False
+    if 'adhesion' in ladder:
+        value=ladder['adhesion']
+        if not isinstance(value,(int,float)) or isinstance(value,bool) or not math.isfinite(value) or not .12<=value<=.85:return False
     if int(ladder['rungs'])!=ladder['rungs']:return False
     if ladder.get('rungMode') not in ('spacing','count'):return False
     if ladder.get('texture') not in ('none','metal','concrete','bricks','plaster'):return False
