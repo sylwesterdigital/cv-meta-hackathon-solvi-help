@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon} from './office-wall-math.js';
+import {sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon,wallArrayTransforms} from './office-wall-math.js';
 export {sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallSegments,wallWorldToLocal} from './office-wall-math.js';
 
 export function wallPresetTexture(name){
@@ -66,7 +66,7 @@ export function rebuildOfficeWall(group,settings,lifts=[]){
     transparent:true,opacity:s.windows.opacity,transmission:.72,ior:1.46,side:THREE.DoubleSide,depthWrite:false});
    const leftHinge=left,half=slot.width/2, localX=leftHinge+half*Math.cos(swing),localZ=half*Math.sin(swing);
    solid(slot.width,slot.height,.028,glassMaterial,seg.x+c*localX+sn*localZ,slot.bottom+slot.height/2,
-    seg.z-sn*localX+c*localZ,seg.yaw+swing,group,{wallGlass:true,windowId,wallSegment:!open});
+    seg.z-sn*localX+c*localZ,seg.yaw+swing,group,{wallGlass:true,windowId,wallSegment:!open,windowHinge:[seg.x+c*left,seg.z-sn*left],windowYaw:seg.yaw,windowHalf:half});
    if(s.windows.openable){
     for(const face of [-1,1]){
      const button=new THREE.Mesh(new THREE.SphereGeometry(.07,10,8),new THREE.MeshBasicMaterial({color:open?0x8eeaaa:0x77dbff}));
@@ -109,6 +109,40 @@ export function rebuildOfficeWall(group,settings,lifts=[]){
    map:wallPresetTexture(s.ceiling.texture),side:THREE.DoubleSide}));
   ceiling.position.y=s.height-s.ceiling.thickness;
   ceiling.userData.wallCeiling=true;ceiling.receiveShadow=true;ceiling.castShadow=true;group.add(ceiling);
+ }
+ // Arrays are one saved, editable room object. Flatten generated meshes into direct
+ // children so existing Rapier compound-collider traversal includes every copy.
+ if(s.array.enabled&&s.closed&&s.points.length>=3){
+  const originals=[...group.children];
+  for(const copy of wallArrayTransforms(s).slice(1)){
+   const pivot=new THREE.Vector3(...copy.pivot),displacement=new THREE.Vector3(...copy.offset);
+   const quaternion=new THREE.Quaternion().setFromEuler(new THREE.Euler(...copy.rotation,'XYZ'));
+   const matrix=new THREE.Matrix4().makeTranslation(...copy.offset)
+    .multiply(new THREE.Matrix4().makeTranslation(...copy.pivot))
+    .multiply(new THREE.Matrix4().compose(new THREE.Vector3(),quaternion,new THREE.Vector3(...copy.scale)))
+    .multiply(new THREE.Matrix4().makeTranslation(-pivot.x,-pivot.y,-pivot.z));
+   for(const original of originals){
+    const clone=original.clone(false);
+    clone.geometry=original.geometry.clone();clone.material=original.material.clone();
+    clone.userData={...original.userData};
+    const localId=original.userData.windowId;
+    if(Number.isInteger(localId)){
+     clone.userData.windowId=copy.index*1024+localId;
+     const open=s.windows.openIds.includes(clone.userData.windowId);
+     if(original.userData.wallGlass){
+      const [hx,hz]=original.userData.windowHinge;
+      const yaw=original.userData.windowYaw,swing=open?Math.PI*.48:0,half=original.userData.windowHalf;
+      const lx=half*Math.cos(swing),lz=half*Math.sin(swing);
+      clone.position.set(hx+Math.cos(yaw)*lx+Math.sin(yaw)*lz,original.position.y,hz-Math.sin(yaw)*lx+Math.cos(yaw)*lz);
+      clone.rotation.y=yaw+swing;clone.userData.wallSegment=!open;
+     }else if(original.userData.wallWindowButton)clone.material.color.set(open?0x8eeaaa:0x77dbff);
+    }
+    clone.updateMatrix();
+    const transform=matrix.clone().multiply(clone.matrix);
+    transform.decompose(clone.position,clone.quaternion,clone.scale);
+    group.add(clone);
+   }
+  }
  }
  if(s.texture==='custom'&&s.textureMediaId&&!retain)loadCustomWallTexture(group,s.textureMediaId);
  return group;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {sanitiseWall,wallWindowLayout,pointWithinPolygon} from '../js/office-wall-math.js';
+import {sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon,wallArrayTransforms} from '../js/office-wall-math.js';
 import {stepRobotMotion,packetFor} from '../js/robot-net.js';
 const source=name=>fs.readFileSync(new URL('../'+name,import.meta.url),'utf8');
 
@@ -93,4 +93,75 @@ test('wall geometry runs with real wall settings, splits masonry and adds climba
  const lift={userData:{stairs:{variant:'lift',width:1.6}},getWorldPosition:()=>new V3(3,0,2.5),localToWorld:p=>new V3(p.x+3,p.y,p.z+2.5)};
  render(group,settings,[lift]);
  assert.equal(group.children.find(c=>c.userData.wallCeiling).geometry.shape.holes.length,1);
+});
+
+// v0.2.140 — room array runtime and compact robot switcher checks.
+const base={points:[[0,0],[6,0],[6,4],[0,4]],closed:true,height:3,windows:{enabled:true,minWidth:2.5},ceiling:{enabled:true}};
+test('Room Array keeps legacy rooms unchanged and validates axis/direction/count/step offsets',()=>{
+ const old=sanitiseWall(base);assert.equal(old.array.enabled,false);assert.equal(wallArrayTransforms(old).length,1);
+ const wall=sanitiseWall({...base,array:{enabled:true,count:3,axis:'y',direction:1,gap:.2,rotation:[0,10,0],scale:[0,.1,0]}});
+ assert.deepEqual(sanitiseWall(wall),wall);const copies=wallArrayTransforms(wall);
+ assert.equal(copies.length,3);assert.deepEqual(copies.map(c=>c.offset[1]),[0,3.2,6.4]);
+ assert.ok(Math.abs(copies[2].rotation[1]-Math.PI/9)<1e-9);
+ assert.deepEqual(copies[2].scale,[1,1.2,1]);
+ const reverse=wallArrayTransforms({...wall,array:{...wall.array,axis:'z',direction:-1,gap:1}});
+ assert.deepEqual(reverse.map(c=>c.offset[2]),[0,-5,-10]);
+ assert.equal(wallArrayTransforms({...wall,closed:false}).length,1);
+ assert.equal(sanitiseWall({...base,array:{enabled:true,count:100,rotation:[Infinity,999,5],scale:[-99,.03,0],axis:'other'}}).array.count,16);
+});
+
+test('transparent controls use real white symbols with no baked opaque SVG backdrop',()=>{
+ for(const icon of ['portrait-minus.svg','portrait-plus.svg']){
+  const svg=source('assets/ui-icons/'+icon);
+  assert.doesNotMatch(svg,/<rect\b/);assert.match(svg,/stroke="#ffffff"/);
+ }
+ const css=source('styles.css');
+ assert.match(css,/\.robot-face-size-actions button:hover,[\s\S]*background-color:transparent!important/);
+ assert.match(css,/\.robot-face-choice\[aria-pressed="true"\].*box-shadow:inset/);
+ assert.match(css,/\.robot-face-choice\[aria-pressed="true"\] small\{color:/);
+});
+
+test('closed-room Array controls are connected across editor, schema, geometry and physics',()=>{
+ const html=source('index.html'),editor=source('js/editor.js'),physics=source('js/scene-physics.js'),geometry=source('js/office-walls.js'),server=source('backend/server.py');
+ for(const id of ['wallArrayOptions','wallArrayEnabled','wallArrayCount','wallArrayAxis','wallArrayDirection','wallArrayGap','wallArrayRotateX','wallArrayRotateY','wallArrayRotateZ','wallArrayScaleX','wallArrayScaleY','wallArrayScaleZ']){
+  assert.match(html,new RegExp(`id="${id}"`));assert.ok(editor.includes(id),`${id} missing editor`);
+ }
+ assert.match(geometry,/wallArrayTransforms\(s\)\.slice\(1\)/);
+ assert.match(geometry,/copy\.index\*1024\+localId/);
+ assert.match(physics,/segment\.scale\.x/);
+ assert.match(physics,/segment\.quaternion\.x/);
+ assert.match(server,/if 'array' in wall:/);
+});
+
+test('Room Array actually duplicates closed room walls, windows and ceilings; copy window state independent',()=>{
+ class V3{constructor(x=0,y=0,z=0){this.x=x;this.y=y;this.z=z;}clone(){return new V3(this.x,this.y,this.z);}set(x,y,z){this.x=x;this.y=y;this.z=z;return this;}}
+ class Q{constructor(x=0,y=0,z=0,w=1){this.x=x;this.y=y;this.z=z;this.w=w;}setFromEuler(e){this.x=e.x;this.y=e.y;this.z=e.z;return this;}}
+ class E{constructor(x,y,z){Object.assign(this,{x,y,z});}}
+ class M4{constructor(){this.t=new V3();this.s=new V3(1,1,1);this.q=new Q();}makeTranslation(x,y,z){this.t.set(x,y,z);return this;}compose(t,q,s){this.t=t.clone();this.q=q;this.s=s.clone();return this;}multiply(m){this.t.x+=m.t.x*this.s.x;this.t.y+=m.t.y*this.s.y;this.t.z+=m.t.z*this.s.z;this.s.x*=m.s.x;this.s.y*=m.s.y;this.s.z*=m.s.z;this.q=m.q;return this;}clone(){return new M4().compose(this.t,this.q,this.s);}decompose(p,q,s){p.set(this.t.x,this.t.y,this.t.z);s.set(this.s.x,this.s.y,this.s.z);Object.assign(q,this.q);}}
+ class Color{constructor(v){this.v=v;}set(v){this.v=v;}}
+ class Shape{constructor(){this.holes=[];this.points=[];}moveTo(...p){this.points.push(p);return this;}lineTo(...p){this.points.push(p);return this;}closePath(){return this;}}
+ class Obj{constructor(){this.children=[];this.userData={};this.position=new V3();this.rotation={x:0,y:0,z:0};this.quaternion=new Q();this.scale=new V3(1,1,1);this.matrix=new M4();}add(c){this.children.push(c);c.parent=this;}remove(c){this.children.splice(this.children.indexOf(c),1);}traverse(fn){fn(this);for(const c of this.children)c.traverse(fn);}updateMatrix(){this.matrix=new M4().compose(this.position,this.quaternion,this.scale);}updateWorldMatrix(){}worldToLocal(p){return p;} }
+ class Mesh extends Obj{constructor(geometry,material){super();this.geometry=geometry;this.material=material;}clone(){const c=new Mesh(this.geometry,this.material);c.userData={...this.userData};c.position=this.position.clone();c.rotation={...this.rotation};return c;}}
+ class Box{constructor(width,height,depth){this.parameters={width,height,depth};}clone(){return new Box(...Object.values(this.parameters));}dispose(){}}
+ class Extrude{constructor(shape){this.shape=shape;}rotateX(){return this;}clone(){return new Extrude(this.shape);}dispose(){}}
+ class Sphere{clone(){return new Sphere();}dispose(){}}
+ class Material{constructor(o={}){Object.assign(this,o);this.color=new Color(o.color);}clone(){return new Material({...this,color:this.color.v});}dispose(){}}
+ const THREE={Vector3:V3,Quaternion:Q,Euler:E,Matrix4:M4,Group:Obj,Mesh,BoxGeometry:Box,ExtrudeGeometry:Extrude,SphereGeometry:Sphere,
+  Shape,Path:Shape,MeshPhysicalMaterial:Material,MeshStandardMaterial:Material,MeshBasicMaterial:Material,DoubleSide:2,
+  CanvasTexture:class{constructor(){this.repeat={set(){}};}dispose(){}},SRGBColorSpace:'sRGB',RepeatWrapping:1};
+ const ctx={fillRect(){},beginPath(){},moveTo(){},lineTo(){},stroke(){}};const document={createElement:()=>({getContext:()=>ctx})};
+ const code=source('js/office-walls.js').replace(/^import .*;\s*$/gm,'').replace(/^export \{.*;\s*$/gm,'').replaceAll('export function ','function ');
+ const rebuild=new Function('THREE','sanitiseWall','wallSegments','wallWindowLayout','pointWithinPolygon','wallArrayTransforms','document','window',code+'\nreturn rebuildOfficeWall;')
+  (THREE,sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon,wallArrayTransforms,document,{});
+ const group=new Obj();
+ rebuild(group,{...base,array:{enabled:true,count:3,axis:'y',direction:1,gap:.2},windows:{...base.windows,openIds:[1024]}});
+ const rooms=group.children.filter(c=>c.userData.wallCeiling);
+ assert.equal(rooms.length,3);assert.deepEqual(rooms.map(c=>c.position.y),[2.84,6.04,9.24]);
+ const glass=group.children.filter(c=>c.userData.wallGlass);
+ const perRoom=glass.length/3;assert.ok(perRoom>=4);
+ assert.equal(glass.filter(c=>c.userData.wallSegment===false).length,1);
+ assert.equal(glass.filter(c=>c.userData.windowId===1024)[0].userData.wallSegment,false);
+ assert.equal(glass.filter(c=>c.userData.windowId===0)[0].userData.wallSegment,true);
+ const before=group.children.length;
+ rebuild(group,{...base,array:{enabled:false}});assert.equal(group.children.length,before/3);
 });

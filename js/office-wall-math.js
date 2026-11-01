@@ -12,17 +12,37 @@ export function sanitiseWall(raw={}){
  const windowRaw=raw.windows&&typeof raw.windows==='object'?raw.windows:{};
  const ceilingRaw=raw.ceiling&&typeof raw.ceiling==='object'?raw.ceiling:{};
  const bool=(v)=>v===true;
+ const numeric=(v,def,min,max)=>Number.isFinite(Number(v))&&v!==null&&v!==''?clamp(Number(v),min,max):def;
+ const triplet=(value,limit)=>Array.from({length:3},(_,i)=>numeric(Array.isArray(value)?value[i]:null,0,-limit,limit));
+ const arrayRaw=raw.array&&typeof raw.array==='object'?raw.array:{};
+ const array={enabled:bool(arrayRaw.enabled)&&raw.closed===true,count:Math.round(numeric(arrayRaw.count,2,1,16)),
+  axis:['x','y','z'].includes(arrayRaw.axis)?arrayRaw.axis:'y',direction:arrayRaw.direction===-1?-1:1,
+  gap:numeric(arrayRaw.gap,0.15,0,20),rotation:triplet(arrayRaw.rotation,45),scale:triplet(arrayRaw.scale,.25)};
  const hex=(v,f)=>typeof v==='string'&&/^#[0-9a-fA-F]{6}$/.test(v)?v:f;
  const validTexture=(v,f)=>['plaster','concrete','bricks','glass'].includes(v)?v:f;
  const windows={enabled:bool(windowRaw.enabled),openable:windowRaw.openable!==false,
   minWidth:clamp(Number(windowRaw.minWidth)||2.5,1.2,15),minHeight:clamp(Number(windowRaw.minHeight)||2.2,1,10),
   widthRatio:clamp(Number(windowRaw.widthRatio)||.36,.15,.7),heightRatio:clamp(Number(windowRaw.heightRatio)||.42,.2,.75),
   color:hex(windowRaw.color,'#b6ecfc'),opacity:clamp(Number(windowRaw.opacity)||.42,.08,.85),
-  openIds:Array.isArray(windowRaw.openIds)?windowRaw.openIds.filter(v=>Number.isInteger(v)&&v>=0&&v<320).slice(0,160):[]};
+  openIds:Array.isArray(windowRaw.openIds)?windowRaw.openIds.filter(v=>Number.isInteger(v)&&v>=0&&v<16384).slice(0,640):[]};
  const ceiling={enabled:bool(ceilingRaw.enabled),thickness:clamp(Number(ceilingRaw.thickness)||.16,.05,.6),
   texture:validTexture(ceilingRaw.texture,'plaster'),color:hex(ceilingRaw.color,'#e1e7eb'),
   autoLiftOpenings:ceilingRaw.autoLiftOpenings!==false};
- return {windows,ceiling,points:unique,closed:raw.closed===true,width:num('width',.16,.05,1.5),height:num('height',2.8,.3,10),texture,textureMediaId,color,opacity:num('opacity',texture==='glass'?.4:1,.08,1),smooth:raw.smooth!==false};
+ return {array,windows,ceiling,points:unique,closed:raw.closed===true,width:num('width',.16,.05,1.5),height:num('height',2.8,.3,10),texture,textureMediaId,color,opacity:num('opacity',texture==='glass'?.4:1,.08,1),smooth:raw.smooth!==false};
+}
+// The first room is the authored outline. Other array elements are generated at render time.
+// Rotation (degrees) and scale (additive per copy) are relative to the base room.
+export function wallArrayTransforms(settings){
+ const s=sanitiseWall(settings);
+ const minX=Math.min(...s.points.map(p=>p[0]),0),maxX=Math.max(...s.points.map(p=>p[0]),0);
+ const minZ=Math.min(...s.points.map(p=>p[1]),0),maxZ=Math.max(...s.points.map(p=>p[1]),0);
+ const dimensions={x:Math.max(.1,maxX-minX),y:s.height,z:Math.max(.1,maxZ-minZ)};
+ const count=s.closed&&s.array.enabled?s.array.count:1;
+ return Array.from({length:count},(_,index)=>{
+  const axis=s.array.axis,offset=[0,0,0];offset[{x:0,y:1,z:2}[axis]]=index===0?0:index*s.array.direction*(dimensions[axis]+s.array.gap);
+  return {index,offset,rotation:s.array.rotation.map(deg=>deg*index*Math.PI/180),
+   scale:s.array.scale.map(v=>Math.max(.2,Math.min(5,1+v*index))),pivot:[(minX+maxX)/2,0,(minZ+maxZ)/2]};
+ });
 }
 export function simplifyWallPoints(points,tolerance=.13){
  if(points.length<3)return points.slice();const sqTol=tolerance*tolerance;

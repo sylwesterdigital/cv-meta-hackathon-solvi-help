@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.139',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.140',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3046,7 +3046,7 @@ def get_scene():
     return jsonify(revision=row['revision'],objects=json.loads(row['payload']))
 
 def valid_office_wall(wall):
-    if not isinstance(wall,dict) or len(wall)>10:return False
+    if not isinstance(wall,dict) or len(wall)>12:return False
     points=wall.get('points',[])
     if not isinstance(points,list) or not 2<=len(points)<=80:return False
     if any(not isinstance(p,list) or len(p)!=2 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or abs(v)>500 for v in p) for p in points):return False
@@ -3068,7 +3068,7 @@ def valid_office_wall(wall):
             v=w.get(key)
             if not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not lo<=v<=hi:return False
         open_ids=w.get('openIds')
-        if not isinstance(open_ids,list) or len(open_ids)>160 or any(not isinstance(x,int) or isinstance(x,bool) or not 0<=x<320 for x in open_ids):return False
+        if not isinstance(open_ids,list) or len(open_ids)>640 or any(not isinstance(x,int) or isinstance(x,bool) or not 0<=x<16384 for x in open_ids):return False
     if 'ceiling' in wall:
         c=wall['ceiling']
         if not isinstance(c,dict) or set(c)-{'enabled','thickness','texture','color','autoLiftOpenings'}:return False
@@ -3077,6 +3077,17 @@ def valid_office_wall(wall):
         if not isinstance(c.get('color'),str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',c['color']):return False
         v=c.get('thickness')
         if not isinstance(v,(float,int)) or isinstance(v,bool) or not math.isfinite(v) or not .05<=v<=.6:return False
+    if 'array' in wall:
+        a=wall['array']
+        if not isinstance(a,dict) or set(a)-{'enabled','count','axis','direction','gap','rotation','scale'}:return False
+        if not isinstance(a.get('enabled'),bool) or not isinstance(a.get('count'),int) or isinstance(a.get('count'),bool) or not 1<=a['count']<=16:return False
+        if a.get('axis') not in {'x','y','z'} or a.get('direction') not in (-1,1) or isinstance(a.get('direction'),bool):return False
+        gap=a.get('gap')
+        if not isinstance(gap,(int,float)) or isinstance(gap,bool) or not math.isfinite(gap) or not 0<=gap<=20:return False
+        if a['enabled'] and wall.get('closed') is not True:return False
+        for name,limit in (('rotation',45),('scale',.25)):
+            values=a.get(name)
+            if not isinstance(values,list) or len(values)!=3 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not -limit<=v<=limit for v in values):return False
     return isinstance(wall.get('smooth',False),bool) and isinstance(wall.get('closed',False),bool)
 
 def valid_office_ladder(ladder):

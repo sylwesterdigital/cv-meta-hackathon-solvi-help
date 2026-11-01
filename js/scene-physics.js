@@ -184,14 +184,15 @@ export class ScenePhysics{
      const attr=segment.geometry.getAttribute('position'),index=segment.geometry.getIndex();
      const verts=new Float32Array(attr.array.length);
      for(let i=0;i<attr.count;i++){
-      verts[3*i]=attr.getX(i)*object.scale.x;
-      verts[3*i+1]=attr.getY(i)*object.scale.y;
-      verts[3*i+2]=attr.getZ(i)*object.scale.z;
+      verts[3*i]=attr.getX(i)*object.scale.x*segment.scale.x;
+      verts[3*i+1]=attr.getY(i)*object.scale.y*segment.scale.y;
+      verts[3*i+2]=attr.getZ(i)*object.scale.z*segment.scale.z;
      }
      const indices=index?new Uint32Array(index.array):Uint32Array.from({length:attr.count},(_,i)=>i);
      try{
       const roof=R.ColliderDesc.trimesh(verts,indices)
        .setTranslation(segment.position.x*object.scale.x,segment.position.y*object.scale.y,segment.position.z*object.scale.z)
+       .setRotation({x:segment.quaternion.x,y:segment.quaternion.y,z:segment.quaternion.z,w:segment.quaternion.w})
        .setFriction(opts.friction).setRestitution(opts.restitution);
       const roofCollider=this.world.createCollider(roof,body);
       if(!collider)collider=roofCollider;
@@ -201,11 +202,11 @@ export class ScenePhysics{
     if(!segment.userData.portalFrame&&!segment.userData.wallSegment&&!segment.userData.stairTread&&!segment.userData.ladderBar&&!(segment.userData.stairStructure&&segment.geometry?.type==='BoxGeometry'&&kind==='stairs'&&['advanced','escalator','walkway'].includes(object.userData.stairs?.variant)))continue;
     const size=segment.geometry.parameters;
     const scale=object.scale;
-    const halfX=Math.max(.025,size.width*Math.abs(scale.x)/2),halfY=Math.max(.025,size.height*Math.abs(scale.y)/2),halfZ=Math.max(.025,size.depth*Math.abs(scale.z)/2);
-    const rotation=segment.rotation.y;
+    if(!size||!Number.isFinite(size.width*size.height*size.depth))continue;
+    const halfX=Math.max(.025,size.width*Math.abs(scale.x*segment.scale.x)/2),halfY=Math.max(.025,size.height*Math.abs(scale.y*segment.scale.y)/2),halfZ=Math.max(.025,size.depth*Math.abs(scale.z*segment.scale.z)/2);
     const desc=R.ColliderDesc.cuboid(halfX,halfY,halfZ)
       .setTranslation(segment.position.x*scale.x,segment.position.y*scale.y,segment.position.z*scale.z)
-      .setRotation({x:0,y:Math.sin(rotation/2),z:0,w:Math.cos(rotation/2)})
+      .setRotation({x:segment.quaternion.x,y:segment.quaternion.y,z:segment.quaternion.z,w:segment.quaternion.w})
       .setFriction(opts.friction).setRestitution(opts.restitution);
     const segmentCollider=this.world.createCollider(desc,body);
     if(!collider)collider=segmentCollider;

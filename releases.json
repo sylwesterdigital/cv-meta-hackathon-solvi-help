@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.139",
+  "currentVersion": "0.2.140",
   "releases": [
+    {
+      "version": "0.2.140",
+      "publishedAt": "2026-11-01T20:13:50Z",
+      "changes": [
+        "Fix tiny robot +/\u2212 buttons by removing the baked white rectangles from both SVG icons, drawing white strokes on transparent backgrounds and overriding button backgrounds in all interaction states.",
+        "Highlight the active controlled robot with a clearly visible accent ring and contrasting name colour, preserving portrait-only switcher layout and drag handling.",
+        "Add optional Room Array to closed Office Space wall outlines. Repeat the room from 1 to 16 copies on X/Y/Z with +1/\u22121 direction, gap, per-copy rotation X/Y/Z and scale X/Y/Z increments; edit an existing room without recreating it.",
+        "Generate real wall, window, glass, button and ceiling meshes for every array copy in one saved object; preserve separate window open/close states and per-copy compound wall and ceiling physics.",
+        "Save, restore and validate array settings server-side, including upgraded open-window identifier bounds, and correct the wall record field limit so current windows-plus-ceiling payloads are accepted.",
+        "Add four focused regression tests for array geometry, controls, save schema and independent window states; keep existing rooms unchanged until Array is enabled."
+      ]
+    },
     {
       "version": "0.2.139",
       "publishedAt": "2026-11-01T19:17:38Z",
@@ -290,17 +302,6 @@
         "Provide missing square.svg used by geometry icons to eliminate 404s.",
         "Associate administrator and Tripo password fields with forms and add accessible admin username hints.",
         "Add executable lift rider regression tests for moving up/down, dynamic objects, malformed deltas and source wiring."
-      ]
-    },
-    {
-      "version": "0.2.106",
-      "publishedAt": "2026-10-31T13:52:12Z",
-      "changes": [
-        "Add Stairs advanced to Office Space with compact collapsible railing, rods/posts, roof/tunnel, supporting posts, step material and texture controls.",
-        "Add Escalators and Moving walkways with configurable speed/direction and contact-based movement of locally owned robots and loose dynamic objects, using separate geometric treads and physics.",
-        "Add Lifts with an open-ended cabin, two through twelve levels, floor-height/width controls, level landing frames and Start/Stop commands for kinematic travel.",
-        "Persist/validate new parametric settings, lift destination/current height, undo/redo snapshots and scene/archive metadata; avoid unnecessary collider rebuilds from travel-only state updates.",
-        "Add eight focused geometry, transport math, backend wiring and persistence regressions and bound test-runner concurrency for reliable watcher validation."
       ]
     }
   ]
