@@ -11,14 +11,14 @@ export function cleanStairExtras(raw={}){
  const surface=raw.surface||{};
  return {
   variant,
-  surface:{texture:choice(surface.texture,['none','concrete','bricks','plaster','tiles','metal'],'none'),color:hex(surface.color,hex(raw.color,'#c6d1dc')),
+  surface:{texture:choice(surface.texture,['none','concrete','bricks','plaster','tiles','metal','wood','marble','granite'],'none'),color:hex(surface.color,hex(raw.color,'#c6d1dc')),
    opacity:limit(surface.opacity,.08,1,limit(raw.opacity,.08,1,1)),material:choice(surface.material,['matte','metal','glass'],'matte')},
   rail:{enabled:typeof rail.enabled==='boolean'?rail.enabled:(variant==='escalator'||variant==='advanced'),side:choice(rail.side,['both','left','right'],'both'),height:limit(rail.height,.35,2,1),width:limit(rail.width,.02,.25,.06),
-   rods:Math.round(limit(rail.rods,1,5,2)),every:Math.round(limit(rail.every,1,8,2)),color:hex(rail.color,'#738b9b'),opacity:limit(rail.opacity,.15,1,1),material:choice(rail.material,['metal','wood','glass'],'metal'),texture:choice(rail.texture,['none','concrete','bricks','plaster','metal'],'none')},
+   rods:Math.round(limit(rail.rods,1,5,2)),every:Math.round(limit(rail.every,1,8,2)),color:hex(rail.color,'#738b9b'),opacity:limit(rail.opacity,.15,1,1),material:choice(rail.material,['metal','wood','glass'],'metal'),texture:choice(rail.texture,['none','concrete','bricks','plaster','metal','wood','marble','granite'],'none')},
   roof:{enabled:roof.enabled===true,height:limit(roof.height,1.75,5,2.5),thickness:limit(roof.thickness,.03,.4,.12),walls:roof.walls===true,
-   color:hex(roof.color,'#b7c9d7'),opacity:limit(roof.opacity,.1,1,1),texture:choice(roof.texture,['none','concrete','bricks','plaster','metal'],'none')},
+   color:hex(roof.color,'#b7c9d7'),opacity:limit(roof.opacity,.1,1,1),texture:choice(roof.texture,['none','concrete','bricks','plaster','metal','wood','marble','granite'],'none')},
   supports:{enabled:supports.enabled===true,side:choice(supports.side,['both','left','right','center'],'both'),every:Math.round(limit(supports.every,1,16,4)),
-   width:limit(supports.width,.04,.65,.12),color:hex(supports.color,'#8a939b'),opacity:limit(supports.opacity,.1,1,1),texture:choice(supports.texture,['none','concrete','bricks','plaster','metal'],'none')},
+   width:limit(supports.width,.04,.65,.12),color:hex(supports.color,'#8a939b'),opacity:limit(supports.opacity,.1,1,1),texture:choice(supports.texture,['none','concrete','bricks','plaster','metal','wood','marble','granite'],'none')},
   transport:{speed:limit(transport.speed,.05,2.5,.5),direction:transport.direction===-1?-1:1,enabled:transport.enabled!==false,controlsEnabled:transport.controlsEnabled===true,controlsSide:choice(transport.controlsSide,['left','right'],'right'),changedAt:Math.round(limit(transport.changedAt,0,4102444800000,0))},
   lift:{levels:Math.round(limit(lift.levels,2,40,2)),levelHeight:limit(lift.levelHeight,1.8,8,3),target:Math.round(limit(lift.target,0,39,1)),cabinHeight:limit(lift.cabinHeight,1.8,4,2.4),currentHeight:limit(lift.currentHeight,0,312,0),callButtons:lift.callButtons===true,callSide:choice(lift.callSide,['left','right'],'right'),...(safeLiftMotion(lift.motion)?{motion:safeLiftMotion(lift.motion)}:{})}
  };

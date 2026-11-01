@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import {naturalTexture,NATURAL_MATERIALS} from './procedural-natural-textures.js';
 import {sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon,wallArrayTransforms} from './office-wall-math.js';
 export {sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallSegments,wallWorldToLocal} from './office-wall-math.js';
 
-export function wallPresetTexture(name){
+export function wallPresetTexture(name,options={}){
+ if(['wood','marble','granite'].includes(name))return naturalTexture(name,options);
  const c=document.createElement('canvas');c.width=c.height=256;const ctx=c.getContext('2d');
  ctx.fillStyle=name==='bricks'?'#bc876b':name==='concrete'?'#a0a5ab':'#e0e4de';ctx.fillRect(0,0,256,256);
  if(name==='bricks'){ctx.strokeStyle='#61554c';ctx.lineWidth=5;for(let row=0;row<8;row++){ctx.beginPath();ctx.moveTo(0,row*32);ctx.lineTo(256,row*32);ctx.stroke();for(let col=0;col<5;col++){const x=col*64+(row%2?32:0);ctx.beginPath();ctx.moveTo(x,row*32);ctx.lineTo(x,(row+1)*32);ctx.stroke();}}}
@@ -48,7 +50,7 @@ export function rebuildOfficeWall(group,settings,lifts=[]){
  const segments=wallSegments(s);
  let windowId=0;
  for(const seg of segments){
-  const tex=s.texture==='glass'||s.texture==='custom'?(retain?prior.texture||null:null):wallPresetTexture(s.texture);
+  const tex=s.texture==='glass'||s.texture==='custom'?(retain?prior.texture||null:null):wallPresetTexture(s.texture,{scale:s.textureScale,distortion:s.textureDistortion,contrast:s.textureContrast});
   const material=wallMaterial(s,tex);
   const openings=wallWindowLayout(seg.length,s.height,s.windows);
   const c=Math.cos(seg.yaw),sn=Math.sin(seg.yaw);
@@ -106,7 +108,7 @@ export function rebuildOfficeWall(group,settings,lifts=[]){
   const geom=new THREE.ExtrudeGeometry(shape,{depth:s.ceiling.thickness,bevelEnabled:false,steps:1,curveSegments:2});
   geom.rotateX(-Math.PI/2);
   const ceiling=new THREE.Mesh(geom,new THREE.MeshStandardMaterial({color:s.ceiling.color,roughness:.86,
-   map:wallPresetTexture(s.ceiling.texture),side:THREE.DoubleSide}));
+   map:wallPresetTexture(s.ceiling.texture,{scale:s.textureScale,distortion:s.textureDistortion,contrast:s.textureContrast}),side:THREE.DoubleSide}));
   ceiling.position.y=s.height-s.ceiling.thickness;
   ceiling.userData.wallCeiling=true;ceiling.receiveShadow=true;ceiling.castShadow=true;group.add(ceiling);
  }

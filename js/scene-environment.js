@@ -7,7 +7,7 @@ export const ENVIRONMENT_DEFAULTS=Object.freeze({
 });
 const ranges={fogNear:[0,100000],fogFar:[1,150000],floorSize:[40,20000],skySpeed:[0,5],skyIntensity:[0,2],starDensity:[0,2],viewDistance:[200,100000]};
 const types=new Set(['solid','gradient','sunset','rainbow','stars','nebula']);
-const floorTypes=new Set(['none','concrete','soil','tarmac','sand','tiles','gradient-tiles','random-tiles']);
+const floorTypes=new Set(['none','concrete','soil','tarmac','sand','tiles','gradient-tiles','random-tiles','wood','marble','granite']);
 const validHex=v=>typeof v==='string'&&/^#[0-9a-fA-F]{6}$/.test(v);
 export function normalizeEnvironment(input={}){
  const out={...ENVIRONMENT_DEFAULTS};

@@ -1,5 +1,5 @@
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
-const presets=['plaster','concrete','bricks','glass'];
+const presets=['plaster','concrete','bricks','glass','wood','marble','granite'];
 export function sanitiseWall(raw={}){
  const original=Array.isArray(raw.points)?raw.points:[];
  const sampled=original.length>80?Array.from({length:80},(_,i)=>original[Math.round(i*(original.length-1)/79)]):original;
@@ -19,7 +19,7 @@ export function sanitiseWall(raw={}){
   axis:['x','y','z'].includes(arrayRaw.axis)?arrayRaw.axis:'y',direction:arrayRaw.direction===-1?-1:1,
   gap:numeric(arrayRaw.gap,0.15,0,20),rotation:triplet(arrayRaw.rotation,45),scale:triplet(arrayRaw.scale,.25)};
  const hex=(v,f)=>typeof v==='string'&&/^#[0-9a-fA-F]{6}$/.test(v)?v:f;
- const validTexture=(v,f)=>['plaster','concrete','bricks','glass'].includes(v)?v:f;
+ const validTexture=(v,f)=>['plaster','concrete','bricks','glass','wood','marble','granite'].includes(v)?v:f;
  const windows={enabled:bool(windowRaw.enabled),openable:windowRaw.openable!==false,
   minWidth:clamp(Number(windowRaw.minWidth)||2.5,1.2,15),minHeight:clamp(Number(windowRaw.minHeight)||2.2,1,10),
   widthRatio:clamp(Number(windowRaw.widthRatio)||.36,.15,.7),heightRatio:clamp(Number(windowRaw.heightRatio)||.42,.2,.75),
@@ -28,7 +28,7 @@ export function sanitiseWall(raw={}){
  const ceiling={enabled:bool(ceilingRaw.enabled),thickness:clamp(Number(ceilingRaw.thickness)||.16,.05,.6),
   texture:validTexture(ceilingRaw.texture,'plaster'),color:hex(ceilingRaw.color,'#e1e7eb'),
   autoLiftOpenings:ceilingRaw.autoLiftOpenings!==false};
- return {array,windows,ceiling,points:unique,closed:raw.closed===true,width:num('width',.16,.05,1.5),height:num('height',2.8,.3,10),texture,textureMediaId,color,opacity:num('opacity',texture==='glass'?.4:1,.08,1),smooth:raw.smooth!==false};
+ return {array,windows,ceiling,textureScale:numeric(raw.textureScale,1,.25,5),textureDistortion:numeric(raw.textureDistortion,.38,0,2),textureContrast:numeric(raw.textureContrast,1,.2,3),points:unique,closed:raw.closed===true,width:num('width',.16,.05,1.5),height:num('height',2.8,.3,10),texture,textureMediaId,color,opacity:num('opacity',texture==='glass'?.4:1,.08,1),smooth:raw.smooth!==false};
 }
 // The first room is the authored outline. Other array elements are generated at render time.
 // Rotation (degrees) and scale (additive per copy) are relative to the base room.

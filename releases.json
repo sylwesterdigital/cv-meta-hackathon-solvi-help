@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.141",
+  "currentVersion": "0.2.142",
   "releases": [
+    {
+      "version": "0.2.142",
+      "publishedAt": "2026-11-01T23:39:36Z",
+      "changes": [
+        "Add 128x128 deterministic low-memory procedural Wood, Marble and Granite materials with layered noise, cellular speckles and distortion; no network textures.",
+        "Expose natural materials in wall, ceiling, stairs, ladder, furniture, primitive and floor selectors. Provide compact Scale, Distortion and Contrast controls on walls and natural furniture textures.",
+        "Add Basic props with eight editable procedural objects: Plate, Mug, Glass, Bowl, Bottle, Can, Flowerpot and Box; hollow/container profiles with optional handles, bottle lids, flowerpot soil and open-top boxes.",
+        "Preserve prop edits through the existing furniture scene persistence, duplication, room archives, compound collision and multiplayer object updates; update server validation.",
+        "Add procedural texture and prop runtime regressions, retain original avatar assets; requires the updated watcher with a 4096-entry archive safeguard."
+      ]
+    },
     {
       "version": "0.2.141",
       "publishedAt": "2026-11-01T23:03:58Z",
@@ -292,17 +303,6 @@
         "Support mouse clicks and WebXR controller-ray selection using the existing permission-checked lift movement and saved destination action.",
         "Expose Call button at each level and Button side inside the compact Lift stops and cabin settings; preserve existing lifts with calls disabled by default.",
         "Validate and persist the call-button configuration, accept earlier five-field lift settings, and add focused source/runtime regression tests."
-      ]
-    },
-    {
-      "version": "0.2.108",
-      "publishedAt": "2026-10-31T15:20:15Z",
-      "changes": [
-        "Add two small in-world lift control columns (inside and outside cabin) with numbered switches for each configured level.",
-        "Use green idle, red requested destination, and orange passing-floor feedback, plus a continuously updated large floor digit inside the cabin.",
-        "Allow ordinary pointer clicking and WebXR controller-ray selection, routing both through owner/permission-checked lift transport and scene persistence.",
-        "Play quiet synthetic Web Audio start and arrival jingles after an activated button press; no external audio downloads.",
-        "Update only controls/display textures and colours during lift movement; preserve riders, existing kinematic collision and lift settings."
       ]
     }
   ]

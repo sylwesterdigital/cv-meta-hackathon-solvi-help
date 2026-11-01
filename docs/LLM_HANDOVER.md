@@ -1,3 +1,14 @@
+## v0.2.142 — Procedural natural materials, Basic props & watcher limit (1 November 2026)
+
+- Add 128x128 deterministic low-memory procedural Wood, Marble and Granite materials with layered noise, cellular speckles and distortion; no network textures.
+- Expose natural materials in wall, ceiling, stairs, ladder, furniture, primitive and floor selectors. Provide compact Scale, Distortion and Contrast controls on walls and natural furniture textures.
+- Add Basic props with eight editable procedural objects: Plate, Mug, Glass, Bowl, Bottle, Can, Flowerpot and Box; hollow/container profiles with optional handles, bottle lids, flowerpot soil and open-top boxes.
+- Preserve prop edits through the existing furniture scene persistence, duplication, room archives, compound collision and multiplayer object updates; update server validation.
+- Add procedural texture and prop runtime regressions, retain original avatar assets; requires the updated watcher with a 4096-entry archive safeguard.
+
+- **Verification:** 619/619 JavaScript tests (including three new runtime regressions); Nginx, portable realm archives, backend source parsing, JS syntax and installer shell syntax passed. Browser GPU appearance not verified.
+- **Deployment:** replace the local Mac root watcher `solvi-watch.sh` with patched `solvi-watch.sh` download, restart it, then put v0.2.142 ZIP in `updates/`. A release ZIP cannot modify the already running local watcher.
+
 ## v0.2.141 — Compact procedural controls and Basic furnitures (1 November 2026)
 
 - **Robot selection:** selected portrait draws a clearly visible 3px accent ring above the photo, inside its roundel, with no cropped inset effect; the active name stays tinted. The +/− buttons remain tiny with transparent backgrounds.

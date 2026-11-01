@@ -31,12 +31,15 @@ export function buildPrimitive(kind,values){
 
 // Basic furniture is built from individually collidable, editable primitive parts.
 // Keeping it here avoids a new module and preserves the deployment watcher's file budget.
-export const FURNITURE_TYPES=['table','chair','stool','bed','armchair','sofa','cabinet'];
+export const BASIC_PROP_TYPES=['plate','mug','glass','bowl','bottle','can','flowerpot','box'];
+export const FURNITURE_TYPES=['table','chair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES];
 export const FURNITURE_NUMERIC={
- width:[1.2,.35,8],depth:[.75,.3,4],height:[.76,.2,4],
+ width:[1.2,.06,8],depth:[.75,.06,4],height:[.76,.025,4],
  topThickness:[.07,.025,.3],topRadius:[.55,.15,4],legRadius:[.04,.025,.3],
  corners:[4,3,8],seatHeight:[.46,.25,.9],backHeight:[.5,.2,1.3],
- shelves:[3,0,16],seats:[2,1,4],cushionThickness:[.14,.05,.35]
+ shelves:[3,0,16],seats:[2,1,4],cushionThickness:[.14,.05,.35],
+ wallThickness:[.025,.005,.15],neckRadius:[.065,.01,.5],neckHeight:[.12,.02,.6],
+ rimHeight:[.018,.005,.1],textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
 };
 const furniturePreset={
  table:{width:1.4,depth:.8,height:.75,legStyle:'four'},
@@ -45,7 +48,15 @@ const furniturePreset={
  armchair:{width:.88,depth:.85,height:1.02,seatHeight:.43,backHeight:.59,legStyle:'four'},
  sofa:{width:1.85,depth:.86,height:1.02,seatHeight:.44,backHeight:.58,legStyle:'four',seats:2},
  bed:{width:1.5,depth:2.05,height:.52,seatHeight:.42,legStyle:'four'},
- cabinet:{width:1.05,depth:.4,height:1.8,shelves:3,legStyle:'none'}
+ cabinet:{width:1.05,depth:.4,height:1.8,shelves:3,legStyle:'none'},
+ plate:{width:.28,depth:.28,height:.035,legStyle:'none'},
+ mug:{width:.09,depth:.09,height:.105,legStyle:'none'},
+ glass:{width:.075,depth:.075,height:.14,legStyle:'none'},
+ bowl:{width:.19,depth:.19,height:.085,legStyle:'none'},
+ bottle:{width:.085,depth:.085,height:.27,legStyle:'none'},
+ can:{width:.066,depth:.066,height:.12,legStyle:'none'},
+ flowerpot:{width:.22,depth:.22,height:.23,legStyle:'none'},
+ box:{width:.35,depth:.3,height:.28,legStyle:'none'}
 };
 export function sanitiseFurniture(raw={}){
  const variant=FURNITURE_TYPES.includes(raw.variant)?raw.variant:'table';
@@ -58,16 +69,17 @@ export function sanitiseFurniture(raw={}){
  if(variant==='sofa'&&raw.width===undefined)result.width=result.seats*.82+.22;
  result.topShape=['rectangle','polygon','round'].includes(raw.topShape)?raw.topShape:'rectangle';
  result.legStyle=['four','three','single','casters','none'].includes(raw.legStyle)?raw.legStyle:defaults.legStyle;
+ result.handle=raw.handle!==false;result.cap=raw.cap!==false;result.soil=raw.soil===true;result.openTop=raw.openTop!==false;
  result.headrest=raw.headrest===true;
  result.headboard=raw.headboard!==false;
  result.color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#9b8068';
  result.fabricColor=typeof raw.fabricColor==='string'&&/^#[0-9a-f]{6}$/i.test(raw.fabricColor)?raw.fabricColor:'#64798e';
- result.texture=['none','plaster','concrete','bricks','metal'].includes(raw.texture)?raw.texture:'none';
+ result.texture=['none','plaster','concrete','bricks','metal','wood','marble','granite'].includes(raw.texture)?raw.texture:'none';
  return result;
 }
 export function rebuildFurniture(group,raw={}){
  const p=sanitiseFurniture(raw);const wood=new THREE.MeshStandardMaterial({color:p.color,roughness:.68});
- if(p.texture!=='none'){wood.map=wallPresetTexture(p.texture==='metal'?'concrete':p.texture);if(p.texture==='metal'){wood.metalness=.6;wood.roughness=.35;}}
+ if(p.texture!=='none'){wood.map=wallPresetTexture(p.texture==='metal'?'concrete':p.texture,{scale:p.textureScale,distortion:p.textureDistortion,contrast:p.textureContrast});if(p.texture==='metal'){wood.metalness=.6;wood.roughness=.35;}}
  const fabric=new THREE.MeshStandardMaterial({color:p.fabricColor,roughness:.9});
  const parts=[];
  const add=(geometry,x,y,z,mat=wood)=>{const part=new THREE.Mesh(geometry,mat);part.position.set(x,y,z);part.userData.furniturePart=true;part.castShadow=true;part.receiveShadow=true;parts.push(part);return part;};
@@ -112,6 +124,46 @@ export function rebuildFurniture(group,raw={}){
   box(p.width,t,p.depth,0,t/2,0);box(p.width,t,p.depth,0,p.height-t/2,0);
   box(p.width-2*t,p.height-2*t,t,0,p.height/2,p.depth/2-t/2);
   for(let i=1;i<=p.shelves;i++)box(p.width-2*t,t,p.depth-t,0,t+(p.height-2*t)*i/(p.shelves+1),-t/2);
+ }else if(p.variant==='box'){
+  const t=Math.min(p.wallThickness,p.width*.24,p.height*.24,p.depth*.24);
+  box(p.width,t,p.depth,0,t/2,0);
+  for(const side of [-1,1]){
+   box(t,p.height-t,p.depth,side*(p.width-t)/2,(p.height+t)/2,0);
+   box(p.width-2*t,p.height-t,t,0,(p.height+t)/2,side*(p.depth-t)/2);
+  }
+  if(!p.openTop)box(p.width,t,p.depth,0,p.height-t/2,0);
+ }else if(BASIC_PROP_TYPES.includes(p.variant)){
+  const radius=p.width/2,t=Math.min(p.wallThickness,radius*.35,p.height*.3);
+  const profile=[];const point=(x,y)=>profile.push(new THREE.Vector2(Math.max(0,x),Math.max(0,y)));
+  if(p.variant==='plate'){
+   point(0,0);point(radius*.69,0);point(radius*.82,p.height*.22);point(radius,p.height);point(Math.max(0,radius-t),p.height);
+   point(Math.max(0,radius*.79-t),p.height*.23);point(0,p.height*.23);
+  }else if(p.variant==='bowl'){
+   point(0,0);point(radius*.38,0);point(radius*.62,p.height*.18);point(radius,p.height);
+   point(radius-t,p.height);point(radius*.56,p.height*.25);point(0,t);
+  }else if(p.variant==='bottle'){
+   const neck=Math.min(p.neckRadius,radius*.72);const top=Math.min(p.height*.43,p.neckHeight);
+   point(0,0);point(radius*.8,0);point(radius,p.height*.1);point(radius,p.height-top*1.45);
+   point(neck,p.height-top*.8);point(neck,p.height);point(Math.max(.01,neck-t),p.height);
+   point(Math.max(.01,neck-t),p.height-top);point(radius-t,p.height-top*1.6);point(radius-t,t);point(0,t);
+  }else{
+   const wide=p.variant==='flowerpot'?radius:radius*.92;
+   point(0,0);point(radius*.75,0);point(radius*.82,p.height*.08);point(wide,p.height);
+   point(Math.max(.01,wide-t),p.height);point(Math.max(.01,radius*.82-t),t);point(0,t);
+  }
+  const vessel=add(new THREE.LatheGeometry(profile,32),0,0,0);
+  vessel.userData.furnitureHollow=true;
+  if(['mug','can','flowerpot','glass'].includes(p.variant)){
+   const lip=new THREE.Mesh(new THREE.TorusGeometry(radius*.96,Math.max(.003,t*.26),6,32),wood);
+   lip.rotation.x=Math.PI/2;lip.position.y=p.height;lip.userData.furniturePart=true;parts.push(lip);
+  }
+  if(p.variant==='mug'&&p.handle){
+   const handle=add(new THREE.TorusGeometry(Math.max(.022,p.height*.31),Math.max(.006,t*.48),8,20,Math.PI*1.7),radius+.03,p.height*.53,0);
+   handle.rotation.z=Math.PI/2;handle.userData.furnitureHandle=true;
+  }
+  if(p.variant==='bottle'&&p.cap)cylinder(Math.min(p.neckRadius,radius*.72)*1.05,.028,0,p.height+.014,0);
+  if(p.variant==='flowerpot'&&p.soil)cylinder(radius*.72,.015,0,p.height*.85,0,new THREE.MeshStandardMaterial({color:'#50412e',roughness:1}),24);
+  if(p.variant==='can'&&p.cap)cylinder(radius*.97,.008,0,p.height+.004,0,new THREE.MeshStandardMaterial({color:'#aeb8bc',metalness:.7,roughness:.35}),32);
  }
  // Build before changing the old object, so an unsupported geometry cannot erase it.
  const materials=new Set();for(const child of [...group.children]){group.remove(child);child.geometry?.dispose?.();if(child.material)materials.add(child.material);}for(const mat of materials){mat.map?.dispose?.();mat.dispose?.();}

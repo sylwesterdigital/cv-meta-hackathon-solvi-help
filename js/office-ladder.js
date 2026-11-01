@@ -9,7 +9,7 @@ export function sanitiseLadder(raw={}){
  const rungSpacing=clamp(raw.rungSpacing,.3,.15,.6);
  const rungs=Math.round(clamp(raw.rungs,Math.max(3,Math.floor((height-.3)/rungSpacing)),3,240));
  const color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#a5b9c8';
- const texture=['none','metal','concrete','bricks','plaster'].includes(raw.texture)?raw.texture:'metal';
+ const texture=['none','metal','concrete','bricks','plaster','wood','marble','granite'].includes(raw.texture)?raw.texture:'metal';
  // Distance from the rung plane to the robot foot pivot, measured along the
  // ladder's local normal. Supports both faces and follows object rotation.
  const adhesion=clamp(raw.adhesion,.30,.12,.85);

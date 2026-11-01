@@ -54,9 +54,9 @@ test('open curve cap checkbox generates tube without closing the end rings',()=>
  assert.equal(curve.cleanCurve({...params,capEnds:false}).capEnds,false);
  assert.equal(curve.cleanCurve(params).capEnds,true);
 });
-test('seven floor presets are deterministic grayscale textures, not remote assets',()=>{
+test('legacy floor presets remain deterministic grayscale textures, not remote assets',()=>{
  assert.equal(floor.floorStyle('nonexistent'),'none');
- for(const type of floor.FLOOR_STYLES.filter(t=>t!=='none')){
+ for(const type of floor.FLOOR_STYLES.filter(t=>t!=='none'&&!['wood','marble','granite'].includes(t))){
   const sample=floor.floorPixel(type,42,36);
   assert.ok(sample>=180&&sample<=260,type+': '+sample);
   assert.equal(sample,floor.floorPixel(type,42,36));

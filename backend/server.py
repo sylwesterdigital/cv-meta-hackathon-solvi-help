@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.141',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.142',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -755,7 +755,7 @@ ENV_RANGE = {'fogNear':(0,100000),'fogFar':(1,150000),'floorSize':(40,20000),
              'viewDistance':(200,100000)}
 ENV_COLOR_KEYS = ('fogColor','gridColor','floorColor','backgroundColor','skyTop','skyHorizon')
 ENV_SKY_TYPES = ('solid','gradient','sunset','rainbow','stars','nebula')
-ENV_FLOOR_TYPES = ('none','concrete','soil','tarmac','sand','tiles','gradient-tiles','random-tiles')
+ENV_FLOOR_TYPES = ('none','concrete','soil','tarmac','sand','tiles','gradient-tiles','random-tiles','wood','marble','granite')
 
 def normalize_environment(value):
     if not isinstance(value,dict):raise ValueError('Environment must be an object')
@@ -3046,7 +3046,7 @@ def get_scene():
     return jsonify(revision=row['revision'],objects=json.loads(row['payload']))
 
 def valid_office_wall(wall):
-    if not isinstance(wall,dict) or len(wall)>12:return False
+    if not isinstance(wall,dict) or len(wall)>15:return False
     points=wall.get('points',[])
     if not isinstance(points,list) or not 2<=len(points)<=80:return False
     if any(not isinstance(p,list) or len(p)!=2 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or abs(v)>500 for v in p) for p in points):return False
@@ -3054,7 +3054,9 @@ def valid_office_wall(wall):
     for key,low,high in (('width',.05,1.5),('height',.3,10),('opacity',.08,1)):
         val=wall.get(key)
         if not isinstance(val,(int,float)) or isinstance(val,bool) or not math.isfinite(val) or not low<=val<=high:return False
-    if wall.get('texture') not in {'plaster','concrete','bricks','glass','custom'}:return False
+    for key,lo,hi in (('textureScale',.25,5),('textureDistortion',0,2),('textureContrast',.2,3)):
+        if key in wall and (not isinstance(wall[key],(int,float)) or isinstance(wall[key],bool) or not math.isfinite(wall[key]) or not lo<=wall[key]<=hi):return False
+    if wall.get('texture') not in {'plaster','concrete','bricks','glass','wood','marble','granite','custom'}:return False
     media_id=wall.get('textureMediaId','')
     if not isinstance(media_id,str) or (media_id and not re.fullmatch(r'[0-9a-f-]{36}',media_id,re.I)):return False
     if wall.get('texture')=='custom' and not media_id:return False
@@ -3073,7 +3075,7 @@ def valid_office_wall(wall):
         c=wall['ceiling']
         if not isinstance(c,dict) or set(c)-{'enabled','thickness','texture','color','autoLiftOpenings'}:return False
         if not isinstance(c.get('enabled'),bool) or not isinstance(c.get('autoLiftOpenings'),bool):return False
-        if c.get('texture') not in {'plaster','concrete','bricks','glass'}:return False
+        if c.get('texture') not in {'plaster','concrete','bricks','glass','wood','marble','granite'}:return False
         if not isinstance(c.get('color'),str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',c['color']):return False
         v=c.get('thickness')
         if not isinstance(v,(float,int)) or isinstance(v,bool) or not math.isfinite(v) or not .05<=v<=.6:return False
@@ -3091,13 +3093,15 @@ def valid_office_wall(wall):
     return isinstance(wall.get('smooth',False),bool) and isinstance(wall.get('closed',False),bool)
 
 def valid_basic_furniture(value):
-    if not isinstance(value,dict) or len(value)>24:return False
+    if not isinstance(value,dict) or len(value)>36:return False
     variant=value.get('variant')
-    if variant not in ('table','chair','stool','armchair','sofa','bed','cabinet'):return False
-    numeric={'width':(.35,8),'depth':(.3,4),'height':(.2,4),'topThickness':(.025,.3),
+    if variant not in ('table','chair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box'):return False
+    numeric={'width':(.06,8),'depth':(.06,4),'height':(.025,4),'topThickness':(.025,.3),
              'legRadius':(.025,.3),'topRadius':(.15,4),'corners':(3,8),'seatHeight':(.25,.9),
-             'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35)}
-    allowed={'variant','topShape','legStyle','headrest','headboard','color','fabricColor','texture'}|set(numeric)
+             'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35),
+             'wallThickness':(.005,.15),'neckRadius':(.01,.5),'neckHeight':(.02,.6),
+             'rimHeight':(.005,.1),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3)}
+    allowed={'variant','topShape','legStyle','headrest','headboard','color','fabricColor','texture','handle','cap','soil','openTop'}|set(numeric)
     if any(key not in allowed for key in value):return False
     for key,(lo,hi) in numeric.items():
         if key not in value:continue
@@ -3106,8 +3110,8 @@ def valid_basic_furniture(value):
         if key in ('corners','shelves','seats') and int(n)!=n:return False
     if value.get('topShape','rectangle') not in ('rectangle','round','polygon'):return False
     if value.get('legStyle','four') not in ('four','three','single','casters','none'):return False
-    if value.get('texture','none') not in ('none','plaster','concrete','bricks','metal'):return False
-    if any(not isinstance(value.get(k,False),bool) for k in ('headrest','headboard')):return False
+    if value.get('texture','none') not in ('none','plaster','concrete','bricks','metal','wood','marble','granite'):return False
+    if any(not isinstance(value.get(k,False),bool) for k in ('headrest','headboard','handle','cap','soil','openTop')):return False
     for k in ('color','fabricColor'):
         if k in value and (not isinstance(value[k],str) or re.fullmatch(r'#[0-9a-fA-F]{6}',value[k]) is None):return False
     return True
@@ -3122,7 +3126,7 @@ def valid_office_ladder(ladder):
         if not isinstance(value,(int,float)) or isinstance(value,bool) or not math.isfinite(value) or not .12<=value<=.85:return False
     if int(ladder['rungs'])!=ladder['rungs']:return False
     if ladder.get('rungMode') not in ('spacing','count'):return False
-    if ladder.get('texture') not in ('none','metal','concrete','bricks','plaster'):return False
+    if ladder.get('texture') not in ('none','metal','concrete','bricks','plaster','wood','marble','granite'):return False
     return isinstance(ladder.get('color'),str) and re.fullmatch(r'#[0-9a-fA-F]{6}',ladder['color']) is not None
 
 def valid_office_stairs(stairs):
@@ -3152,10 +3156,10 @@ def valid_office_stairs(stairs):
             if key.endswith('color') or key=='color':
                 if not isinstance(value.get(key),str) or not re.fullmatch(r'#[a-fA-F0-9]{6}',value[key]):return False
         return True
-    if not structured('surface',('texture','color','opacity','material'),(('opacity',.08,1),),(('texture',('none','concrete','bricks','plaster','tiles','metal')),('material',('matte','metal','glass')))):return False
-    if not structured('rail',('enabled','side','height','width','rods','every','color','opacity','material','texture'),(('height',.35,2),('width',.02,.25),('rods',1,5),('every',1,8),('opacity',.15,1)),(('side',('both','left','right')),('material',('metal','wood','glass')),('texture',('none','concrete','bricks','plaster','metal'))),('enabled',)):return False
-    if not structured('roof',('enabled','height','thickness','walls','color','opacity','texture'),(('height',1.75,5),('thickness',.03,.4),('opacity',.1,1)),(('texture',('none','concrete','bricks','plaster','metal')),),('enabled','walls')):return False
-    if not structured('supports',('enabled','side','every','width','color','opacity','texture'),(('every',1,16),('width',.04,.65),('opacity',.1,1)),(('side',('both','left','right','center')),('texture',('none','concrete','bricks','plaster','metal'))),('enabled',)):return False
+    if not structured('surface',('texture','color','opacity','material'),(('opacity',.08,1),),(('texture',('none','concrete','bricks','plaster','tiles','metal','wood','marble','granite')),('material',('matte','metal','glass')))):return False
+    if not structured('rail',('enabled','side','height','width','rods','every','color','opacity','material','texture'),(('height',.35,2),('width',.02,.25),('rods',1,5),('every',1,8),('opacity',.15,1)),(('side',('both','left','right')),('material',('metal','wood','glass')),('texture',('none','concrete','bricks','plaster','metal','wood','marble','granite'))),('enabled',)):return False
+    if not structured('roof',('enabled','height','thickness','walls','color','opacity','texture'),(('height',1.75,5),('thickness',.03,.4),('opacity',.1,1)),(('texture',('none','concrete','bricks','plaster','metal','wood','marble','granite')),),('enabled','walls')):return False
+    if not structured('supports',('enabled','side','every','width','color','opacity','texture'),(('every',1,16),('width',.04,.65),('opacity',.1,1)),(('side',('both','left','right','center')),('texture',('none','concrete','bricks','plaster','metal','wood','marble','granite'))),('enabled',)):return False
     if not structured('transport',tuple(stairs['transport']),(('speed',.05,2.5),('changedAt',0,4102444800000)) if 'changedAt' in stairs['transport'] else (('speed',.05,2.5),),(('direction',(-1,1)),('controlsSide',('left','right'))) if 'controlsSide' in stairs['transport'] else (('direction',(-1,1)),),('enabled','controlsEnabled') if 'controlsEnabled' in stairs['transport'] else ('enabled',)):return False
     if set(stairs['transport'])-{'speed','direction','enabled','controlsEnabled','controlsSide','changedAt'} or not {'speed','direction','enabled'}.issubset(stairs['transport']):return False
     lift=stairs.get('lift')
@@ -3351,7 +3355,7 @@ def patch_scene_object():
         avatar=str(obj.get('avatar',''))
         if avatar and not (avatar=='./assets/solvi-character.glb' or (re.fullmatch(r'\./assets/avatars/[A-Za-z0-9_-]+\.glb',avatar) or re.fullmatch(r'/api/avatars/[0-9a-f]{32}\.glb',avatar))):
             return json_error('Invalid avatar reference')
-        if obj.get('texture','none') not in ('none','checker','gradient','stripes','dots','custom'):return json_error('Unsupported texture preset')
+        if obj.get('texture','none') not in ('none','checker','gradient','stripes','dots','wood','marble','granite','concrete','bricks','custom'):return json_error('Unsupported texture preset')
         if not isinstance(obj.get('color'),(str,type(None))) or len(obj.get('color') or '')>24:return json_error('Invalid color')
         if 'speed' in obj and (not isinstance(obj['speed'],(float,int)) or not math.isfinite(obj['speed']) or not 0<=obj['speed']<=10):return json_error('Invalid robot speed')
         if 'strafeSpeed' in obj and (not isinstance(obj['strafeSpeed'],(float,int)) or not math.isfinite(obj['strafeSpeed']) or not 0<=obj['strafeSpeed']<=10):return json_error('Invalid strafe speed')
