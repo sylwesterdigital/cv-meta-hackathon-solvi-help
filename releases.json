@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.137",
+  "currentVersion": "0.2.138",
   "releases": [
+    {
+      "version": "0.2.138",
+      "publishedAt": "2026-11-01T05:43:48Z",
+      "changes": [
+        "Fix browser stalls when changing realms: remove forced WebGL rerender and synchronous preview readback from realm chooser.",
+        "Pause outgoing-realm robot simulation and cleanly restart destination physics only after its scene is loaded; rebuild large Rapier collider sets in interruptible batches.",
+        "Cancel stale scene and physics rebuilds during rapid realm switches; use browser task yields during scene object replacement.",
+        "Fix enabling/disabling room Physics when it returns no Promise, and bind delayed object saves to their original realm.",
+        "Add executable runtime tests for large collider reconstruction, realm cancellation and old-realm save isolation."
+      ]
+    },
     {
       "version": "0.2.137",
       "publishedAt": "2026-11-01T05:22:54Z",
@@ -289,19 +300,6 @@
         "Chat audio and video attachments use slim shared custom controls, time/seek/mute/fullscreen, compact download/delete actions and no raw filename or native player bar.",
         "Chat fetches metadata instead of loading entire recordings. On Play, authenticated 15-minute HLS access is requested; native HLS or locally bundled hls.js plays the stream; direct blob playback is a failure fallback.",
         "Media deletion requires uploader/admin authorization and rejects scene, environment, profile and bookmarked references; linked chat attachments are unlinked on success."
-      ]
-    },
-    {
-      "version": "0.2.104",
-      "publishedAt": "2026-10-31T06:05:17Z",
-      "changes": [
-        "Realm transitions: defer replacing the old scene until the next realm data arrives, reject stale responses and build objects in frame-sized batches",
-        "World Settings: avoid redundant floor-texture reapplication, physics resets and scene-list rebuilds when no setting changed",
-        "Chat: render the latest 180 entries initially, progressively load older history, yield frames during long timelines and retain full transcript exports",
-        "Chat controls: center the downward navigation arrow and enlarge participant avatars by 50 percent",
-        "Robot Control: replace the visible dropdown with selectable robot portrait/initial buttons above the controller",
-        "My Camera: Record, Pause/Resume and Stop buttons reuse the active webcam video; recorded clips can be attached to chat, added to the scene or drawn onto a selected cube/plane as a media frame",
-        "Virtual view capture: optional canvas captureStream recording with MediaRecorder on supported browsers, with a 15 fps capture target and conservative video bitrate; not guaranteed to include Quest passthrough"
       ]
     }
   ]

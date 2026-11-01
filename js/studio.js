@@ -1,5 +1,5 @@
 import {confirmAction,exactNameAction,textEntry} from './app-dialogs.js';
-import {makeRealmCards,captureRealmPreview} from './realm-gallery.js';
+import {makeRealmCards} from './realm-gallery.js';
 import {mentionQuery,mentionCandidates,insertMention} from './chat-mentions.js';
 import {renderChatAttachment,ensureChatMediaViewer} from './chat-attachments.js';
 import {compactMediaPlayer} from './compact-media-player.js';
@@ -61,16 +61,6 @@ function syncRobotDebugUI(){
  const all=$('debugAllRobots');if(all)all.checked=sessionStorage.getItem(ROBOT_DEBUG_ALL_KEY)==='1';const path=$('pathSelectedRobot');if(path){path.disabled=!id;path.checked=!!id&&readPathSelection(sessionStorage).has(id);}
 }
 
-function saveRealmView(room=activeRoom){
- // A single on-demand screenshot from the EXISTING world renderer if not cached.
- // Never allocate WebGL contexts for realm previews or refresh on every room change.
- const key='solvi-realm-preview-v1-'+room;
- try{if(localStorage.getItem(key))return true;}catch{}
- const world=window.solviEditor?.world;
- if(!world?.renderer||!world.scene||!world.camera||world.renderer.xr?.isPresenting||document.hidden)return false;
- try{world.renderer.render(world.scene,world.camera);return captureRealmPreview(room,world.renderer.domElement);}
- catch{return false;}
-}
 const toast=text=>{const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5200);};
 const show=(id,yes=true)=>{$(id).hidden=!yes;};
 
@@ -825,13 +815,14 @@ async function configureRooms(){
  select.onchange=()=>{
    // Switching rooms must never render a thumbnail or interrupt the WebGL context.
    environmentAutosave?.flushAll();policyAutosave?.flushAll();
+   const previousRoom=activeRoom;
    activeRoom=select.value;window.solviRoom=activeRoom;sessionStorage.setItem('solvi-room',activeRoom);localStorage.setItem('solvi-last-realm',activeRoom);if(me?.id)localStorage.setItem('solvi-last-realm-'+me.id,activeRoom);
    const realmTitle=select.selectedOptions[0]?.textContent||'Main realm';
    $('roomChatTitle').textContent=realmTitle+' · messages';
    const nav=$('realmGalleryButton'),navLabel=nav?.querySelector('.ui-button-label');
    if(navLabel)navLabel.textContent=realmTitle;else if(nav)nav.textContent=realmTitle;
    invalidateChatRoom(activeRoom);followChat=true;playCue('leave');
-   window.dispatchEvent(new CustomEvent('solvi:room-changed',{detail:{room:activeRoom}}));
+   window.dispatchEvent(new CustomEvent('solvi:room-changed',{detail:{room:activeRoom,previousRoom}}));
  };
 }
 const envFieldIds={fogEnabled:'envFogEnabled',gridEnabled:'envGridEnabled',fogColor:'envFogColor',
@@ -862,7 +853,13 @@ function applyWorldPolicy(policy){
  for(const [id,key] of [['worldObjectsPolicy','objects'],['worldRobotsPolicy','robots']])$(id).value=window.solviRoomPolicy[key];
  $('worldPhysicsEnabled').value=String(window.solviRoomPolicy.physics);
  const nextPhysics=Boolean(window.solviRoomPolicy.physics);
- if(lastAppliedPhysics!==nextPhysics){lastAppliedPhysics=nextPhysics;window.solviEditor?.physics.setEnabled(nextPhysics).then(()=>window.solviEditor?.updateInspector()).catch(e=>toast('Physics unavailable: '+e.message));}
+ if(lastAppliedPhysics!==nextPhysics){
+  lastAppliedPhysics=nextPhysics;
+  const editor=window.solviEditor;
+  // Defer costly collider construction until a destination realm has finished
+  // removing and loading its scene objects.
+  if(editor&&!editor.realmTransitioning)Promise.resolve(editor.physics.setEnabled(nextPhysics)).then(()=>editor.updateInspector()).catch(e=>toast('Physics unavailable: '+e.message));
+ }
  if(old.objects!==window.solviRoomPolicy.objects||old.robots!==window.solviRoomPolicy.robots||old.physics!==window.solviRoomPolicy.physics)window.solviEditor?.refreshList();
 }
 function autosaveWorldStatus(){
@@ -1049,8 +1046,8 @@ function configureDragging(){
 function setupNewRoom(){
  const backdrop=$('realmGalleryBackdrop'),holder=$('realmGalleryCards');
  async function openGallery(){
-  // No forced renderer.render(), no per-card WebGL contexts, no room-switch screenshots.
-  saveRealmView(activeRoom);
+  // Opening the realm chooser must not synchronously force a WebGL render,
+  // GPU readback or canvas encoding; cached thumbnails remain visible.
   try{if(online&&auth)window.solviRoomCards=(await api.req('/api/rooms')).rooms||window.solviRoomCards;}
   catch(error){toast(error.message);}
   holder.replaceChildren(makeRealmCards(window.solviRoomCards||[{id:'main',title:'Main realm'}],activeRoom));
@@ -1396,11 +1393,20 @@ function bindUI(world){
  let realmSwitchVersion=0;
  window.addEventListener('solvi:room-changed',async event=>{
   const current=++realmSwitchVersion,room=event.detail.room;
-  // Keep the new realm title accurate and prevent late responses from another room.
-   editor.revision=0; // Keep the previous realm visible until the new scene response arrives.
+  editor.beginRealmTransition(room,event.detail.previousRoom);
+  editor.revision=0;
+  try{
+   // Policy/environment and scene fetch may run in parallel, but physics
+   // restoration waits for the new scene to finish loading.
    await Promise.all([loadWorldSettings(),editor.load()]);
-  if(current!==realmSwitchVersion||room!==activeRoom)return;
-  await loadMessages();
+   if(current!==realmSwitchVersion||room!==activeRoom)return;
+   editor.endRealmTransition(room);
+   await loadMessages();
+  }catch(error){
+   if(current===realmSwitchVersion&&room===activeRoom){
+    editor.endRealmTransition(room);toast('Realm load failed: '+error.message);
+   }
+  }
  });
  window.addEventListener('solvi:scene-changed',e=>editor.acceptRemoteRevision(e.detail));
  window.addEventListener('solvi:robot-route',event=>{const d=event.detail||{};if(robotDebugAllowed(d.robotId))emitBrainTrace(d.robotId,d.name||'Robot',d.status==='planned'?'ROUTE ACCEPTED':'ROUTE BLOCKED',`${d.waypoints||0} computed A* waypoints · ${d.obstacles||0} obstacle footprints · planned length ${Number(d.plannedMeters||0).toFixed(2)} m · start ${JSON.stringify(d.start)} · destination ${d.target||'unknown'} ${JSON.stringify(d.destination)} · task ${d.taskId||'?'}. ${d.reason||''} Green is the planner route; cyan is observed movement.`);if(robotDebugAllowed(d.robotId)&&d.plan)emitBrainTrace(d.robotId,d.name||'Robot','PLANNER ACTUAL GEOMETRY',d.plan);if(robotDebugAllowed(d.robotId)&&d.nearby_obstacles?.length)emitBrainTrace(d.robotId,d.name||'Robot','NEARBY OBSTACLE FOOTPRINTS (NOT PROVEN BLOCKERS)',d.nearby_obstacles);});

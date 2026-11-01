@@ -1169,6 +1169,25 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   updateMediaHUDPosition(){const hud=byId('mediaInteractionHud');if(!hud)return;const obj=this.selected;if(!obj||obj.userData?.editorKind!=='media'){hud.hidden=true;return;}const pos=obj.getWorldPosition(new THREE.Vector3());pos.y+=0.9;pos.project(this.world.camera);if(pos.z>1){hud.hidden=true;return;}const rect=this.world.renderer.domElement.getBoundingClientRect();const x=(pos.x*.5+.5)*rect.width+rect.left,y=(-pos.y*.5+.5)*rect.height+rect.top;hud.style.left=`${x}px`;hud.style.top=`${y}px`;hud.hidden=false;byId('mediaHudPlay').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaHudMute').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';}
 
   serialize(){return this.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,position:xyz(o.position),rotation:xyz(o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),climbable:canBeClimbable(o.userData.editorKind)?o.userData.climbable===true:undefined,strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed??2.5):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed??1.8):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed??4):undefined,climbSpeed:o.userData.editorKind==='robot'?(o.userData.robotClimbSpeed??1.25):undefined,combat:o.userData.editorKind==='robot'?combatSettings(o.userData.robotCombat):undefined,animationSpeed:o.userData.editorKind==='robot'?animationSpeedSettings(o.userData.robotAnimationSpeed):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined,media:o.userData.editorKind==='media'?structuredClone(o.userData.media||{}):undefined,primitive:PRIMITIVE_FIELDS[o.userData.editorKind]?structuredClone(o.userData.primitive||sanitisePrimitive(o.userData.editorKind)):undefined,curve:o.userData.editorKind==='curve'?structuredClone(cleanCurve(o.userData.curve)):undefined,text:o.userData.editorKind==='text'?structuredClone(cleanText(o.userData.text)):undefined,openings:o.userData.editorKind==='cube'?cleanOpenings(o.userData.openings):undefined,wall:o.userData.editorKind==='wall'?structuredClone(o.userData.wall):undefined,stairs:o.userData.editorKind==='stairs'?structuredClone(o.userData.stairs):undefined,ladder:o.userData.editorKind==='ladder'?structuredClone(o.userData.ladder):undefined,portal:o.userData.editorKind==='portal'?cleanPortal(o.userData.portal):undefined}));}
+ beginRealmTransition(room,previousRoom){
+  // Finish old-room debounced saves before changing scene identity. A delayed
+  // write must never end up in whichever room is active 650ms later.
+  this.flushPendingRoomSaves(previousRoom);
+  this.realmTransitioning=room;
+  this.sceneLoadTicket=(this.sceneLoadTicket||0)+1;
+  this.controlledRobotId=null;this.remoteInput.clear();this.remoteCorrections.clear();this.robotKeys.clear();
+  this.localRobotInput=null;this.transform.detach();
+  // A previous realm's collision world must not keep stepping as scene meshes
+  // are removed. The room policy is restored only after the scene has arrived.
+  void this.physics.setEnabled(false);
+ }
+ endRealmTransition(room){
+  if(this.realmTransitioning!==room)return;
+  this.realmTransitioning=null;
+  if(window.solviRoomPolicy?.physics){
+   this.physics.setEnabled(true).catch(error=>this.toast('Physics unavailable: '+error.message));
+  }
+ }
  beginSceneReplacement(){this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.selected=null;this.controlledRobotId=null;this.robotKeys.clear();this.sceneRestorePhysics=this.physics.enabled;this.physics.clear();byId('propertiesPanel').hidden=true;}
  addSceneEntry(entry){if(!kinds.includes(entry.kind))return;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotClimbSpeed=entry.climbSpeed??1.25;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.robotCombat=combatSettings(entry.combat);o.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);o.userData.physics=physicsOptions(entry.physics||(entry.kind==='ladder'?{mode:'static'}:undefined));o.userData.climbable=entry.climbable===true&&canBeClimbable(entry.kind);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='curve'){o.userData.curve=cleanCurve(entry.curve);o.geometry.dispose();o.geometry=buildCurveGeometry(o.userData.curve);}if(entry.kind==='text')rebuildText(o,entry.text,()=>{if(this.items.includes(o))this.physics.sync(o);});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{});if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(entry.kind==='ladder')rebuildLadder(o,entry.ladder||{});if(entry.kind==='portal')rebuildPortal(o,entry.portal||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.userData.openings=entry.kind==='cube'?cleanOpenings(entry.openings):undefined;o.geometry=entry.kind==='cube'?cutCubeGeometry(o.userData.primitive,o.userData.openings):buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
@@ -1181,25 +1200,28 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
    this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);if(entry.kind==='media')hydrateSceneMedia(o,this.world);this.physics.sync(o);}
- endSceneReplacement(){this.refreshList();if(this.sceneRestorePhysics)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));}
+ endSceneReplacement(){this.refreshList();if(this.sceneRestorePhysics&&!this.realmTransitioning)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));}
  apply(data){this.beginSceneReplacement();for(const entry of data)this.addSceneEntry(entry);this.endSceneReplacement();}
  async applyCooperatively(data,stillCurrent){
   // Both disposal and hydration are chunked. Removing a large room in one
   // synchronous loop can stall the Chromium renderer as readily as creating it.
-  const batch=10,previous=[...this.items];
+  const batch=3,previous=[...this.items];
+  // Timers yield even when requestAnimationFrame is throttled during a heavy
+  // scene replacement; this keeps navigation and the browser UI responsive.
+  const yieldMain=()=>new Promise(resolve=>setTimeout(resolve,0));
   this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);
   this.history.clear();this.clearLightHelper();this.transform.detach();
   this.items=[];this.selected=null;this.sceneRestorePhysics=this.physics.enabled;
   this.physics.clear();byId('propertiesPanel').hidden=true;
   for(let i=0;i<previous.length;i++){
    const old=previous[i];this.world.scene.remove(old);this.disposeObject(old);
-   if(i%batch===batch-1)await new Promise(resolve=>requestAnimationFrame(resolve));
+   if(i%batch===batch-1)await yieldMain();
   }
   if(!stillCurrent())return false;
   for(let i=0;i<data.length;i++){
    if(!stillCurrent())return false;
    this.addSceneEntry(data[i]);
-   if(i%batch===batch-1)await new Promise(resolve=>requestAnimationFrame(resolve));
+   if(i%batch===batch-1)await yieldMain();
   }
   if(!stillCurrent())return false;this.endSceneReplacement();return true;
  }
@@ -1391,12 +1413,20 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   undo(){if(this.history.undo((wanted,old)=>this.applyHistorySnapshot(wanted,old)))this.toast('Undo');}
   redo(){if(this.history.redo((wanted,old)=>this.applyHistorySnapshot(wanted,old)))this.toast('Redo');}
   snapshot(o){return this.serialize().find(item=>item.id===o?.userData.editorId);}
-  queueSave(o){if(!o||!this.canEdit(o))return;const id=o.userData.editorId;clearTimeout(this.pendingSaves.get(id));this.pendingSaves.set(id,setTimeout(()=>{this.pendingSaves.delete(id);this.persistObject(o);},650));}
-  async persistObject(o){
+  flushPendingRoomSaves(room){
+   if(!room)return;
+   for(const [id,timer] of this.pendingSaves){
+    clearTimeout(timer);this.pendingSaves.delete(id);
+    const object=this.items.find(o=>o.userData.editorId===id);
+    if(object)void this.persistObject(object,room);
+   }
+  }
+  queueSave(o){if(!o||this.realmTransitioning||!this.canEdit(o))return;const id=o.userData.editorId;const room=window.solviRoom||'main';clearTimeout(this.pendingSaves.get(id));this.pendingSaves.set(id,setTimeout(()=>{this.pendingSaves.delete(id);this.persistObject(o,room);},650));}
+  async persistObject(o,room=window.solviRoom||'main'){
     if(!o||!this.items.includes(o)||!this.canEdit(o))return;
     const data=this.snapshot(o),api=window.solviAPI;
-    if(!api?.online){localStorage.setItem('solvi-scene-'+(window.solviRoom||'main'),JSON.stringify(this.serialize()));return;}
-    try{const result=await api.req('/api/scene/object',{method:'POST',body:JSON.stringify({room:window.solviRoom||'main',action:'upsert',object:data})});this.revision=Math.max(this.revision,result.revision||0);}
+    if(!api?.online){localStorage.setItem('solvi-scene-'+room,JSON.stringify(this.serialize()));return;}
+    try{const result=await api.req('/api/scene/object',{method:'POST',body:JSON.stringify({room,action:'upsert',object:data})});if(room===(window.solviRoom||'main'))this.revision=Math.max(this.revision,result.revision||0);}
     catch(error){this.toast('Save failed: '+error.message);}
   }
   async persistRemoval(id){const api=window.solviAPI;
@@ -1418,6 +1448,9 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   broadcastEdit(active){const o=this.selected;if(o&&this.canEdit(o))window.solviRoomSocket?.send({type:'object-edit',id:o.userData.editorId,editing:active});}
   showRemoteEdit(packet){const id=packet.id;const obj=this.items.find(o=>o.userData.editorId===id);if(!obj)return;const previous=this.editMarkers.get(id);if(previous&&packet.editing){previous.expires=performance.now()+6500;return;}if(previous){this.world.scene.remove(previous.sprite);previous.sprite.material.map?.dispose();previous.sprite.material.dispose();this.editMarkers.delete(id);}if(!packet.editing)return;const canvas=document.createElement('canvas');canvas.width=512;canvas.height=80;const ctx=canvas.getContext('2d');ctx.fillStyle='rgba(8,20,37,.87)';ctx.fillRect(0,0,512,80);ctx.fillStyle='#ffffff';ctx.font='bold 32px sans-serif';ctx.fillText('Editing · '+String(packet.name||'Guest').slice(0,21),12,50);const texture=new THREE.CanvasTexture(canvas);const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));sprite.scale.set(2.6,.42,1);this.world.scene.add(sprite);this.editMarkers.set(id,{sprite,expires:performance.now()+6500});}
   tick(dt){
+   // Never simulate the outgoing realm while its objects and physics world are
+   // being replaced; normal rendering and UI remain active.
+   if(this.realmTransitioning)return;
     const clock=performance.now();for(const [id,marker] of this.editMarkers){const item=this.items.find(o=>o.userData.editorId===id);if(!item||clock>marker.expires){this.world.scene.remove(marker.sprite);marker.sprite.material.map?.dispose();marker.sprite.material.dispose();this.editMarkers.delete(id);continue;}const bounds=new THREE.Box3().setFromObject(item);marker.sprite.position.copy(bounds.getCenter(new THREE.Vector3()));marker.sprite.position.y=(bounds.isEmpty()?item.position.y+2:bounds.max.y)+.42;}
     if(this.selected&&this.canEdit(this.selected)&&(this.world.editorDragging||this.robotKeys.size)&&clock-this.lastEditPing>2500){this.broadcastEdit(true);this.lastEditPing=clock;}
     if(this.lightHelper&&!byId('propertiesPanel').hidden){this.lightHelper.visible=!this.world.renderer.xr.isPresenting;this.lightHelper.update?.();}

@@ -39,7 +39,20 @@ export class ScenePhysics{
     this.characterController.setMinSlopeSlideAngle(CHARACTER.slopeDegrees*Math.PI/180);
     this.characterController.setApplyImpulsesToDynamicBodies(true);
     this.enabled=true;
-    for(const object of this.editor.items)this.sync(object);
+    // Rebuild potentially expensive Trimesh colliders incrementally. In a large
+    // destination realm a synchronous loop can block Chromium's main thread.
+    const physicsWorld=this.world;
+    const objects=[...this.editor.items];
+    let sliceStart=performance.now();
+    for(let i=0;i<objects.length;i++){
+     if(generation!==this.generation||this.world!==physicsWorld||!this.enabled)return;
+     if(!this.editor.items.includes(objects[i]))continue;
+     this.sync(objects[i]);
+     if(i%3===2||performance.now()-sliceStart>7){
+      await new Promise(resolve=>setTimeout(resolve,0));
+      sliceStart=performance.now();
+     }
+    }
    }catch(error){if(generation===this.generation){this.enabled=false;this.clear();}throw error;}
    finally{this.loading=null;}
   })();return this.loading;

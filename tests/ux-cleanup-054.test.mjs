@@ -37,8 +37,9 @@ test('model gallery and avatar gallery share a single GPU context, no repeated f
  assert.doesNotMatch(avatars,/new THREE\.WebGLRenderer|forceContextLoss/);
  assert.match(assets,/IntersectionObserver/);
  assert.match(avatars,/IntersectionObserver/);
- assert.match(studio,/if\(localStorage\.getItem\(key\)\)return true;/);
- assert.match(studio,/world\.renderer\.xr\?\.isPresenting/);
+ assert.doesNotMatch(studio,/world\.renderer\.render\(world\.scene,world\.camera\)/);
+ assert.doesNotMatch(studio,/saveRealmView\(activeRoom\)/);
+ assert.match(studio,/makeRealmCards\(/);
 });
 test('borderless, shadow-free, no-blur UI and optional object delete confirmation are persisted',()=>{
  const html=read('index.html'),css=read('styles.css'),js=read('js/studio.js'),editor=read('js/editor.js');

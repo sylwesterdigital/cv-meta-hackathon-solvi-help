@@ -6,7 +6,7 @@ test('realm switching does not clear scene before fetching, yields while buildin
  const s=get('js/studio.js'),e=get('js/editor.js');
  assert.doesNotMatch(s,/editor\.revision=0;editor\.apply\(\[\]\)/);
  assert.match(e,/async applyCooperatively\(data,stillCurrent\)/);
- assert.match(e,/await new Promise\(resolve=>requestAnimationFrame\(resolve\)\)/);
+ assert.match(e,/const yieldMain=\(\)=>new Promise\(resolve=>setTimeout\(resolve,0\)\)/);
  assert.match(e,/ticket!==this\.sceneLoadTicket/);
  assert.match(e,/if\(!stillCurrent\(\)\)return false/);
 });
@@ -44,4 +44,43 @@ test('chat page down is bottom centered and participant portraits are fifty perc
  const css=get('styles.css');
  assert.match(css,/#chatPanel \.chat-page-down\{right:auto!important;left:50%!important/);
  assert.match(css,/#chatFeed \.chat-avatar\{width:calc\(30px \* 1\.5\)!important/);
+});
+
+test('large realm collider initialization yields instead of locking the main thread',async()=>{
+ const source=get('js/scene-physics.js').replace(/^import .*;\s*$/gm,'').replace('export class ScenePhysics','class ScenePhysics');
+ const ScenePhysics=new Function('CHARACTER',`${source}\nreturn ScenePhysics;`)({maxStep:.5,snapDistance:.1,slopeDegrees:45});
+ let destroyed=0;
+ class MockWorld{
+  createCollider(){}
+  createCharacterController(){return {enableAutostep(){},enableSnapToGround(){},setMaxSlopeClimbAngle(){},setMinSlopeSlideAngle(){},setApplyImpulsesToDynamicBodies(){}};}
+  free(){destroyed++;}
+ }
+ const R={World:MockWorld,ColliderDesc:{cuboid(){return {setTranslation(){return this;}}}}};
+ const editor={items:Array.from({length:120},(_,n)=>({userData:{editorId:`realm-object-${n}`}}))};
+ const physics=new ScenePhysics(editor);physics.runtime=R;
+ let builds=0;physics.sync=()=>{builds++;};
+ const build=physics.setEnabled(true);
+ assert.ok(builds>0&&builds<editor.items.length,'some colliders build immediately but not all in one uninterrupted turn');
+ await new Promise(resolve=>setTimeout(resolve,0));
+ assert.ok(builds<editor.items.length,'other browser tasks can run during bulk collider creation');
+ physics.setEnabled(false);
+ const stoppedAt=builds;
+ await build;
+ assert.equal(builds,stoppedAt,'cancelled realm must not keep constructing old colliders');
+ assert.equal(physics.world,null);
+ assert.ok(destroyed>=1,'old Rapier world is freed on realm exit');
+ await physics.setEnabled(true);
+ assert.equal(builds,stoppedAt+editor.items.length,'new realm collider rebuild completes after a cancellation');
+});
+
+test('realm transition stops outgoing simulation and keeps pending saves tied to their original realm',()=>{
+ const s=get('js/studio.js'),e=get('js/editor.js');
+ assert.match(s,/editor\.beginRealmTransition\(room,event\.detail\.previousRoom\)/);
+ assert.match(s,/editor\.endRealmTransition\(room\)/);
+ assert.match(s,/Promise\.resolve\(editor\.physics\.setEnabled\(nextPhysics\)\)/);
+ assert.match(e,/if\(this\.realmTransitioning\)return/);
+ assert.match(e,/this\.flushPendingRoomSaves\(previousRoom\)/);
+ assert.match(e,/this\.persistObject\(o,room\)/);
+ assert.match(e,/if\(room===\(window\.solviRoom\|\|'main'\)\)this\.revision/);
+ assert.doesNotMatch(s,/saveRealmView\(activeRoom\)/,'opening the realm chooser must not synchronously read back and encode the active WebGL frame');
 });
