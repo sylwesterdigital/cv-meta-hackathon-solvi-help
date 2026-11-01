@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.125',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.126',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3088,12 +3088,12 @@ def valid_office_stairs(stairs):
         motion=lift['motion']
         if not isinstance(motion,dict) or set(motion)!={'fromHeight','target','startedAt','speed','active'}:return False
         if type(motion.get('active')) is not bool:return False
-        for field,low,high in (('fromHeight',0,96),('target',0,11),('startedAt',1700000000000,4102444800000),('speed',.05,2.5)):
+        for field,low,high in (('fromHeight',0,312),('target',0,39),('startedAt',1700000000000,4102444800000),('speed',.05,2.5)):
             value=motion[field]
             if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not low<=value<=high:return False
         if type(motion['target']) is not int:return False
         if motion['target']>=lift['levels']:return False
-    if not structured('lift',tuple(lift),(('levels',2,12),('levelHeight',1.8,8),('target',0,11),('cabinHeight',1.8,4),('currentHeight',0,96)),(('callSide',('left','right')), ) if 'callSide' in lift else (),('callButtons',) if 'callButtons' in lift else ()):return False
+    if not structured('lift',tuple(lift),(('levels',2,40),('levelHeight',1.8,8),('target',0,39),('cabinHeight',1.8,4),('currentHeight',0,312)),(('callSide',('left','right')), ) if 'callSide' in lift else (),('callButtons',) if 'callButtons' in lift else ()):return False
     if stairs['variant']=='lift' and stairs['lift']['target']>=stairs['lift']['levels']:return False
     return True
 
@@ -3466,7 +3466,7 @@ def websocket(ws):
                     target=int(msg.get('target',-1));from_height=float(msg.get('fromHeight'));started_at=float(msg.get('startedAt'));speed=float(msg.get('speed'));active=msg.get('active')
                 except (TypeError,ValueError,OverflowError):continue
                 if isinstance(active,bool) is False or not all(math.isfinite(x) for x in (from_height,started_at,speed)):continue
-                if not (0<=from_height<=96 and .05<=speed<=2.5 and 1700000000000<=started_at<=4102444800000):continue
+                if not (0<=from_height<=312 and .05<=speed<=2.5 and 1700000000000<=started_at<=4102444800000):continue
                 if abs(started_at-time.time()*1000)>15000:continue
                 with db() as con:
                     row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()

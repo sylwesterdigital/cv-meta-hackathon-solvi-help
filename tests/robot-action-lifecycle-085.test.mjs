@@ -50,6 +50,22 @@ test('Hard Landing finishes directly into Idle without playing a second Stand Up
  assert.equal(cfg.robotReaction,null);
  assert(!calls.some(c=>c[1]==='standUp'));
 });
+test('Extreme impact finishes Falling Flat Impact before Stand Up, then releases to Idle',()=>{
+ const {anim,bot,calls}=harness();
+ const cfg=bot.userData;
+ cfg.robotMode='idle';cfg.robotActualSpeed=0;cfg.robotLocalMotion=false;
+ cfg.robotAnimator.actions=new Map([['fallingImpact',{}],['standUp',{}],['idle',{}]]);
+ cfg.robotReaction={clip:'fallingImpact',duration:1.35,elapsed:0,next:'standUp'};
+ anim([bot],.1);
+ assert(calls.some(c=>c[0]==='once'&&c[1]==='fallingImpact'));
+ assert(!calls.some(c=>c[1]==='standUp'));
+ anim([bot],1.26);
+ assert.equal(cfg.robotReaction.clip,'standUp');
+ assert(calls.some(c=>c[0]==='once'&&c[1]==='standUp'));
+ anim([bot],.86);
+ assert.equal(cfg.robotReaction,null);
+ assert.equal(calls.filter(c=>c[0]==='play').at(-1)[1],'idle');
+});
 test('jump remains in the mixer until explicit ground confirmation',()=>{
  const {anim,bot,calls}=harness();
  bot.userData.robotJumpActive=true;

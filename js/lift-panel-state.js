@@ -1,7 +1,7 @@
 // Pure floor-panel model. Both mouse and WebXR drive the same target.
 export const LIFT_BUTTON_COLORS=Object.freeze({idle:0x228e53,destination:0xdc3547,passing:0xf3a43b});
 export function liftPanelState(lift={},runtime={}){
- const count=Math.max(2,Math.min(12,Math.round(Number(lift.levels)||2)));
+ const count=Math.max(2,Math.min(40,Math.round(Number(lift.levels)||2)));
  const spacing=Math.max(1.8,Math.min(8,Number(lift.levelHeight)||3));
  const height=Math.max(0,Math.min((count-1)*spacing,Number(runtime.height)||0));
  const target=Math.max(0,Math.min(count-1,Math.round(Number(runtime.target??lift.target)||0)));
@@ -12,7 +12,7 @@ export function liftPanelState(lift={},runtime={}){
 }
 export function liftButtonRequest(lift,button){
  const level=Number(button?.userData?.liftLevel);
- if(!Number.isInteger(level)||level<0||level>=Math.max(2,Math.min(12,Number(lift?.levels)||2)))return null;
+ if(!Number.isInteger(level)||level<0||level>=Math.max(2,Math.min(40,Number(lift?.levels)||2)))return null;
  return level;
 }
 
@@ -20,7 +20,7 @@ export function liftButtonRequest(lift,button){
 // a requested floor in transit; green indicates the cabin has arrived there.
 export const LIFT_CALL_COLORS=Object.freeze({idle:0xc83246,requested:0xf3a43b,arrived:0x24a66c});
 export function liftCallState(lift={},runtime={},level){
- const count=Math.max(2,Math.min(12,Math.round(Number(lift.levels)||2)));
+ const count=Math.max(2,Math.min(40,Math.round(Number(lift.levels)||2)));
  if(!Number.isInteger(level)||level<0||level>=count)return 'idle';
  const height=Math.max(0,Math.min((count-1)*(Number(lift.levelHeight)||3),Number(runtime.height??lift.currentHeight)||0));
  const target=Math.max(0,Math.min(count-1,Math.round(Number(runtime.target??lift.target)||0)));

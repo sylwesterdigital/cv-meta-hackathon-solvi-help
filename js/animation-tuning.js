@@ -21,6 +21,20 @@ export function landingClipFor(kind,available=[]){
 export function landingAnimationKind(fallHeight){
  return Number(fallHeight)>2.5?'hardLanding':'landing';
 }
+// Very long *real* falls can use a two-stage recovery. Check the GLB's actual
+// authored clip names, not aliased fallback actions: "hard landing" might itself
+// resolve to Falling Flat Impact, but must never trigger an extra Stand Up.
+export const EXTREME_FALL_HEIGHT=8;
+export function landingReactionFor(fallHeight,clipNames=[]){
+ const height=Math.max(0,Number(fallHeight)||0);
+ const names=clipNames.map(name=>String(name||'').split('__')[0].trim().toLowerCase().replace(/[\s_-]+/g,' '));
+ const has=(aliases)=>names.some(name=>aliases.some(alias=>name===alias||name.startsWith(alias+' ')));
+ const flat=has(['falling flat impact','fall flat impact']);
+ const stand=has(['stand up','standing up','get up','getup']);
+ if(height>EXTREME_FALL_HEIGHT&&flat&&stand)return {clip:'fallingImpact',duration:1.35,elapsed:0,next:'standUp'};
+ const heavy=height>2.5;
+ return {clip:landingAnimationKind(height),duration:heavy?1.25:.58,elapsed:0,next:null};
+}
 // Native Mixamo walk/run clips already loop at an authored, seamless cadence.
 // Adjust only slightly for movement differences: never 1.5x-2.3x by default.
 export function gaitCadence(speed,mode,walkPhysicalSpeed=2.16){

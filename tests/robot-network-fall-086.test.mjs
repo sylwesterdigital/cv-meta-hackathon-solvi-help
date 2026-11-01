@@ -22,8 +22,8 @@ test('jump cannot unlock during its ascending stage and fall state is distinct',
  assert.match(text,/state\.grounded=resolved\.grounded&&supported&&!climbing/);
  assert.match(text,/state\.jumpStarted&&state\.wasAirborne&&state\.grounded&&!jump&&state\.verticalSpeed<=\.05/);
  assert.match(text,/object\.userData\.robotFallActive=true/);
- assert.match(text,/fallHeight>2\.5/);
- assert.match(text,/clip:landingAnimationKind\(fallHeight\),duration:heavy\?1\.25:\.58,elapsed:0,next:null/);
+ assert.match(text,/landingReactionFor\(fallHeight/);
+ assert.match(text,/robotReaction=landingReactionFor\(fallHeight/);
  assert.doesNotMatch(text,/next:heavy\?'standUp':null/);
 });
 test('falling/landing/head and body hit use matching clips, not Walk aliases',()=>{

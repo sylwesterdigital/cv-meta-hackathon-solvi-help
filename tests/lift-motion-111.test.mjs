@@ -27,7 +27,7 @@ test('Persistent motion checkpoint rebuilds an arriving cabin position rather th
 });
 test('Invalid and malicious lift motion data is rejected before transport',()=>{
  const m=motionSnapshot(0,1,.5,start);
- for(const bad of [{...m,speed:1e8},{...m,fromHeight:Infinity},{...m,target:12},{...m,startedAt:'bad'},{...m,active:'true'}])assert.equal(safeLiftMotion(bad),null);
+ for(const bad of [{...m,speed:1e8},{...m,fromHeight:Infinity},{...m,target:40},{...m,startedAt:'bad'},{...m,active:'true'}])assert.equal(safeLiftMotion(bad),null);
  assert.equal(safeLiftMotion(m).target,1);
 });
 test('Transport emits start and arrival, never a high-frequency whole-scene lift save',()=>{

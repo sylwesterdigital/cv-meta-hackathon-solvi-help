@@ -1,4 +1,4 @@
-import {landingAnimationKind,easedStepOffset} from './animation-tuning.js';
+import {landingReactionFor,easedStepOffset} from './animation-tuning.js';
 import * as THREE from 'three';
 import {physicsOptions} from './physics-options.js';
 import {stairGeometryKey} from './stair-extensions.js';
@@ -429,10 +429,10 @@ export class ScenePhysics{
   }else if(state.airStartAt){
    const fallHeight=Math.max(0,(state.airStartY??p.y)-resolved.y);
    if((object.userData.robotFallActive||state.jumpStarted)&&now-state.airStartAt>120){
-    const heavy=fallHeight>2.5;
-    // Hard Landing contains its own get-up motion. After this one-shot finishes,
-    // return directly to Idle/locomotion; never queue a second Stand Up clip.
-    object.userData.robotReaction={clip:landingAnimationKind(fallHeight),duration:heavy?1.25:.58,elapsed:0,next:null};
+    // Only a genuinely extreme drop with authored Falling Flat Impact AND
+    // Stand Up clips runs the full two-stage recovery. Ordinary Hard Landing
+    // already includes standing up and must never chain an extra Stand Up.
+    object.userData.robotReaction=landingReactionFor(fallHeight,object.userData.robotAnimator?.clipNames||[]);
     object.userData.robotPlaying=null;
    }
    object.userData.robotFallActive=false;

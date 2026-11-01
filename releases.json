@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.125",
+  "currentVersion": "0.2.126",
   "releases": [
+    {
+      "version": "0.2.126",
+      "publishedAt": "2026-11-01T00:42:15Z",
+      "changes": [
+        "Raise lift limit from 12 to 40 floors consistently across editor, in-world button state, synchronized motion timeline, save validation, server WebSocket checks and high-rise shaft motion height (maximum 312 m with 8 m floors).",
+        "Arrange lift cabin floor buttons into a four-column, up-to-ten-row keypad for 13\u201340 floors; preserve existing single-column controls for 2\u201312 floors and optional per-floor landing call stations.",
+        "For a genuinely extreme fall over 8 m, play Falling Flat Impact after ground contact then Stand Up when both authentic clips exist; otherwise retain the one-shot Hard Landing to Idle, without duplicate recovery.",
+        "Add regression tests for 40th-floor travel and bounds, server validation, and fall clip availability and recovery sequencing."
+      ]
+    },
     {
       "version": "0.2.125",
       "publishedAt": "2026-11-01T00:22:39Z",
@@ -301,19 +311,6 @@
         "Fix Flask integration test after legitimate avatar-deletion scene revision increments; isolate realm revision assertions.",
         "Keep server-side avatar fallback migrations and cross-realm revision updates without resetting saved history.",
         "Preserve permanent avatar deletion, realm cloning, complete archive imports, and all v0.2.93 features."
-      ]
-    },
-    {
-      "version": "0.2.92",
-      "publishedAt": "2026-10-31T01:47:17Z",
-      "changes": [
-        "Replace per-realm repeated Rename and Delete controls with one selected-realm toolbar, including Clone, Rename and protected Delete.",
-        "Clone rooms in the SQLite backend using unique copy names and shared immutable model/media references; retain environment and ownership permissions.",
-        "Correct full realm archive import GLB model and speaker URL remapping to restored model UUIDs, and refuse damaged, incomplete or unsupported files instead of silently omitting scene objects.",
-        "Validate export asset inventories and missing server files; report precise failures before creating an incomplete imported realm.",
-        "Make avatar deletion results and permission errors visible at the top of the gallery, with inline Admin unlock for server-bundled avatars.",
-        "Delete requested avatars independently after one confirmation, preserving any referenced files and clearly listing why each refused item was retained.",
-        "Fix shared API error handling so generic HTTP 409 conflict does not incorrectly force account reauthentication."
       ]
     }
   ]

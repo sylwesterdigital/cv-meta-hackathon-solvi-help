@@ -68,19 +68,25 @@ function floorGlyph(level){
  return floorGlyphTextures.get(level);
 }
 function liftControlColumn(group,s,side,inside){
- const count=s.lift.levels,spacing=Math.min(.205,(s.lift.cabinHeight-.55)/count),height=count*spacing+.17;
+ // More than 12 levels use a four-column keypad; a 40-button single strip
+ // would make the switches and their floor numbers unusably small in XR.
+ const count=s.lift.levels,columns=count>12?4:1,rows=Math.ceil(count/columns);
+ const spacing=Math.min(.205,(s.lift.cabinHeight-.55)/rows),height=rows*spacing+.17;
  const x=side*(s.width/2+(inside?-.10:.14)),z=-Math.max(.30,s.width*.31);
+ const columnGap=.14,depth=columns===1?.28:columns*columnGap+.07;
  const housing=material({color:'#30373c',opacity:1,material:'metal',texture:'none'},{metal:true});
- box(group,{x,y:.48+height/2,z,width:.065,height,depth:.28},housing,'liftControlHousing');
+ box(group,{x,y:.48+height/2,z,width:.065,height,depth},housing,'liftControlHousing');
  const faceDirection=inside?-side:side;
  for(let level=0;level<count;level++){
-  const size=Math.min(.15,spacing*.78),y=.58+level*spacing;
+  const col=Math.floor(level/rows),row=level%rows;
+  const size=Math.min(.15,spacing*.78,columns===1?.15:.112),y=.58+row*spacing;
+  const keyZ=z+(col-(columns-1)/2)*columnGap;
   const key=new THREE.Mesh(new THREE.BoxGeometry(.065,size,size),new THREE.MeshStandardMaterial({color:LIFT_BUTTON_COLORS.idle,roughness:.36,metalness:.25,emissive:LIFT_BUTTON_COLORS.idle,emissiveIntensity:.22}));
-  key.position.set(x+faceDirection*.055,y,z);key.userData.liftLevel=level;key.userData.liftButton=true;key.userData.liftButtonInside=inside;key.userData.liftColor='idle';
+  key.position.set(x+faceDirection*.055,y,keyZ);key.userData.liftLevel=level;key.userData.liftButton=true;key.userData.liftButtonInside=inside;key.userData.liftColor='idle';
   key.name='Lift level '+(level+1);group.add(key);
-  // The digit faces the user on the visible side of each physical switch.
+  // Digits remain separately raycastable and share each button's destination.
   const label=new THREE.Mesh(new THREE.PlaneGeometry(size*.86,size*.86),new THREE.MeshBasicMaterial({map:floorGlyph(level+1),transparent:true,side:THREE.DoubleSide,depthWrite:false}));
-  label.rotation.y=faceDirection*Math.PI/2;label.position.set(x+faceDirection*.092,y,z);label.userData.liftDecoration=true;label.userData.liftButton=true;label.userData.liftLabel=true;label.userData.liftLevel=level;group.add(label);
+  label.rotation.y=faceDirection*Math.PI/2;label.position.set(x+faceDirection*.092,y,keyZ);label.userData.liftDecoration=true;label.userData.liftButton=true;label.userData.liftLabel=true;label.userData.liftLevel=level;group.add(label);
  }
 }
 function liftFloorReadout(group,s){

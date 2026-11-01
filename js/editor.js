@@ -549,7 +549,7 @@ export class SceneEditor{
    lift:{levels:get('stairLiftLevels'),levelHeight:get('stairLiftLevelHeight'),cabinHeight:get('stairLiftCabinHeight'),callButtons:get('stairLiftCallButtons'),callSide:get('stairLiftCallSide'),target:this.wallEditTarget?.userData.stairs?.lift?.target||0,currentHeight:this.wallEditTarget?.userData.stairs?.lift?.currentHeight||0,...(this.wallEditTarget?.userData.stairs?.lift?.motion?{motion:this.wallEditTarget.userData.stairs.lift.motion}:{})}
   });
  }
- refreshLiftLevels(){const select=byId('stairLiftTarget');if(!select)return;const previous=select.value;select.replaceChildren();const count=Math.max(2,Math.min(12,Number(byId('stairLiftLevels').value)||2));for(let i=0;i<count;i++){const option=document.createElement('option');option.value=String(i);option.textContent='Level '+(i+1);select.append(option);}select.value=Number(previous)<count?previous:'0';}
+ refreshLiftLevels(){const select=byId('stairLiftTarget');if(!select)return;const previous=select.value;select.replaceChildren();const count=Math.max(2,Math.min(40,Number(byId('stairLiftLevels').value)||2));for(let i=0;i<count;i++){const option=document.createElement('option');option.value=String(i);option.textContent='Level '+(i+1);select.append(option);}select.value=Number(previous)<count?previous:'0';}
  addLift(){
   const lift=objectFor('stairs');const point=this.cameraDropPosition(3.2);
   lift.position.set(point.x,0,point.z);lift.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;

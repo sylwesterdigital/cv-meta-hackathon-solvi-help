@@ -15,7 +15,7 @@ test('Stair extension bounds protect geometry and material budgets',()=>{
  const s=cleanStairExtras({variant:'wrong',rail:{rods:999,every:0,width:99,opacity:-5,color:'red'},supports:{every:0},transport:{speed:100},lift:{levels:99}});
  assert.equal(s.variant,'standard');assert.equal(cleanStairExtras({variant:'advanced'}).rail.enabled,true);assert.equal(cleanStairExtras({variant:'escalator',rail:{enabled:false}}).rail.enabled,false);assert.equal(s.rail.rods,5);assert.equal(s.rail.every,1);assert.equal(s.rail.width,.25);
  assert.equal(s.rail.color,'#738b9b');assert.equal(s.rail.opacity,.15);assert.equal(s.supports.every,1);
- assert.equal(s.transport.speed,2.5);assert.equal(s.lift.levels,12);
+ assert.equal(s.transport.speed,2.5);assert.equal(s.lift.levels,40);
 });
 test('Moving walkway creates genuinely flat traversable treads',()=>{
  const segments=stairSegments({points:[[0,0],[4,0]],variant:'walkway',steps:8});
