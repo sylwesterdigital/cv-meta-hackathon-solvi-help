@@ -166,7 +166,7 @@ function commitFace(editor){const st=editor.faceDrawing;if(st?.phase!=='preview'
   // Snapshot before applying the persistent model, even though preview geometry is already visible.
   const before=editor.snapshot(obj),holes=st.pendingOpening;
   obj.geometry=st.previewGeometry;st.originalGeometry?.dispose();st.originalGeometry=null;obj.userData.openings=holes;st.previewGeometry=null;
-  obj.userData.physics={...obj.userData.physics,mode:'static',collider:'trimesh'};
+  obj.userData.physics={...obj.userData.physics,collider:'trimesh'};
   editor.physics.sync(obj);editor.recordEdit(before,editor.snapshot(obj));editor.queueSave(obj);
   editor.cancelSpatialDrawing();editor.select(obj);editor.toast('Opening confirmed and saved');return;
  }

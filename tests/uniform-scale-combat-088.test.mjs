@@ -41,7 +41,7 @@ test('only a movable Dynamic object receives melee physics, and the UI explains 
  assert.match(physics,/applyImpulseAtPoint\(impulse,contact,true\)/);
  assert.match(html,/id="makeObjectPushable"/);
  assert.match(editor,/mode==='off'\?'No physics: attacks pass through/);
- assert.match(editor,/physicsOptions\(\{\.\.\.obj\.userData\.physics,mode:'dynamic',collider:'box'\}\)/);
+ assert.match(editor,/physicsOptions\(\{\.\.\.obj\.userData\.physics,mode:'dynamic'\}\)/);
  assert.match(editor,/No pushable target hit/);
 });
 

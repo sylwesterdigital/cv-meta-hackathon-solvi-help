@@ -40,12 +40,18 @@ test('one contextual slider follows selected numeric field; each vector has one 
  assert.match(editor,/field==='scale'\?1:0/);
  assert.ok(existsSync(new URL('../assets/ui-icons/reset.svg',import.meta.url)));
 });
-test('static triangle mesh is a validated option, not allowed on dynamic objects',()=>{
+test('Trimesh remains available across all rigid-body modes and is built by Rapier',()=>{
  assert.deepEqual(physicsTypes,['off','dynamic','static','kinematic']);
  assert.equal(physicsOptions({mode:'static',collider:'trimesh'}).collider,'trimesh');
- assert.equal(physicsOptions({mode:'dynamic',collider:'trimesh'}).collider,undefined);
+ for(const mode of physicsTypes)assert.equal(physicsOptions({mode,collider:'trimesh'}).collider,'trimesh',`mode ${mode} must preserve Trimesh`);
  const physics=source('js/scene-physics.js'),backend=source('backend/server.py');
  assert.match(physics,/R\.ColliderDesc\.trimesh\(new Float32Array\(positions\),new Uint32Array\(indices\)\)/);
- assert.match(backend,/Trimesh requires static physics/);
+ assert.doesNotMatch(backend,/Trimesh requires static physics/);
+ assert.match(backend,/Invalid collider type/);
+ assert.match(physics,/const useTrimesh=!isRobot&&opts.collider==='trimesh'/);
+ assert.match(physics,/if\(!useTrimesh&&\(kind==='wall'/);
+ const editor=source('js/editor.js');
+ assert.doesNotMatch(editor,/selector.disabled=mode!=='static'/);
+ assert.doesNotMatch(editor,/if\(mode!=='static'\)selector.value='box'/);
  assert.match(source('index.html'),/id="objectCollider"/);
 });

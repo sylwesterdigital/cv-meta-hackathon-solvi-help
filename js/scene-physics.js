@@ -62,7 +62,7 @@ export class ScenePhysics{
  }
  owns(object){const id=window.solviAPI?.auth()?.profile?.id;return !object.userData.ownerId||object.userData.ownerId===id;}
  // Build a real world-space surface mesh in rigid-body local coordinates; the body supplies translation and rotation.
- // Static only: dynamic triangle meshes are unstable and not supported by this control.
+ // User-selectable for Dynamic, Static and Kinematic bodies. Expensive or degenerate meshes fall back to bounds.
  triangleMeshShape(object){
   const positions=[],indices=[],R=this.runtime;
   object.updateWorldMatrix(true,true);
@@ -70,7 +70,8 @@ export class ScenePhysics{
   const inverse=object.getWorldQuaternion(new THREE.Quaternion()).invert();
   const vertex=new THREE.Vector3();let triangles=0,overflow=false;
   object.traverse(mesh=>{
-   if(!mesh.isMesh||mesh.userData.lightMarker||!mesh.geometry||overflow)return;
+   if(!mesh.isMesh||mesh.userData.lightMarker||!mesh.geometry||overflow||mesh.userData.portalVisualOnly||mesh.userData.portalFrameFx||mesh.userData.portalInner||mesh.userData.portalGlow||mesh.userData.portalParticles||mesh.userData.portalButton||mesh.userData.wallOverlay)return;
+   if(object.userData.editorKind==='portal'&&!mesh.userData.portalFrame)return;
    const geom=mesh.geometry,attribute=geom.getAttribute('position');if(!attribute)return;
    const index=geom.getIndex(),count=index?index.count:attribute.count;
    // Imported assets may contain multiple draw groups and unindexed triangles. Budget the entire collider.
@@ -144,11 +145,24 @@ export class ScenePhysics{
   descriptor.setRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
   if(isRobot){descriptor.lockRotations();}
   const body=this.world.createRigidBody(descriptor);
-  const shape=isRobot?R.ColliderDesc.capsule(CHARACTER.halfHeight,CHARACTER.radius).setTranslation(0,CHARACTER.centerY,0):opts.mode==='static'&&opts.collider==='trimesh'?(this.triangleMeshShape(object)||this.colliderShape(object)):this.colliderShape(object);
+  const useTrimesh=!isRobot&&opts.collider==='trimesh';
+  let shape;
+  if(isRobot)shape=R.ColliderDesc.capsule(CHARACTER.halfHeight,CHARACTER.radius).setTranslation(0,CHARACTER.centerY,0);
+  else if(useTrimesh){
+   // Explicitly requested: Dynamic, Static and Kinematic share the same precise mesh builder.
+   // Keep the object usable if its topology cannot be triangulated by Rapier.
+   try{shape=this.triangleMeshShape(object);}catch(error){
+    object.userData.colliderStatus='Trimesh geometry failed; using bounding box: '+String(error?.message||error).slice(0,120);
+   }
+   if(!shape)shape=this.colliderShape(object);
+  }else{
+   delete object.userData.colliderStatus;
+   shape=this.colliderShape(object);
+  }
   if(!isRobot)shape.setFriction(opts.friction).setRestitution(opts.restitution);
   else shape.setFriction(.85).setRestitution(0);
   let collider;
-  if((kind==='wall'||kind==='stairs'||kind==='portal')&&object.children.length){
+  if(!useTrimesh&&(kind==='wall'||kind==='stairs'||kind==='portal')&&object.children.length){
    // Compound collider, one capsule-safe box per segment. Do not use a single
    // enclosing AABB that incorrectly blocks an open room / U-shaped wall.
    for(const segment of object.children){
@@ -167,7 +181,7 @@ export class ScenePhysics{
    }
   }else{
    try{collider=this.world.createCollider(shape,body);}catch(error){
-    if(opts.collider!=='trimesh'||type!=='static')throw error;
+    if(!useTrimesh)throw error;
     object.userData.colliderStatus='Trimesh creation failed; using bounding box: '+String(error?.message||error).slice(0,120);
     collider=this.world.createCollider(this.colliderShape(object).setFriction(opts.friction).setRestitution(opts.restitution),body);
    }

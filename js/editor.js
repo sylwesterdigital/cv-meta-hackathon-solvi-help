@@ -230,8 +230,8 @@ export class SceneEditor{
    const obj=this.selected;
    if(!obj||!this.canEdit(obj)||['robot','light'].includes(obj.userData.editorKind))return;
    const before=this.snapshot(obj);
-   obj.userData.physics=physicsOptions({...obj.userData.physics,mode:'dynamic',collider:'box'});
-   byId('objectPhysicsMode').value='dynamic';byId('objectCollider').value='box';
+   obj.userData.physics=physicsOptions({...obj.userData.physics,mode:'dynamic'});
+   byId('objectPhysicsMode').value='dynamic';byId('objectCollider').value=obj.userData.physics.collider||'box';
    this.physics.sync(obj);this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
    this.updateColliderOption();this.updateCombatPhysicsHint();
    if(!this.physics.enabled)this.toast('Object is now Dynamic. Enable room Physics to make combat impulses work.');
@@ -1078,17 +1078,31 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     'Static/kinematic: stays fixed during combat. Use Dynamic if this object should move.';
   make.disabled=!this.canEdit(obj);
  }
- updateColliderOption(){const mode=byId('objectPhysicsMode').value;const selector=byId('objectCollider');selector.disabled=mode!=='static';if(mode!=='static')selector.value='box';byId('colliderHint').hidden=mode!=='static';const status=byId('colliderRuntimeStatus');status.hidden=mode!=='static'||selector.value!=='trimesh';status.textContent=this.selected?.userData.colliderStatus||(this.selected?.userData.editorKind==='model'&&!this.selected?.userData.modelReady?'Waiting for imported model geometry':'Physics must be enabled for collider creation');
+ updateColliderOption(){
+  const mode=byId('objectPhysicsMode').value,selector=byId('objectCollider');
+  // Collider selection is independent of rigid-body mode; never silently reset Trimesh.
+  selector.disabled=!this.selected||!this.canEdit(this.selected);
+  const isTrimesh=selector.value==='trimesh',hint=byId('colliderHint');
+  hint.hidden=!isTrimesh;
+  hint.textContent='Trimesh available for Dynamic, Static and Kinematic. Detailed moving meshes can be slower or less stable.';
+  const status=byId('colliderRuntimeStatus');
+  status.hidden=!isTrimesh;
+  status.textContent=mode==='off'?'Enable Physics to use the selected Trimesh.':
+   this.selected?.userData.colliderStatus||
+   (this.selected?.userData.editorKind==='model'&&!this.selected?.userData.modelReady?'Waiting for imported model geometry':'Trimesh selected. Enable room Physics to create its collider.');
   const runtime=byId('physicsRuntimeStatus');runtime.hidden=mode==='off';
   if(mode!=='off'){
-    const editorObject=this.selected,id=editorObject?.userData.editorId;
-    runtime.textContent=!window.solviRoomPolicy?.physics?'Room physics OFF. Enable Physics in World settings to activate gravity and collisions.':
-      !this.physics.enabled||!this.physics.world?'Rapier physics is starting. If this persists, check the browser console and vendor assets.':
-      !this.physics.bodies.has(id)?'Physics body not ready. Check the model geometry and scene loading.':
-      mode==='dynamic'&&!this.physics.owns(editorObject)?'Dynamic physics simulated by the object owner; this browser displays updates.':
-      mode==='dynamic'?'Dynamic body active — gravity, box collider and bouncing enabled. Lift object above the ground to test.':
-      mode==='static'?'Static collision body active. Trimesh is supported for static surfaces.':'Kinematic collision body active.';
-  }}
+   const editorObject=this.selected,id=editorObject?.userData.editorId;
+   runtime.textContent=!window.solviRoomPolicy?.physics?'Room physics OFF. Enable Physics in World settings to activate gravity and collisions.':
+    !this.physics.enabled||!this.physics.world?'Rapier physics is starting. If this persists, check the browser console and vendor assets.':
+    !this.physics.bodies.has(id)?'Physics body not ready. Check the model geometry and scene loading.':
+    mode==='dynamic'&&!this.physics.owns(editorObject)?'Dynamic physics simulated by the object owner; this browser displays updates.':
+    mode==='dynamic'?`Dynamic body active — gravity, ${isTrimesh?'Trimesh':'box'} collider and bouncing enabled.`:
+    mode==='static'?`Static collision body active — ${isTrimesh?'Trimesh':'box'} collider.`:
+    `Kinematic collision body active — ${isTrimesh?'Trimesh':'box'} collider.`;
+  }
+ }
+
  refreshRobotActions(obj){const select=byId('robotActionSelect');select.querySelectorAll('optgroup[data-real-actions]').forEach(n=>n.remove());
   const clips=obj.userData.robotAvailableActions||[];if(clips.length){const group=document.createElement('optgroup');group.label='Model animations';group.dataset.realActions='1';for(const name of clips.slice(0,120))group.append(new Option(name,'clip:'+name));select.append(group);}
   select.value=[...select.options].some(o=>o.value===obj.userData.robotMode)?obj.userData.robotMode:'idle';

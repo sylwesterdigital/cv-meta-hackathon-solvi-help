@@ -66,6 +66,7 @@ test('full-view drawing shield receives drag, renders real opening on release, s
  assert.equal(counts().saveCount,1);
  assert.equal(obj.userData.openings.length,1);
  assert.equal(obj.userData.physics.collider,'trimesh');
+ assert.equal(obj.userData.physics.mode,'dynamic','cutting an opening must not silently force Static physics');
  assert.equal(shield.hidden,true);
 });
 test('click on the drawing shield outside the preview cancels geometry without saving',()=>{
