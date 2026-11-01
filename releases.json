@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.140",
+  "currentVersion": "0.2.141",
   "releases": [
+    {
+      "version": "0.2.141",
+      "publishedAt": "2026-11-01T23:03:58Z",
+      "changes": [
+        "Replace clipped robot selection shadow with a visible circular overlay border above the portrait; retain transparent miniature +/\u2212 controls.",
+        "Tighten procedural geometry controls into Transform-like compact rows across walls, stairs, ladders, portals, primitive shapes and new Basic Furniture.",
+        "Add seven Basic furnitures: table, chair, stool, armchair, sofa, bed and cabinet, with bounded human-scale dimensions and optional details.",
+        "Add polygon and round tabletop radius, polygon-corner legs, 3/4 supports, central pedestal, castors, cushions, headrests, headboards and shelving.",
+        "Store and validate furniture as editable real scene objects; preserve geometry in duplication, saved worlds, multiplayer object updates and realm archives.",
+        "Create accurate compound collider parts for furniture when room physics is enabled, and extend runtime geometry and backend regression checks."
+      ]
+    },
     {
       "version": "0.2.140",
       "publishedAt": "2026-11-01T20:13:50Z",
@@ -291,17 +303,6 @@
         "Allow ordinary pointer clicking and WebXR controller-ray selection, routing both through owner/permission-checked lift transport and scene persistence.",
         "Play quiet synthetic Web Audio start and arrival jingles after an activated button press; no external audio downloads.",
         "Update only controls/display textures and colours during lift movement; preserve riders, existing kinematic collision and lift settings."
-      ]
-    },
-    {
-      "version": "0.2.107",
-      "publishedAt": "2026-10-31T15:05:45Z",
-      "changes": [
-        "Fix lift rider movement crash from plain {x,y,z} delta incorrectly treated as THREE.Vector3; keep owned robot kinematic bodies aligned during ascent and return.",
-        "Update lift kinematic platform body position with each moved frame to keep collision state aligned with rendered cabin.",
-        "Provide missing square.svg used by geometry icons to eliminate 404s.",
-        "Associate administrator and Tripo password fields with forms and add accessible admin username hints.",
-        "Add executable lift rider regression tests for moving up/down, dynamic objects, malformed deltas and source wiring."
       ]
     }
   ]

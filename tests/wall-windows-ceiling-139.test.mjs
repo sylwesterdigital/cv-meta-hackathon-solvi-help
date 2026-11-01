@@ -165,3 +165,58 @@ test('Room Array actually duplicates closed room walls, windows and ceilings; co
  const before=group.children.length;
  rebuild(group,{...base,array:{enabled:false}});assert.equal(group.children.length,before/3);
 });
+
+test('basic furniture builds seven distinct, finite, per-part mesh presets and configurable polygon table',()=>{
+ const code=source('js/primitive-properties.js');
+ const section=code.slice(code.indexOf('// Basic furniture is built'))
+  .replaceAll('export const ','const ').replaceAll('export function ','function ');
+ class Node{
+  constructor(){this.children=[];this.userData={};this.position={x:0,y:0,z:0,set(x,y,z){this.x=x;this.y=y;this.z=z;}};this.scale={x:1,y:1,z:1,set(){}};}
+  add(child){this.children.push(child);}remove(child){this.children.splice(this.children.indexOf(child),1);}
+ }
+ class Mesh extends Node{constructor(geometry,material){super();this.geometry=geometry;this.material=material;}}
+ class Geometry{constructor(...args){this.args=args;this.type=this.constructor.name;this.parameters={width:args[0],height:args[1],depth:args[2],radiusTop:args[0],radiusBottom:args[1]};}dispose(){}}
+ class BoxGeometry extends Geometry{}
+ class CylinderGeometry extends Geometry{}
+ class MeshStandardMaterial{constructor(config){Object.assign(this,config);}dispose(){}}
+ const THREE={Group:Node,Mesh,BoxGeometry,CylinderGeometry,MeshStandardMaterial};
+ const {sanitiseFurniture,makeFurniture,rebuildFurniture}=new Function('THREE','wallPresetTexture',section+'\nreturn {sanitiseFurniture,makeFurniture,rebuildFurniture};')(THREE,()=>null);
+ for(const kind of ['table','chair','stool','armchair','sofa','bed','cabinet']){
+  const group=makeFurniture({variant:kind});
+  assert.equal(group.userData.editorKind,'furniture');assert.equal(group.userData.furniture.variant,kind);
+  assert.ok(group.children.length>=2,kind);
+  assert.ok(group.children.every(child=>child.userData.furniturePart));
+  assert.ok(group.children.every(child=>Number.isFinite(child.position.x+child.position.y+child.position.z)));
+  rebuildFurniture(group,{variant:kind,width:1.7,color:'#123456'});
+  assert.equal(group.userData.furniture.width,1.7);
+ }
+ const hex=makeFurniture({variant:'table',topShape:'polygon',corners:6,topRadius:1.05,legStyle:'four'});
+ assert.equal(hex.children[0].geometry.type,'CylinderGeometry');
+ assert.equal(hex.children[0].geometry.args[0],1.05,'polygon tabletop uses the user radius');
+ const round=makeFurniture({variant:'table',topShape:'round',topRadius:.65});
+ assert.equal(round.children[0].geometry.args[3],48,'round tabletop has 48 radial sides');
+ assert.equal(hex.children.length,7,'polygon corners receive matching legs');
+ const bed=makeFurniture({variant:'bed',legStyle:'none',headboard:false});
+ assert.equal(bed.children.length,2,'mattress on floor, without feet or headboard');
+ const shelves=makeFurniture({variant:'cabinet',shelves:7});
+ assert.equal(shelves.children.length,12,'top, bottom, two sides, back and seven shelves');
+ assert.equal(sanitiseFurniture({variant:'table',width:Infinity,corners:-5}).width,1.4);
+ assert.equal(sanitiseFurniture({variant:'table',corners:-5}).corners,3);
+});
+
+test('furniture editor, backend, archives, collider assembly and selected portrait framing are integrated',()=>{
+ const editor=source('js/editor.js'),server=source('backend/server.py'),archive=source('backend/realm_archives.py'),physics=source('js/scene-physics.js'),css=source('styles.css'),html=source('index.html');
+ assert.match(editor,/\['Basic furnitures',\['table','chair','stool','armchair','sofa','bed','cabinet'\]\]/);
+ assert.match(editor,/furniture:o\.userData\.editorKind==='furniture'/);
+ assert.match(editor,/rebuildFurniture\(o,entry\.furniture\|\|\{\}\)/);
+ assert.match(editor,/renderFurnitureControls\(obj\)/);
+ assert.match(editor,/this\.add\('furniture',true,undefined,true,k\)/);
+ assert.match(html,/id="furniturePropertiesFields"/);
+ assert.match(server,/def valid_basic_furniture\(value\):/);
+ assert.match(server,/if obj\['kind'\]=='furniture' and not valid_basic_furniture/);
+ assert.match(archive,/KINDS=.*'furniture'/);
+ assert.match(physics,/segment\.userData\.furniturePart/);
+ assert.match(physics,/kind==='furniture'\?JSON\.stringify\(object\.userData\.furniture\)/);
+ assert.match(css,/robot-face-choice\[aria-pressed="true"\]::after/);
+ assert.match(css,/#ladderProperties \.ladder-fields,#furnitureProperties \.furniture-properties-fields/);
+});

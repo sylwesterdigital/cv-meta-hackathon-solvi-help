@@ -139,7 +139,7 @@ export class ScenePhysics{
   if(!isRobot&&opts.mode==='off'){this.remove(id);return;}
   const owner=this.owns(object);
   const type=isRobot?'avatar':opts.mode==='dynamic'&&!owner?'remote-dynamic':opts.mode;
-  const signature=`${kind}|${type}|${JSON.stringify(opts)}|${kind==='wall'?JSON.stringify(object.userData.wall):kind==='stairs'?stairGeometryKey(object.userData.stairs):kind==='ladder'?JSON.stringify(object.userData.ladder):kind==='portal'?JSON.stringify(object.userData.portal):kind==='cube'?JSON.stringify(object.userData.openings):kind==='curve'?JSON.stringify(object.userData.curve):''}|${object.scale.toArray().join(',')}|${kind==='model'?(object.userData.modelUrl||'')+':'+Boolean(object.userData.modelReady):''}`;
+  const signature=`${kind}|${type}|${JSON.stringify(opts)}|${kind==='wall'?JSON.stringify(object.userData.wall):kind==='stairs'?stairGeometryKey(object.userData.stairs):kind==='ladder'?JSON.stringify(object.userData.ladder):kind==='furniture'?JSON.stringify(object.userData.furniture):kind==='portal'?JSON.stringify(object.userData.portal):kind==='cube'?JSON.stringify(object.userData.openings):kind==='curve'?JSON.stringify(object.userData.curve):''}|${object.scale.toArray().join(',')}|${kind==='model'?(object.userData.modelUrl||'')+':'+Boolean(object.userData.modelReady):''}`;
   const existing=this.bodies.get(id);
   if(existing&&this.settings.get(id)===signature){
    // A remote object may be edited in place without allocating a new collider.
@@ -175,7 +175,7 @@ export class ScenePhysics{
   if(!isRobot)shape.setFriction(opts.friction).setRestitution(opts.restitution);
   else shape.setFriction(.85).setRestitution(0);
   let collider;
-  if(!useTrimesh&&(kind==='wall'||kind==='stairs'||kind==='ladder'||kind==='portal')&&object.children.length){
+  if(!useTrimesh&&(kind==='wall'||kind==='stairs'||kind==='ladder'||kind==='portal'||kind==='furniture')&&object.children.length){
    // Compound collider, one capsule-safe box per segment. Do not use a single
    // enclosing AABB that incorrectly blocks an open room / U-shaped wall.
    for(const segment of object.children){
@@ -199,11 +199,14 @@ export class ScenePhysics{
      }catch(error){console.warn('Ceiling collider unavailable:',error);}
      continue;
     }
-    if(!segment.userData.portalFrame&&!segment.userData.wallSegment&&!segment.userData.stairTread&&!segment.userData.ladderBar&&!(segment.userData.stairStructure&&segment.geometry?.type==='BoxGeometry'&&kind==='stairs'&&['advanced','escalator','walkway'].includes(object.userData.stairs?.variant)))continue;
+    if(!segment.userData.furniturePart&&!segment.userData.portalFrame&&!segment.userData.wallSegment&&!segment.userData.stairTread&&!segment.userData.ladderBar&&!(segment.userData.stairStructure&&segment.geometry?.type==='BoxGeometry'&&kind==='stairs'&&['advanced','escalator','walkway'].includes(object.userData.stairs?.variant)))continue;
     const size=segment.geometry.parameters;
     const scale=object.scale;
-    if(!size||!Number.isFinite(size.width*size.height*size.depth))continue;
-    const halfX=Math.max(.025,size.width*Math.abs(scale.x*segment.scale.x)/2),halfY=Math.max(.025,size.height*Math.abs(scale.y*segment.scale.y)/2),halfZ=Math.max(.025,size.depth*Math.abs(scale.z*segment.scale.z)/2);
+    if(!size||!(kind==='furniture'&&segment.geometry.type==='CylinderGeometry')&&!Number.isFinite(size.width*size.height*size.depth))continue;
+    const isCylinder=kind==='furniture'&&segment.geometry.type==='CylinderGeometry';
+    const width=isCylinder?2*Math.max(size.radiusTop||0,size.radiusBottom||0):size.width;
+    const depth=isCylinder?width:size.depth;
+    const halfX=Math.max(.025,width*Math.abs(scale.x*segment.scale.x)/2),halfY=Math.max(.025,size.height*Math.abs(scale.y*segment.scale.y)/2),halfZ=Math.max(.025,depth*Math.abs(scale.z*segment.scale.z)/2);
     const desc=R.ColliderDesc.cuboid(halfX,halfY,halfZ)
       .setTranslation(segment.position.x*scale.x,segment.position.y*scale.y,segment.position.z*scale.z)
       .setRotation({x:segment.quaternion.x,y:segment.quaternion.y,z:segment.quaternion.z,w:segment.quaternion.w})

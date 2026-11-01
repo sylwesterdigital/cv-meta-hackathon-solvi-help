@@ -2103,3 +2103,30 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 #controlSwitcher .robot-face-choice[aria-pressed="true"] small{color:#ffd6ff!important;font-weight:800!important;}
 #wallArrayOptions[hidden]{display:none!important;}
 #wallArrayOptions .wall-compact-fields{gap:5px;}
+
+
+/* v0.2.141: Active portrait outline above its image (no clipping or hidden inset glow). */
+#controlSwitcher .robot-face-options{overflow-x:auto!important;padding:5px!important;gap:5px!important;}
+#controlSwitcher .robot-face-choice[aria-pressed="true"]{overflow:visible!important;box-shadow:none!important;}
+#controlSwitcher .robot-face-choice[aria-pressed="true"]::after{content:"";display:block!important;position:absolute;inset:0;border:3px solid var(--solvi-accent,#cf90eb);border-radius:50%;pointer-events:none;z-index:5;box-sizing:border-box;}
+#controlSwitcher .robot-face-choice .robot-face-avatar{overflow:hidden!important;}
+#controlSwitcher .robot-face-choice[aria-pressed="true"] small{color:#f7ccff!important;}
+
+/* Unified Transform-scale density: all procedural properties are rows, not towering stacks. */
+#ladderProperties .ladder-fields,#furnitureProperties .furniture-properties-fields{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:3px!important;padding:3px 1px!important;}
+#ladderProperties .ladder-fields>label,#furnitureProperties .furniture-param{display:flex!important;flex-direction:row!important;justify-content:space-between!important;align-items:center!important;gap:6px!important;min-height:27px!important;margin:0!important;padding:1px 2px!important;font-size:11px!important;white-space:nowrap!important;}
+#ladderProperties .ladder-fields :is(input[type=number],select),#furnitureProperties .furniture-param :is(input[type=number],select){box-sizing:border-box!important;flex:0 0 116px!important;width:116px!important;min-width:0!important;max-width:54%!important;height:27px!important;min-height:27px!important;padding:3px 6px!important;font-size:12px!important;border-radius:6px!important;}
+#furnitureProperties .furniture-param input[type=color],#ladderProperties .ladder-fields input[type=color]{width:41px!important;flex:0 0 41px!important;height:24px!important;min-height:24px!important;padding:1px!important;}
+#furnitureProperties .furniture-param input[type=checkbox]{width:15px!important;height:15px!important;margin:0 5px!important;}
+#portalProperties .portal-parameters{gap:3px 6px!important;}
+#portalProperties .portal-parameters>label{font-size:11px!important;gap:2px!important;}
+#portalProperties .portal-parameters :is(input,select){min-height:27px!important;height:27px!important;font-size:12px!important;padding:2px 5px!important;}
+#wallPanel .wall-panel-content{gap:3px!important;padding:6px!important;}
+#wallPanel .stair-fold-body{padding:4px!important;gap:3px!important;}
+#wallPanel .wall-compact-fields{gap:3px 5px!important;}
+#wallPanel .wall-compact-fields>label{font-size:10px!important;line-height:1.15!important;gap:2px!important;margin:0!important;}
+#wallPanel .wall-compact-fields :is(input[type=number],select,button){height:26px!important;min-height:26px!important;font-size:11px!important;padding:2px 4px!important;}
+#wallPanel .stair-fold>summary{padding:4px 6px!important;min-height:23px!important;}
+#primitiveProperties .primitive-properties-fields{padding:3px!important;gap:3px 5px!important;}
+#primitiveProperties .primitive-properties-fields :is(input[type=number],select){min-height:27px!important;height:27px!important;font-size:12px!important;}
+#primitiveProperties .primitive-properties-fields input[type=range]{height:16px!important;}

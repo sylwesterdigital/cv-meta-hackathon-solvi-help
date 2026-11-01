@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.140',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.141',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3090,6 +3090,28 @@ def valid_office_wall(wall):
             if not isinstance(values,list) or len(values)!=3 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not -limit<=v<=limit for v in values):return False
     return isinstance(wall.get('smooth',False),bool) and isinstance(wall.get('closed',False),bool)
 
+def valid_basic_furniture(value):
+    if not isinstance(value,dict) or len(value)>24:return False
+    variant=value.get('variant')
+    if variant not in ('table','chair','stool','armchair','sofa','bed','cabinet'):return False
+    numeric={'width':(.35,8),'depth':(.3,4),'height':(.2,4),'topThickness':(.025,.3),
+             'legRadius':(.025,.3),'topRadius':(.15,4),'corners':(3,8),'seatHeight':(.25,.9),
+             'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35)}
+    allowed={'variant','topShape','legStyle','headrest','headboard','color','fabricColor','texture'}|set(numeric)
+    if any(key not in allowed for key in value):return False
+    for key,(lo,hi) in numeric.items():
+        if key not in value:continue
+        n=value[key]
+        if isinstance(n,bool) or not isinstance(n,(int,float)) or not math.isfinite(n) or not lo<=n<=hi:return False
+        if key in ('corners','shelves','seats') and int(n)!=n:return False
+    if value.get('topShape','rectangle') not in ('rectangle','round','polygon'):return False
+    if value.get('legStyle','four') not in ('four','three','single','casters','none'):return False
+    if value.get('texture','none') not in ('none','plaster','concrete','bricks','metal'):return False
+    if any(not isinstance(value.get(k,False),bool) for k in ('headrest','headboard')):return False
+    for k in ('color','fabricColor'):
+        if k in value and (not isinstance(value[k],str) or re.fullmatch(r'#[0-9a-fA-F]{6}',value[k]) is None):return False
+    return True
+
 def valid_office_ladder(ladder):
     if not isinstance(ladder,dict) or len(ladder)>9:return False
     for key,lo,hi in (('width',.45,4),('height',1,40),('rungSpacing',.15,.6),('rungs',3,320)):
@@ -3216,7 +3238,7 @@ def set_scene():
     if not room_id:return json_error('Unknown room',404)
     objects=data.get('objects',[]);revision=data.get('revision');policy=room_policy(room_id)
     if not isinstance(objects,list) or len(objects)>128 or not isinstance(revision,int):return json_error('Invalid scene')
-    allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal'}
+    allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'}
     for o in objects:
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
         if 'curve' in o and (o['kind']!='curve' or not valid_curve_geometry(o.get('curve'))):return json_error('Invalid curve geometry')
@@ -3226,6 +3248,7 @@ def set_scene():
         if o['kind']=='wall' and not valid_office_wall(o.get('wall')):return json_error('Invalid office wall')
         if o['kind']=='stairs' and not valid_office_stairs(o.get('stairs')):return json_error('Invalid office stairs')
         if o['kind']=='ladder' and not valid_office_ladder(o.get('ladder')):return json_error('Invalid ladder')
+        if o['kind']=='furniture' and not valid_basic_furniture(o.get('furniture')):return json_error('Invalid basic furniture')
         if o['kind']=='portal' and not valid_portal_geometry(o.get('portal')):return json_error('Invalid portal')
         if 'primitive' in o:
             primitive=o['primitive']
@@ -3298,9 +3321,9 @@ def patch_scene_object():
     if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',obj_id):return json_error('Invalid object id')
     if action not in ('upsert','remove'):return json_error('Invalid object action')
     if action=='upsert':
-        if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal'}:return json_error('Unsupported object type')
+        if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','portal','curve','text','openings','climbable','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','transformLocked') if key in obj}
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')
@@ -3310,6 +3333,7 @@ def patch_scene_object():
         if obj['kind']=='wall' and not valid_office_wall(obj.get('wall')):return json_error('Invalid office wall')
         if obj['kind']=='stairs' and not valid_office_stairs(obj.get('stairs')):return json_error('Invalid office stairs')
         if obj['kind']=='ladder' and not valid_office_ladder(obj.get('ladder')):return json_error('Invalid ladder')
+        if obj['kind']=='furniture' and not valid_basic_furniture(obj.get('furniture')):return json_error('Invalid basic furniture')
         if obj['kind']=='portal' and not valid_portal_geometry(obj.get('portal')):return json_error('Invalid portal')
         if 'primitive' in obj:
             primitive=obj['primitive']
