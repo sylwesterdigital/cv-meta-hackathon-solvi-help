@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.128",
+  "currentVersion": "0.2.129",
   "releases": [
+    {
+      "version": "0.2.129",
+      "publishedAt": "2026-11-01T02:27:05Z",
+      "changes": [
+        "Prevent automatic Pushing animation against props whose height is at most half the normalized avatar height; scale the threshold with each avatar and exclude objects on other floors or above the avatar.",
+        "Require the avatar to face the obstacle within 35 degrees and move forward into it; sideways motion and side-on robot-on-robot pushing cannot trigger automatic Push.",
+        "Measure proximity to the nearest world-space object surface, then require the Rapier character controller to report a collision against that precise Dynamic collider, rather than guessing from a broad bounding box or stalled movement.",
+        "Clear stale automatic object Pushing immediately when contact or direction becomes invalid; leave actual physics impulses, explicit combat moves, walking and collision geometry unchanged.",
+        "Add ten executable regression tests covering small bricks, height thresholds, frontal angles, sideways motion, wrong/no collision, far objects, scaled robots, and automatic contact cancellation."
+      ]
+    },
     {
       "version": "0.2.128",
       "publishedAt": "2026-11-01T02:11:11Z",
@@ -299,17 +310,6 @@
         "Make Shift+ArrowUp/ArrowDown move the free camera vertically only, without simultaneous forward/backward travel; preserve PageUp/PageDown vertical movement.",
         "Fix admin chat clearing races: invalidate all in-flight older message requests and cached media/portrait callbacks, remove transient traces/presence entries for the cleared realm, and ignore stale responses after room switches.",
         "Add regression coverage for camera axes, draggable routines, native-dialog replacement, async message invalidation and attachment cleanup."
-      ]
-    },
-    {
-      "version": "0.2.96",
-      "publishedAt": "2026-10-31T02:45:14Z",
-      "changes": [
-        "Add Camera: Chase Smart with a user-adjustable heading threshold (5\u2013120\u00b0, default 35\u00b0); a small turn leaves the camera heading steady, a substantial turn triggers smooth inertial follow.",
-        "Keep World Tools on screen as a draggable minimized title bar by default, with one-click restore, saved location and prior minimize state.",
-        "Remember the last accessible realm per profile across refreshes; update the selected realm title immediately and reject stale scene loads after fast realm switches.",
-        "Avoid blocking first scene render on chat history; deduplicate authenticated portrait and attachment downloads and lazy-load only chat media near the visible viewport.",
-        "Give globally unlocked administrators full-room chat export (not just the latest 80), followed by exact-realm-name confirmed chat clearing; server enforces admin session and room scope, keeps scene assets and other realms, and notifies connected clients."
       ]
     }
   ]

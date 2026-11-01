@@ -6,7 +6,7 @@ import {supportedLiftRobot} from './lift-rider.js';
 import {supportedConveyorRobot} from './transport-support.js';
 import {CHARACTER,characterMotion,resolveCharacterMotion,easedRemotePose} from './character-physics.js';
 import {robotPushVector,pushedWalkState} from './robot-push.js';
-import {approachingRobotContact,ROBOT_CONTACT_DISTANCE} from './robot-contact.js';
+import {approachingRobotContact,ROBOT_CONTACT_DISTANCE,facingPushContact,sizeableFrontalPushContact} from './robot-contact.js';
 import {combatReach,combatDirection,impactImpulse,combatContact} from './robot-combat.js';
 
 // Bodies live for the lifetime of the scene object; movement never re-creates a GLB.
@@ -211,6 +211,8 @@ export class ScenePhysics{
   if(!this.enabled||!this.world||actor===target||target.userData.robotMission||target.userData.robotGoal)return false;
   if(actor.userData.editorKind!=='robot'||target.userData.editorKind!=='robot')return false;
   if(!this.owns(actor)||!approachingRobotContact(actor.position,target.position,actorNext))return false;
+  if(!facingPushContact(actor.position,target.position,actor.rotation.y,
+       {x:actorNext.x-actor.position.x,z:actorNext.z-actor.position.z}))return false;
   if(!this.owns(target)){
    // The attacker's client cannot directly edit someone else's capsule.
    // Request one small impact event so the victim's owner resolves it with
@@ -322,6 +324,7 @@ export class ScenePhysics{
   const separation=Math.hypot(target.position.x-actor.position.x,target.position.z-actor.position.z);
   if(Math.abs(target.position.y-actor.position.y)>1.55)return false;
   if(packet.kind==='push'&&separation>ROBOT_CONTACT_DISTANCE+.22)return false;
+  if(packet.kind==='push'&&!facingPushContact(actor.position,target.position,actor.rotation.y))return false;
   if(packet.kind!=='push'&&separation>combatReach(packet.kind)+.45)return false;
   const force=Math.max(.5,Math.min(20,Number(packet.force)||5));
   const dx=target.position.x-actor.position.x,dz=target.position.z-actor.position.z;
@@ -347,24 +350,39 @@ export class ScenePhysics{
  // body actually receives contact in front of the actor, never for a fixed mesh.
  noteDynamicPush(actor,delta,distance){
   if(!this.enabled||distance<.008)return false;
-  const direction={x:delta.x/distance,z:delta.z/distance};
+  // Only allow the authored Push when the avatar faces INTO a tall object,
+  // within 35 degrees, at its real nearest surface. Small floor bricks,
+  // sideways strafes and broad AABBs are never sufficient by themselves.
+  const avatarHeight=1.75*Math.max(.1,Math.abs(Number(actor.scale?.y)||1));
+  const motion={x:delta.x,z:delta.z};
   for(const target of this.editor.items){
    if(target===actor||target.userData.editorKind==='robot'||target.userData.physics?.mode!=='dynamic'||!this.owns(target))continue;
    const body=this.bodies.get(target.userData.editorId);
    if(!body?.isDynamic?.())continue;
-   const dx=target.position.x-actor.position.x,dz=target.position.z-actor.position.z;
-   const front=dx*direction.x+dz*direction.z;
-   const lateral=Math.abs(dx*direction.z-dz*direction.x);
-   const bounds=new THREE.Box3().setFromObject(target),span=bounds.getSize(new THREE.Vector3());
-   const radius=Math.min(2.5,Math.max(.1,Math.hypot(span.x,span.z)*.5));
-   if(front<-.08||front>radius+.43||lateral>radius+.35)continue;
+   const bounds=new THREE.Box3().setFromObject(target);
+   if(!sizeableFrontalPushContact(actor.position,bounds,actor.rotation.y,motion,{robotHeight:avatarHeight}))continue;
+   // Rapier contact is the source of truth: nearby AABB alone is NOT a push.
+   // The controller reports collisions from the immediately preceding move.
+   const collider=this.colliders.get(target.userData.editorId);
+   if(!collider||!this.characterController?.numComputedCollisions)continue;
+   let contacted=false;
+   const contacts=this.characterController.numComputedCollisions();
+   for(let i=0;i<contacts;i++){
+    const hit=this.characterController.computedCollision(i)?.collider;
+    if(hit&&(hit===collider||(Number.isInteger(hit.handle)&&hit.handle===collider.handle))){contacted=true;break;}
+   }
+   if(!contacted)continue;
    // Body is eligible for Rapier's dynamic impulses; static stairs / walls
    // and kinematic objects do not qualify even if their boxes overlap.
-   actor.userData.robotContactAction={kind:'push',until:performance.now()+190};
+   actor.userData.robotContactAction={kind:'push',source:'auto-object',until:performance.now()+190};
    return true;
   }
+  // Cancel stale automatic pushing immediately when the robot turns away or
+  // moves sideways. Explicit user-triggered push/combat stays independent.
+  if(actor.userData.robotContactAction?.source==='auto-object')actor.userData.robotContactAction=null;
   return false;
  }
+
  // The character controller can report a sticky "grounded" result at a lip.
  // Probe directly under the next capsule foot to distinguish a real support
  // surface from a nearby wall or a platform we have already stepped off.
@@ -422,8 +440,9 @@ export class ScenePhysics{
   this.characterController.computeColliderMovement(collider,{x:delta.x,y:delta.y,z:delta.z});
   const resolved=resolveCharacterMotion(p,this.characterController.computedMovement(),this.characterController.computedGrounded(),state.verticalSpeed);
   const desiredHorizontal=Math.hypot(delta.x,delta.z);
-  // A blocked capsule is NOT proof of a push: stair risers, static trimeshes,
-  // walls and the ground must never trigger the Push animation.
+  // A blocked capsule is NOT proof of a push: only the actual Rapier
+  // collision with an appropriately tall, frontal Dynamic body qualifies.
+  // Read the collision events immediately after computeColliderMovement.
   if(desiredHorizontal>.012&&state.grounded&&this.owns(object))this.noteDynamicPush(object,delta,desiredHorizontal);
   const supported=this.hasGroundSupport(resolved,collider);
   state.verticalSpeed=resolved.verticalSpeed;
