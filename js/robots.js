@@ -298,7 +298,8 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     }
     // Jump owns animation until Rapier confirms landing. Movement input,
     // stair autostep and contact clips cannot abort a jump in midair.
-    if(data.robotJumpActive||data.physicsAirborne&&data.robotMode==='jump'){
+    if(data.robotLadderRide){mode=data.robotAnimator?.actions?.has('climbLadder')&&data.robotLadderSpeed?'climbLadder':'idle';}
+    else if(data.robotJumpActive||data.physicsAirborne&&data.robotMode==='jump'){
       mode=data.robotJumpClip||'jump';
       const active=data.robotAnimator?.actions?.get?.(mode);
       if(active&&active.time>=Math.max(.01,active.getClip().duration-.035)&&data.physicsAirborne){
@@ -340,6 +341,7 @@ export function animateRobots(items,dt,onImpact=()=>{}){
         }}));
       }
     }
+    if(mode==='climbLadder')animator?.setClimbDescending?.(data.robotLadderSpeed<0);
     if(data.robotPlaying!==mode){
       if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){
         animator?.playOnce(mode,shot.timing);
@@ -353,6 +355,7 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     }
     const tune=animationSpeedSettings(data.robotAnimationSpeed);
     if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){/* playOnce owns rate */}
+    else if(mode==='climbLadder')animator?.setPlaybackSpeed(1);
     else if(data.robotPushState&&now-data.robotPushState.at<420&&mode===data.robotPushState.kind)animator?.setPlaybackSpeed(data.robotPushState.rate);
     else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode)){
       const key=mode==='run'?'run':'walk';

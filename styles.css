@@ -2058,3 +2058,18 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 .brain-voice-config .brain-voice-values label{white-space:nowrap!important;word-break:keep-all!important;overflow-wrap:normal!important;flex-shrink:0!important;}
 .brain-voice-config .brain-voice-values{flex-wrap:wrap;gap:6px 10px;}
 .brain-voice-config .brain-voice-values input{width:60px;min-width:52px;}
+
+/* Compact Profile control and user-supplied, literal portrait +/- glyphs. */
+.profile-edit-mode-row{padding:3px 6px!important;margin:2px 0!important;min-height:29px!important;border:0!important;border-radius:5px!important;gap:8px!important;}
+.profile-edit-mode-info{display:block!important;line-height:1!important;}
+.profile-edit-mode-info strong{font-size:12px!important;font-weight:600!important;white-space:nowrap!important;}
+.profile-edit-mode-info small{display:none!important;}
+.profile-edit-mode-track{width:38px!important;height:22px!important;}
+.profile-edit-mode-track::after{width:16px!important;height:16px!important;}
+.profile-edit-mode-row input:checked+.profile-edit-mode-track::after{transform:translateX(16px)!important;}
+#controlSwitcher .robot-face-size-actions button{display:flex!important;align-items:center!important;justify-content:center!important;min-width:24px!important;width:24px!important;height:25px!important;padding:2px!important;background:transparent!important;}
+#controlSwitcher .robot-face-size-actions button::before,#controlSwitcher .robot-face-size-actions button::after{content:none!important;display:none!important;}
+#controlSwitcher .robot-face-size-actions button img{width:16px!important;height:16px!important;display:block!important;border-radius:2px!important;pointer-events:none!important;}
+#ladderProperties .ladder-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:6px 3px;}
+#ladderProperties .ladder-fields label{font-size:11px;display:flex;flex-direction:column;gap:3px;white-space:nowrap;min-width:0;}
+#ladderProperties .ladder-fields input,#ladderProperties .ladder-fields select{min-width:0;width:100%;}

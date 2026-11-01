@@ -126,7 +126,7 @@ export class ScenePhysics{
   if(!isRobot&&opts.mode==='off'){this.remove(id);return;}
   const owner=this.owns(object);
   const type=isRobot?'avatar':opts.mode==='dynamic'&&!owner?'remote-dynamic':opts.mode;
-  const signature=`${kind}|${type}|${JSON.stringify(opts)}|${kind==='wall'?JSON.stringify(object.userData.wall):kind==='stairs'?stairGeometryKey(object.userData.stairs):kind==='portal'?JSON.stringify(object.userData.portal):kind==='cube'?JSON.stringify(object.userData.openings):kind==='curve'?JSON.stringify(object.userData.curve):''}|${object.scale.toArray().join(',')}|${kind==='model'?(object.userData.modelUrl||'')+':'+Boolean(object.userData.modelReady):''}`;
+  const signature=`${kind}|${type}|${JSON.stringify(opts)}|${kind==='wall'?JSON.stringify(object.userData.wall):kind==='stairs'?stairGeometryKey(object.userData.stairs):kind==='ladder'?JSON.stringify(object.userData.ladder):kind==='portal'?JSON.stringify(object.userData.portal):kind==='cube'?JSON.stringify(object.userData.openings):kind==='curve'?JSON.stringify(object.userData.curve):''}|${object.scale.toArray().join(',')}|${kind==='model'?(object.userData.modelUrl||'')+':'+Boolean(object.userData.modelReady):''}`;
   const existing=this.bodies.get(id);
   if(existing&&this.settings.get(id)===signature){
    // A remote object may be edited in place without allocating a new collider.
@@ -162,12 +162,12 @@ export class ScenePhysics{
   if(!isRobot)shape.setFriction(opts.friction).setRestitution(opts.restitution);
   else shape.setFriction(.85).setRestitution(0);
   let collider;
-  if(!useTrimesh&&(kind==='wall'||kind==='stairs'||kind==='portal')&&object.children.length){
+  if(!useTrimesh&&(kind==='wall'||kind==='stairs'||kind==='ladder'||kind==='portal')&&object.children.length){
    // Compound collider, one capsule-safe box per segment. Do not use a single
    // enclosing AABB that incorrectly blocks an open room / U-shaped wall.
    for(const segment of object.children){
     if(segment.userData.portalVisualOnly)continue; // Orb event horizon is a trigger, not a rigid wall.
-    if(!segment.userData.portalFrame&&!segment.userData.wallSegment&&!segment.userData.stairTread&&!(segment.userData.stairStructure&&segment.geometry?.type==='BoxGeometry'&&kind==='stairs'&&['advanced','escalator','walkway'].includes(object.userData.stairs?.variant)))continue;
+    if(!segment.userData.portalFrame&&!segment.userData.wallSegment&&!segment.userData.stairTread&&!segment.userData.ladderBar&&!(segment.userData.stairStructure&&segment.geometry?.type==='BoxGeometry'&&kind==='stairs'&&['advanced','escalator','walkway'].includes(object.userData.stairs?.variant)))continue;
     const size=segment.geometry.parameters;
     const scale=object.scale;
     const halfX=Math.max(.025,size.width*Math.abs(scale.x)/2),halfY=Math.max(.025,size.height*Math.abs(scale.y)/2),halfZ=Math.max(.025,size.depth*Math.abs(scale.z)/2);
@@ -392,6 +392,27 @@ export class ScenePhysics{
   const hit=this.world.castRay(ray,.55,true,undefined,undefined,collider);
   return Boolean(hit);
  }
+ landAtLadderTop(ladder,robot){
+  if(!this.world||!this.runtime?.Ray)return false;
+  ladder.updateMatrixWorld(true);
+  const cfg=ladder.userData.ladder;
+  const capsule=this.colliders.get(robot.userData.editorId);
+  // Test the floor BEHIND the upper rung, not the empty space in front.
+  for(const z of [-.5,-.82]){
+   const cfgHeight=Number(cfg?.height)||3;
+   const local=new THREE.Vector3(0,cfgHeight+.55,z);
+   const top=ladder.localToWorld(local);
+   const ray=new this.runtime.Ray({x:top.x,y:top.y,z:top.z},{x:0,y:-1,z:0});
+   const hit=this.world.castRay(ray,1.4,true,undefined,undefined,capsule);
+   if(!hit)continue;
+   const floorY=top.y-hit.toi,expected=ladder.localToWorld(new THREE.Vector3(0,cfgHeight,0)).y;
+   if(Math.abs(floorY-expected)>.38)continue;
+   robot.position.set(top.x,floorY+.035,top.z);
+   robot.userData.robotMode='idle';
+   return true;
+  }
+  return false;
+ }
  driveRobot(object,dt){
   const id=object.userData.editorId,body=this.bodies.get(id),collider=this.colliders.get(id),state=this.characters.get(id);
   if(!body||!collider||!state)return;
@@ -421,6 +442,23 @@ export class ScenePhysics{
    body.setTranslation(next,true);body.setNextKinematicTranslation(next);
    body.setNextKinematicRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
    object.position.set(next.x,next.y,next.z);
+   return;
+  }
+  if(object.userData.robotLadderDismount){
+   delete object.userData.robotLadderDismount;
+   const next={x:object.position.x,y:object.position.y,z:object.position.z};
+   state.verticalSpeed=0;state.grounded=true;state.jumpStarted=false;state.wasAirborne=false;state.airStartY=null;state.airStartAt=0;
+   object.userData.physicsAirborne=false;object.userData.robotFallActive=false;object.userData.robotJumpActive=false;
+   body.setTranslation(next,true);body.setNextKinematicTranslation(next);
+   body.setNextKinematicRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
+   return;
+  }
+  if(object.userData.robotLadderRide){
+   const next={x:object.position.x,y:object.position.y,z:object.position.z};
+   state.verticalSpeed=0;state.grounded=false;state.jumpStarted=false;state.wasAirborne=false;state.airStartY=null;state.airStartAt=0;
+   object.userData.physicsAirborne=false;object.userData.robotFallActive=false;object.userData.robotJumpActive=false;object.userData.robotReaction=null;
+   body.setTranslation(next,true);body.setNextKinematicTranslation(next);
+   body.setNextKinematicRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
    return;
   }
   if(object.userData.liftRide)delete object.userData.liftRide;

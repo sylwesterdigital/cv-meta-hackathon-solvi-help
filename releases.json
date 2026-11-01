@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.131",
+  "currentVersion": "0.2.132",
   "releases": [
+    {
+      "version": "0.2.132",
+      "publishedAt": "2026-11-01T03:49:48Z",
+      "changes": [
+        "Add procedural Ladder immediately after Stairs advanced, with width, height, count/spacing-based rungs, textures, colour and per-bar static Rapier colliders.",
+        "Add manual Up/Down robot/ avatar climbing and Space release; select authored climbing animation where present and detect a real upper platform before dismount to Idle.",
+        "Replace robot portrait resize symbols with the exact supplied +/- SVGs and remove automatic icon decoration; compact Profile Edit Mode to a single label and pill.",
+        "Persist, duplicate, validate and archive ladders, add six ladder behaviour tests and advance all runtime/backend/cache version strings."
+      ]
+    },
     {
       "version": "0.2.131",
       "publishedAt": "2026-11-01T03:08:43Z",
@@ -295,18 +305,6 @@
         "Repair U face media mounting: confirm frame rectangle before choosing authenticated realm chat media, and persist the mount with the first object save rather than in a later racing update.",
         "Add seven tiny deterministic procedural textures to World Settings floor: concrete, soil, tarmac, sand, tiles, gradient tiles, and random tiles. Respect floor colour and room-scoped environment save.",
         "Add regression tests for stroke projection and sampling, open curve caps, floor style normalization and geometry preview/media persistence."
-      ]
-    },
-    {
-      "version": "0.2.99",
-      "publishedAt": "2026-10-31T04:22:44Z",
-      "changes": [
-        "Synchronize selection in Objects with a clearly highlighted inverted-color row and aria-current.",
-        "Add editable spatial 3D curves with per-point depth/elevation placement, control points, offset, extrusion thickness, rounded bevel, bevel resolution and path resolution; persist and clone in realms.",
-        "Add O to draw rectangular through-openings on cube faces. Build a true cutout mesh with internal tunnel surfaces, maintain undo/redo and static trimesh collision matching the opening.",
-        "Add U to draw media rectangles on cube and plane surfaces, with a searchable authenticated room-chat attachment browser for images, audio and video. Mounted frames follow source geometry transforms.",
-        "Validate all new curve/opening/mount payloads in both Flask scene routes; preserve mounted-media links and remap scene target IDs during realm archive imports.",
-        "Integrate new modules with versioned browser imports and add geometry, persistence and security regression tests."
       ]
     }
   ]

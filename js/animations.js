@@ -12,6 +12,7 @@ export const MOTION_ALIASES=Object.freeze({
   landing:['landing','jump landing','falling to landing','fall to landing'],
   hardLanding:['hard landing','landing hard','falling flat impact','fall flat impact','falling back death'],
   push:['pushing','push'],
+  climbLadder:['climbing ladder','climb ladder','climbing up wall','climbing wall','climbing','climb'],
   falling:['falling','fall','falling idle'],
   fallingIdle:['falling idle','fall idle','falling loop'],
   fallingLanding:['falling to landing','fall to landing','landing','land','falling idle'],
@@ -34,7 +35,7 @@ export function computeMode(speed){return speed<.05?'idle':speed<2?'walk':'run';
 export class MotionController{
   constructor(THREE,root,clips){
     this.THREE=THREE;this.mixer=new THREE.AnimationMixer(root);
-    this.actions=new Map();this.current=null;this.currentKind=null;this.playbackSpeed=1;this.oneShotStopAt=null;this.clipNames=clips.map(c=>String(c.name||'')).filter(Boolean);
+    this.actions=new Map();this.current=null;this.currentKind=null;this.playbackSpeed=1;this.oneShotStopAt=null;this.reverseClimb=false;this.clipNames=clips.map(c=>String(c.name||'')).filter(Boolean);
     for(const kind of Object.keys(MOTION_ALIASES)){
       const clip=findClip(clips,kind);
       if(clip)this.actions.set(kind,this.mixer.clipAction(clip));
@@ -86,7 +87,8 @@ export class MotionController{
     this.setPlaybackSpeed(this.playbackSpeed);
     return true;
   }
-  setPlaybackSpeed(value=1){this.playbackSpeed=Math.max(.3,Math.min(6.5,Number(value)||1));if(this.current)this.current.setEffectiveTimeScale((this.currentKind==='walkBackward'&&!this.actions.has('walkBackward')&&this.actions.has('walk')?-1:1)*this.playbackSpeed);}
+  setClimbDescending(value){this.reverseClimb=Boolean(value);if(this.currentKind==='climbLadder'&&this.current){this.current.setEffectiveTimeScale((this.reverseClimb?-1:1)*this.playbackSpeed);if(this.reverseClimb&&this.current.time<=.01)this.current.time=Math.max(.001,this.current.getClip().duration-.01);}}
+  setPlaybackSpeed(value=1){this.playbackSpeed=Math.max(.3,Math.min(6.5,Number(value)||1));if(this.current)this.current.setEffectiveTimeScale((this.currentKind==='climbLadder'&&this.reverseClimb||this.currentKind==='walkBackward'&&!this.actions.has('walkBackward')&&this.actions.has('walk')?-1:1)*this.playbackSpeed);if(this.currentKind==='climbLadder'&&this.reverseClimb&&this.current?.time<=.01)this.current.time=Math.max(.001,this.current.getClip().duration-.01);}
   update(dt){
     this.mixer.update(dt);
     if(this.oneShotStopAt!==null&&this.current&&this.current.time>=this.oneShotStopAt){
