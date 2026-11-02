@@ -194,9 +194,9 @@ test('Lifting, like Throw, is a non-looping authored animation',()=>{
  assert.match(animations,/action\.setLoop\(oneShot\?this\.THREE\.LoopOnce:this\.THREE\.LoopRepeat/);
 });
 
-test('throw tuning clamps invalid settings and controls angle/direction/height/delay',()=>{
+test('throw tuning rejects nonfinite settings but preserves finite aim/delay values',()=>{
  assert.deepEqual(exports.cleanThrowSettings(),{angle:12,height:0,direction:0,delay:55,pickupDelay:55,pickupSpeed:1,throwSpeed:1,force:3.1});
- assert.deepEqual(exports.cleanThrowSettings({angle:NaN,height:Infinity,direction:180,delay:-4}),{angle:12,height:0,direction:0,delay:55,pickupDelay:55,pickupSpeed:1,throwSpeed:1,force:3.1});
+ assert.deepEqual(exports.cleanThrowSettings({angle:NaN,height:Infinity,direction:180,delay:-4}),{angle:12,height:0,direction:180,delay:-4,pickupDelay:55,pickupSpeed:1,throwSpeed:1,force:3.1});
  const f=fixture();f.robot.userData.robotThrowSettings={angle:35,height:.3,direction:90,delay:80};
  f.carry.pickup(f.robot);for(let i=0;i<9;i++)f.carry.tick(.1);
  f.carry.throw(f.robot);const state=f.robot.userData.robotCarry;
@@ -351,10 +351,10 @@ test('inspector, animation clock and server validator expose speed, force and li
  assert.match(editor,/carry\.toggleTrajectory\(e\.target\.checked\)/);
  assert.match(robotSource,/data\.robotCarry\.settings\?\.pickupSpeed/);
  assert.match(robotSource,/data\.robotCarry\.settings\?\.throwSpeed/);
- assert.match(backend,/\('force',1\.2,10\)/);
- assert.match(backend,/\('throwSpeed',\.5,3\)/);
+ assert.match(backend,/key in \('pickupSpeed','throwSpeed'\) and value<=0/);
+ assert.doesNotMatch(backend,/\('force',1\.2,10\)/);
  assert.deepEqual(exports.cleanThrowSettings({force:Infinity,pickupSpeed:7,throwSpeed:-1}),{
-  angle:12,height:0,direction:0,delay:55,pickupDelay:55,pickupSpeed:1,throwSpeed:1,force:3.1});
+  angle:12,height:0,direction:0,delay:55,pickupDelay:55,pickupSpeed:7,throwSpeed:1,force:3.1});
 });
 
 test('guide builds a visible transient line and marker and cleans up GPU resources',()=>{

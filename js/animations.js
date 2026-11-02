@@ -91,7 +91,12 @@ export class MotionController{
     return true;
   }
   setClimbDescending(value){this.reverseClimb=Boolean(value);if(this.currentKind==='climbLadder'&&this.current){this.current.setEffectiveTimeScale((this.reverseClimb?-1:1)*this.playbackSpeed);if(this.reverseClimb&&this.current.time<=.01)this.current.time=Math.max(.001,this.current.getClip().duration-.01);}}
-  setPlaybackSpeed(value=1){this.playbackSpeed=Math.max(.3,Math.min(6.5,Number(value)||1));if(this.current)this.current.setEffectiveTimeScale((this.currentKind==='climbLadder'&&this.reverseClimb||this.currentKind==='walkBackward'&&!this.actions.has('walkBackward')&&this.actions.has('walk')?-1:1)*this.playbackSpeed);if(this.currentKind==='climbLadder'&&this.reverseClimb&&this.current?.time<=.01)this.current.time=Math.max(.001,this.current.getClip().duration-.01);}
+  setPlaybackSpeed(value=1,{unbounded=false}={}){
+    const speed=Number(value);
+    this.playbackSpeed=Number.isFinite(speed)&&speed>0?(unbounded?speed:Math.max(.3,Math.min(6.5,speed))):1;
+    if(this.current)this.current.setEffectiveTimeScale((this.currentKind==='climbLadder'&&this.reverseClimb||this.currentKind==='walkBackward'&&!this.actions.has('walkBackward')&&this.actions.has('walk')?-1:1)*this.playbackSpeed);
+    if(this.currentKind==='climbLadder'&&this.reverseClimb&&this.current?.time<=.01)this.current.time=Math.max(.001,this.current.getClip().duration-.01);
+  }
   update(dt){
     this.mixer.update(dt);
     if(this.oneShotStopAt!==null&&this.current&&this.current.time>=this.oneShotStopAt){

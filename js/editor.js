@@ -293,7 +293,7 @@ export class SceneEditor{
     if(bot?.userData.editorKind!=='robot'||!this.canEdit(bot))return;
     const prior=throwEditBefore.get(field);
     const before=prior?.robotId===bot.userData.editorId?prior.snapshot:this.snapshot(bot);
-    const next=editThrowSetting(bot.userData.robotThrowSettings,key,field.value,{clamp:true});
+    const next=editThrowSetting(bot.userData.robotThrowSettings,key,field.value);
     if(next)bot.userData.robotThrowSettings=next;
     field.value=cleanThrowSettings(bot.userData.robotThrowSettings)[key];
     const after=this.snapshot(bot);

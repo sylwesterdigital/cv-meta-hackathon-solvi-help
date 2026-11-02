@@ -10,27 +10,29 @@ export function pickUpClip(names=[],name){
 }
 // Avatar-specific defaults; release delay is a percentage of the authored Throw clip.
 export const DEFAULT_THROW_SETTINGS=Object.freeze({angle:12,height:0,direction:0,delay:55,pickupDelay:55,pickupSpeed:1,throwSpeed:1,force:3.1});
-export function cleanThrowSettings(raw={}){
- const bound=(key,min,max)=>{
-  const value=Number(raw?.[key]);
-  return Number.isFinite(value)&&value>=min&&value<=max?value:DEFAULT_THROW_SETTINGS[key];
- };
- return {angle:bound('angle',-20,65),height:bound('height',-.35,.65),direction:bound('direction',-90,90),delay:bound('delay',5,95),pickupDelay:bound('pickupDelay',5,95),pickupSpeed:bound('pickupSpeed',.5,3),throwSpeed:bound('throwSpeed',.5,3),force:bound('force',1.2,10)};
+// No arbitrary numeric min/max: the scene stores the exact finite user value.
+// Speeds must be positive to define a real clip duration, and launch speed is nonnegative.
+// Percentages describe an animation timeline; values outside 0–100 are retained,
+// while the animation's beginning/end naturally bound the actual pickup/release.
+const THROW_SETTING_KEYS=Object.freeze(Object.keys(DEFAULT_THROW_SETTINGS));
+function validThrowNumber(key,value){
+ return typeof value==='number'&&Number.isFinite(value)&&
+  (!['pickupSpeed','throwSpeed'].includes(key)||value>0)&&
+  (key!=='force'||value>=0);
 }
-// Inspector edits are different from reading a legacy saved configuration:
-// do not silently replace a user's out-of-range numeric entry with the 55% default.
-const THROW_FIELD_RANGES=Object.freeze({
- angle:[-20,65],height:[-.35,.65],direction:[-90,90],delay:[5,95],
- pickupDelay:[5,95],pickupSpeed:[.5,3],throwSpeed:[.5,3],force:[1.2,10]
-});
-export function editThrowSetting(settings,key,raw,{clamp=false}={}){
- const range=THROW_FIELD_RANGES[key];
- if(!range||raw==null||(typeof raw==='string'&&!raw.trim()))return null;
+export function cleanThrowSettings(raw={}){
+ const clean={};
+ for(const key of THROW_SETTING_KEYS){
+  const value=raw?.[key];
+  clean[key]=validThrowNumber(key,value)?value:DEFAULT_THROW_SETTINGS[key];
+ }
+ return clean;
+}
+export function editThrowSetting(settings,key,raw){
+ if(!THROW_SETTING_KEYS.includes(key)||raw==null||(typeof raw==='string'&&!raw.trim()))return null;
  const value=Number(raw);
- if(!Number.isFinite(value))return null;
- if(!clamp&&(value<range[0]||value>range[1]))return null;
- const bounded=Math.max(range[0],Math.min(range[1],value));
- return cleanThrowSettings({...settings,[key]:bounded});
+ if(!validThrowNumber(key,value))return null;
+ return cleanThrowSettings({...settings,[key]:value});
 }
 function handBoneScore(name){
  const n=String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -79,11 +81,17 @@ export function pickableTarget(robot,items,{maxReach=1.65}={}){
  }
  return best;
 }
+function throwYaw(robotYaw,directionDegrees){
+ // Modulo keeps even very large finite angle entries numerically usable;
+ // it changes only trigonometric evaluation, never the saved setting.
+ return (robotYaw%(2*Math.PI))+((directionDegrees%360)*Math.PI/180);
+}
 export function throwImpulse(yaw,force=3.1,elevation=12){
- const strength=Math.max(1.2,Math.min(10,Number.isFinite(Number(force))?Number(force):3.1));
- // A short, predominantly horizontal hand-height arc, not a lobbed snowball.
- const pitch=Math.max(-20,Math.min(65,Number(elevation)||0))*Math.PI/180;
- return {x:Math.sin(yaw)*strength*Math.cos(pitch),y:strength*Math.sin(pitch),z:Math.cos(yaw)*strength*Math.cos(pitch)};
+ const strength=Number.isFinite(force)&&force>=0?force:DEFAULT_THROW_SETTINGS.force;
+ // The requested magnitude and elevation are not capped in the launch calculation.
+ const pitch=((Number.isFinite(elevation)?elevation:DEFAULT_THROW_SETTINGS.angle)%360)*Math.PI/180;
+ const heading=Number.isFinite(yaw)?yaw%(2*Math.PI):0;
+ return {x:Math.sin(heading)*strength*Math.cos(pitch),y:strength*Math.sin(pitch),z:Math.cos(heading)*strength*Math.cos(pitch)};
 }
 // Use exactly the launch velocity that is converted to mass-scaled Rapier impulse.
 // The optional segmentCheck stops the guide at the first physics obstacle.
@@ -92,10 +100,16 @@ export function predictThrowPath(start,yaw,settings={},segmentCheck=null){
  const cfg=cleanThrowSettings(settings);
  const velocity=throwImpulse(yaw,cfg.force,cfg.angle);
  const points=[new THREE.Vector3(start.x,start.y,start.z)];
- const dt=.075,gravity=9.81;
+ const gravity=9.81;
+ // At high launch speeds, cover the whole ballistic flight rather than stopping
+ // the guide after the former fixed 2.55-second horizon.
+ const vy=velocity.y;
+ const flight=(vy+Math.hypot(vy,Math.sqrt(2*gravity*Math.max(0,start.y))))/gravity;
+ const dt=Number.isFinite(flight)?Math.max(.075,flight/34):.075;
  for(let i=1;i<=34;i++){
   const t=i*dt;
   const next=new THREE.Vector3(start.x+velocity.x*t,start.y+velocity.y*t-.5*gravity*t*t,start.z+velocity.z*t);
+  if(!finiteVector(next)||![next.x,next.y,next.z].every(v=>Number.isFinite(Math.fround(v))))return []; // Cannot render overflowing f32 coordinates.
   const previous=points[points.length-1];
   if(segmentCheck){const hit=segmentCheck(previous,next);if(hit&&[hit.x,hit.y,hit.z].every(Number.isFinite)){points.push(new THREE.Vector3(hit.x,hit.y,hit.z));break;}}
   if(next.y<=0){const fraction=Math.max(0,Math.min(1,previous.y/(previous.y-next.y||1)));
@@ -105,6 +119,10 @@ export function predictThrowPath(start,yaw,settings={},segmentCheck=null){
  return points;
 }
 function finiteVector(vec){return vec&&Number.isFinite(vec.x)&&Number.isFinite(vec.y)&&Number.isFinite(vec.z);}
+function finitePhysicsVector(vec){
+ // Physics and GPU paths use 32-bit coordinates, even though JS numbers are f64.
+ return finiteVector(vec)&&[vec.x,vec.y,vec.z].every(v=>Number.isFinite(Math.fround(v)));
+}
 function gripPoint(robot){
  robot.updateWorldMatrix(true,true);
  const hand=findRightHand(robot);
@@ -124,7 +142,8 @@ export class ObjectCarry{
   // One-shot Lifting reaches for the object, then ordinary Idle/Walk/Run resumes.
   const clip=pickUpClip(robot.userData.robotAvailableActions,'liftCarry');
   const settings=cleanThrowSettings(robot.userData.robotThrowSettings);
-  const duration=Math.max(.2,Math.min(4,(robot.userData.robotAnimator?.clipDuration(clip)||.65)/settings.pickupSpeed));
+  const duration=(robot.userData.robotAnimator?.clipDuration(clip)||.65)/settings.pickupSpeed;
+  if(!Number.isFinite(duration)||duration<=0)return false;
   target.userData.carryOrigin={position:target.position.clone(),rotation:target.rotation?.clone?.()};
   robot.userData.robotCarry={objectId:target.userData.editorId,stage:'pickup',elapsed:0,duration,attachAt:duration*settings.pickupDelay/100,attached:false,settings,remote};
   robot.userData.robotPlaying=null;
@@ -166,8 +185,11 @@ export class ObjectCarry{
   // If pickup animation has not reached the hand yet, attach before throwing.
   if(!state.attached)this.attach(robot,target,state);
   const clip=pickUpClip(robot.userData.robotAvailableActions,'throwObject');
-  state.stage='throw';state.elapsed=0;state.settings=cleanThrowSettings(robot.userData.robotThrowSettings);
-  state.duration=Math.max(.2,Math.min(4,(robot.userData.robotAnimator?.clipDuration(clip)||.9)/state.settings.throwSpeed));
+  const settings=cleanThrowSettings(robot.userData.robotThrowSettings);
+  const duration=(robot.userData.robotAnimator?.clipDuration(clip)||.9)/settings.throwSpeed;
+  if(!Number.isFinite(duration)||duration<=0)return false;
+  state.stage='throw';state.elapsed=0;state.settings=settings;
+  state.duration=duration;
   state.releaseAt=state.duration*state.settings.delay/100;
   state.released=false;
   // Keep the object attached throughout the arm swing. The owner publishes
@@ -200,14 +222,17 @@ export class ObjectCarry{
   if(!finiteVector(robot.position)||!Number.isFinite(robot.rotation.y))return;
   const hand=gripPoint(robot);
   const settings=state.settings||cleanThrowSettings(robot.userData.robotThrowSettings);
-  const yaw=robot.rotation.y+settings.direction*Math.PI/180;
+  const yaw=throwYaw(robot.rotation.y,settings.direction);
   const forward=Math.sin(yaw),side=Math.cos(yaw);
   // Release at the animated palm's current world height. A floor-height
   // safety bound prevents badly authored or missing bones from launching at
   // the robot's knees. The height adjustment is relative to the palm.
   const position=remotePosition&&finiteVector(remotePosition)?remotePosition:
    new THREE.Vector3(hand.x+forward*.12,Math.max(robot.position.y+.8,hand.y+settings.height),hand.z+side*.12).sub(state.pivotOffset||new THREE.Vector3());
-  if(!finiteVector(position))return;
+  if(!finitePhysicsVector(position)){
+   this.editor.toast?.('Throw position exceeds physics precision; choose a smaller hand offset');
+   return;
+  }
   state.released=true;
   obj.position.copy(position);
   // Remove attachment state before reintroducing the rigid body.
@@ -225,7 +250,12 @@ export class ObjectCarry{
     body.setAngvel?.({x:0,y:0,z:0},true);
     const mass=typeof body.mass==='function'?Number(body.mass()):1;
     const factor=Number.isFinite(mass)&&mass>0?Math.min(100,mass):1;
-    body.applyImpulse?.({x:impulse.x*factor,y:impulse.y*factor,z:impulse.z*factor},true);
+    const applied={x:impulse.x*factor,y:impulse.y*factor,z:impulse.z*factor};
+    // Rapier operates on f32 values. Reject unrepresentable impulses instead of
+    // sending Infinity/NaN into the physics world; never silently cap the setting.
+    if(Object.values(applied).every(v=>Number.isFinite(v)&&Number.isFinite(Math.fround(v)))){
+     body.applyImpulse?.(applied,true);
+    }else this.editor.toast?.('Throw impulse exceeds physics precision; choose a smaller force');
    }
    if(!obj.userData.temporaryCarryTest){
     this.editor.queueSave(obj);
@@ -262,7 +292,7 @@ export class ObjectCarry{
  }
  trajectoryOrigin(robot,cfg){
   const hand=gripPoint(robot);
-  const yaw=robot.rotation.y+cfg.direction*Math.PI/180;
+  const yaw=throwYaw(robot.rotation.y,cfg.direction);
   const pivot=robot.userData.robotCarry?.pivotOffset;
   const origin=new THREE.Vector3(hand.x+Math.sin(yaw)*.12,Math.max(robot.position.y+.8,hand.y+cfg.height),hand.z+Math.cos(yaw)*.12);
   // A predicted launch uses the held object's geometric centre; test sphere
@@ -278,7 +308,7 @@ export class ObjectCarry{
   if(this.trajectoryClock<.12&&this.trajectoryLine?.visible)return;
   this.trajectoryClock=0;
   const cfg=cleanThrowSettings(robot.userData.robotThrowSettings);
-  const yaw=robot.rotation.y+cfg.direction*Math.PI/180;
+  const yaw=throwYaw(robot.rotation.y,cfg.direction);
   const origin=this.trajectoryOrigin(robot,cfg);
   const points=predictThrowPath(origin,yaw,cfg,(a,b)=>this.collisionOnSegment(robot,a,b));
   if(points.length<2){this.hideTrajectory();return;}

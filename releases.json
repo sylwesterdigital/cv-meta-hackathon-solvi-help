@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.148",
+  "currentVersion": "0.2.149",
   "releases": [
+    {
+      "version": "0.2.149",
+      "publishedAt": "2026-11-02T02:43:00Z",
+      "changes": [
+        "Remove arbitrary numeric min/max limits from all eight Pickup & Throw inspector inputs, including Throw force >10 m/s, angles, height, delays and animation speed multipliers.",
+        "Persist finite user-entered throw values through inspector, scene serialization and backend validation; retain each field on editing and do not silently substitute 55%.",
+        "Apply throw force and aiming without old 10 m/s, 65\u00b0 or 90\u00b0 caps; make trajectory guidance cover longer flights and protect Rapier from unrepresentable f32 impulses.",
+        "Synchronize Lifting and Throw animation playback/timing with unrestricted positive speed multipliers; preserve ordinary avatar rate limits outside carry animations.",
+        "Percent delays remain editable without input range caps: negative values act at the beginning, values above 100% act at the clip end; reject invalid/nonfinite numbers, negative force and nonpositive speed.",
+        "655/655 JavaScript tests passed, including eight new unbounded-control regression tests; original GLB assets are unchanged.",
+        "Release archive corrected: generated Python __pycache__ / .pyc artifacts excluded; application source code and version unchanged."
+      ]
+    },
     {
       "version": "0.2.148",
       "publishedAt": "2026-11-02T02:10:48Z",
@@ -298,14 +311,6 @@
         "Optional compact Start, Stop and Reverse controls at both walkway/escalator endpoints, with selectable left/right side positioning and mouse/WebXR controller-ray interaction",
         "Server-authorized conveyor-control WebSocket messages synchronize direction and running state, and a saved command timestamp prevents older scene snapshots from reversing newer controls",
         "Preserve the original robot rider, lifts, teleportation, and procedural-stair geometry; add tests for XR carrying, switch actions, state validation, and backwards compatibility"
-      ]
-    },
-    {
-      "version": "0.2.115",
-      "publishedAt": "2026-10-31T19:22:04Z",
-      "changes": [
-        "Reissue the v0.2.114 WebXR surface teleport improvements under a strictly newer release version after the watcher rejected re-deployment of v0.2.114",
-        "Refresh all browser import-map and CSS cache keys, backend health version, installer default version and release metadata; no change to XR teleport behaviour"
       ]
     }
   ]

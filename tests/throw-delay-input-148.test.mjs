@@ -40,24 +40,25 @@ test('release delay changes 55 → 42 → 90 through real inspector focus/input/
  assert.equal(cleanThrowSettings(f.saves.at(-1)).delay,90,'valid release percentage remains serializable');
 });
 
-test('partial out-of-range entry does not snap to default; completed entry is retained',()=>{
+test('intermediate entries commit without arbitrary percentage limits',()=>{
  const f=setup();f.field.fire('focus');
  f.field.value='4';f.field.fire('input');
- assert.equal(f.bot.userData.robotThrowSettings.delay,55,'partial 4 is not committed before 42 is typed');
+ assert.equal(f.bot.userData.robotThrowSettings.delay,4,'single-digit value commits without 5% minimum');
  assert.equal(f.field.value,'4','editing text is not reset');
  f.field.value='42';f.field.fire('input');f.field.fire('change');
  assert.equal(f.bot.userData.robotThrowSettings.delay,42);
  assert.equal(f.field.value,42);
 });
 
-test('delay values outside bounds clamp to nearest valid 5–95%, not to 55%',()=>{
+test('release and pickup percentage values are never snapped to 5–95%',()=>{
  const f=setup();f.field.fire('focus');f.field.value='0';f.field.fire('input');
- assert.equal(f.bot.userData.robotThrowSettings.delay,55,'incomplete value is not prematurely saved');
- f.field.fire('change');assert.equal(f.bot.userData.robotThrowSettings.delay,5);
- assert.equal(f.field.value,5);
- f.field.fire('blur');f.field.fire('focus');f.field.value='100';f.field.fire('input');f.field.fire('change');
- assert.equal(f.bot.userData.robotThrowSettings.delay,95);
- assert.equal(f.field.value,95);
+ assert.equal(f.bot.userData.robotThrowSettings.delay,0);
+ f.field.fire('change');assert.equal(f.field.value,0);
+ f.field.fire('blur');f.field.fire('focus');f.field.value='145';f.field.fire('input');f.field.fire('change');
+ assert.equal(f.bot.userData.robotThrowSettings.delay,145);
+ assert.equal(f.field.value,145);
+ const pickup=f.byId('robotPickupDelay');pickup.fire('focus');pickup.value='-12';pickup.fire('input');pickup.fire('change');
+ assert.equal(f.bot.userData.robotThrowSettings.pickupDelay,-12);
 });
 
 test('clearing field cannot silently restore default; other throw controls are independent',()=>{
