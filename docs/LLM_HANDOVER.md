@@ -1,3 +1,23 @@
+# SOLVI.help — Master LLM Handover v0.2.159
+
+**Release:** v0.2.159 — spatial 3D audio for TVs, monitors and smart video frames.
+
+## Implementation (2 November 2026)
+- **Root cause:** the smart-screen HLS player previously rendered video as a Three.js VideoTexture but did not connect the HTMLVideoElement to a positional sound source. Audio therefore had no distance attenuation or stereo direction relative to the world camera.
+- `js/smart-media-playlist.js` now creates exactly one `THREE.PositionalAudio` for the same video element per playing channel. It attaches to the display mesh, so any movement/rotation of the object moves the sound origin. It uses the existing `world.audioListener` attached to the user camera.
+- The WebAudio panner uses HRTF positional stereo, inverse distance attenuation, reference distance **2.5 m**, maximum distance **35 m**, rolloff **1**, and a front-facing cone (240° inner/330° outer, 35% rear volume). These are audio defaults, not UI numeric input restrictions.
+- `js/equipment-media.js` passes the world listener into procedural TV/monitor screens; `js/scene-media.js` passes it into smart media frames. Original uploaded-media and speaker audio paths remain intact.
+- The display's mute icon updates both `HTMLVideoElement.muted` and Three.js audio node gain. WebAudio resumes on user interaction where permitted; browser autoplay rules still apply. Switching channels, going back to menu, removing objects and rehydrating scenes disconnect and release the old WebAudio node. Media sources are not duplicated.
+- No new persisted fields, backend storage changes or server proxy changes. Existing saved IPTV channels, HLS links, startup options, screen aspect, and audio enabled settings continue to work. Rantlist CORS must still be configured on Rantlist's `/media/` Nginx location for cross-origin streams.
+
+## Validation
+- **718/718 JavaScript tests passed**, including 3 focused tests with a mocked PositionalAudio panner covering emitter placement, HRTF direction, attenuation and mute/disconnection lifecycle.
+- Python backend AST, backend Nginx and realm archive tests, installer shell syntax and release manifest/SHA-256 checks passed.
+- **Not verified:** live WebGL/WebXR positional listening, Safari playback and third-party HLS CORS and codecs. Browser testing after watcher deployment required.
+- Deploy this standard release ZIP with the existing `updates/` watcher; do not place it on the Rantlist server. Original bundled avatar GLB assets are byte-for-byte preserved.
+
+---
+
 # SOLVI.help — Master LLM Handover v0.2.158
 
 **Release:** v0.2.158 — Smart TV sound, startup channel, loop/aspect controls, paste-to-add and IPTV M3U catalogue.

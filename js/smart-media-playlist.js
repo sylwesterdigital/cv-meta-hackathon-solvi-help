@@ -52,7 +52,47 @@ function screenMaterial(s){return Array.isArray(s.screen?.material)?s.screen.mat
 function showMaterial(s,map){const mat=screenMaterial(s);if(mat){mat.map=map;mat.color?.set('#ffffff');mat.needsUpdate=true;}}
 function drawingRatio(s){s.screen.geometry?.computeBoundingBox?.();const box=s.screen.geometry?.boundingBox;
  return Math.max(.25,Math.min(5,(box?.max.x-box?.min.x||16)/(box?.max.y-box?.min.y||9)));}
-function disposeSource(s){const old=s.video;s.video=null;s.hls?.destroy();s.hls=null;if(old){old.pause();old.removeAttribute('src');old.load();}s.videoTexture?.dispose();s.videoTexture=null;s.frameCanvas=null;}
+// A VideoTexture only displays pixels. Route the *same* HTMLVideoElement through
+// Web Audio once, at the screen's actual Three.js transform, for 3D attenuation
+// and stereo/HRTF direction as the listener (including XR) moves.
+export function createSmartSpatialAudio(screen,video,listener){
+ if(!screen||!video||!listener)return null;
+ let sound=null;
+ try{
+  sound=new THREE.PositionalAudio(listener);
+  sound.setMediaElementSource(video);
+  sound.setDistanceModel('inverse');
+  sound.setRefDistance(2.5);
+  sound.setMaxDistance(35);
+  sound.setRolloffFactor(1);
+  sound.panner.panningModel='HRTF';
+  // The front of the screen faces +Z in its local coordinate system.
+  // Listeners behind a display hear reduced, not completely silent, audio.
+  sound.setDirectionalCone(240,330,0.35);
+  screen.geometry?.computeBoundingBox?.();
+  sound.position.z=(screen.geometry?.boundingBox?.max.z||0)+.04;
+  screen.add(sound);
+  return sound;
+ }catch(error){
+  try{sound?.disconnect();sound?.removeFromParent();}catch{}
+  console.warn('Smart display spatial audio unavailable',error);
+  return null;
+ }
+}
+export function setSmartSpatialMuted(sound,muted){if(sound)sound.setVolume(muted?0:1);}
+export function disposeSmartSpatialAudio(sound){
+ if(!sound)return;
+ try{sound.disconnect();}catch(error){console.warn('Smart display audio disconnect failed',error);}
+ sound.removeFromParent();
+}
+function disposeSource(s){
+ const old=s.video;s.video=null;
+ // Disconnect the audio graph before releasing its source media element.
+ disposeSmartSpatialAudio(s.sound);s.sound=null;
+ s.hls?.destroy();s.hls=null;
+ if(old){old.pause();old.removeAttribute('src');old.load();}
+ s.videoTexture?.dispose();s.videoTexture=null;s.frameCanvas=null;
+}
 function drawMenu(s){const c=document.createElement('canvas');c.width=768;c.height=432;const ctx=c.getContext('2d');ctx.fillStyle='#0b1421';ctx.fillRect(0,0,768,432);
  ctx.fillStyle='#eff5ff';ctx.font='bold 33px system-ui';ctx.fillText('SOLVI · Media',38,59);
  ctx.font='18px system-ui';ctx.fillStyle='#a3b5cb';const list=s.channels.slice(0,12);ctx.fillText(list.length?'Choose a channel':'Add an HTTPS media URL in Properties',38,91);
@@ -78,11 +118,11 @@ function renderButton(btn,s,kind){const {ctx,texture}=btn;ctx.clearRect(0,0,160,
  texture.needsUpdate=true;}
 function updateButton(s){if(s.audioButton)renderButton(s.audioButton,s,'audio');}
 export function disposeSmartScreen(root){const s=states.get(root);if(!s)return;states.delete(root);disposeSource(s);const mat=screenMaterial(s);if(mat){mat.map=null;mat.needsUpdate=true;}s.menuTexture.dispose();for(const btn of s.buttons){btn.removeFromParent();btn.geometry.dispose();btn.material.map?.dispose();btn.material.dispose();}}
-export function syncSmartScreen(root,screen,channels,showEmpty=false,options={}){
+export function syncSmartScreen(root,screen,channels,showEmpty=false,options={},audioListener=null){
  const list=cleanChannels(channels),cfg=cleanSmartOptions(options),signature=JSON.stringify([list,cfg]),prior=states.get(root);
  if(prior?.screen===screen&&prior.signature===signature)return true;
  disposeSmartScreen(root);if(!screen||(!list.length&&!showEmpty))return false;
- const s={root,screen,channels:list,options:cfg,signature,mode:'menu',hls:null,video:null,videoTexture:null,frameCanvas:null,menuTexture:null,buttons:[]};states.set(root,s);
+ const s={root,screen,audioListener,channels:list,options:cfg,signature,mode:'menu',hls:null,video:null,sound:null,videoTexture:null,frameCanvas:null,menuTexture:null,buttons:[]};states.set(root,s);
  s.menuTexture=drawMenu(s);showMaterial(s,s.menuTexture);
  s.backButton=buttonPlane(s,'back');renderButton(s.backButton,s,'back');s.backButton.mesh.visible=false;
  s.audioButton=buttonPlane(s,'audio');updateButton(s);s.audioButton.mesh.visible=false;
@@ -102,6 +142,12 @@ export async function openSmartChannel(root,index,automatic=false){
  disposeSource(s);s.mode='loading';const channel=s.channels[index],v=document.createElement('video');
  v.crossOrigin='anonymous';v.playsInline=true;v.muted=automatic||s.options.smartMuted||!s.options.smartAudio;
  v.loop=s.options.smartLoop;v.preload='auto';s.video=v;s.currentChannel=index;
+ // Attach before starting playback: one audio path, physically anchored to TV.
+ s.sound=createSmartSpatialAudio(s.screen,v,s.audioListener);
+ setSmartSpatialMuted(s.sound,v.muted);
+ // AudioContext often starts suspended until a user gesture; the click on the
+ // display is the correct opportunity to resume it (not an autoplay bypass).
+ if(s.sound){try{void s.audioListener.context.resume().catch(error=>console.warn('TV audio requires user activation',error));}catch(error){console.warn('TV audio context unavailable',error);}}
  s.backButton.mesh.visible=true;s.audioButton.mesh.visible=true;updateButton(s);
  v.addEventListener('ended',()=>{if(states.get(root)===s&&!s.options.smartLoop)backToSmartMenu(root);});
  v.addEventListener('error',()=>{if(states.get(root)===s)console.warn('Smart screen playback error (CORS/codec/source)',channel.url,v.error);});
@@ -119,7 +165,10 @@ export async function openSmartChannel(root,index,automatic=false){
 export function backToSmartMenu(root){const s=states.get(root);if(!s)return false;disposeSource(s);s.mode='menu';s.currentChannel=-1;s.backButton.mesh.visible=false;s.audioButton.mesh.visible=false;showMaterial(s,s.menuTexture);return true;}
 export function toggleSmartScreenAudio(root){const s=states.get(root);if(!s?.video)return false;
  if(!s.options.smartAudio){s.video.muted=true;updateButton(s);return false;}
- s.video.muted=!s.video.muted;updateButton(s);if(s.video.paused)s.video.play().catch(()=>{});return true;
+ s.video.muted=!s.video.muted;
+ setSmartSpatialMuted(s.sound,s.video.muted);
+ if(!s.video.muted&&s.sound){try{void s.audioListener.context.resume().catch(error=>console.warn('TV audio requires user activation',error));}catch(error){console.warn('TV audio context unavailable',error);}}
+ updateButton(s);if(s.video.paused)s.video.play().catch(()=>{});return true;
 }
 export function smartScreenClick(root,hit){const s=states.get(root);if(!s)return false;
  if(hit?.object?.userData?.smartScreenBack){backToSmartMenu(root);return true;}

@@ -23,11 +23,11 @@ test('smart screens show named menu and allow a hit-driven return to menu',()=>{
  assert.match(screen,/smartMuted/);assert.match(screen,/vendor\/hls\/hls\.min\.js/);
 });
 test('TV and monitor retain uploaded media IDs when channel gallery is absent',()=>{
- const code=read('js/equipment-media.js');assert.match(code,/syncSmartScreen\(group,screen,p\.channels,!p\.mediaId,p\)/);assert.match(code,/if\(!p\.mediaId\)return/);assert.match(code,/mediaBlobInfo/);
+ const code=read('js/equipment-media.js');assert.match(code,/syncSmartScreen\(group,screen,p\.channels,!p\.mediaId,p,editor\?\.world\?\.audioListener\)/);assert.match(code,/if\(!p\.mediaId\)return/);assert.match(code,/mediaBlobInfo/);
 });
 test('video frame can hold HTTPS channels independently of an uploaded media ID',()=>{
  const source=read('js/scene-media.js'),server=read('backend/server.py'),editor=read('js/editor.js');
- assert.match(source,/syncSmartScreen\(mesh,mesh,media\.channels,!media\.id,media\)/);
+ assert.match(source,/syncSmartScreen\(mesh,mesh,media\.channels,!media\.id,media,world\?\.audioListener\)/);
  assert.match(source,/id:'',mime:'video\/mp4'/);
  assert.match(server,/if media\.get\('id'\) and/);
  assert.match(editor,/mediaSmartChannelControls/);
