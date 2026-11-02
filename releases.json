@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.150",
+  "currentVersion": "0.2.151",
   "releases": [
+    {
+      "version": "0.2.151",
+      "publishedAt": "2026-11-02T12:14:39Z",
+      "changes": [
+        "Compact the Pickable, Follow hand rotation and Climbable checkboxes into a two-/three-column left-aligned grid with consistent 15px controls instead of tall full-width rows.",
+        "Place newly created procedural objects and furniture at the viewport centre projected onto the ground plane, grounding the actual mesh bounds rather than applying a fixed forward camera offset.",
+        "Add user-owned, account-persistent procedural Presets gallery with categories, search by name, object preview thumbnails, instant Add and Delete. Presets are accessible from World tools and Add menu.",
+        "Save named procedural settings (variants, dimensions, materials/colours, scale/rotation, physics and interaction flags) for furniture, Basic props, standard geometry, curves/text, ladder and non-lift stairs. New instances are independent objects with new ownership and scene IDs.",
+        "Secure Flask/SQLite /api/object-presets with per-user CRUD, bounded finite configurations, safe image previews and exclusion of unrelated uploaded assets. Exclude custom-uploaded texture presets and non-single-object lifts.",
+        "Add focused frontend regression tests for preset categories, deep-copy/no scene identity, camera-centre ground ray, scoped checkbox CSS and authenticated gallery wiring. Live browser visual/UI behaviour remains unverified."
+      ]
+    },
     {
       "version": "0.2.150",
       "publishedAt": "2026-11-02T03:04:20Z",
@@ -305,15 +317,6 @@
         "Rework portal visuals so effect modes are materially different in-world: a clearly visible animated rainbow border, stronger glow/pulse treatments, and a new shader-driven mystery / reality-pull interior effect.",
         "Compact the Portal inspector to match the rest of SOLVI properties: remove explanatory filler text, add one-line slider-plus-number controls, compact selects, curated colour swatches and a tighter layout with less vertical waste.",
         "Keep paired portal transport, Entry/Exit linking, trigger modes and persistence intact while preserving watcher-safe packaging and versioned browser cache keys."
-      ]
-    },
-    {
-      "version": "0.2.118",
-      "publishedAt": "2026-10-31T21:31:20Z",
-      "changes": [
-        "Reissue the v0.2.117 paired-portal geometry and animation update as v0.2.118 because the previous archive contained generated Python bytecode, which the deployment watcher correctly rejected at Git publishing.",
-        "Exclude all __pycache__ directories and .pyc/.pyo or other generated artifacts from the watcher ZIP and the checksum manifest; preserve the original application source and avatar bytes.",
-        "Refresh release, backend and Ubuntu installer versions, and all versioned browser import URLs and stylesheet cache keys for v0.2.118."
       ]
     }
   ]
