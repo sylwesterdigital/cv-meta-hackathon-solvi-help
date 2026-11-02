@@ -12,6 +12,9 @@ export const MOTION_ALIASES=Object.freeze({
   landing:['landing','jump landing','falling to landing','fall to landing'],
   hardLanding:['hard landing','landing hard','falling flat impact','fall flat impact','falling back death'],
   push:['pushing','push'],
+  pickUp:['picking up','pick up','pickup'],
+  liftCarry:['lifting','holding','carrying'],
+  throwObject:['throw','throwing','throw object'],
   climbLadder:['climbing up wall','climb up wall','climbing wall','climbing ladder','climb ladder','climbing','climb'],
   falling:['falling','fall','falling idle'],
   fallingIdle:['falling idle','fall idle','falling loop'],
@@ -62,7 +65,7 @@ export class MotionController{
     this.oneShotStopAt=null;action.paused=false;
     action.reset().setEffectiveWeight(1).setEffectiveTimeScale((reverseWalk?-1:1)*this.playbackSpeed).play();
     if(reverseWalk)action.time=Math.max(0,action.getClip().duration-.001);
-    const oneShot=['wave','jump','jumping','landing','hardLanding','fallingLanding','fallingImpact','standUp','hitHead','hitBody','dying'].includes(kind)||kind.startsWith('clip:');
+    const oneShot=['pickUp','throwObject','wave','jump','jumping','landing','hardLanding','fallingLanding','fallingImpact','standUp','hitHead','hitBody','dying'].includes(kind)||kind.startsWith('clip:');
     action.setLoop(oneShot?this.THREE.LoopOnce:this.THREE.LoopRepeat,oneShot?1:Infinity);
     action.clampWhenFinished=oneShot;
     // Crossfade between clips using AnimationMixer; avoid snapping pose on mode change.

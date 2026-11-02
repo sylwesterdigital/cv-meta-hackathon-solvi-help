@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.142',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.143',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3248,6 +3248,7 @@ def set_scene():
         if 'curve' in o and (o['kind']!='curve' or not valid_curve_geometry(o.get('curve'))):return json_error('Invalid curve geometry')
         if 'text' in o and (o['kind']!='text' or not valid_text_geometry(o['text'])):return json_error('Invalid text geometry')
         if 'openings' in o and (o['kind']!='cube' or not valid_cube_openings(o['openings'])):return json_error('Invalid cube openings')
+        if 'pickable' in o and (o['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','points','model','furniture') or not isinstance(o['pickable'],bool)):return json_error('Invalid pickable flag')
         if 'climbable' in o and (o['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','model','wall') or not isinstance(o['climbable'],bool)):return json_error('Invalid climbable flag')
         if o['kind']=='wall' and not valid_office_wall(o.get('wall')):return json_error('Invalid office wall')
         if o['kind']=='stairs' and not valid_office_stairs(o.get('stairs')):return json_error('Invalid office stairs')
@@ -3327,12 +3328,13 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','transformLocked') if key in obj}
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')
         if 'text' in obj and (obj['kind']!='text' or not valid_text_geometry(obj['text'])):return json_error('Invalid text geometry')
         if 'openings' in obj and (obj['kind']!='cube' or not valid_cube_openings(obj['openings'])):return json_error('Invalid cube openings')
+        if 'pickable' in obj and (obj['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','points','model','furniture') or not isinstance(obj['pickable'],bool)):return json_error('Invalid pickable flag')
         if 'climbable' in obj and (obj['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','model','wall') or not isinstance(obj['climbable'],bool)):return json_error('Invalid climbable flag')
         if obj['kind']=='wall' and not valid_office_wall(obj.get('wall')):return json_error('Invalid office wall')
         if obj['kind']=='stairs' and not valid_office_stairs(obj.get('stairs')):return json_error('Invalid office stairs')
@@ -3631,6 +3633,22 @@ def websocket(ws):
                 if not actor_object or not may_edit(uid,actor_object,room_policy(room_id),ws_admin_enabled()):continue
                 publish({'type':'robot-action','room':room_id,'by':uid,'id':identifier,
                          'action':action,'force':round(strength,2),'seq':seq},except_id=uid,room_id=room_id)
+            elif msg.get('type')=='object-carry':
+                identifier=str(msg.get('id',''));target=str(msg.get('target',''));action=msg.get('action')
+                if action not in ('pickup','throw') or identifier==target or not all(re.fullmatch(r'[A-Za-z0-9_-]{8,80}',val) for val in (identifier,target)):continue
+                with db() as con:
+                    row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+                    objects=json.loads(row['payload']) if row else []
+                    actor_obj=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
+                    carry_obj=next((o for o in objects if o.get('id')==target and o.get('pickable') is True and o.get('kind') not in ('robot','light')),None)
+                if not actor_obj or not carry_obj or not may_edit(uid,actor_obj,room_policy(room_id),ws_admin_enabled()) or not may_edit(uid,carry_obj,room_policy(room_id),ws_admin_enabled()):continue
+                payload={'type':'object-carry','room':room_id,'by':uid,'id':identifier,'target':target,'action':action}
+                if action=='throw':
+                    try:position=[float(msg[k]) for k in ('x','y','z')]
+                    except (TypeError,ValueError,OverflowError):continue
+                    if any(not math.isfinite(v) or abs(v)>100000 for v in position):continue
+                    payload.update(dict(zip(('x','y','z'),(round(v,3) for v in position))))
+                publish(payload,except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-input':
                 identifier=str(msg.get('id',''))
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue

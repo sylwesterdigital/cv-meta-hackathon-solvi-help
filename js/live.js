@@ -26,6 +26,7 @@ export class LiveRoom{
         if(m.type==='conveyor-control'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRemoteTransportControl(m);
         if(m.type==='robot-motion'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRobotMotion(m);
         if(m.type==='robot-input'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRobotInput(m);
+        if(m.type==='object-carry'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRemoteCarry(m);
         if(m.type==='robot-action'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRemoteRobotAction(m);
         if(m.type==='robot-impact'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.applyRemoteRobotImpact(m);
         if(m.type==='physics-state'&&m.room===(window.solviRoom||'main')&&m.by!==this.id)window.solviEditor?.physics.applyRemoteState(m);

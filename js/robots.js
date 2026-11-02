@@ -296,6 +296,10 @@ export function animateRobots(items,dt,onImpact=()=>{}){
       if(shot.elapsed<shot.duration){mode=shot.clip;}
       else{data.robotOneShot=null;mode=data.robotMode||'idle';}
     }
+    if(data.robotCarry){
+      const carry=data.robotCarry;mode=carry.stage==='pickup'?'pickUp':carry.stage==='throw'?'throwObject':'liftCarry';
+      if(!data.robotAnimator?.actions?.has(mode))mode=carry.stage==='hold'?'idle':mode;
+    }
     // Jump owns animation until Rapier confirms landing. Movement input,
     // stair autostep and contact clips cannot abort a jump in midair.
     if(data.robotLadderRide){mode=data.robotAnimator?.actions?.has('climbLadder')&&data.robotLadderSpeed?'climbLadder':'idle';}

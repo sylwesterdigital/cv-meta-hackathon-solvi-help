@@ -1,3 +1,28 @@
+## v0.2.143 — Pickable objects, right-hand pickup and throw (2 November 2026)
+
+- Add opt-in Pickable property to primitives, models and Basic Furniture; serialize through scene save, duplication, per-object updates and realm archives, with server-side validation.
+- I picks up a nearby, front-facing handheld object; Picking Up transitions to Lifting while its world transform follows a detected right-hand bone, with a predictable palm fallback for incompatible rigs.
+- O starts the authored Throw action and releases the object at the animation contact phase into dynamic Rapier physics with a bounded forward/upward impulse, gravity and further collisions.
+- Carry objects have their collider temporarily removed to avoid ghost collisions with the avatar; dynamic physics is restored on throw or orphan cleanup; only released state is persisted.
+- Add authenticated room object-carry events for other clients; keep ownership and permissions checks and reject invalid or unsuitable objects.
+- Add seven focused runtime tests for pickup/throw, model bones, object sizing, packet safety, persistence and cleanup. No embedded asset modifications.
+
+### Architecture
+
+- **js/object-carry.js:** `ObjectCarry.pickup/throw/tick/remotePacket`, nearest forward-facing Box3 selection, animation phases, bone/palm lookup, temporary collider removal, dynamic impulse release and orphan recovery.
+- **js/animations.js:** `pickUp`, `liftCarry`, `throwObject` aliases. Preferred animation names are **Picking Up**, **Lifting**, **Throw** (case-insensitive aliases); missing clips fall back to existing Idle pose, without blocking physics. The carrying loop is only enabled if an authored Lifting clip exists.
+- **js/editor.js:** `KeyI`/`KeyO` work in Exploration and Edit Mode when a robot is selected, without interfering with text input or face-opening commands in scene mode. Pickable property exposed in compact Physics panel, persisted across updates and copies.
+- **js/scene-physics.js:** held objects have no collider while attached; throw rebuilds a Dynamic Rapier body and applies impulse, default strength 3.1.
+- **backend/server.py**, **js/live.js:** authenticated `object-carry` WebSocket events for pickup/release; payload validates object IDs, Pickable flag, robot ownership/edit permission and finite position. Remote non-authoritative dynamic transforms use existing physics replication.
+- **backend/realm_archives.py:** `pickable` retained on imported/exported objects.
+
+### Constraints and verification
+
+- Pickable opt-in defaults to false. Restricted to ordinary primitives, models and furniture, with an effective maximum 1.55 m on the largest bounding-box axis. Room Physics must be enabled.
+- Temporary hand poses never become permanent scene data; when thrown, object physics mode becomes Dynamic and is saved. Existing combat KeyT Throw remains independent.
+- Local JavaScript tests cover small targets, frontal selection, bone preference, fallback, animation phase, Rapier impulse, permissions, orphan cleanup and source-level persistence. No real browser avatar bone rig / network multiplayer smoke test has been run in this environment. Flask integration tests require its deployment dependencies.
+- Deployment watcher `solvi-watch.sh` requires its newer 4,096-entry threshold, available in the previous v0.2.142 handover. The release must include root `manifest.json` and `app/` directory with per-file SHA256 hashes.
+
 ## v0.2.142 — Procedural natural materials, Basic props & watcher limit (1 November 2026)
 
 - Add 128x128 deterministic low-memory procedural Wood, Marble and Granite materials with layered noise, cellular speckles and distortion; no network textures.

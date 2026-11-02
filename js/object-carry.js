@@ -1,0 +1,160 @@
+import * as THREE from 'three';
+
+// Carry state is transient: never serialize a hand attachment or a temporary collider removal.
+export const PICKABLE_KINDS=new Set(['cube','sphere','cylinder','plane','torus','curve','surface','text','points','model','furniture']);
+export function canBePickable(kind){return PICKABLE_KINDS.has(kind);}
+export function pickUpClip(names=[],name){
+ const aliases=name==='pickUp'?['picking up','pick up','pickup']:name==='liftCarry'?['lifting','holding','carrying']:['throw','throwing','throw object'];
+ for(const alias of aliases){const match=names.find(n=>String(n).split('__')[0].trim().toLowerCase().replace(/[_-]/g,' ')===alias);if(match)return 'clip:'+match;}
+ return null;
+}
+export function findRightHand(robot){
+ const model=robot.children.find(c=>c.userData.robotVisual);
+ let best=null,rank=-1;
+ model?.traverse(bone=>{
+  if(!bone.isBone)return;
+  const n=bone.name.toLowerCase().replace(/[^a-z0-9]/g,'');
+  // Prefer the palm over fingers, wrist and forearm; Mixamo and Blender naming.
+  const score=/(?:^|mixamorig|armature)(?:righthand|handr)$/.test(n)||/^(?:righthand|handr|rhand)$/.test(n)?5:
+   /(?:rightwrist|wristr)$/.test(n)?3:/(?:rightindex1|rightmiddle1)$/.test(n)?1:-1;
+  if(score>rank){rank=score;best=bone;}
+ });
+ return rank>=0?best:null;
+}
+export function pickableTarget(robot,items,{maxReach=1.65}={}){
+ if(!robot)return null;
+ const forward=new THREE.Vector3(Math.sin(robot.rotation.y),0,Math.cos(robot.rotation.y));
+ let best=null,bestScore=Infinity;
+ for(const object of items){
+  if(!object||object===robot||!canBePickable(object.userData?.editorKind)||object.userData.pickable!==true||object.userData.carriedBy||(object.userData.editorKind==='model'&&object.userData.modelReady!==true))continue;
+  const bounds=new THREE.Box3().setFromObject(object);if(bounds.isEmpty())continue;
+  const size=bounds.getSize(new THREE.Vector3());
+  if(Math.max(size.x,size.y,size.z)>1.55||Math.max(size.x,size.y,size.z)<.03)continue;
+  const centre=bounds.getCenter(new THREE.Vector3());
+  const dx=centre.x-robot.position.x,dz=centre.z-robot.position.z;
+  const horizontal=Math.hypot(dx,dz);
+  if(horizontal>maxReach+Math.min(.3,Math.hypot(size.x,size.z)*.25)||horizontal<.04)continue;
+  const ahead=(dx*forward.x+dz*forward.z)/horizontal;
+  if(ahead<.43||bounds.max.y<robot.position.y-.35||bounds.min.y>robot.position.y+1.4)continue;
+  const score=horizontal+(1-ahead)*.8;
+  if(score<bestScore){best=object;bestScore=score;}
+ }
+ return best;
+}
+export function throwImpulse(yaw,force=3.1){
+ const strength=Math.max(1.2,Math.min(6,Number(force)||3.1));
+ return {x:Math.sin(yaw)*strength,y:strength*.42+1.35,z:Math.cos(yaw)*strength};
+}
+function finiteVector(vec){return vec&&Number.isFinite(vec.x)&&Number.isFinite(vec.y)&&Number.isFinite(vec.z);}
+function gripPoint(robot){
+ robot.updateWorldMatrix(true,true);
+ const hand=findRightHand(robot);
+ const point=new THREE.Vector3();
+ if(hand){hand.getWorldPosition(point);if(finiteVector(point))return point;}
+ // Fallback rig: right palm roughly 0.35m from centre and 1.2m above feet.
+ return new THREE.Vector3(.35,1.2,.25).applyAxisAngle(new THREE.Vector3(0,1,0),robot.rotation.y).add(robot.position);
+}
+export class ObjectCarry{
+ constructor(editor){this.editor=editor;}
+ eligible(robot){return robot?.userData?.editorKind==='robot'&&this.editor.canEdit(robot)&&!robot.userData.robotLadderRide&&!robot.userData.robotJumpActive&&!robot.userData.robotOneShot&&!robot.userData.robotCarry;}
+ pickup(robot,remote=false,targetId=null){
+  if(!remote&&!this.eligible(robot))return false;
+  const target=targetId?this.editor.items.find(o=>o.userData.editorId===targetId):pickableTarget(robot,this.editor.items);
+  if(!target||!canBePickable(target.userData.editorKind)||!target.userData.pickable||target.userData.carriedBy)return false;
+  if(!remote&&(!this.editor.canEdit(target)||!this.editor.physics.owns(target)||!this.editor.physics.enabled)){this.editor.toast('Pickup needs object permission and room Physics enabled');return false;}
+  // One target per hand. Picking Up runs before hand attachment.
+  const clip=pickUpClip(robot.userData.robotAvailableActions,'pickUp');
+  const duration=Math.max(.38,Math.min(1.45,robot.userData.robotAnimator?.clipDuration(clip)||.65));
+  target.userData.carryOrigin={position:target.position.clone(),rotation:target.rotation?.clone?.()};
+  robot.userData.robotCarry={objectId:target.userData.editorId,stage:'pickup',elapsed:0,duration,attached:false,remote};
+  robot.userData.robotPlaying=null;
+  if(!remote)window.solviRoomSocket?.send({type:'object-carry',action:'pickup',id:robot.userData.editorId,target:target.userData.editorId});
+  return true;
+ }
+ throw(robot,remote=false){
+  const state=robot?.userData?.robotCarry;
+  if(!state||state.stage==='throw')return false;
+  const target=this.editor.items.find(o=>o.userData.editorId===state.objectId);
+  if(!target)return false;
+  // If pickup animation has not reached the hand yet, attach before throwing.
+  if(!state.attached)this.attach(robot,target,state);
+  const clip=pickUpClip(robot.userData.robotAvailableActions,'throwObject');
+  state.stage='throw';state.elapsed=0;state.duration=Math.max(.4,Math.min(1.5,robot.userData.robotAnimator?.clipDuration(clip)||.9));state.released=false;
+  robot.userData.robotPlaying=null;
+  return true;
+ }
+ attach(robot,obj,state){
+  if(obj.userData.carriedBy&&obj.userData.carriedBy!==robot.userData.editorId)return false;
+  obj.userData.carriedBy=robot.userData.editorId;
+  const box=new THREE.Box3().setFromObject(obj);
+  const centre=box.getCenter(new THREE.Vector3());
+  state.pivotOffset=centre.sub(obj.position);
+  state.attached=true;
+  this.editor.physics.remove(obj.userData.editorId); // No collider blocking the holder's capsule.
+  this.updateGrip(robot,obj,state);
+  return true;
+ }
+ updateGrip(robot,obj,state){
+  const point=gripPoint(robot);if(!finiteVector(point))return;
+  // Place the geometric centre in the palm while retaining the original scene parent.
+  obj.position.copy(point.sub(state.pivotOffset||new THREE.Vector3()));
+  obj.quaternion.setFromAxisAngle(new THREE.Vector3(0,1,0),robot.rotation.y);
+ }
+ release(robot,obj,state,remote=false,remotePosition=null){
+  if(state.released)return;
+  state.released=true;
+  if(!state.attached)this.attach(robot,obj,state);
+  const position=remotePosition&&finiteVector(remotePosition)?remotePosition:new THREE.Vector3(
+   robot.position.x+Math.sin(robot.rotation.y)*.75,Math.max(.8,robot.position.y+1.05),robot.position.z+Math.cos(robot.rotation.y)*.75);
+  if(!finiteVector(position))return;
+  obj.position.copy(position);
+  delete obj.userData.carriedBy;
+  delete obj.userData.carryOrigin;
+  obj.userData.physics={...obj.userData.physics,mode:'dynamic'};
+  this.editor.physics.sync(obj);
+  const impulse=throwImpulse(robot.rotation.y);
+  if(!remote){
+   const body=this.editor.physics.bodies.get(obj.userData.editorId);
+   if(body&&typeof body.applyImpulse==='function')body.applyImpulse(impulse,true);
+   this.editor.queueSave(obj);
+   window.solviRoomSocket?.send({type:'object-carry',action:'throw',id:robot.userData.editorId,target:obj.userData.editorId,x:obj.position.x,y:obj.position.y,z:obj.position.z});
+  }
+ }
+ tick(dt){
+  for(const robot of this.editor.items){const state=robot.userData?.robotCarry;if(!state)continue;
+   const obj=this.editor.items.find(o=>o.userData.editorId===state.objectId);
+   if(!obj||!robot.parent){if(obj)delete obj.userData.carriedBy;robot.userData.robotCarry=null;continue;}
+   state.elapsed+=Math.min(Math.max(Number(dt)||0,0),.12);
+   if(state.stage==='pickup'){
+    if(!state.attached&&state.elapsed>=state.duration*.5)this.attach(robot,obj,state);
+    if(state.elapsed>=state.duration){if(!state.attached)this.attach(robot,obj,state);state.stage='hold';robot.userData.robotPlaying=null;}
+   }else if(state.stage==='throw'){
+    if(!state.released&&state.elapsed>=state.duration*.55)this.release(robot,obj,state,state.remote);
+    if(state.elapsed>=state.duration){if(!state.released)this.release(robot,obj,state,state.remote);robot.userData.robotCarry=null;robot.userData.robotPlaying=null;}
+   }
+   if(state.attached&&!state.released)this.updateGrip(robot,obj,state);
+  }
+  // Do not leave an invisible collider after a robot is removed or the carrier is lost.
+  for(const obj of this.editor.items){
+   if(!obj.userData?.carriedBy)continue;
+   const actor=this.editor.items.find(bot=>bot.userData?.editorId===obj.userData.carriedBy);
+   if(actor?.userData?.robotCarry?.objectId===obj.userData.editorId)continue;
+   delete obj.userData.carriedBy;
+   delete obj.userData.carryOrigin;
+   obj.userData.physics={...obj.userData.physics,mode:'dynamic'};
+   this.editor.physics.sync(obj);
+  }
+ }
+ remotePacket(packet){
+  const robot=this.editor.items.find(o=>o.userData.editorId===packet.id&&o.userData.editorKind==='robot');
+  if(!robot)return;
+  if(packet.action==='pickup')this.pickup(robot,true,packet.target);
+  else if(packet.action==='throw'){
+   const state=robot.userData.robotCarry;
+   if(!state||state.objectId!==packet.target)return;
+   if(!this.throw(robot,true))return;
+   const obj=this.editor.items.find(o=>o.userData.editorId===state.objectId);
+   if(obj)this.release(robot,obj,state,true,new THREE.Vector3(packet.x,packet.y,packet.z));
+  }
+ }
+}

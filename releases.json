@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.142",
+  "currentVersion": "0.2.143",
   "releases": [
+    {
+      "version": "0.2.143",
+      "publishedAt": "2026-11-02T00:14:45Z",
+      "changes": [
+        "Add opt-in Pickable property to primitives, models and Basic Furniture; serialize through scene save, duplication, per-object updates and realm archives, with server-side validation.",
+        "I picks up a nearby, front-facing handheld object; Picking Up transitions to Lifting while its world transform follows a detected right-hand bone, with a predictable palm fallback for incompatible rigs.",
+        "O starts the authored Throw action and releases the object at the animation contact phase into dynamic Rapier physics with a bounded forward/upward impulse, gravity and further collisions.",
+        "Carry objects have their collider temporarily removed to avoid ghost collisions with the avatar; dynamic physics is restored on throw or orphan cleanup; only released state is persisted.",
+        "Add authenticated room object-carry events for other clients; keep ownership and permissions checks and reject invalid or unsuitable objects.",
+        "Add seven focused runtime tests for pickup/throw, model bones, object sizing, packet safety, persistence and cleanup. No embedded asset modifications."
+      ]
+    },
     {
       "version": "0.2.142",
       "publishedAt": "2026-11-01T23:39:36Z",
@@ -292,17 +304,6 @@
         "Automatic or button-triggered portal teleport with bounded delay, scene mouse and WebXR controls",
         "Robot/object and XR/free-camera transport, physics sync, loop cooldown, Web Audio chime and portal glow",
         "Reduce z-fighting on adjacent procedural stairs, roof/wall panels and overlays"
-      ]
-    },
-    {
-      "version": "0.2.109",
-      "publishedAt": "2026-10-31T15:46:56Z",
-      "changes": [
-        "Add opt-in floor-call stations beside the landing exit at every level of a procedural lift, with compact red numbered buttons and configurable left/right placement.",
-        "Keep landing-call stations stationary while the lift cabin moves, with an orange requested-floor indication and green arrived-floor indication.",
-        "Support mouse clicks and WebXR controller-ray selection using the existing permission-checked lift movement and saved destination action.",
-        "Expose Call button at each level and Button side inside the compact Lift stops and cabin settings; preserve existing lifts with calls disabled by default.",
-        "Validate and persist the call-button configuration, accept earlier five-field lift settings, and add focused source/runtime regression tests."
       ]
     }
   ]

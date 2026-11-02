@@ -1,0 +1,116 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {fileURLToPath} from 'node:url';
+
+class V3{
+ constructor(x=0,y=0,z=0){this.x=x;this.y=y;this.z=z;}
+ copy(v){this.x=v.x;this.y=v.y;this.z=v.z;return this;}
+ clone(){return new V3(this.x,this.y,this.z);}
+ add(v){this.x+=v.x;this.y+=v.y;this.z+=v.z;return this;}
+ sub(v){this.x-=v.x;this.y-=v.y;this.z-=v.z;return this;}
+ get length(){return Math.hypot(this.x,this.y,this.z);}
+ applyAxisAngle(a,angle){const x=this.x,z=this.z;this.x=x*Math.cos(angle)+z*Math.sin(angle);this.z=z*Math.cos(angle)-x*Math.sin(angle);return this;}
+}
+class Box{
+ setFromObject(o){const s=o._bounds||{x:.25,y:.4,z:.25};this.min=new V3(o.position.x-s.x,o.position.y,o.position.z-s.z);this.max=new V3(o.position.x+s.x,o.position.y+s.y,o.position.z+s.z);return this;}
+ isEmpty(){return false;}
+ getSize(v){return v.copy(new V3(this.max.x-this.min.x,this.max.y-this.min.y,this.max.z-this.min.z));}
+ getCenter(v){return v.copy(new V3((this.max.x+this.min.x)/2,(this.max.y+this.min.y)/2,(this.max.z+this.min.z)/2));}
+}
+const THREE={Vector3:V3,Box3:Box};
+const source=fs.readFileSync(new URL('../js/object-carry.js',import.meta.url),'utf8').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'');
+const exports=new Function('THREE',source+'\nreturn {ObjectCarry,pickableTarget,canBePickable,pickUpClip,throwImpulse,findRightHand};')(THREE);
+function fixture({facing=true,kind='cube'}={}){
+ const packets=[],sync=[],remove=[],saves=[],impulses=[];
+ const robot={position:new V3(0,0,0),rotation:{y:0},parent:{},children:[],updateWorldMatrix(){},userData:{editorKind:'robot',editorId:'robot-0001',robotAvailableActions:['Picking Up','Lifting','Throw'],robotAnimator:{clipDuration:()=>.62}}};
+ const item={position:new V3(0,0,facing?1:-1),quaternion:{setFromAxisAngle(){return this;}},userData:{editorKind:kind,editorId:'object-0001',pickable:true,physics:{mode:'static'}}};
+ const physics={enabled:true,owns:()=>true,remove(id){remove.push(id);},sync(obj){sync.push(obj.userData.physics.mode);},bodies:new Map([['object-0001',{applyImpulse(impulse){impulses.push(impulse);}}]])};
+ const editor={items:[robot,item],physics,canEdit:()=>true,queueSave(obj){saves.push(obj);},toast:()=>{}};
+ globalThis.window={solviRoomSocket:{send(data){packets.push(data);}}};
+ const carry=new exports.ObjectCarry(editor);
+ return {robot,item,editor,carry,packets,sync,remove,saves,impulses};
+}
+test('pickable is opt-in, restricted to suitable scene objects and targets in front',()=>{
+ assert.equal(exports.canBePickable('robot'),false);assert.equal(exports.canBePickable('portal'),false);
+ assert.equal(exports.canBePickable('model'),true);assert.equal(exports.canBePickable('furniture'),true);
+ const f=fixture();assert.equal(exports.pickableTarget(f.robot,f.editor.items),f.item);
+ f.item.userData.pickable=false;assert.equal(exports.pickableTarget(f.robot,f.editor.items),null);
+ const behind=fixture({facing:false});assert.equal(exports.pickableTarget(behind.robot,behind.editor.items),null);
+ const huge=fixture();huge.item._bounds={x:3,y:2,z:3};assert.equal(exports.pickableTarget(huge.robot,huge.editor.items),null);
+ const flat=fixture();flat.item._bounds={x:.25,y:0,z:.25};assert.equal(exports.pickableTarget(flat.robot,flat.editor.items),flat.item,'a thin primitive plane is pickable');
+});
+test('pickup plays authored right-hand sequence, releases collider at hand and holds without persisting a temporary physics mode',()=>{
+ const {robot,item,carry,remove,saves,packets}=fixture();
+ assert.equal(exports.pickUpClip(robot.userData.robotAvailableActions,'pickUp'),'clip:Picking Up');
+ assert.equal(exports.pickUpClip(robot.userData.robotAvailableActions,'liftCarry'),'clip:Lifting');
+ assert.equal(carry.pickup(robot),true);
+ assert.equal(robot.userData.robotCarry.stage,'pickup');
+ assert.equal(item.userData.carriedBy,undefined);
+ carry.tick(.1);carry.tick(.1);carry.tick(.1);carry.tick(.1);
+ assert.equal(item.userData.carriedBy,robot.userData.editorId);
+ assert.deepEqual(remove,['object-0001']);
+ assert.equal(item.userData.physics.mode,'static');
+ assert.equal(item.userData.carryOrigin.position.z,1);
+ assert.equal(saves.length,0,'pickup must never persist a temporary carried transform');
+ carry.tick(.1);carry.tick(.1);carry.tick(.1);
+ assert.equal(robot.userData.robotCarry.stage,'hold');
+ assert.equal(packets[0].action,'pickup');
+});
+test('throw releases at authored action phase with dynamic Rapier impulse and saves the result',()=>{
+ const {robot,item,carry,sync,saves,packets,impulses}=fixture();
+ carry.pickup(robot);for(let i=0;i<8;i++)carry.tick(.1);
+ assert.equal(carry.throw(robot),true);assert.equal(robot.userData.robotCarry.stage,'throw');
+ for(let i=0;i<6;i++)carry.tick(.1);
+ assert.equal(item.userData.carriedBy,undefined);
+ assert.equal(item.userData.physics.mode,'dynamic');
+ assert.equal(item.userData.carryOrigin,undefined);
+ assert.ok(impulses[0]?.y>0);assert.ok(impulses[0]?.z>0);
+ assert.equal(sync.at(-1),'dynamic');assert.equal(saves.length,1);
+ assert.equal(packets.at(-1).action,'throw');
+ assert.ok(Number.isFinite(packets.at(-1).x));
+ for(let i=0;i<5;i++)carry.tick(.1);
+ assert.equal(robot.userData.robotCarry,null);
+});
+test('carrier removal releases a held object instead of leaving a non-colliding ghost',()=>{
+ const f=fixture();f.carry.pickup(f.robot);for(let i=0;i<8;i++)f.carry.tick(.1);
+ f.editor.items=[f.item];f.carry.tick(.016);
+ assert.equal(f.item.userData.carriedBy,undefined);
+ assert.equal(f.item.userData.physics.mode,'dynamic');
+ assert.equal(f.sync.at(-1),'dynamic');
+});
+test('right-hand bone is preferred over finger and left hand; fallback still works',()=>{
+ const f=fixture();
+ const bone=name=>({name,isBone:true,getWorldPosition(vec){return vec.copy(new V3(.8,1.5,.3));}});
+ const left=bone('mixamorigLeftHand'),finger=bone('mixamorigRightHandMiddle1'),right=bone('mixamorigRightHand');
+ f.robot.children.push({userData:{robotVisual:true},traverse(cb){for(const obj of [left,finger,right])cb(obj);}});
+ assert.equal(exports.findRightHand(f.robot),right);
+ f.carry.pickup(f.robot);for(let i=0;i<7;i++)f.carry.tick(.1);
+ assert.ok(Math.abs(f.item.position.x-.8)<.01,'held object centre follows the right palm');
+});
+test('permissions, missing assets, and remote packets fail closed',()=>{
+ const f=fixture();f.editor.physics.owns=()=>false;
+ assert.equal(f.carry.pickup(f.robot),false);
+ f.editor.physics.owns=()=>true;
+ f.item.userData.editorKind='model';f.item.userData.modelReady=false;
+ assert.equal(f.carry.pickup(f.robot),false);
+ f.item.userData.modelReady=true;
+ assert.equal(f.carry.pickup(f.robot),true);
+ f.carry.remotePacket({id:f.robot.userData.editorId,target:'other-0001',action:'throw'});
+ assert.equal(f.robot.userData.robotCarry.stage,'pickup');
+});
+test('source wires I/O through exploration mode, captures physics and validates server broadcasts',()=>{
+ const editor=fs.readFileSync(new URL('../js/editor.js',import.meta.url),'utf8');
+ const server=fs.readFileSync(new URL('../backend/server.py',import.meta.url),'utf8');
+ const live=fs.readFileSync(new URL('../js/live.js',import.meta.url),'utf8');
+ const archive=fs.readFileSync(new URL('../backend/realm_archives.py',import.meta.url),'utf8');
+ assert.match(editor,/\['KeyI','KeyO'\]/);
+ assert.ok(editor.indexOf("['KeyI','KeyO']")<editor.indexOf('if(!isEditMode()&&(cmd'), 'I/O must work in Exploration');
+ assert.match(editor,/pickable:canBePickable\(/);
+ assert.match(editor,/carryOrigin\?\.position\|\|o\.position/);
+ assert.match(editor,/duplicate\.userData\.pickable=entry\.pickable/);
+ assert.match(server,/Invalid pickable flag/);
+ assert.match(server,/elif msg\.get\('type'\)=='object-carry'/);
+ assert.match(live,/applyRemoteCarry/);
+ assert.match(archive,/'pickable'/);
+});
