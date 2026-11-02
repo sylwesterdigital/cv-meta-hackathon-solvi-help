@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.144',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.145',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3270,6 +3270,7 @@ def set_scene():
         if o['kind']=='robot':
             if 'combat' in o and not valid_robot_combat(o['combat']):return json_error('Invalid robot combat controls')
             if 'animationSpeed' in o and not valid_robot_animation_speed(o['animationSpeed']):return json_error('Invalid robot animation speed')
+            if 'throwSettings' in o and not valid_robot_throw_settings(o['throwSettings']):return json_error('Invalid throw settings')
             if 'turnSpeed' in o and (not isinstance(o['turnSpeed'],(float,int)) or isinstance(o['turnSpeed'],bool) or not math.isfinite(o['turnSpeed']) or not 0<=o['turnSpeed']<=10):return json_error('Invalid robot turn speed')
             if 'runMultiplier' in o and (not isinstance(o['runMultiplier'],(float,int)) or isinstance(o['runMultiplier'],bool) or not math.isfinite(o['runMultiplier']) or not 1<=o['runMultiplier']<=5):return json_error('Invalid run multiplier')
             if 'climbSpeed' in o and (not isinstance(o['climbSpeed'],(float,int)) or isinstance(o['climbSpeed'],bool) or not math.isfinite(o['climbSpeed']) or not .2<=o['climbSpeed']<=4):return json_error('Invalid robot climb speed')
@@ -3302,6 +3303,13 @@ def valid_robot_animation_speed(settings):
         isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) and .35<=value<=2
         for value in settings.values())
 
+def valid_robot_throw_settings(settings):
+    if not isinstance(settings,dict) or set(settings)!={'angle','height','direction','delay'}:return False
+    for key,low,high in (('angle',-20,65),('height',-.35,.65),('direction',-90,90),('delay',5,95)):
+        value=settings[key]
+        if isinstance(value,bool) or not isinstance(value,(float,int)) or not math.isfinite(value) or not low<=value<=high:return False
+    return True
+
 def valid_robot_combat(settings):
     if not isinstance(settings,dict) or any(a not in ('push','punch','kick','throw') for a in settings):return False
     for action in settings.values():
@@ -3328,7 +3336,7 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','throwSettings','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','transformLocked') if key in obj}
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')

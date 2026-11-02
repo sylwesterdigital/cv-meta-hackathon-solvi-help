@@ -8,15 +8,38 @@ export function pickUpClip(names=[],name){
  for(const alias of aliases){const match=names.find(n=>String(n).split('__')[0].trim().toLowerCase().replace(/[_-]/g,' ')===alias);if(match)return 'clip:'+match;}
  return null;
 }
+// Avatar-specific defaults; release delay is a percentage of the authored Throw clip.
+export const DEFAULT_THROW_SETTINGS=Object.freeze({angle:12,height:0,direction:0,delay:55});
+export function cleanThrowSettings(raw={}){
+ const bound=(key,min,max)=>{
+  const value=Number(raw?.[key]);
+  return Number.isFinite(value)&&value>=min&&value<=max?value:DEFAULT_THROW_SETTINGS[key];
+ };
+ return {angle:bound('angle',-20,65),height:bound('height',-.35,.65),direction:bound('direction',-90,90),delay:bound('delay',5,95)};
+}
+function handBoneScore(name){
+ const n=String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+ if(/left/.test(n)||/(?:metacarpal|hand|wrist|palm|finger|index|middle|ring|thumb)l$/.test(n))return -1;
+ if(!/(?:right|(^|_)r(?:hand|palm|wrist|middle|index|ring|thumb|finger))/.test(n)&&!/(?:handr|wristr|palmr|middlemetacarpalr|indexmetacarpalr|ringmetacarpalr)$/.test(n))return -1;
+ // Middle metacarpal is anatomically at the centre of the palm. The first
+ // middle-finger joint is next-best when the rig does not expose metacarpals.
+ if(/middle.*metacarpal|metacarpal.*middle/.test(n))return 100;
+ if(/(?:right|r)palm|palmr$/.test(n))return 96;
+ if(/index.*metacarpal|metacarpal.*index/.test(n))return 91;
+ if(/ring.*metacarpal|metacarpal.*ring/.test(n))return 86;
+ if(/(?:right|r)handmiddle1$|(?:right|r)middle1$/.test(n))return 84;
+ if(/(?:right|r)handindex1$|(?:right|r)index1$/.test(n))return 78;
+ if(/(?:right|r)handring1$|(?:right|r)ring1$/.test(n))return 75;
+ if(/(?:righthand|handr)$/.test(n))return 55;
+ if(/(?:rightwrist|wristr)$/.test(n))return 25;
+ return -1;
+}
 export function findRightHand(robot){
  const model=robot.children.find(c=>c.userData.robotVisual);
  let best=null,rank=-1;
  model?.traverse(bone=>{
   if(!bone.isBone)return;
-  const n=bone.name.toLowerCase().replace(/[^a-z0-9]/g,'');
-  // Prefer the palm over fingers, wrist and forearm; Mixamo and Blender naming.
-  const score=/(?:^|mixamorig|armature)(?:righthand|handr)$/.test(n)||/^(?:righthand|handr|rhand)$/.test(n)?5:
-   /(?:rightwrist|wristr)$/.test(n)?3:/(?:rightindex1|rightmiddle1)$/.test(n)?1:-1;
+  const score=handBoneScore(bone.name);
   if(score>rank){rank=score;best=bone;}
  });
  return rank>=0?best:null;
@@ -41,10 +64,11 @@ export function pickableTarget(robot,items,{maxReach=1.65}={}){
  }
  return best;
 }
-export function throwImpulse(yaw,force=3.1){
+export function throwImpulse(yaw,force=3.1,elevation=12){
  const strength=Math.max(1.2,Math.min(6,Number(force)||3.1));
  // A short, predominantly horizontal hand-height arc, not a lobbed snowball.
- return {x:Math.sin(yaw)*strength,y:.72+strength*.08,z:Math.cos(yaw)*strength};
+ const pitch=Math.max(-20,Math.min(65,Number(elevation)||0))*Math.PI/180;
+ return {x:Math.sin(yaw)*strength*Math.cos(pitch),y:strength*Math.sin(pitch),z:Math.cos(yaw)*strength*Math.cos(pitch)};
 }
 function finiteVector(vec){return vec&&Number.isFinite(vec.x)&&Number.isFinite(vec.y)&&Number.isFinite(vec.z);}
 function gripPoint(robot){
@@ -80,10 +104,14 @@ export class ObjectCarry{
   // If pickup animation has not reached the hand yet, attach before throwing.
   if(!state.attached)this.attach(robot,target,state);
   const clip=pickUpClip(robot.userData.robotAvailableActions,'throwObject');
-  state.stage='throw';state.elapsed=0;state.duration=Math.max(.4,Math.min(1.5,robot.userData.robotAnimator?.clipDuration(clip)||.9));state.released=false;
-  // Detach FIRST, while the object is still at palm height, and only then
-  // create the dynamic body and launch it. Never drag the held prop to the floor.
-  this.release(robot,target,state,remote,remotePosition);
+  state.stage='throw';state.elapsed=0;state.duration=Math.max(.4,Math.min(1.5,robot.userData.robotAnimator?.clipDuration(clip)||.9));
+  state.settings=cleanThrowSettings(robot.userData.robotThrowSettings);
+  state.releaseAt=state.duration*state.settings.delay/100;
+  state.released=false;
+  // Keep the object attached throughout the arm swing. The owner publishes
+  // the throw only when it is actually released; remote packets already denote
+  // that release moment and therefore detach without a second network delay.
+  if(remote)this.release(robot,target,state,true,remotePosition);
   robot.userData.robotPlaying=null;
   return true;
  }
@@ -106,19 +134,26 @@ export class ObjectCarry{
  }
  release(robot,obj,state,remote=false,remotePosition=null){
   if(state.released)return;
-  state.released=true;
-  if(!state.attached)this.attach(robot,obj,state);
+  if(!state.attached&&!this.attach(robot,obj,state))return;
+  if(!finiteVector(robot.position)||!Number.isFinite(robot.rotation.y))return;
   const hand=gripPoint(robot);
+  const settings=state.settings||cleanThrowSettings(robot.userData.robotThrowSettings);
+  const yaw=robot.rotation.y+settings.direction*Math.PI/180;
+  const forward=Math.sin(yaw),side=Math.cos(yaw);
+  // Release at the animated palm's current world height. A floor-height
+  // safety bound prevents badly authored or missing bones from launching at
+  // the robot's knees. The height adjustment is relative to the palm.
   const position=remotePosition&&finiteVector(remotePosition)?remotePosition:
-   new THREE.Vector3(hand.x+Math.sin(robot.rotation.y)*.30,hand.y+.08,hand.z+Math.cos(robot.rotation.y)*.30).sub(state.pivotOffset||new THREE.Vector3());
+   new THREE.Vector3(hand.x+forward*.12,Math.max(robot.position.y+.8,hand.y+settings.height),hand.z+side*.12).sub(state.pivotOffset||new THREE.Vector3());
   if(!finiteVector(position))return;
+  state.released=true;
   obj.position.copy(position);
   // Remove attachment state before reintroducing the rigid body.
   delete obj.userData.carriedBy;
   delete obj.userData.carryOrigin;
   obj.userData.physics={...obj.userData.physics,mode:'dynamic'};
   this.editor.physics.sync(obj);
-  const impulse=throwImpulse(robot.rotation.y);
+  const impulse=throwImpulse(yaw,3.1,settings.angle);
   if(!remote){
    const body=this.editor.physics.bodies.get(obj.userData.editorId);
    if(body){
@@ -143,7 +178,11 @@ export class ObjectCarry{
     if(!state.attached&&state.elapsed>=state.duration*.5)this.attach(robot,obj,state);
     if(state.elapsed>=state.duration){if(!state.attached)this.attach(robot,obj,state);state.stage='hold';robot.userData.robotPlaying=null;}
    }else if(state.stage==='throw'){
-    if(state.elapsed>=state.duration){robot.userData.robotCarry=null;robot.userData.robotPlaying=null;}
+    if(!state.released&&state.elapsed>=state.releaseAt)this.release(robot,obj,state,state.remote);
+    if(state.elapsed>=state.duration){
+     if(!state.released)this.release(robot,obj,state,state.remote);
+     robot.userData.robotCarry=null;robot.userData.robotPlaying=null;
+    }
    }
    if(state.attached&&!state.released)this.updateGrip(robot,obj,state);
   }

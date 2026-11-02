@@ -1,3 +1,12 @@
+## v0.2.145 — Palm/metacarpal pickup and timed configurable throws (2 November 2026)
+
+- **Right-hand grip:** Prefer the authored middle metacarpal or palm bone over wrist; fall back to proximal fingers, then a hand bone or a rig-independent palm position. Snowballs and other Pickable objects follow the palm area rather than the wrist.
+- **Throw animation timing:** O starts one non-looping Throw clip; the object remains held during arm wind-up and leaves the hand at the configured percentage of the clip, at the live hand world position. Dynamic Rapier physics and a gentle, predominantly forward impulse begin only after detachment.
+- **Per-avatar Throw inspector:** Compact collapsible Angle (elevation, −20° to 65°), Hand height offset (−0.35 to +0.65 m), Direction (−90° to +90° relative to facing), and Release delay (5–95% of authored Throw duration). Defaults: 12°, 0 m, 0°, 55%. Settings are saved per avatar and validated in backend, duplicated and exported with realm archives.
+- **Multiplayer:** Authoritative throw event is sent at the release frame; remote peers detach immediately upon receiving that event at the authoritative released transform, with no second local impulse.
+- **Safety:** Validate launch coordinates and physics state before detaching. Maintain single Lifting action, normal Idle/Walk/Run while carrying and original avatar GLBs unchanged.
+- **Verification:** 634/634 JavaScript tests, Python/Nginx/archive/installer syntax and checks; standalone server throw-settings validator tested. Full Flask suite and live browser/GLB-skeleton alignment unverified in local environment.
+
 ## v0.2.144 — One-shot Lifting and palm-height forward throws (2 November 2026)
 
 - **Pickup (I):** run only the authored **Lifting** clip once, not Picking Up followed by looping Lifting. Attach at the hand midpoint of the pickup, then clear the action and resume the avatar's normal **Idle / Walk / Run** while the object stays in the right hand.

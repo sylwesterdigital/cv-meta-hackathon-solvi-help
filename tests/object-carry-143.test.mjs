@@ -20,7 +20,7 @@ class Box{
 }
 const THREE={Vector3:V3,Box3:Box};
 const source=fs.readFileSync(new URL('../js/object-carry.js',import.meta.url),'utf8').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'');
-const exports=new Function('THREE',source+'\nreturn {ObjectCarry,pickableTarget,canBePickable,pickUpClip,throwImpulse,findRightHand};')(THREE);
+const exports=new Function('THREE',source+'\nreturn {ObjectCarry,pickableTarget,canBePickable,pickUpClip,throwImpulse,findRightHand,cleanThrowSettings};')(THREE);
 function fixture({facing=true,kind='cube'}={}){
  const packets=[],sync=[],remove=[],saves=[],impulses=[];
  const robot={position:new V3(0,0,0),rotation:{y:0},parent:{},children:[],updateWorldMatrix(){},userData:{editorKind:'robot',editorId:'robot-0001',robotAvailableActions:['Picking Up','Lifting','Throw'],robotAnimator:{clipDuration:()=>.62}}};
@@ -57,10 +57,11 @@ test('pickup plays authored Lifting once, attaches at hand and holds without per
  assert.equal(robot.userData.robotCarry.stage,'hold');
  assert.equal(packets[0].action,'pickup');
 });
-test('throw detaches immediately with dynamic Rapier impulse and saves the result',()=>{
+test('throw releases at the animation swing phase with dynamic Rapier impulse and saves the result',()=>{
  const {robot,item,carry,sync,saves,packets,impulses}=fixture();
  carry.pickup(robot);for(let i=0;i<8;i++)carry.tick(.1);
  assert.equal(carry.throw(robot),true);assert.equal(robot.userData.robotCarry.stage,'throw');
+ assert.equal(item.userData.carriedBy,robot.userData.editorId,'retain the prop until the arm reaches the release frame');
  for(let i=0;i<6;i++)carry.tick(.1);
  assert.equal(item.userData.carriedBy,undefined);
  assert.equal(item.userData.physics.mode,'dynamic');
@@ -79,12 +80,15 @@ test('carrier removal releases a held object instead of leaving a non-colliding 
  assert.equal(f.item.userData.physics.mode,'dynamic');
  assert.equal(f.sync.at(-1),'dynamic');
 });
-test('right-hand bone is preferred over finger and left hand; fallback still works',()=>{
+test('right-hand metacarpal and proximal finger joints outrank wrist and left hand',()=>{
  const f=fixture();
  const bone=name=>({name,isBone:true,getWorldPosition(vec){return vec.copy(new V3(.8,1.5,.3));}});
  const left=bone('mixamorigLeftHand'),finger=bone('mixamorigRightHandMiddle1'),right=bone('mixamorigRightHand');
  f.robot.children.push({userData:{robotVisual:true},traverse(cb){for(const obj of [left,finger,right])cb(obj);}});
- assert.equal(exports.findRightHand(f.robot),right);
+ assert.equal(exports.findRightHand(f.robot),finger);
+ const metacarpal=bone('mixamorigRightHandMiddleMetacarpal');
+ f.robot.children[0].traverse=cb=>{for(const obj of [left,finger,right,metacarpal])cb(obj);};
+ assert.equal(exports.findRightHand(f.robot),metacarpal);
  f.carry.pickup(f.robot);for(let i=0;i<7;i++)f.carry.tick(.1);
  assert.ok(Math.abs(f.item.position.x-.8)<.01,'held object centre follows the right palm');
 });
@@ -153,7 +157,7 @@ test('holding an object resumes Idle, Walk and Run instead of looping Lifting',(
  assert.equal(f.item.userData.carriedBy,f.robot.userData.editorId,'object stays in hand while moving');
 });
 
-test('O detaches at hand height BEFORE dynamic physics and launches primarily forward',()=>{
+test('O detaches at release phase from the hand BEFORE dynamic physics and launches forward',()=>{
  const f=fixture();f.carry.pickup(f.robot);for(let i=0;i<9;i++)f.carry.tick(.1);
  const order=[];
  f.editor.physics.sync=obj=>{order.push(['sync',obj.userData.carriedBy,obj.position.y]);};
@@ -161,8 +165,10 @@ test('O detaches at hand height BEFORE dynamic physics and launches primarily fo
   mass:()=>2,setLinvel(){order.push(['velocity-reset']);},applyImpulse(v){order.push(['impulse',v]);}
  });
  assert.equal(f.carry.throw(f.robot),true);
- assert.equal(f.item.userData.carriedBy,undefined,'must detach before launch');
- assert.ok(f.item.position.y>1,'launch from hand, not floor');
+ assert.equal(f.item.userData.carriedBy,f.robot.userData.editorId,'must remain attached during the arm wind-up');
+ f.carry.tick(.1);f.carry.tick(.1);f.carry.tick(.1);f.carry.tick(.1);
+ assert.equal(f.item.userData.carriedBy,undefined,'must detach at the release moment');
+ assert.ok(f.item.position.y+.2>=1.19,'geometric centre launches at hand height, not floor');
  assert.equal(order[0][0],'sync');
  assert.equal(order[0][1],undefined,'dynamic body cannot be constructed while attached');
  assert.equal(order[1][0],'velocity-reset');
@@ -186,4 +192,46 @@ test('Lifting, like Throw, is a non-looping authored animation',()=>{
  const animations=fs.readFileSync(new URL('../js/animations.js',import.meta.url),'utf8');
  assert.match(animations,/oneShot=\['pickUp','liftCarry','throwObject'/);
  assert.match(animations,/action\.setLoop\(oneShot\?this\.THREE\.LoopOnce:this\.THREE\.LoopRepeat/);
+});
+
+test('throw tuning clamps invalid settings and controls angle/direction/height/delay',()=>{
+ assert.deepEqual(exports.cleanThrowSettings(),{angle:12,height:0,direction:0,delay:55});
+ assert.deepEqual(exports.cleanThrowSettings({angle:NaN,height:Infinity,direction:180,delay:-4}),{angle:12,height:0,direction:0,delay:55});
+ const f=fixture();f.robot.userData.robotThrowSettings={angle:35,height:.3,direction:90,delay:80};
+ f.carry.pickup(f.robot);for(let i=0;i<9;i++)f.carry.tick(.1);
+ f.carry.throw(f.robot);const state=f.robot.userData.robotCarry;
+ assert.equal(state.releaseAt,.62*.8);
+ for(let i=0;i<4;i++)f.carry.tick(.1);
+ assert.equal(f.item.userData.carriedBy,f.robot.userData.editorId,'80% delay has not elapsed');
+ for(let i=0;i<2;i++)f.carry.tick(.1);
+ assert.equal(f.item.userData.carriedBy,undefined);
+ assert.ok(f.item.position.y>1.25,'height added to palm position after the object pivot offset');
+ const impulse=f.impulses[0];assert.ok(impulse.x>1.5,'direction offset turns throw to robot right');
+ assert.ok(Math.abs(impulse.z)<.1,'90-degree yaw should remove forward Z component');
+ assert.ok(impulse.y>1,'35-degree elevation produces an upward component');
+});
+test('throw release follows live animated metacarpal rather than pickup wrist position',()=>{
+ const f=fixture();let palmX=.3;
+ const wrist={name:'RightHand',isBone:true,getWorldPosition(p){return p.copy(new V3(0,1.2,.1));}};
+ const bone={name:'RightHandMiddleMetacarpal',isBone:true,getWorldPosition(p){return p.copy(new V3(palmX,1.7,.1));}};
+ f.robot.children.push({userData:{robotVisual:true},traverse(fn){fn(wrist);fn(bone);}});
+ f.carry.pickup(f.robot);for(let i=0;i<9;i++)f.carry.tick(.1);
+ const before=f.item.position.x;palmX=.75;
+ f.carry.throw(f.robot);f.carry.tick(.12);
+ assert.ok(f.item.position.x>before+.35,'held prop tracks the moving hand during Throw');
+ for(let i=0;i<5;i++)f.carry.tick(.12);
+ assert.ok(f.item.position.x>.7,'release position is computed at the live metacarpal during the swing');
+});
+test('robot inspector has compact throw tuning saved per avatar and backend + archive accept it',()=>{
+ const editor=fs.readFileSync(new URL('../js/editor.js',import.meta.url),'utf8');
+ const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+ const backend=fs.readFileSync(new URL('../backend/server.py',import.meta.url),'utf8');
+ const archive=fs.readFileSync(new URL('../backend/realm_archives.py',import.meta.url),'utf8');
+ for(const id of ['robotThrowAngle','robotThrowHeight','robotThrowDirection','robotThrowDelay'])assert.match(html,new RegExp(`id="${id}"`));
+ assert.match(html,/id="robotThrowSettings" class="stair-fold"/);
+ assert.match(editor,/throwSettings:o\.userData\.editorKind==='robot'/);
+ assert.match(editor,/robotThrowSettings=cleanThrowSettings\(entry\.throwSettings\)/);
+ assert.match(backend,/def valid_robot_throw_settings\(settings\):/);
+ assert.match(backend,/Invalid throw settings/);
+ assert.match(archive,/'throwSettings'/);
 });
