@@ -1,3 +1,12 @@
+## v0.2.153 — Compact furniture grid, keyboard isolation and camera/video UX (2 November 2026)
+
+- **Three-column Basic Furniture inspector:** Numeric parameters use 3 columns with labels above compact dark inputs, 2 on narrow panels. Variant type occupies a whole row. The pre-existing active-field contextual slider remains.
+- **Keyboard focus isolation:** Input/select/text-entry keydown and keyup events do not propagate to scene robot/camera shortcuts. The wall-undo capture handler also skips text fields, and robot movement keys are cleared when editing begins.
+- **Single stable My camera preview:** Live camera, virtual feed and recorded playback are rendered in one fixed stage immediately below the panel header. Tracking and capture controls overlay the feed. Recording status and four condensed actions fit below the preview without a second video region.
+- **Reliable chat video:** Video attachments retrieve the authenticated blob, extract an in-browser frame for a local poster, and play via direct source instead of waiting for HLS manifest negotiation. No poster is uploaded or retained server-side. Playback and decoding errors surface in the player/console. Audio retains the existing streamed path. Media preview costs a full video download on initial chat render (bounded by existing upload limits).
+- **Icons / tracking:** Supplied Play/Pause/Stop/Record SVGs are packaged; audio/fullscreen SVGs supplement them. Face/pose frame errors are reported with throttling. MediaPipe/TFLite CPU/XNNPACK warnings alone do not prove a failure.
+- **Checks / limits:** Unit/source tests cover above cases; actual browsers, device permissions, codec compatibility and pose inference are not available to verify here.
+
 ## v0.2.152 — Unified compact inspector, editable Rapier poses, camera recording consolidation (2 November 2026)
 
 - **Reusable inspector pattern:** Use the term *contextual value scrubber* or *linked numeric inputs with a shared contextual slider*. SOLVI now attaches the same single `#inspectorValueSlider` to the focused Basic Furniture numeric field (in addition to XYZ Transform), rather than repeating sliders per property. The panel keeps the active input mounted during numeric changes, so focus/slider continuity is preserved. Numeric entry still goes through existing `sanitiseFurniture()` bounds to protect geometry and the backend. The style of the Basic Furniture inputs, dropdowns and compatible Properties controls matches compact dark Transform styling; no white numeric boxes.

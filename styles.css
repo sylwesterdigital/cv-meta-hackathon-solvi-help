@@ -2195,3 +2195,88 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 #webcamPanel #composerRecorderLivePreview{max-height:220px;aspect-ratio:4/3;object-fit:contain}
 #webcamPanel #composerRecorderPlayer video{max-height:230px}
 #webcamPanel .webcam-record-actions button:disabled{opacity:.5}
+
+/* v0.2.153 — truly compact three-across furniture inspector, identical native field skin. */
+#propertiesPanel #furnitureProperties #furniturePropertiesFields.furniture-properties-fields{
+ display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;
+ gap:5px 6px!important;padding:3px 0!important;align-items:start!important;
+}
+#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param{
+ display:flex!important;flex-direction:column!important;align-items:stretch!important;justify-content:flex-start!important;
+ min-width:0!important;width:auto!important;gap:2px!important;min-height:0!important;padding:0!important;margin:0!important;
+ font-size:10px!important;line-height:1.15!important;white-space:normal!important;
+}
+#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param>span{
+ display:block!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;
+}
+#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param:is(.furniture-field-select,.furniture-field-color){grid-column:span 1;}
+#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-field-full{grid-column:1/-1!important;display:grid!important;grid-template-columns:54px minmax(0,1fr)!important;align-items:center!important;}
+#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param :is(input[type=number],select){
+ box-sizing:border-box!important;display:block!important;flex:none!important;width:100%!important;max-width:100%!important;min-width:0!important;
+ height:27px!important;min-height:27px!important;padding:3px 5px!important;border-radius:6px!important;
+ background:var(--ui-bg,#102538)!important;color:var(--ui-fg,#f3f8ff)!important;border:1px solid #3e5972!important;
+ font-size:12px!important;font-variant-numeric:tabular-nums!important;text-align:left!important;
+}
+#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param input[type=checkbox]{align-self:flex-start!important;margin:5px 0!important;height:15px!important;width:15px!important;flex:none!important}
+#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param input[type=color]{align-self:flex-start!important;height:27px!important;width:100%!important;max-width:70px!important;padding:2px!important}
+@media(max-width:440px){#propertiesPanel #furnitureProperties #furniturePropertiesFields.furniture-properties-fields{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+/* One stable webcam canvas below the title, with its controls overlaid. */
+#webcamPanel.webcam-panel{width:min(370px,calc(100vw - 20px))!important;max-height:90vh!important;gap:4px!important;padding:8px!important;overflow-y:auto!important;}
+#webcamPanel .webcam-head{order:0}
+#webcamPanel .webcam-stage{order:1;position:relative;aspect-ratio:4/3;min-height:0;width:100%;overflow:hidden;background:#08131e;border-radius:9px;isolation:isolate;}
+#webcamPanel .webcam-stage>video,#webcamPanel .webcam-stage>#composerRecorderPlayer{
+ position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-height:none!important;
+ aspect-ratio:4/3!important;object-fit:cover!important;border-radius:8px!important;margin:0!important;
+}
+#webcamPanel .webcam-stage>video[hidden],#webcamPanel .webcam-stage>#composerRecorderPlayer[hidden]{display:none!important}
+#webcamPanel .webcam-stage>#composerRecorderPlayer .chat-player{width:100%!important;height:100%;position:relative;background:#08131e;}
+#webcamPanel .webcam-stage>#composerRecorderPlayer video{display:block;width:100%;height:100%;max-height:none!important;object-fit:contain;background:#08131e;}
+#webcamPanel .webcam-stage>#composerRecorderPlayer .chat-player-controls{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,#08131edd);z-index:4;}
+#webcamPanel .webcam-stage>.webcam-actions{position:absolute;top:4px;left:4px;right:4px;z-index:5;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;}
+#webcamPanel .webcam-stage>.webcam-actions button{min-height:24px!important;height:25px!important;font-size:10px!important;padding:2px 3px!important;background:#0b152aca!important;backdrop-filter:blur(4px);border-radius:5px;}
+#webcamPanel .webcam-stage>.webcam-record-actions{position:absolute;bottom:5px;left:5px;right:5px;z-index:5;display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px!important;}
+#webcamPanel .webcam-stage>.webcam-record-actions button{display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;min-width:0!important;min-height:25px!important;height:26px!important;font-size:10px!important;padding:3px 2px!important;background:#0b152ae6!important;}
+#webcamPanel .webcam-stage>.webcam-record-actions #webcamXRRecord{flex:none!important;min-width:0!important;}
+#webcamPanel .webcam-stage>.webcam-record-actions button::before{content:'';width:13px;height:13px;background-size:contain;background-position:center;background-repeat:no-repeat;flex:0 0 13px}
+#webcamPanel #webcamRecord::before{background-image:url('./assets/icons/record.svg')}
+#webcamPanel #webcamPause::before{background-image:url('./assets/icons/pause.svg')}
+#webcamPanel #webcamStop::before{background-image:url('./assets/icons/stop.svg')}
+#webcamPanel #webcamXRRecord::before{background-image:url('./assets/icons/record.svg')}
+#webcamPanel .webcam-stage.is-playback>.webcam-record-actions{display:none!important}
+#webcamPanel .webcam-recording-host{order:2;min-width:0}
+#webcamPanel #webcamStatus{order:3}
+#webcamPanel #composerRecorderPanel{padding:2px 0!important;gap:3px!important}
+#webcamPanel .composer-recorder-head{display:flex;align-items:center;gap:5px;min-height:19px;font-size:10px}
+#webcamPanel #composerRecorderPreview{margin:0!important;padding:0!important;}
+#webcamPanel #composerRecorderDuration{font-size:10px;display:block;margin:2px 0}
+#webcamPanel .composer-recorder-controls{display:flex;flex-wrap:nowrap;gap:3px!important;min-width:0;}
+#webcamPanel .composer-recorder-controls button{flex:1 1 0;min-width:0!important;padding:3px 3px!important;font-size:10px!important;min-height:26px!important;white-space:nowrap;}
+#webcamPanel #composerRecorderPlayer{max-height:none!important}
+#webcamPanel .chat-player .solvi-player-icon{width:16px;height:16px}
+/* Compact, semantic SVG transport buttons in chat and local recording preview. */
+.chat-player .solvi-player-icon{display:block!important;width:16px!important;height:16px!important;object-fit:contain;margin:auto;pointer-events:none}
+.chat-player button:focus-visible{outline:2px solid var(--solvi-accent,#b77dda);outline-offset:1px}
+#chatFeed .chat-player-video video{background:#0a1624!important}
+#chatFeed .chat-player-video video[poster]{object-fit:contain!important}
+
+/* Override older highly specific webcam video rules while maintaining fixed stage. */
+#webcamPanel #webcamStage > #facePreview,#webcamPanel #webcamStage > #composerRecorderLivePreview{
+ position:absolute!important;inset:0!important;width:100%!important;max-width:none!important;
+ height:100%!important;max-height:none!important;aspect-ratio:4/3!important;object-fit:cover!important;
+}
+#webcamPanel #webcamStage > #facePreview[hidden],#webcamPanel #webcamStage > #composerRecorderLivePreview[hidden]{display:none!important}
+#webcamPanel #webcamStage > #composerRecorderPlayer{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;}
+#webcamPanel #webcamStage > #composerRecorderPlayer[hidden]{display:none!important}
+#webcamPanel #webcamStage #composerRecorderPlayer video{max-height:none!important;height:100%!important;object-fit:contain!important;}
+
+/* No duplicate Pause/Stop row below the image: keep only Cancel while capturing. */
+#webcamPanel #composerRecorderPanel{position:relative;padding-right:60px!important}
+#webcamPanel #composerRecorderPanel>.composer-recorder-controls{position:absolute;top:0;right:0;width:58px;display:flex!important;justify-content:flex-end}
+#webcamPanel #composerRecorderPanel>.composer-recorder-controls button:not(#composerRecorderCancel){display:none!important}
+#webcamPanel #composerRecorderPanel>.composer-recorder-controls #composerRecorderCancel{font-size:10px!important;min-height:23px!important;padding:2px 4px!important;width:100%;}
+#webcamPanel #composerRecorderPanel:has(#composerRecorderPreview:not([hidden])){padding-right:0!important}
+#webcamPanel #composerRecorderPanel:has(#composerRecorderPreview:not([hidden]))>.composer-recorder-controls{display:none!important}
+
+/* Pending video attachment is a real thumbnail, not a WebM filename. */
+#pendingMedia .pending-attachment:has(img),#pendingMedia .pending-attachment:has(.pending-video-placeholder){display:inline-flex;align-items:center;gap:5px;padding:3px 5px;max-width:120px;font-size:10px}
+#pendingMedia .pending-attachment img,#pendingMedia .pending-video-placeholder{width:43px;height:30px;object-fit:cover;border-radius:4px;background:#071b29;color:#d9ebf4;display:grid;place-items:center;font-size:9px}

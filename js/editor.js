@@ -961,7 +961,7 @@ export class SceneEditor{
   }
  events(){
   const canvas=this.world.renderer.domElement;let startX,startY;
-  window.addEventListener('keydown',e=>{if(!byId('wallPanel')||byId('wallPanel').hidden)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.code==='KeyZ'){e.preventDefault();e.stopImmediatePropagation();e.shiftKey?this.redoWall():this.undoWall();return;}if(cmd&&e.code==='KeyY'){e.preventDefault();e.stopImmediatePropagation();this.redoWall();return;}if(!this.wallDrawing)return;if(e.key==='Escape'){e.preventDefault();this.endWallDrawing();}else if(e.key==='Enter'&&!e.target?.closest?.('input,select,textarea')){e.preventDefault();this.finishWallStroke();}},true);
+  window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]'))return;if(!byId('wallPanel')||byId('wallPanel').hidden)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.code==='KeyZ'){e.preventDefault();e.stopImmediatePropagation();e.shiftKey?this.redoWall():this.undoWall();return;}if(cmd&&e.code==='KeyY'){e.preventDefault();e.stopImmediatePropagation();this.redoWall();return;}if(!this.wallDrawing)return;if(e.key==='Escape'){e.preventDefault();this.endWallDrawing();}else if(e.key==='Enter'&&!e.target?.closest?.('input,select,textarea')){e.preventDefault();this.finishWallStroke();}},true);
   for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])document.addEventListener(type,e=>{if(this.spatialPointer(e)){e.preventDefault();e.stopImmediatePropagation();return;}if(this.wallPointer(e)){e.preventDefault();e.stopPropagation();}},true);
   canvas.addEventListener('dblclick',e=>{if(this.wallDrawing){e.preventDefault();e.stopPropagation();this.finishWallStroke();}},true);
   const orbitGesture=new OrbitGesture();
@@ -1176,7 +1176,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   const contextual=byId('inspectorValueSlider');if(root.contains(contextual)){section.append(contextual);contextual.hidden=true;}
   root.replaceChildren();
   const add=(key,label,type,choices=null)=>{
-   const holder=document.createElement('label');holder.className='furniture-param inspector-compact-field';
+   const holder=document.createElement('label');holder.className='furniture-param inspector-compact-field furniture-field-'+type+(key==='variant'?' furniture-field-full':'');
    const caption=document.createElement('span');caption.textContent=label;
    const control=document.createElement(type==='select'?'select':'input');control.dataset.furnitureParam=key;
    if(type==='select')for(const [value,title] of choices){const item=document.createElement('option');item.value=value;item.textContent=title;control.append(item);}

@@ -38,10 +38,11 @@ test('custom chat video/audio controls are compact and lazy on-demand HLS',()=>{
  assert.match(css,/#chatFeed \.chat-player-video video/);
  assert.match(css,/#chatFeed \.chat-attachment-actions/);
 });
-test('chat media uses metadata instead of eager WebM download; backend enforces deletion ownership',()=>{
+test('audio media remains metadata-only; video fetches authenticated blob for preview and direct playback; backend enforces deletion ownership',()=>{
  const studio=get('js/studio.js'),server=get('backend/server.py'),attachments=get('js/chat-attachments.js');
  assert.match(studio,/api\.req\('\/api\/media\/'\+encodeURIComponent\(key\)\+'\/info'\)/);
- assert.match(studio,/if\(\(info\.mime\?\.startsWith\('audio\/'\)\|\|info\.mime\?\.startsWith\('video\/'\)\)\)return/);
+ assert.match(studio,/if\(info\.mime\?\.startsWith\('audio\/'\)\)return/);
+ assert.match(studio,/return \{\.\.\.info,\.\.\.fetched\}/);
  assert.match(server,/@app\.get\('\/api\/media\/<mid>\/info'\)/);
  assert.match(server,/@app\.delete\('\/api\/media\/<mid>'\)/);
  assert.match(server,/media\['user_id'\]!=user\['id'\] and not admin_authorized\(\)/);

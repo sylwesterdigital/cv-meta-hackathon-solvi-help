@@ -7,7 +7,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export function landmarkToLocal(p){return [Number(((.5-p.x)*1.8).toFixed(3)),Number((2.1-p.y*1.6).toFixed(3)),Number(((p.z||0)*-1.2).toFixed(3))];}
 export async function setupFaceTracking(world){
  const faceBtn=document.getElementById('faceButton'),poseBtn=document.getElementById('poseButton'),preview=document.getElementById('facePreview'),webcamBtn=document.getElementById('webcamButton'),panel=document.getElementById('webcamPanel'),faceToggle=document.getElementById('facePreviewToggle'),poseToggle=document.getElementById('posePreviewToggle'),wavesToggle=document.getElementById('wavesPreviewToggle');
- let stream=null,faceTask=null,poseTask=null,handTask=null,active=false,faceEnabled=false,poseEnabled=false,lastFace=0,lastPose=0,sequence=0,lastGesture=0,previousGesture=null;
+ let stream=null,faceTask=null,poseTask=null,handTask=null,active=false,faceEnabled=false,poseEnabled=false,lastFace=0,lastPose=0,sequence=0,lastGesture=0,previousGesture=null,lastTrackingWarning=0;
  const status=document.getElementById('webcamStatus');
  function buttonStates(){faceToggle.setAttribute('aria-pressed',String(faceEnabled));poseToggle.setAttribute('aria-pressed',String(poseEnabled));faceToggle.textContent=faceEnabled?'Face on':'Face off';poseToggle.textContent=poseEnabled?'Hands on':'Hands off';webcamBtn.setAttribute('aria-pressed',String(active));webcamBtn.setAttribute('aria-label',active?'Close webcam':'Open webcam');webcamBtn.title=active?'Stop webcam and close preview':'Open webcam and tracking';status.textContent=active?'Local webcam · '+(faceEnabled?'Face ':'')+(poseEnabled?'Hands ':''):'Camera off';}
  const notify=message=>{const e=document.getElementById('toast');e.textContent=message;e.hidden=false;};
@@ -33,7 +33,7 @@ export async function setupFaceTracking(world){
             const matrix=r.facialTransformationMatrixes?.[0]?.data;
             if(matrix?.length===16){const mat=new THREE.Matrix4().fromArray(matrix),q=new THREE.Quaternion().setFromRotationMatrix(mat),e=new THREE.Euler().setFromQuaternion(q,'YXZ');
               world.localHeadRotation=[clamp(-e.x,-.8,.8),clamp(-e.y,-1.1,1.1),clamp(e.z,-.65,.65)].map(x=>+x.toFixed(3));}
-          }catch(err){console.debug('Face frame skipped',err);}
+          }catch(err){if(now-lastTrackingWarning>5000){lastTrackingWarning=now;console.warn('SOLVI face-tracking frame failed',err);status.textContent='Face tracking paused · check console';}}
         }
         if(poseEnabled&&now-lastPose>=220){lastPose=now;
           try{
@@ -45,7 +45,7 @@ export async function setupFaceTracking(world){
               const hand=h.landmarks[i];
               if(hand?.length===21){world.localBody[prefix+'Hand']=hand.map(landmarkToLocal);world.localBody[prefix+'Palm']=landmarkToLocal(hand[0]);world.localBody[prefix+'Index']=landmarkToLocal(hand[8]);const gesture=classifyHandGesture(hand);if(gesture&&gesture!==previousGesture&&now-lastGesture>3500){lastGesture=now;previousGesture=gesture;showGestureInWorld(THREE,world,gesture);window.dispatchEvent(new CustomEvent('solvi:gesture',{detail:{gesture,hand:prefix}}));}else if(!gesture)previousGesture=null;}
             }}
-          }catch(err){console.debug('Pose frame skipped',err);}
+          }catch(err){if(now-lastTrackingWarning>5000){lastTrackingWarning=now;console.warn('SOLVI pose/hand tracking frame failed',err);status.textContent='Pose detection unavailable · check console';}}
         }
       }requestAnimationFrame(run);};requestAnimationFrame(run);
  }

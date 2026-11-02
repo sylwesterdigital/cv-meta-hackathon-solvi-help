@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.152",
+  "currentVersion": "0.2.153",
   "releases": [
+    {
+      "version": "0.2.153",
+      "publishedAt": "2026-11-02T16:40:55Z",
+      "changes": [
+        "Compact Basic Furniture properties into responsive three-across labelled numeric fields matching the dark Transform controls, with the existing contextual slider retained.",
+        "Prevent keyboard input, arrow-key stepping, robot shortcuts and camera movement from interfering with active form controls; clear held robot keys on edit focus.",
+        "Move webcam, virtual camera and recorded video into one fixed preview stage directly below the My camera header, with minimal overlay tracking and capture controls; keep recorded sharing actions in one compact row.",
+        "Use the supplied SVG Play, Pause, Stop and Record controls, replacing ambiguous text glyphs in the custom media player.",
+        "Fix blank chat video by retrieving the authenticated video blob, decoding a local preview-frame poster, and playing the direct recording instead of relying on HLS negotiation; expose codec and decode errors.",
+        "Report pose/hand landmark detection exceptions to the console and camera status without treating routine TensorFlow Lite or MediaPipe acceleration warnings as fatal.",
+        "Automated tests cover inspector layout, keyboard isolation, unified camera stage, video preview/direct playback, pending attachment thumbnails, SVG transport icons and diagnostics. Real webcam, playback and MediaPipe require browser smoke testing."
+      ]
+    },
     {
       "version": "0.2.152",
       "publishedAt": "2026-11-02T13:23:19Z",
@@ -313,15 +326,6 @@
         "Restore paired gateways after a v0.2.120 runtime crash caused by calling non-existent THREE.Shape.containsPoint() during particle generation.",
         "Generate sparkles with explicit point-in-polygon filtering; rebuild gate geometry transactionally and preserve existing saved portal meshes and settings when a visual construction step fails.",
         "Smoke-test all 5 portal shapes, 4 visual effects, and Entry/Exit construction with simulated rendering failures; preserve the aperture-constrained effects, transport code, existing avatars and server storage compatibility."
-      ]
-    },
-    {
-      "version": "0.2.120",
-      "publishedAt": "2026-10-31T22:21:47Z",
-      "changes": [
-        "Rebuild portal visuals so every effect is constrained to the actual aperture: door effects stay inside the opening, the rounded gate has a flat floor-aligned base, the floor field is a square floor portal, and the orb variant is a real sphere.",
-        "Add animated frame FX, better centered interior shaders, and sparkle / star-like particles so portals read as intentional in-world devices rather than loose planes or ring placeholders.",
-        "Preserve linked Entry/Exit transport behaviour, button triggering, persistence, and watcher-safe packaging while updating portal regression coverage for the rebuilt geometry."
       ]
     }
   ]
