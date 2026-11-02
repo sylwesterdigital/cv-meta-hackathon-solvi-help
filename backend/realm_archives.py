@@ -103,7 +103,7 @@ def read_archive(upload):
 def safe_scene(objects):
     if not isinstance(objects,list) or len(objects)>128:raise ValueError('Invalid object list')
     if len(json.dumps(objects,ensure_ascii=False))>1_200_000:raise ValueError('Scene metadata exceeds 1.2 MB')
-    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','combat','animationSpeed','throwSettings','runMultiplier','climbSpeed','climbable','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','transformLocked','pickable','followHandRotation'}
+    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','combat','animationSpeed','throwSettings','runMultiplier','climbSpeed','climbable','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','transformLocked','pickable','followHandRotation','inventory','storage'}
     clean=[];remap={}
     for obj in objects:
         if not isinstance(obj,dict) or obj.get('kind') not in KINDS:continue
@@ -117,6 +117,13 @@ def safe_scene(objects):
     for obj in clean:
         if obj.get('kind')=='portal' and isinstance(obj.get('portal'),dict):
             cfg=obj['portal'];cfg['partner']=remap.get(cfg.get('partner'),cfg.get('partner',''))
+        # Remap persistent inventory references together with item identities.
+        # An absent owner/container cannot leave an invisible orphan after import.
+        storage=obj.get('storage')
+        if isinstance(storage,dict):
+            reference='bagId' if storage.get('type')=='bag' else 'holderId'
+            if storage.get(reference) in remap:storage[reference]=remap[storage[reference]]
+            else:obj.pop('storage',None)
         if obj.get('kind')=='media' and isinstance(obj.get('media'),dict):
             mount=obj['media'].get('mount')
             if isinstance(mount,dict) and mount.get('target') in remap:

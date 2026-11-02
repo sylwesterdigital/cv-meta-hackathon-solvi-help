@@ -29,7 +29,7 @@ test('walk/turn/jump and sitting tasks are implemented, not a chatbot-only respo
  for(const action of ['walk','run','jump'])assert.ok(robots.includes(`mode==='${action}'`));
  assert.match(robots,/robot\.rotation\.y\+=/);
  assert.match(robots,/robot\.userData\.jumpVel=5\.7/);
- assert.match(robots,/robot\.userData\.robotSitPose=clip\?'clip':'procedural'/);
+ assert.match(robots,/onMove\.seat\?\.\(robot,mission\.targetId\)/);
  assert.match(editor,/e\.code==='Space'/);
  assert.match(net,/u:\+\(i\.u\|\|1\)/);
 });

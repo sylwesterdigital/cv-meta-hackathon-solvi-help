@@ -22,7 +22,7 @@ test('per-object hand follow is saved and checked in full and atomic server scen
  assert.match(editor,/objectFollowHandRotation.*addEventListener\('change'/);
  assert.match(backend,/if 'followHandRotation' in o and/);
  assert.match(backend,/if 'followHandRotation' in obj and/);
- assert.match(backend,/'pickable','followHandRotation','transformLocked'/);
+ assert.match(backend,/'pickable','followHandRotation','inventory','storage','transformLocked'/);
  assert.match(archive,/'pickable','followHandRotation'/);
 });
 

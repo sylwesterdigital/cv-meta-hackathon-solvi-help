@@ -8,6 +8,8 @@ class V3{
  copy(v){this.x=v.x;this.y=v.y;this.z=v.z;return this;}
  clone(){return new V3(this.x,this.y,this.z);}
  add(v){this.x+=v.x;this.y+=v.y;this.z+=v.z;return this;}
+ addScaledVector(v,s){this.x+=v.x*s;this.y+=v.y*s;this.z+=v.z*s;return this;}
+ set(x,y,z){Object.assign(this,{x,y,z});return this;}
  sub(v){this.x-=v.x;this.y-=v.y;this.z-=v.z;return this;}
  get length(){return Math.hypot(this.x,this.y,this.z);}
  applyAxisAngle(a,angle){const x=this.x,z=this.z;this.x=x*Math.cos(angle)+z*Math.sin(angle);this.z=z*Math.cos(angle)-x*Math.sin(angle);return this;}
@@ -24,8 +26,8 @@ const exports=new Function('THREE',source+'\nreturn {ObjectCarry,pickableTarget,
 function fixture({facing=true,kind='cube'}={}){
  const packets=[],sync=[],remove=[],saves=[],impulses=[];
  const robot={position:new V3(0,0,0),rotation:{y:0},parent:{},children:[],updateWorldMatrix(){},userData:{editorKind:'robot',editorId:'robot-0001',robotAvailableActions:['Picking Up','Lifting','Throw'],robotAnimator:{clipDuration:()=>.62}}};
- const item={position:new V3(0,0,facing?1:-1),quaternion:{setFromAxisAngle(){return this;}},userData:{editorKind:kind,editorId:'object-0001',pickable:true,physics:{mode:'static'}}};
- const physics={enabled:true,owns:()=>true,remove(id){remove.push(id);},sync(obj){sync.push(obj.userData.physics.mode);},bodies:new Map([['object-0001',{applyImpulse(impulse){impulses.push(impulse);}}]])};
+ const item={position:new V3(0,0,facing?1:-1),updateWorldMatrix(){},quaternion:{setFromAxisAngle(){return this;}},userData:{editorKind:kind,editorId:'object-0001',pickable:true,physics:{mode:'static'}}};
+ const physics={enabled:true,owns:()=>true,remove(id){remove.push(id);},sync(obj){sync.push(obj.userData.physics.mode);},applyEditedPose(){},bodies:new Map([['object-0001',{applyImpulse(impulse){impulses.push(impulse);}}]])};
  const editor={items:[robot,item],physics,canEdit:()=>true,queueSave(obj){saves.push(obj);},toast:()=>{}};
  globalThis.window={solviRoomSocket:{send(data){packets.push(data);}}};
  const carry=new exports.ObjectCarry(editor);
@@ -108,8 +110,8 @@ test('source wires I/O through exploration mode, captures physics and validates 
  const server=fs.readFileSync(new URL('../backend/server.py',import.meta.url),'utf8');
  const live=fs.readFileSync(new URL('../js/live.js',import.meta.url),'utf8');
  const archive=fs.readFileSync(new URL('../backend/realm_archives.py',import.meta.url),'utf8');
- assert.match(editor,/\['KeyI','KeyO'\]/);
- assert.ok(editor.indexOf("['KeyI','KeyO']")<editor.indexOf('if(!isEditMode()&&(cmd'), 'I/O must work in Exploration');
+ assert.match(editor,/\['KeyI','KeyO','KeyJ','KeyB'\]/);
+ assert.ok(editor.indexOf("['KeyI','KeyO','KeyJ','KeyB']")<editor.indexOf('if(!isEditMode()&&(cmd'), 'I/O must work in Exploration');
  assert.match(editor,/pickable:canBePickable\(/);
  assert.match(editor,/carryOrigin\?\.position\|\|o\.position/);
  assert.match(editor,/duplicate\.userData\.pickable=entry\.pickable/);
@@ -380,4 +382,16 @@ test('guide builds a visible transient line and marker and cleans up GPU resourc
   assert.ok(disposed>=4);
   assert.equal(f.saves.length,0);
  }finally{for(const [k,v] of Object.entries(prior)){if(v===undefined)delete THREE[k];else THREE[k]=v;}}
+});
+
+test('I drop places a held object at floor height and restores Rapier without an impulse',()=>{
+ const f=fixture();assert.equal(f.carry.pickup(f.robot),true);for(let i=0;i<8;i++)f.carry.tick(.1);
+ assert.equal(f.carry.drop(f.robot),true);
+ assert.equal(f.robot.userData.robotCarry,null);
+ assert.equal(f.item.userData.carriedBy,undefined);
+ assert.equal(f.item.userData.physics.mode,'dynamic');
+ assert.ok(Math.abs(f.item.position.y)<.001);
+ assert.equal(f.packets.at(-1).action,'drop');
+ assert.equal(f.saves.length,1);
+ assert.equal(f.impulses.length,0,'placing must not launch the object');
 });

@@ -5,7 +5,7 @@ export function canPreset(entry){return !!entry&&TYPES.has(entry.kind)&&!(entry.
 export function presetCategory(entry){return entry.kind==='furniture'?(PROPS.has(entry.furniture?.variant)?'Props':'Furniture'):['ladder','stairs'].includes(entry.kind)?'Architecture':'Geometry';}
 export function presetEntry(entry){
  if(!canPreset(entry))return null;
- const keys=['kind','name','rotation','scale','color','texture','physics','pickable','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture'];
+ const keys=['kind','name','rotation','scale','color','texture','physics','pickable','inventory','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture'];
  const copy={};for(const key of keys)if(entry[key]!==undefined)copy[key]=structuredClone(entry[key]);
  return copy;
 }

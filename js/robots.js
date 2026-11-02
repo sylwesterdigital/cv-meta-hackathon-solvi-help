@@ -173,15 +173,16 @@ export function tickRobots(items,dt,onMove=()=>{}){
               status:'partial',progress:partial.progress,remainingMeters:partial.remainingMeters}}));
             continue;
           }
-          const clip=mission.kind==='go_sit'?sittingClip(robot.userData.robotAvailableActions):null;
+          let seated=false;
           if(mission.kind==='go_sit'){
-            robot.userData.robotSeated=true;
-            robot.userData.robotSitPose=clip?'clip':'procedural';
-            if(clip){robot.userData.robotMode=clip;mode=clip;}
+            // A path finishing beside an object is not yet a successful sit.
+            // A visible horizontal seat and a reachable edge are required.
+            seated=Boolean(onMove.seat?.(robot,mission.targetId));
+            mode=robot.userData.robotMode;
           }
           robot.userData.robotMission=null;
           window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName||'',
-            status:mission.kind==='go_sit'?(clip?'sitting':'procedural-sitting'):mission.kind==='coffee_visit'?'coffee-visit':'arrived',
+            status:mission.kind==='go_sit'?(seated?(robot.userData.robotSitPose==='clip'?'sitting':'procedural-sitting'):'blocked'):mission.kind==='coffee_visit'?'coffee-visit':'arrived',
             ...(mission.destinationPart?{destinationPart:mission.destinationPart}:{})}}));
         }
       }
@@ -399,6 +400,9 @@ export function animateRobots(items,dt,onImpact=()=>{}){
           if(/(?:left|right|l_|r_).*(?:leg|calf|shin)|(?:calf|shin|lowerleg).*(?:left|right)/.test(name)&&!/upper|thigh|upleg/.test(name))bone.rotation.x+=((bone.userData.sitBaseX??(bone.userData.sitBaseX=bone.rotation.x))-.9-bone.rotation.x)*Math.min(1,dt*5);
         });
       }
-    }else if(visual?.children[0]?.userData.sitBaseY!==undefined){const model=visual.children[0];model.position.y+=(model.userData.sitBaseY-model.position.y)*Math.min(1,dt*5);}
+    }else if(visual?.children[0]?.userData.sitBaseY!==undefined){
+      const model=visual.children[0];model.position.y+=(model.userData.sitBaseY-model.position.y)*Math.min(1,dt*5);
+      model.traverse(bone=>{if(bone.isBone&&Number.isFinite(bone.userData.sitBaseX))bone.rotation.x+=(bone.userData.sitBaseX-bone.rotation.x)*Math.min(1,dt*7);});
+    }
   }
 }

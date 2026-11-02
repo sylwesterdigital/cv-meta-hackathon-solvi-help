@@ -66,7 +66,7 @@ export function pickableTarget(robot,items,{maxReach=1.65}={}){
  const forward=new THREE.Vector3(Math.sin(robot.rotation.y),0,Math.cos(robot.rotation.y));
  let best=null,bestScore=Infinity;
  for(const object of items){
-  if(!object||object===robot||object.userData?.temporaryCarryTest||!canBePickable(object.userData?.editorKind)||object.userData.pickable!==true||object.userData.carriedBy||(object.userData.editorKind==='model'&&object.userData.modelReady!==true))continue;
+  if(!object||object===robot||object.userData?.temporaryCarryTest||!canBePickable(object.userData?.editorKind)||object.userData.pickable!==true||object.userData.carriedBy||object.userData.storage||(object.userData.editorKind==='model'&&object.userData.modelReady!==true))continue;
   const bounds=new THREE.Box3().setFromObject(object);if(bounds.isEmpty())continue;
   const size=bounds.getSize(new THREE.Vector3());
   if(Math.max(size.x,size.y,size.z)>1.55||Math.max(size.x,size.y,size.z)<.03)continue;
@@ -146,7 +146,7 @@ export class ObjectCarry{
  pickup(robot,remote=false,targetId=null){
   if(!remote&&!this.eligible(robot))return false;
   const target=targetId?this.editor.items.find(o=>o.userData.editorId===targetId):pickableTarget(robot,this.editor.items);
-  if(!target||!canBePickable(target.userData.editorKind)||!target.userData.pickable||target.userData.carriedBy)return false;
+  if(!target||!canBePickable(target.userData.editorKind)||!target.userData.pickable||target.userData.carriedBy||target.userData.storage)return false;
   if(!remote&&(!this.editor.canEdit(target)||!this.editor.physics.owns(target)||!this.editor.physics.enabled)){this.editor.toast('Pickup needs object permission and room Physics enabled');return false;}
   // One-shot Lifting reaches for the object, then ordinary Idle/Walk/Run resumes.
   const clip=pickUpClip(robot.userData.robotAvailableActions,'liftCarry');
@@ -299,6 +299,36 @@ export class ObjectCarry{
    }
   }
  }
+ drop(robot,remote=false,remotePosition=null){
+  const state=robot?.userData?.robotCarry;
+  if(!state||state.stage==='throw')return false;
+  const obj=this.editor.items.find(o=>o.userData.editorId===state.objectId);
+  if(!obj)return false;
+  if(!state.attached&&!this.attach(robot,obj,state))return false;
+  this.updateGrip(robot,obj,state);
+  const forward=new THREE.Vector3(Math.sin(robot.rotation.y),0,Math.cos(robot.rotation.y));
+  const base=robot.position.clone().addScaledVector(forward,.7);
+  // Place the lowest visible point on the ground rather than dropping a pivot
+  // that may be centered within a large object.
+  obj.position.set(base.x,robot.position.y+.1,base.z);
+  obj.updateWorldMatrix(true,true);
+  const bounds=new THREE.Box3().setFromObject(obj);
+  if(!bounds.isEmpty())obj.position.y+=robot.position.y-bounds.min.y;
+  if(remotePosition&&finitePhysicsVector(remotePosition))obj.position.copy(remotePosition);
+  if(!finitePhysicsVector(obj.position))return false;
+  delete obj.userData.carriedBy;delete obj.userData.carryOrigin;
+  obj.userData.physics={...obj.userData.physics,mode:'dynamic'};
+  state.released=true;robot.userData.robotCarry=null;robot.userData.robotPlaying=null;
+  this.editor.physics.sync(obj);
+  this.editor.physics.applyEditedPose?.(obj);
+  const body=this.editor.physics.bodies.get(obj.userData.editorId);
+  body?.setLinvel?.({x:0,y:0,z:0},true);body?.setAngvel?.({x:0,y:0,z:0},true);
+  if(!remote){
+   if(!obj.userData.temporaryCarryTest){this.editor.queueSave(obj);
+    window.solviRoomSocket?.send({type:'object-carry',action:'drop',id:robot.userData.editorId,target:obj.userData.editorId,x:obj.position.x,y:obj.position.y,z:obj.position.z});}
+  }
+  return true;
+ }
  toggleTrajectory(enabled){
   this.trajectoryEnabled=Boolean(enabled);
   if(!this.trajectoryEnabled)this.hideTrajectory();
@@ -406,7 +436,10 @@ export class ObjectCarry{
   const robot=this.editor.items.find(o=>o.userData.editorId===packet.id&&o.userData.editorKind==='robot');
   if(!robot)return;
   if(packet.action==='pickup')this.pickup(robot,true,packet.target);
-  else if(packet.action==='throw'){
+  else if(packet.action==='drop'){
+   if(![packet.x,packet.y,packet.z].every(n=>typeof n==='number'&&Number.isFinite(n)))return;
+   this.drop(robot,true,new THREE.Vector3(packet.x,packet.y,packet.z));
+  }else if(packet.action==='throw'){
    const state=robot.userData.robotCarry;
    if(!state||state.objectId!==packet.target)return;
    if(![packet.x,packet.y,packet.z].every(n=>typeof n==='number'&&Number.isFinite(n)))return;

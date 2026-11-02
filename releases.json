@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.153",
+  "currentVersion": "0.2.154",
   "releases": [
+    {
+      "version": "0.2.154",
+      "publishedAt": "2026-11-02T17:06:33Z",
+      "changes": [
+        "Seat avatars on nearby compatible flat surfaces with authored Sitting clips or procedural fallback, edge-aware position and facing, and orientation retained on standing (J).",
+        "Press I while carrying a Pickable object to place it on the floor without throwing; retain O for animated projectile throws and sync drops over multiplayer.",
+        "Scene-backed inventory supports pocket tools, keys, money, phone, notepad and food, with separate consumable Eat/Use and bag-size requirements.",
+        "Attach wearable backpacks, jetpacks and parachutes to upper spine/chest bones in independent front/back slots; dropped backpacks retain their contents.",
+        "Compact inventory panel with Pockets, Wearable, Backpack tabs; validated per-object state persists through scene/room saves and realm archives.",
+        "Regression tests for geometry seating, dropped object collider state, backpack contents, storage transitions, server/archive persistence and safe release packaging."
+      ]
+    },
     {
       "version": "0.2.153",
       "publishedAt": "2026-11-02T16:40:55Z",
@@ -317,15 +329,6 @@
         "Replace solid-looking Orb sphere and ring decorations with a luminous transparent event-horizon shader, an inward spiraling centered vortex throat, and contained star particles, preserving Entry/Exit visual distinction.",
         "Keep Orb gates traversable: exclude spherical visual shells from Rapier collision and allow standing WebXR visitor capsules to activate the orb at natural headset height.",
         "Add runtime regression checks for transparent orb materials, absence of opaque globes or decorative rings, shader animation across all four effect modes, and XR standing-body activation."
-      ]
-    },
-    {
-      "version": "0.2.121",
-      "publishedAt": "2026-10-31T22:38:16Z",
-      "changes": [
-        "Restore paired gateways after a v0.2.120 runtime crash caused by calling non-existent THREE.Shape.containsPoint() during particle generation.",
-        "Generate sparkles with explicit point-in-polygon filtering; rebuild gate geometry transactionally and preserve existing saved portal meshes and settings when a visual construction step fails.",
-        "Smoke-test all 5 portal shapes, 4 visual effects, and Entry/Exit construction with simulated rendering failures; preserve the aperture-constrained effects, transport code, existing avatars and server storage compatibility."
       ]
     }
   ]

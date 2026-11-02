@@ -94,7 +94,7 @@ test('Climbable choice persists through creation, duplication, scene and backend
  assert.match(editor,/o\.userData\.climbable===true/);
  assert.match(editor,/duplicate\.userData\.climbable=entry\.climbable===true/);
  assert.match(editor,/o\.userData\.climbable=entry\.climbable===true/);
- assert.match(backend,/'climbable','pickable','followHandRotation','transformLocked'/);
+ assert.match(backend,/'climbable','pickable','followHandRotation','inventory','storage','transformLocked'/);
  assert.match(backend,/Invalid climbable flag/);
  assert.match(physics,/ride\?\.kind==='surface'/);
 });

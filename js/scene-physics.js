@@ -156,7 +156,7 @@ export class ScenePhysics{
  }
  sync(object){
   if(!this.enabled||!this.world||!object)return;
-  if(object.userData.carriedBy){this.remove(object.userData.editorId);return;}
+  if(object.userData.carriedBy||object.userData.storage){this.remove(object.userData.editorId);return;}
   const id=object.userData.editorId;if(!id)return;
   const kind=object.userData.editorKind;
   // Collider geometry cannot be measured until the imported GLB/FBX visual is loaded.
