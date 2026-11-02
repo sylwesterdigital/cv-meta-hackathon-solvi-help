@@ -200,7 +200,7 @@ export class RobotInventory{
    const info=document.createElement('div');const name=document.createElement('strong');name.textContent=item.name;
    const detail=document.createElement('small');detail.textContent=cleanInventory(item.userData.inventory).category+(item.userData.storage?.slot?' · '+item.userData.storage.slot:'');info.append(name,detail);line.append(info);
    const action=(text,fn)=>{const button=document.createElement('button');button.type='button';button.textContent=text;button.disabled=!this.editor.canEdit(item)||!this.editor.canEdit(robot);button.onclick=()=>fn.call(this,robot,item);line.append(button);};
-   if(item.userData.storage?.type==='worn')action('Front / Back',this.moveBag);
+   if(item.userData.storage?.type==='worn'){action('Front / Back',this.moveBag);action('Take off',this.drop);}
    else action(item.userData.storage.type==='pocket'?'To bag':'To pocket',this.transfer);
    if(cleanInventory(item.userData.inventory).consumable)action(cleanInventory(item.userData.inventory).category==='food'?'Eat':'Use',this.use);
    action('Drop',this.drop);rows.append(line);

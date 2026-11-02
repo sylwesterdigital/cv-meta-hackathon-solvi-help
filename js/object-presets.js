@@ -22,15 +22,12 @@ export function capturePresetThumbnail(editor,source){
  const camera=new THREE.OrthographicCamera(-1,1,1,-1,.01,1000);
  camera.position.copy(center).add(new THREE.Vector3(1.6,1.2,2.2).normalize().multiplyScalar(Math.max(5,size.length()*2)));
  camera.lookAt(center);camera.updateMatrixWorld(true);
- const view=new THREE.Matrix4().copy(camera.matrixWorldInverse);
- let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
- for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
-  const q=new THREE.Vector3(x,y,z).applyMatrix4(view);minX=Math.min(minX,q.x);maxX=Math.max(maxX,q.x);minY=Math.min(minY,q.y);maxY=Math.max(maxY,q.y);
- }
- const halfH=Math.max(.25,(maxY-minY)*.63,(maxX-minX)*.63*height/width);
+ // Symmetric camera frustum centered on the object, with consistent padding.
+ // Avoid off-center projected AABBs when the source mesh has nested offsets.
+ const radius=Math.max(.15,size.length()*.5);
+ const halfH=Math.max(radius*1.48,radius*1.48*height/width);
  const halfW=halfH*width/height;
- const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
- camera.left=cx-halfW;camera.right=cx+halfW;camera.top=cy+halfH;camera.bottom=cy-halfH;camera.updateProjectionMatrix();
+ camera.left=-halfW;camera.right=halfW;camera.top=halfH;camera.bottom=-halfH;camera.updateProjectionMatrix();
  const oldTarget=renderer.getRenderTarget();const oldScissor=renderer.getScissorTest?.();const oldXR=renderer.xr?.enabled;const oldViewport=renderer.getViewport?.(new THREE.Vector4());
  try{
   if(renderer.xr)renderer.xr.enabled=false;
@@ -84,7 +81,7 @@ export function setupObjectPresets(editor){
    del.onclick=async()=>{if(!await confirmAction('Delete preset “'+preset.name+'”? This does not delete objects already added to scenes.',{title:'Delete preset',confirmLabel:'Delete',danger:true}))return;
     try{await window.solviAPI.req('/api/object-presets/'+encodeURIComponent(preset.id),{method:'DELETE'});records=records.filter(row=>row.id!==preset.id);render();note('Preset deleted.');}catch(e){note('Could not delete preset: '+e.message);}
    };
-   actions.append(add,del);item.append(preview,heading,meta,actions);grid.append(item);
+   actions.append(del);item.append(preview,heading,meta,actions);grid.append(item);
   }
   note(shown.length+' presets shown · '+records.length+' saved');
  }

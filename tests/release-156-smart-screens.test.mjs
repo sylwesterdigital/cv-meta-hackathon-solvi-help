@@ -54,7 +54,7 @@ test('outdoor furniture is procedural with independently collidable pieces and r
 test('preset thumbnail uses actual projected bounds and regenerates older furniture gallery images',()=>{
  const code=read('js/object-presets.js');
  assert.match(code,/new THREE\.OrthographicCamera/);
- assert.match(code,/bounds\.min\.x,bounds\.max\.x/);
+ assert.match(code,/radius\*1\.48/);
  assert.match(code,/thumbnailFor\(preset\)/);assert.match(code,/makeFurniture\(preset\.payload\.furniture\)/);
  assert.match(code,/setScissorTest\?\.\(false\)/);
 });

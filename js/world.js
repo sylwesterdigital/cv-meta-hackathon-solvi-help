@@ -522,6 +522,7 @@ export class SolviWorld {
       controller.addEventListener('selectstart',async()=>{
         if(!this.renderer.xr.isPresenting)return;
         const selection=this.xrRaycast(controller);
+        if(selection.smartScreen){this.robotEditor?.activateSmartScreen?.(selection.smartScreen);return;}
         if(selection.liftButton){if(selection.liftButton.userData.transportButton)this.robotEditor?.activateTransportButton(selection.liftButton);else if(selection.liftButton.userData.portalButton)this.robotEditor?.activatePortalButton(selection.liftButton);else if(selection.liftButton.userData.wallWindowButton)this.robotEditor?.activateWindowButton(selection.liftButton);else this.robotEditor?.activateLiftButton(selection.liftButton);return;}
         if(selection.menu){const action=selection.menu.userData.action;if(action==='room'){const select=document.getElementById('roomSelect');if(select&&select.options.length>1){select.selectedIndex=(select.selectedIndex+1)%select.options.length;select.dispatchEvent(new Event('change'));}}else window.solviEditor?.add(action);return;}
         const mediaTarget=selection.mediaTarget||this.xrMediaTarget;
@@ -620,13 +621,14 @@ export class SolviWorld {
     const liftButton=this.robotEditor?.hitLiftButton?.(this.raycaster)||this.robotEditor?.hitTransportButton?.(this.raycaster)||this.robotEditor?.hitPortalButton?.(this.raycaster)||this.robotEditor?.hitWindowButton?.(this.raycaster)||null;
     const menu=this.raycaster.intersectObjects(this.xrButtons,false)[0]?.object;
     const mediaButton=this.xrMediaControls?.visible?this.raycaster.intersectObjects(this.xrMediaButtons,false)[0]?.object:null;
+    const smartScreen=this.robotEditor?.hitSmartScreen?.(this.raycaster)||null;
     const landing=this.xrLanding(this.raycaster);
     const media=this.robotEditor?.items?.filter(o=>o.userData.editorKind==='media')||[];
     const mediaHit=this.raycaster.intersectObjects(media,true)[0];
     let mediaTarget=mediaHit?.object;
     while(mediaTarget&&!mediaTarget.userData?.editorKind)mediaTarget=mediaTarget.parent;
     if(mediaHit&&landing&&mediaHit.distance>landing.distance)mediaTarget=null;
-    return {liftButton,menu,mediaButton,mediaTarget,landing};
+    return {liftButton,menu,mediaButton,mediaTarget,smartScreen,landing};
   }
   shiftXRViewer(delta){
     if(!this.renderer.xr.isPresenting||!delta||![delta.x,delta.y,delta.z].every(Number.isFinite))return false;

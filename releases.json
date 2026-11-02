@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.156",
+  "currentVersion": "0.2.157",
   "releases": [
+    {
+      "version": "0.2.157",
+      "publishedAt": "2026-11-02T21:43:22Z",
+      "changes": [
+        "Fix smart-screen selection in Edit Mode and WebXR; add Play buttons for saved TV, monitor and media-frame channels and handle screen cleanup safely.",
+        "Improve remote walking animation tolerance, add contextual Cmd+/ robot keyboard help derived from per-robot combat shortcut settings and an explicit wearable Take off action.",
+        "Improve procedural preset card layout and center/safely frame thumbnail captures; clicking the preview directly adds an object.",
+        "Add procedural lamps with sphere/cuboid/pyramid shades, point/spot lights, adjustable intensity/range/opacity and a physical power switch.",
+        "Add procedural speakers with named saved HTTPS media channels, spatial audio, playback by clicking in-world or selecting a channel in Properties.",
+        "Synchronise stair root and tread surface color during editing, retain collision and persistence, preserve existing avatar GLBs and scene compatibility."
+      ]
+    },
     {
       "version": "0.2.156",
       "publishedAt": "2026-11-02T20:27:14Z",
@@ -321,16 +333,6 @@
         "All robot and avatar types now resume their prior active gait directly after a deliberate near-level jump (<=0.35m net elevation change), without additional Landing or forced Idle.",
         "Rapier and non-Rapier jump completion paths retain per-robot run/walk/backward/strafe intent; genuine falls preserve Landing, Hard Landing, and extreme Falling Flat Impact then Stand Up.",
         "Five new level-jump regression tests; existing 40-floor lifts, portals and network transport retained."
-      ]
-    },
-    {
-      "version": "0.2.126",
-      "publishedAt": "2026-11-01T00:42:15Z",
-      "changes": [
-        "Raise lift limit from 12 to 40 floors consistently across editor, in-world button state, synchronized motion timeline, save validation, server WebSocket checks and high-rise shaft motion height (maximum 312 m with 8 m floors).",
-        "Arrange lift cabin floor buttons into a four-column, up-to-ten-row keypad for 13\u201340 floors; preserve existing single-column controls for 2\u201312 floors and optional per-floor landing call stations.",
-        "For a genuinely extreme fall over 8 m, play Falling Flat Impact after ground contact then Stand Up when both authentic clips exist; otherwise retain the one-shot Hard Landing to Idle, without duplicate recovery.",
-        "Add regression tests for 40th-floor travel and bounds, server validation, and fall clip availability and recovery sequencing."
       ]
     }
   ]

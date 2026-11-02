@@ -43,7 +43,7 @@ test('editor exposes room closure, keyboard history, live colour input and visua
  const js=code('js/editor.js'),html=code('index.html'),css=code('styles.css');
  assert.match(js,/startWallDrawing\('wall',true\)/);assert.match(js,/this\.undoWall\(\)/);assert.match(js,/this\.redoWall\(\)/);
  assert.match(js,/e\.shiftKey\?this\.redoWall\(\):this\.undoWall\(\)/);
- assert.match(js,/field\('wallColor'\)\.addEventListener\('input',rerender\)/);
+ assert.match(js,/field\('wallColor'\)\.addEventListener\('input',\(\)=>\{[\s\S]*?rerender\(\)/);
  assert.match(js,/person\.position\.set/);assert.match(js,/wallCeilingHeight/);
  assert.match(js,/wallPreviewMode.*solid/);assert.match(js,/new THREE\.EdgesGeometry/);
  for(const id of ['wallRedo','wallCloseLoop','wallCeilingHeight','wallPreviewMode','wallStairOptions','stairStepMode','stairCount','stairTread','stairRiser','stairFloating'])assert.ok(html.includes('id="'+id+'"'),id);

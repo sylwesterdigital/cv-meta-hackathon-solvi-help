@@ -11,8 +11,8 @@ import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneMode
 import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,toggleSceneMediaPlayback,setSceneMediaMuted,setSceneMediaLoop,setSceneMediaSpatial,syncSceneMediaGroup,sceneMediaMuted,sceneMediaPlaying,sceneMediaKind,showSceneMediaCaptions} from './scene-media.js';
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive,FURNITURE_TYPES,BASIC_PROP_TYPES,FURNITURE_NUMERIC,sanitiseFurniture,makeFurniture,rebuildFurniture} from './primitive-properties.js';
-import {syncEquipmentMedia,disposeEquipmentMedia} from './equipment-media.js';
-import {smartScreenClick,parseChannel,cleanChannels} from './smart-media-playlist.js';
+import {syncEquipmentMedia,disposeEquipmentMedia,playEquipmentChannel,nextSpeakerChannel} from './equipment-media.js';
+import {smartScreenClick,openSmartChannel,parseChannel,cleanChannels} from './smart-media-playlist.js';
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
 import {makeOfficeStairs,rebuildOfficeStairs,updateLiftPanel,updateConveyorControls,sanitiseStairs,stairSegments} from './office-stairs.js';
 import {tickStairTransport,startLift,stopLift} from './stair-transport.js';
@@ -33,6 +33,7 @@ import {plannedRouteLength,newMovementTelemetry,sampleMovementTelemetry,missionM
 import {physicsOptions} from './physics-options.js';
 import {canBeClimbable} from './climbable-surfaces.js';
 import {RobotInventory,cleanInventory,cleanStorage,cleanWearAttachment} from './robot-inventory.js';
+import {bindRobotShortcutHelp,ROBOT_KEY_ACTIONS} from './robot-shortcut-help.js';
 import {seatPlan,takeSeat,standUp} from './robot-seating.js';
 import {canBePickable,ObjectCarry,cleanThrowSettings,editThrowSetting,pickableTarget} from './object-carry.js';
 import {combatSettings,combatForKey,combatClip,combatTimeline,COMBAT_ACTIONS} from './robot-combat.js';
@@ -137,7 +138,7 @@ export class SceneEditor{
   window.addEventListener('solvi:robot-model-ready',e=>{if(this.selected?.userData.editorId===e.detail.id)this.updateInspector();});
   this.curveDrawing=null;this.curvePreview=null;this.faceDrawing=null;this.facePreview=null;this.mediaPickerURLs=[];
   this.wallDrawing=null;this.wallPreview=null;this.wallEditTarget=null;this.wallEditOriginal=null;this.wallTextureMediaId="";this.wallSessionHistory=new EditHistory(120);this.wallStateLast=null;this.wallRestoring=false;this.wallPreviewCustom=null;this.wallPreviewTextureId='';this.wallPreviewTextureReq=0;
-  this.inventory.bind();this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();
+  this.inventory.bind();this.robotShortcuts=bindRobotShortcutHelp(()=>this.controlledRobot?.()||this.robot?.());this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();
   window.addEventListener('solvi:edit-mode-changed',e=>{
    if(!e.detail?.enabled){this.transform.detach();this.world.editorGizmoPointer=false;this.world.editorDragging=false;this.endWallDrawing?.();}
    else if(isEditMode()&&this.selected&&this.canTransform(this.selected)&&this.selected.userData.editorKind!=='robot')this.transform.attach(this.selected);
@@ -151,7 +152,7 @@ export class SceneEditor{
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Equipment',['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Equipment',['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';const head=document.createElement('div');head.className='add-fixed-head';head.append(bar);const content=document.createElement('div');content.className='add-scroll-content';menu.append(head,content);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';head.append(search);
   const openPresets=document.createElement('button');openPresets.type='button';openPresets.className='add-presets-shortcut';openPresets.textContent='Presets · saved objects';openPresets.onclick=()=>{menu.hidden=true;this.objectPresets?.open();};head.append(openPresets);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
@@ -586,7 +587,7 @@ export class SceneEditor{
   field('stairLiftLevels').addEventListener('change',()=>this.refreshLiftLevels());
   field('stairLiftStart').onclick=()=>{const o=this.wallEditTarget;if(!o||o.userData.stairs?.variant!=='lift'||!this.canEdit(o))return;const level=Number(field('stairLiftTarget').value);this.activateLiftButton({parent:o,userData:{liftButton:true,liftLevel:level}});};
   field('stairLiftStop').onclick=()=>{const o=this.wallEditTarget;if(o&&this.canEdit(o)&&stopLift(o)){window.solviRoomSocket?.send({type:'lift-motion',id:o.userData.editorId,...o.userData.stairs.lift.motion});this.queueSave(o);field('stairLiftState').textContent='Stopped';}};
-  field('wallColor').addEventListener('input',rerender); // Input, not change: update while native colour picker is open.
+  field('wallColor').addEventListener('input',()=>{if(this.wallDrawing?.kind==='stairs'||this.wallEditTarget?.userData.editorKind==='stairs')field('stairSurfaceColor').value=field('wallColor').value;rerender();}); // Input, not change: update while native colour picker is open.
   for(const id of ['stairCount','stairTread','stairRiser','wallCeilingHeight'])field(id).addEventListener('input',rerender);
   for(const id of ['wallSnap','wallGridStep','wallAngleStep'])field(id).addEventListener('change',()=>this.drawWallPreview());
   field('wallTexture').addEventListener('change',()=>{if(field('wallTexture').value==='custom'&&!this.wallTextureMediaId)field('wallUploadButton').click();});
@@ -862,7 +863,7 @@ export class SceneEditor{
    else rebuildOfficeWall(target,this.readWallOptions(target.userData.wall?.points),this.liftObjects());
    target.userData.physics=physicsOptions({mode:target.userData.stairs?.variant==='lift'?'kinematic':['escalator','walkway'].includes(target.userData.stairs?.variant)?'static':byId('wallPhysics').value});this.physics.sync(target);
    this.wallEditOriginal=null;this.recordEdit(before,this.snapshot(target));this.queueSave(target);
-   this.endWallDrawing();this.toast('Wall updated');return;
+   this.endWallDrawing();this.toast(target.userData.editorKind==='stairs'?'Stairs updated':'Wall updated');return;
   }
   const draft=this.wallDrawing;if(!draft||draft.points.length<2)return;
   let points=draft.points;
@@ -1060,21 +1061,39 @@ export class SceneEditor{
    if(!m||e.shiftKey)return;
    e.preventDefault();this.world.cameraPreset(Number(m[1]),e.ctrlKey||e.metaKey);
   });
+  // Smart displays remain interactive in edit, exploration and WebXR. The active
+  // screen surface must be the closest real object; do not click through walls.
+  this.hitSmartScreen=ray=>{
+   const hits=ray.intersectObjects(this.items,true);
+   const first=hits[0];if(!first)return null;
+   const screenHit=hits.find(h=>['equipmentScreen','lampSwitch','equipmentSpeaker'].includes(h.object.name)||h.object.userData.smartScreenBack||h.object.userData.editorKind==='media');
+   if(!screenHit||screenHit.distance>first.distance+.035)return null;
+   let object=screenHit.object;
+   while(object.parent&&!this.items.includes(object))object=object.parent;
+   return this.items.includes(object)?{object,hit:screenHit}:null;
+  };
+  this.activateSmartScreen=selection=>{
+    const obj=selection.object,hit=selection.hit;
+    if(hit.object.name==='equipmentSpeaker')return nextSpeakerChannel(obj,this.world);
+    if(hit.object.userData.lampSwitch){const before=this.snapshot(obj);const p={...obj.userData.furniture,lampOn:!obj.userData.furniture.lampOn};rebuildFurniture(obj,p);this.physics.sync(obj);this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.toast(p.lampOn?'Lamp on':'Lamp off');return true;}
+    return smartScreenClick(obj,hit);
+   };
   canvas.addEventListener('pointerup',e=>{
    if(this.transform.dragging||this.transform.axis||Math.hypot(e.clientX-startX,e.clientY-startY)>4||this.world.renderer.xr.isPresenting)return;
    this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
    this.raycaster.setFromCamera(this.pointer,this.world.camera);
+   const smart=this.hitSmartScreen(this.raycaster);if(smart&&this.activateSmartScreen(smart)){e.solviObjectPicked=true;return;}
    const hits=this.raycaster.intersectObjects(this.items,true);
    if(hits.length){let node=hits[0].object;while(node.parent&&!this.items.includes(node))node=node.parent;
     if(this.items.includes(node)){
-      if((!isEditMode()||e.altKey)&&(hits[0].object.name==='equipmentScreen'||hits[0].object.userData.smartScreenBack||node.userData.editorKind==='media')&&smartScreenClick(node,hits[0])){e.solviObjectPicked=true;return;}
+      if((hits[0].object.name==='equipmentScreen'||hits[0].object.userData.smartScreenBack||node.userData.editorKind==='media')&&smartScreenClick(node,hits[0])){e.solviObjectPicked=true;return;}
       this.select(node);e.solviObjectPicked=true;}}
    else if(this.selected?.userData.editorKind==='robot'&&this.selected?.userData.robotMode!=='idle'){
     const ground=this.raycaster.intersectObject(this.world.floor)[0];if(ground){setRobotDestination(this.selected,ground.point);this.queueSave(this.selected);}}
   },true);
   window.addEventListener('keydown',e=>{
    if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||document.activeElement?.isContentEditable)return;
-   if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.repeat&&this.controlMode==='robot'&&this.controlledRobot()&&['KeyI','KeyO','KeyJ','KeyB'].includes(e.code)){
+   if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.repeat&&this.controlMode==='robot'&&this.controlledRobot()&&Object.hasOwn(ROBOT_KEY_ACTIONS,e.code)){
     e.preventDefault();const bot=this.controlledRobot();if(!this.canEdit(bot))return;
     if(e.code==='KeyI'){
      if(bot.userData.robotCarry){if(!this.carry.drop(bot))this.toast('Could not place the held object');}
@@ -1235,7 +1254,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    holder.append(caption,control);root.append(holder);
   };
   add('variant','Type','select',FURNITURE_TYPES.map(kind=>[kind,kind==='miniComputer'?'Mini computer':kind[0].toUpperCase()+kind.slice(1)]));
-  const equipment=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella'].includes(p.variant);
+  const equipment=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant);
   if(['tv','monitor'].includes(p.variant)){
    add('diagonalInches','Diagonal (in)','number');add('aspect','Aspect','select',[['16:9','16:9'],['21:9','21:9'],['4:3','4:3']]);
    add('bezel','Bezel (m)','number');add('mount','Mount','select',[['feet','Two feet'],['center','Centre stand'],['wall','VESA / wall'],['none','None']]);
@@ -1255,6 +1274,12 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    for(const [k,label] of [['width','Width'],['depth','Length'],['height','Seat height'],['reclineDeg','Back angle °']])add(k,label,'number');
   }else if(p.variant==='beachUmbrella'){
    for(const [k,label] of [['height','Height'],['canopyRadius','Canopy radius'],['canopySegments','Canopy segments']])add(k,label,'number');
+  }else if(p.variant==='lamp'){
+   for(const [k,label] of [['width','Shade diameter'],['height','Height'],['lampIntensity','Light intensity'],['lampRange','Light range'],['shadeOpacity','Shade opacity']])add(k,label,'number');
+   add('lampShape','Shade shape','select',[['sphere','Sphere'],['cube','Cuboid'],['pyramid','Pyramid']]);add('lampType','Light source','select',[['point','Point light'],['spot','Spot light']]);add('lampOn','Initially on / light switch','checkbox');
+  }else if(p.variant==='speaker'){
+   for(const [k,label] of [['width','Width'],['depth','Depth'],['height','Height']])add(k,label,'number');
+   add('speakerStyle','Speaker type','select',[['single','Single'],['tower','Tower']]);add('powered','Powered','checkbox');
   }else if(p.variant==='backpack'){
    for(const [k,label] of [['width','Width'],['depth','Depth'],['height','Height'],['strapWidth','Strap width']])add(k,label,'number');
    add('backpackStyle','Style','select',[['box','Cuboid'],['bag','Soft bag']]);add('straps','Shoulder straps','checkbox');add('frontPocket','Front pocket','checkbox');
@@ -1291,16 +1316,17 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   add('texture','Texture','select',[['none','Plain'],['plaster','Plaster'],['concrete','Concrete'],['bricks','Bricks'],['metal','Metal'],['wood','Wood'],['marble','Marble'],['granite','Granite']]);
   if(['wood','marble','granite'].includes(p.texture)){add('textureScale','Pattern scale','number');add('textureDistortion','Distortion','number');add('textureContrast','Contrast','number');}
   add('color',isProp?'Colour':'Frame colour','color');
-  if(['chair','stool','armchair','sofa','bed','sunbed','deckChair','beachUmbrella'].includes(p.variant))add('fabricColor',p.variant==='beachUmbrella'?'Canopy colour':'Fabric colour','color');
-  if(['tv','monitor'].includes(p.variant))this.renderSmartChannelControls(root,obj,'furniture');
+  if(['chair','stool','armchair','sofa','bed','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant))add('fabricColor',p.variant==='beachUmbrella'?'Canopy colour':'Fabric colour','color');
+  if(['tv','monitor','speaker'].includes(p.variant))this.renderSmartChannelControls(root,obj,'furniture');
  }
  renderSmartChannelControls(root,obj,kind){
   const channels=cleanChannels(kind==='furniture'?obj.userData.furniture?.channels:obj.userData.media?.channels);
   const section=document.createElement('details');section.className='smart-channel-controls';section.open=true;
-  const summary=document.createElement('summary');summary.textContent='Smart screen · '+channels.length+' channels';section.append(summary);
+  const summary=document.createElement('summary');summary.textContent=(obj.userData.furniture?.variant==='speaker'?'Audio channels · ':'Smart screen · ')+channels.length+' channels';section.append(summary);
   const list=document.createElement('div');list.className='smart-channel-list';
   channels.forEach((c,i)=>{const row=document.createElement('div');row.className='smart-channel-row';const label=document.createElement('span');label.textContent=(i+1)+'. '+c.title+' · '+c.url;label.title=c.url;
-    const remove=document.createElement('button');remove.type='button';remove.textContent='';remove.dataset.uiIcon='delete';remove.title='Remove channel';remove.setAttribute('aria-label','Remove channel');remove.dataset.smartAction='remove:'+i;row.append(label,remove);list.append(row);});
+    const play=document.createElement('button');play.type='button';play.textContent='Play';play.title='Play channel '+(i+1);play.dataset.smartAction='play:'+i;row.append(label,play);
+    const remove=document.createElement('button');remove.type='button';remove.textContent='';remove.dataset.uiIcon='delete';remove.title='Remove channel';remove.setAttribute('aria-label','Remove channel');remove.dataset.smartAction='remove:'+i;row.append(remove);list.append(row);});
   section.append(list);
   const entry=document.createElement('input');entry.type='url';entry.dataset.smartInput='url';entry.placeholder='Paste HTTPS .m3u8 / .mp4 / .webm';entry.setAttribute('aria-label','New media channel URL');section.append(entry);
   const title=document.createElement('input');title.type='text';title.dataset.smartInput='title';title.placeholder='Channel name (optional)';title.maxLength=65;section.append(title);
@@ -1316,6 +1342,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    try{const clip=await navigator.clipboard.readText();const field=root.querySelector('[data-smart-input="url"]');if(field)field.value=clip;}
    catch(error){this.toast('Clipboard unavailable · paste into the URL field using Ctrl/⌘ V');}return;
   }
+  if(action.startsWith('play:')){const index=Number(action.slice(5));const done=kind==='furniture'&&value.variant==='speaker'?await playEquipmentChannel(obj,index,this.world):kind==='furniture'?await openSmartChannel(obj,index):await openSmartChannel(obj,index);
+    if(!done)this.toast('Could not play channel: verify the stream URL, CORS and codec');return;}
   if(action.startsWith('remove:'))channels.splice(Number(action.split(':')[1]),1);
   else if(action==='add'){
    const parsed=parseChannel(root.querySelector('[data-smart-input="url"]')?.value);
@@ -1792,7 +1820,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     // Remote robots integrate the same acceleration and turn-rate equations.
     for(const [id,remote] of this.remoteInput){
       const other=this.items.find(o=>o.userData.editorId===id);
-      if(!other||now-remote.received>2400){this.remoteInput.delete(id);if(other){other.userData.robotRemoteMotion=false;other.userData.robotMode='idle';other.userData.robotVelocity=0;other.userData.robotSteer=0;other.userData.robotLateral=0;}continue;}
+      if(!other||now-remote.received>3600){this.remoteInput.delete(id);if(other){other.userData.robotRemoteMotion=false;other.userData.robotMode='idle';other.userData.robotVelocity=0;other.userData.robotSteer=0;other.userData.robotLateral=0;}continue;}
       const state={x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0,steer:other.userData.robotSteer||0,lateral:other.userData.robotLateral||0};
       const remoteClimbing=stepLadderRobot(other,this.items,remote.f,dt,{upperSurface:(ladder,bot,target)=>this.physics.landAtLadderTop(ladder,bot,target)});
       const next=remoteClimbing?{...state,velocity:0,steer:0,lateral:0}:(other.userData.robotJumpActive||other.userData.physicsAirborne)&&other.userData.robotAirPlan?airStep(state,other.userData.robotAirPlan,dt):stepRobotMotion(state,remote,dt);

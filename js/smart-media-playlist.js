@@ -11,7 +11,7 @@ export function safeChannelUrl(raw){
  try{const u=new URL(raw);return u.protocol==='https:'&&u.username===''&&u.password===''&&/\.(?:m3u8|mp4|webm)(?:$|[?#])/i.test(u.pathname+u.search+u.hash)&&raw.length<=1500;}catch{return false;}
 }
 export function parseChannel(text){const url=String(text||'').trim();if(!safeChannelUrl(url))return null;const u=new URL(url);return {url,title:u.hostname.slice(0,55)};}
-async function hlsLibrary(){
+export async function hlsLibrary(){
  if(globalThis.Hls?.isSupported?.())return globalThis.Hls;
  if(!hlsPromise)hlsPromise=new Promise((resolve,reject)=>{
   const script=document.createElement('script');script.async=true;script.src='./vendor/hls/hls.min.js';
@@ -35,7 +35,7 @@ function drawMenu(s){
  const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;return tex;
 }
 function showMaterial(s,map){const mat=Array.isArray(s.screen?.material)?s.screen.material[4]:s.screen?.material;if(mat){mat.map=map;mat.color?.set('#ffffff');mat.needsUpdate=true;}}
-export function disposeSmartScreen(root){const s=states.get(root);if(!s)return;states.delete(root);disposeSource(s);const material=Array.isArray(s.screen.material)?s.screen.material[4]:s.screen.material;if(material&&(material.map===s.menuTexture||material.map===oldVideoTexture)){material.map=null;material.needsUpdate=true;}s.menuTexture.dispose();if(s.backMesh){s.backMesh.removeFromParent();s.backMesh.geometry.dispose();s.backMesh.material.map?.dispose();s.backMesh.material.dispose();}}
+export function disposeSmartScreen(root){const s=states.get(root);if(!s)return;states.delete(root);disposeSource(s);const material=Array.isArray(s.screen.material)?s.screen.material[4]:s.screen.material;if(material){material.map=null;material.needsUpdate=true;}s.menuTexture.dispose();if(s.backMesh){s.backMesh.removeFromParent();s.backMesh.geometry.dispose();s.backMesh.material.map?.dispose();s.backMesh.material.dispose();}}
 export function syncSmartScreen(root,screen,channels,showEmpty=false){
  const list=cleanChannels(channels);const signature=JSON.stringify(list),prior=states.get(root);
  if(prior?.screen===screen&&prior.signature===signature)return Boolean(prior);
@@ -64,7 +64,7 @@ export async function openSmartChannel(root,index){
   showMaterial(s,s.videoTexture);s.mode='video';
   v.addEventListener('error',()=>{if(states.get(root)===s)console.warn('Smart screen playback failed (codec or CORS)',channel.url,v.error);});
   await v.play();return true;
- }catch(e){console.warn('Smart screen stream unavailable (check CORS and browser codecs):',channel.url,e);if(states.get(root)===s)backToSmartMenu(root);return false;}
+ }catch(e){console.warn('Smart screen stream unavailable (check CORS and browser codecs):',channel.url,e);if(states.get(root)===s){backToSmartMenu(root);console.warn('Smart screen: selectable channel remains available for retry',channel.title);}return false;}
 }
 export function backToSmartMenu(root){const s=states.get(root);if(!s)return false;disposeSource(s);s.mode='menu';s.backMesh.visible=false;showMaterial(s,s.menuTexture);return true;}
 export function smartScreenClick(root,hit){const s=states.get(root);if(!s)return false;

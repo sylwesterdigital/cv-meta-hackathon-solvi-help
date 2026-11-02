@@ -2303,7 +2303,7 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 #objectInventoryOptions select{height:30px!important;width:100%!important;min-width:0!important;padding:2px 22px 2px 7px!important;font-size:11px!important;white-space:nowrap;text-overflow:ellipsis;color:#f0f6ff!important;background:#15283b!important}
 @media(max-width:420px){#propertiesPanel #physicsObjectControls #objectPhysicsToggles{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 
-/* v0.2.156: compact wearable calibration and smart media playlists. */
+/* v0.2.157: compact wearable calibration and smart media playlists. */
 #propertiesPanel .wearable-attachment-details{margin:5px 0;border:1px solid #33485f;border-radius:7px;padding:4px 6px}
 #propertiesPanel .wearable-attachment-details[hidden]{display:none!important}
 #propertiesPanel .wearable-attachment-details summary{font-size:11px;cursor:pointer;color:var(--ui-fg)}
@@ -2321,3 +2321,16 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 .smart-channel-row button{flex:0 0 24px;min-height:24px;padding:2px 5px}
 .smart-channel-actions{display:flex;gap:5px}
 .smart-channel-actions button{font-size:11px;min-height:26px;padding:3px 7px}
+
+/* v0.2.157 — self-contained shortcuts help and smaller preset gallery cards */
+.robot-shortcuts-backdrop{position:fixed;inset:0;background:#050c14bc;z-index:99999;display:flex;justify-content:center;align-items:center;padding:20px}
+.robot-shortcuts-backdrop[hidden]{display:none}
+.robot-shortcuts-dialog{max-width:620px;width:min(100%,620px);max-height:85vh;overflow:auto;background:#1c222b;color:#eff5ff;border:1px solid #556c80;border-radius:14px;box-shadow:0 18px 70px #0009;padding:18px}
+.robot-shortcuts-head{position:sticky;top:-18px;background:#1c222b;display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;border-bottom:1px solid #405062;font-size:18px}
+.robot-shortcuts-head button{border:1px solid #5f778e;border-radius:8px;background:#293542;color:#fff;font-size:25px;line-height:28px;width:35px;height:35px;cursor:pointer}
+.robot-shortcuts-table{width:100%;border-collapse:collapse;font-size:13px}.robot-shortcuts-table td{padding:6px 9px;border-bottom:1px solid #ffffff13}
+.robot-shortcuts-table td:first-child{width:36%;white-space:nowrap}.robot-shortcuts-section th{text-align:left;color:#9cbad3;font-size:11px;text-transform:uppercase;letter-spacing:.07em;padding:14px 8px 4px}
+.robot-shortcuts-table kbd{font:600 12px system-ui;padding:3px 8px;border-radius:6px;background:#304154;border:1px solid #657b94}
+.object-preset-image{aspect-ratio:1.4;border-radius:10px}.object-preset-image img{object-fit:contain;object-position:center}
+.object-preset-card{background:#202b36;padding:8px;border-radius:10px;gap:7px}
+.object-preset-actions{justify-content:end}.object-preset-actions button{flex:0 0 auto;min-width:80px}

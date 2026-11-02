@@ -61,7 +61,8 @@ const furniturePreset={
  tv:{width:1.21,depth:.12,height:.73,legStyle:'none'},monitor:{width:.61,depth:.13,height:.42,legStyle:'none'},
  miniComputer:{width:.2,depth:.2,height:.08,legStyle:'none'},bin:{width:.35,depth:.35,height:.5,legStyle:'none'},backpack:{width:.35,depth:.2,height:.45,legStyle:'none'},
  sunbed:{width:.8,depth:1.95,height:.31,legStyle:'none'},deckChair:{width:.64,depth:1.72,height:.42,legStyle:'none'},
- beachUmbrella:{width:2.4,depth:2.4,height:2.15,legStyle:'none'}
+ beachUmbrella:{width:2.4,depth:2.4,height:2.15,legStyle:'none'},
+ lamp:{width:.45,depth:.45,height:1.6,legStyle:'none'},speaker:{width:.33,depth:.27,height:.65,legStyle:'none'}
 };
 export function sanitiseFurniture(raw={}){
  const variant=FURNITURE_TYPES.includes(raw.variant)?raw.variant:'table';
@@ -80,6 +81,8 @@ export function sanitiseFurniture(raw={}){
  result.powered=raw.powered!==false;result.curved=raw.curved===true;result.binShape=raw.binShape==='square'?'square':'round';
  result.lid=raw.lid===true;result.straps=raw.straps!==false;result.frontPocket=raw.frontPocket===true;
  result.backpackStyle=raw.backpackStyle==='bag'?'bag':'box';
+ result.lampShape=['sphere','cube','pyramid'].includes(raw.lampShape)?raw.lampShape:'sphere';result.lampType=raw.lampType==='spot'?'spot':'point';result.lampOn=raw.lampOn!==false;
+ result.speakerStyle=['single','tower'].includes(raw.speakerStyle)?raw.speakerStyle:'single';
  result.channels=Array.isArray(raw.channels)?raw.channels.slice(0,12).filter(c=>c&&typeof c==='object'&&typeof c.url==='string'&&/^https:\/\//.test(c.url)&&/\.(?:m3u8|mp4|webm)(?:$|[?#])/i.test(c.url)).map(c=>({title:String(c.title||'Channel').slice(0,65),url:c.url.slice(0,1500)})):[];
  result.mediaId=typeof raw.mediaId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.mediaId)?raw.mediaId:'';
  result.pairedDisplayId=typeof raw.pairedDisplayId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.pairedDisplayId)?raw.pairedDisplayId:'';
@@ -95,6 +98,7 @@ export function rebuildFurniture(group,raw={}){
  if(p.texture!=='none'){wood.map=wallPresetTexture(p.texture==='metal'?'concrete':p.texture,{scale:p.textureScale,distortion:p.textureDistortion,contrast:p.textureContrast});if(p.texture==='metal'){wood.metalness=.6;wood.roughness=.35;}}
  const fabric=new THREE.MeshStandardMaterial({color:p.fabricColor,roughness:.9});
  const parts=[];
+ const partsAddLight=light=>parts.push(light);
  const add=(geometry,x,y,z,mat=wood)=>{const part=new THREE.Mesh(geometry,mat);part.position.set(x,y,z);part.userData.furniturePart=true;part.castShadow=true;part.receiveShadow=true;parts.push(part);return part;};
  const box=(w,h,d,x,y,z,mat)=>add(new THREE.BoxGeometry(w,h,d),x,y,z,mat);
  const cylinder=(radius,height,x,y,z,mat=wood,sides=16)=>add(new THREE.CylinderGeometry(radius,radius,height,sides),x,y,z,mat);
@@ -138,7 +142,7 @@ export function rebuildFurniture(group,raw={}){
   box(p.width-2*t,p.height-2*t,t,0,p.height/2,p.depth/2-t/2);
   for(let i=1;i<=p.shelves;i++)box(p.width-2*t,t,p.depth-t,0,t+(p.height-2*t)*i/(p.shelves+1),-t/2);
  }else if(EQUIPMENT_TYPES.includes(p.variant)){
-  buildEquipment(p,{add,box,cylinder,wood,fabric});
+  buildEquipment(p,{add,box,cylinder,wood,fabric,partsAddLight});
  }else if(p.variant==='box'){
   const t=Math.min(p.wallThickness,p.width*.24,p.height*.24,p.depth*.24);
   box(p.width,t,p.depth,0,t/2,0);

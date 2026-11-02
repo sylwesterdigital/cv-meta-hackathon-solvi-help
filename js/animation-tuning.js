@@ -71,7 +71,7 @@ export function easedStepOffset(previousOffset,rise,grounded,jumping,dt){
 export function continuousGaitMode(data,mode,now){
  const moving=['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode);
  if(!moving){data.robotGaitStoppedAt=null;return mode;}
- if(Number(data.robotActualSpeed||0)>=.06||data.robotContactAction){data.robotGaitStoppedAt=null;return mode;}
+ if(Number(data.robotActualSpeed||0)>=.06||data.robotRemoteMotion||data.robotContactAction){data.robotGaitStoppedAt=null;return mode;}
  if(!Number.isFinite(data.robotGaitStoppedAt))data.robotGaitStoppedAt=now;
  // Keep only an already playing gait; never start walking against a wall.
  const playing=data.robotPlaying;

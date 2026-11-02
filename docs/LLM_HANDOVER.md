@@ -1,6 +1,6 @@
-# SOLVI.help — Master LLM Handover v0.2.156
+# SOLVI.help — Master LLM Handover v0.2.157
 
-**Release:** v0.2.156 · Smart media playlists, lifestyle procedural objects, preset framing, wearable calibration.
+**Release:** v0.2.157 · Smart media playlists, lifestyle procedural objects, preset framing, wearable calibration.
 
 **Local validation:** 701/701 JavaScript tests passed, backend Python AST and Nginx tests passed, realm archives passed, JavaScript syntax and installer shell syntax passed. Watcher-based npm dependency preparation, actual browser/WebGL/Rapier, external HLS CORS, webcam and multi-client rendering have not been verified here. Original bundled GLBs preserved; no user model edits.
 
@@ -14,7 +14,7 @@
 
 ---
 
-## v0.2.156 — Smart HLS channel galleries, preset thumbnail framing, wearable calibration and outdoor procedural furniture (2 November 2026)
+## v0.2.157 — Smart HLS channel galleries, preset thumbnail framing, wearable calibration and outdoor procedural furniture (2 November 2026)
 
 - TV/monitor screens accept up to 12 named HTTPS .m3u8/.mp4/.webm URL channels. The inspector offers direct Paste from clipboard with permission fallback. Each screen boots to an in-world channel grid; clicking a tile starts playback, and a return hotspot returns to the menu. Uses native HLS or vendored Hls.js; muted autoplay is requested only after interaction. Browser codecs, remote CORS, signed URL lifetimes and XR clicks are not guaranteed. No backend proxy for arbitrary URLs. Existing account-uploaded media-ID support remains.
 - Video/image media-frame objects reuse the channel gallery when channels are configured. Blank video frames are valid scene objects without an uploaded media ID; they can be configured with streams. Existing uploaded media references remain checked server-side.
@@ -39,7 +39,7 @@
 - **Inventory UX:** compact 3-across Pickable, Follow hand rotation and Consumable options; clearly labelled item category and size. Newly added procedural backpacks are tagged `inventory.category=backpack`; the existing front/back rig attachment and inventory persistence are reused, including for tagged imported model objects. Per-model fine fitting offsets are not added in this version.
 - **Safety:** sanitiser and server enforce finite geometry resource bounds, enumerated variants and bounded media IDs. Generated Python bytecode is excluded from the release. Original bundled GLBs are unchanged.
 - **Verification:** JavaScript syntax and focused static regression checks, Python validator and Nginx/installer syntax, checksums and archive structure. Full npm suite and real browser/Rapier/WebXR/multiplayer verification remain unverified in this execution environment because npm dependencies could not be installed.
-- **Next roadmap:** v0.2.156 sunbeds/beach umbrella and recline; v0.2.157 global deterministic 2D Planner; v0.2.158+ opt-in AI floor-plan interpretation and layout generation. These are not included in v0.2.155.
+- **Next roadmap:** v0.2.157 sunbeds/beach umbrella and recline; v0.2.157 global deterministic 2D Planner; v0.2.158+ opt-in AI floor-plan interpretation and layout generation. These are not included in v0.2.155.
 
 ## v0.2.154 — Edge-aligned seating, hand-drop and scene-backed inventory (2 November 2026)
 

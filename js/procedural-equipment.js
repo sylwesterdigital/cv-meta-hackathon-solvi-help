@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 // Procedural assets share the existing furniture scene, preset and collider paths.
-export const EQUIPMENT_TYPES=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella'];
-export const EQUIPMENT_NUMERIC={diagonalInches:[27,6,120],bezel:[.015,.003,.12],standHeight:[.17,0,1.2],curvature:[0,0,1],strapWidth:[.04,.01,.15],rimWidth:[.018,.005,.1],reclineDeg:[30,0,85],canopyRadius:[1.35,.4,4],canopySegments:[8,3,16]};
+export const EQUIPMENT_TYPES=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker'];
+export const EQUIPMENT_NUMERIC={diagonalInches:[27,6,120],bezel:[.015,.003,.12],standHeight:[.17,0,1.2],curvature:[0,0,1],strapWidth:[.04,.01,.15],rimWidth:[.018,.005,.1],reclineDeg:[30,0,85],canopyRadius:[1.35,.4,4],canopySegments:[8,3,16],lampIntensity:[2,0,20],lampRange:[8,.5,80],shadeOpacity:[.55,.05,1]};
 export function displayDimensions(p){const [a,b]=({'16:9':[16,9],'21:9':[21,9],'4:3':[4,3]})[p.aspect]||[16,9];const diagonal=p.diagonalInches*.0254;return {width:diagonal*a/Math.hypot(a,b),height:diagonal*b/Math.hypot(a,b)};}
-export function buildEquipment(p,{add,box,cylinder,wood,fabric}){
+export function buildEquipment(p,{add,box,cylinder,wood,fabric,partsAddLight}){
  const dark=new THREE.MeshStandardMaterial({color:'#17202a',roughness:.5,metalness:.2});
  const indicator=new THREE.MeshBasicMaterial({color:p.fabricColor});
  if(p.variant==='tv'||p.variant==='monitor'){
@@ -53,6 +53,26 @@ export function buildEquipment(p,{add,box,cylinder,wood,fabric}){
   // Open-sided, shallow pyramidal canopy. Cone is visual; pole and base have colliders.
   const shape=add(canopy,0,h-.08,0,fabric);shape.userData.furniturePart=false;
   for(let i=0;i<seg;i++){const a=i*2*Math.PI/seg;const rim=add(new THREE.SphereGeometry(.018,6,4),radius*Math.cos(a),h-radius*.23,radius*Math.sin(a),wood);rim.userData.furniturePart=false;}
+ }else if(p.variant==='lamp'){
+  const h=p.height,r=Math.max(.12,p.width/2);cylinder(.025,h*.75,0,h*.375,0,dark,20);cylinder(Math.min(.3,r*.7),.06,0,.03,0,dark,24);
+  let geo;
+  if(p.lampShape==='cube')geo=new THREE.BoxGeometry(r*1.6,r*1.4,r*1.6);
+  else if(p.lampShape==='pyramid')geo=new THREE.ConeGeometry(r,r*1.5,4);
+  else geo=new THREE.SphereGeometry(r,20,12);
+  const shade=new THREE.MeshStandardMaterial({color:p.fabricColor,transparent:true,opacity:p.shadeOpacity,side:THREE.DoubleSide,roughness:.7,depthWrite:false,emissive:p.lampOn?p.fabricColor:'#000000',emissiveIntensity:p.lampOn?.15:0});
+  const cap=add(geo,0,h-.12,0,shade);cap.name='lampShade';
+  const switchMesh=box(.11,.065,.07,0,.16,r*.12,dark);switchMesh.name='lampSwitch';switchMesh.userData.lampSwitch=true;
+  const light=p.lampType==='spot'?new THREE.SpotLight(p.fabricColor,p.lampOn?p.lampIntensity:0,p.lampRange,Math.PI/3,.45,1.6):new THREE.PointLight(p.fabricColor,p.lampOn?p.lampIntensity:0,p.lampRange,1.6);
+  light.name='lampLight';light.position.set(0,h-.12,0);light.userData.furniturePart=false;partsAddLight(light);if(light.isSpotLight){light.target.position.set(0,0,0);light.target.userData.furniturePart=false;partsAddLight(light.target);}
+ }else if(p.variant==='speaker'){
+  const w=p.width,d=p.depth,h=p.height;
+  const chassis=box(w,h,d,0,h/2,0,dark);chassis.name='equipmentSpeaker';
+  for(const size of [Math.min(w*.33,h*.26),Math.min(w*.18,h*.15)]){
+   const y=size===Math.min(w*.33,h*.26)?h*.35:h*.73;
+   const cone=add(new THREE.CylinderGeometry(size*.85,size,.018,20),0,y,d/2+.015,wood);
+   cone.rotation.x=Math.PI/2;cone.name='speakerCone';
+  }
+  const led=add(new THREE.SphereGeometry(.012,8,6),w*.35,h*.93,d/2+.025,p.powered?indicator:dark);led.name='speakerStatus';
  }else if(p.variant==='backpack'){
   const {width:w,height:h,depth:d}=p;
   box(w,h,d,0,h/2,0,wood);

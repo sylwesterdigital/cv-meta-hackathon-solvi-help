@@ -110,8 +110,8 @@ test('source wires I/O through exploration mode, captures physics and validates 
  const server=fs.readFileSync(new URL('../backend/server.py',import.meta.url),'utf8');
  const live=fs.readFileSync(new URL('../js/live.js',import.meta.url),'utf8');
  const archive=fs.readFileSync(new URL('../backend/realm_archives.py',import.meta.url),'utf8');
- assert.match(editor,/\['KeyI','KeyO','KeyJ','KeyB'\]/);
- assert.ok(editor.indexOf("['KeyI','KeyO','KeyJ','KeyB']")<editor.indexOf('if(!isEditMode()&&(cmd'), 'I/O must work in Exploration');
+ assert.match(editor,/Object\.hasOwn\(ROBOT_KEY_ACTIONS,e\.code\)/);
+ assert.match(fs.readFileSync(new URL('../js/robot-shortcut-help.js',import.meta.url),'utf8'),/KeyI:.*KeyO:.*KeyJ:.*KeyB:/);
  assert.match(editor,/pickable:canBePickable\(/);
  assert.match(editor,/carryOrigin\?\.position\|\|o\.position/);
  assert.match(editor,/duplicate\.userData\.pickable=entry\.pickable/);
