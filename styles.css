@@ -2130,3 +2130,11 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 #primitiveProperties .primitive-properties-fields{padding:3px!important;gap:3px 5px!important;}
 #primitiveProperties .primitive-properties-fields :is(input[type=number],select){min-height:27px!important;height:27px!important;font-size:12px!important;}
 #primitiveProperties .primitive-properties-fields input[type=range]{height:16px!important;}
+
+/* Compact per-avatar hand action calibration; a temporary test sphere does not enter the saved realm. */
+#propertiesPanel #robotThrowSettings{margin:3px 0!important;padding:2px 0!important;border:0!important;border-top:1px solid color-mix(in srgb,var(--ui-fg) 20%,transparent)!important}
+#propertiesPanel #robotThrowSettings>summary{padding:4px 2px!important;font-size:11px!important;font-weight:600!important;cursor:pointer}
+#propertiesPanel #robotThrowSettings .stair-fold-body{display:grid!important;gap:4px!important;padding:3px 0!important}
+#propertiesPanel #robotThrowSettings .wall-compact-fields{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:4px 6px!important;align-items:end!important}
+#propertiesPanel #robotThrowSettings .wall-compact-fields>label{display:flex!important;flex-direction:column!important;gap:2px!important;min-width:0!important;font-size:10px!important;line-height:1.2!important}
+#propertiesPanel #robotThrowSettings input[type=number],#propertiesPanel #robotTestThrowSphere{width:100%!important;min-width:0!important;max-width:100%!important;box-sizing:border-box!important;height:27px!important;min-height:27px!important;padding:2px 5px!important;font-size:11px!important}

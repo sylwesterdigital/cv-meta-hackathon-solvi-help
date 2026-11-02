@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.145',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.146',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3304,9 +3304,9 @@ def valid_robot_animation_speed(settings):
         for value in settings.values())
 
 def valid_robot_throw_settings(settings):
-    if not isinstance(settings,dict) or set(settings)!={'angle','height','direction','delay'}:return False
-    for key,low,high in (('angle',-20,65),('height',-.35,.65),('direction',-90,90),('delay',5,95)):
-        value=settings[key]
+    if not isinstance(settings,dict) or set(settings) not in ({'angle','height','direction','delay'},{'angle','height','direction','delay','pickupDelay'}):return False
+    for key,low,high in (('angle',-20,65),('height',-.35,.65),('direction',-90,90),('delay',5,95),('pickupDelay',5,95)):
+        value=settings.get(key,55)
         if isinstance(value,bool) or not isinstance(value,(float,int)) or not math.isfinite(value) or not low<=value<=high:return False
     return True
 

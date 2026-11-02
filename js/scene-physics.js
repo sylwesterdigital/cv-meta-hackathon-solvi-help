@@ -647,12 +647,12 @@ export class ScenePhysics{
    if(this.editor.selected===object&&this.editor.world.editorDragging)continue;
    const p=body.translation(),q=body.rotation();object.position.set(p.x,p.y,p.z);object.quaternion.set(q.x,q.y,q.z,q.w);
    const awake=!body.isSleeping();const lastActive=this.lastActivity.get(id)||false;
-   if(awake&&now-(this.lastBroadcast.get(id)||0)>220){
+   if(!object.userData.temporaryCarryTest&&awake&&now-(this.lastBroadcast.get(id)||0)>220){
     this.lastBroadcast.set(id,now);
     window.solviRoomSocket?.send({type:'physics-state',id,x:+p.x.toFixed(3),y:+p.y.toFixed(3),z:+p.z.toFixed(3),q:[q.x,q.y,q.z,q.w].map(v=>+v.toFixed(4)),seq:(this.localSequence.get(id)||0)+1});
     this.localSequence.set(id,(this.localSequence.get(id)||0)+1);
    }
-   if((awake&&now-(this.lastSave.get(id)||0)>3000)||(!awake&&lastActive)){
+   if(!object.userData.temporaryCarryTest&&((awake&&now-(this.lastSave.get(id)||0)>3000)||(!awake&&lastActive))){
     this.lastSave.set(id,now);this.editor.queueSave(object);
    }
    this.lastActivity.set(id,awake);

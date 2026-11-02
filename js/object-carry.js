@@ -9,13 +9,13 @@ export function pickUpClip(names=[],name){
  return null;
 }
 // Avatar-specific defaults; release delay is a percentage of the authored Throw clip.
-export const DEFAULT_THROW_SETTINGS=Object.freeze({angle:12,height:0,direction:0,delay:55});
+export const DEFAULT_THROW_SETTINGS=Object.freeze({angle:12,height:0,direction:0,delay:55,pickupDelay:55});
 export function cleanThrowSettings(raw={}){
  const bound=(key,min,max)=>{
   const value=Number(raw?.[key]);
   return Number.isFinite(value)&&value>=min&&value<=max?value:DEFAULT_THROW_SETTINGS[key];
  };
- return {angle:bound('angle',-20,65),height:bound('height',-.35,.65),direction:bound('direction',-90,90),delay:bound('delay',5,95)};
+ return {angle:bound('angle',-20,65),height:bound('height',-.35,.65),direction:bound('direction',-90,90),delay:bound('delay',5,95),pickupDelay:bound('pickupDelay',5,95)};
 }
 function handBoneScore(name){
  const n=String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -49,7 +49,7 @@ export function pickableTarget(robot,items,{maxReach=1.65}={}){
  const forward=new THREE.Vector3(Math.sin(robot.rotation.y),0,Math.cos(robot.rotation.y));
  let best=null,bestScore=Infinity;
  for(const object of items){
-  if(!object||object===robot||!canBePickable(object.userData?.editorKind)||object.userData.pickable!==true||object.userData.carriedBy||(object.userData.editorKind==='model'&&object.userData.modelReady!==true))continue;
+  if(!object||object===robot||object.userData?.temporaryCarryTest||!canBePickable(object.userData?.editorKind)||object.userData.pickable!==true||object.userData.carriedBy||(object.userData.editorKind==='model'&&object.userData.modelReady!==true))continue;
   const bounds=new THREE.Box3().setFromObject(object);if(bounds.isEmpty())continue;
   const size=bounds.getSize(new THREE.Vector3());
   if(Math.max(size.x,size.y,size.z)>1.55||Math.max(size.x,size.y,size.z)<.03)continue;
@@ -91,10 +91,38 @@ export class ObjectCarry{
   const clip=pickUpClip(robot.userData.robotAvailableActions,'liftCarry');
   const duration=Math.max(.38,Math.min(1.45,robot.userData.robotAnimator?.clipDuration(clip)||.65));
   target.userData.carryOrigin={position:target.position.clone(),rotation:target.rotation?.clone?.()};
-  robot.userData.robotCarry={objectId:target.userData.editorId,stage:'pickup',elapsed:0,duration,attached:false,remote};
+  const settings=cleanThrowSettings(robot.userData.robotThrowSettings);
+  robot.userData.robotCarry={objectId:target.userData.editorId,stage:'pickup',elapsed:0,duration,attachAt:duration*settings.pickupDelay/100,attached:false,remote};
   robot.userData.robotPlaying=null;
   if(!remote)window.solviRoomSocket?.send({type:'object-carry',action:'pickup',id:robot.userData.editorId,target:target.userData.editorId});
   return true;
+ }
+ // Local-only, disposable snowball for calibrating grip and Throw without
+ // finding an existing Pickable object. It is never saved or broadcast.
+ testSphere(robot){
+  if(!this.eligible(robot))return false;
+  if(!this.editor.physics.enabled){this.editor.toast?.('Enable room Physics to test a throw');return false;}
+  const sphere=new THREE.Mesh(new THREE.SphereGeometry(.55,16,12),new THREE.MeshStandardMaterial({color:'#c8e9ff',roughness:.68}));
+  sphere.name='Temporary throw sphere';sphere.scale.setScalar(.18);
+  sphere.raycast=()=>{}; // Test helper cannot be selected or transformed.
+  sphere.userData={editorKind:'sphere',editorId:`carry-test-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`,pickable:true,temporaryCarryTest:true,physics:{mode:'dynamic'},ownerId:window.solviAPI?.auth()?.profile?.id||null};
+  sphere.position.copy(gripPoint(robot));
+  this.editor.items.push(sphere);
+  this.editor.world.scene.add(sphere);
+  const state={objectId:sphere.userData.editorId,stage:'hold',elapsed:0,duration:0,attached:false,remote:false,test:true};
+  robot.userData.robotCarry=state;
+  if(!this.attach(robot,sphere,state)){
+   robot.userData.robotCarry=null;this.disposeTestSphere(sphere);return false;
+  }
+  robot.userData.robotPlaying=null;
+  return true;
+ }
+ disposeTestSphere(object){
+  this.editor.physics.remove(object.userData.editorId);
+  const index=this.editor.items.indexOf(object);
+  if(index>=0)this.editor.items.splice(index,1);
+  object.parent?.remove(object);
+  object.geometry?.dispose?.();object.material?.dispose?.();
  }
  throw(robot,remote=false,remotePosition=null){
   const state=robot?.userData?.robotCarry;
@@ -165,17 +193,19 @@ export class ObjectCarry{
     const factor=Number.isFinite(mass)&&mass>0?Math.min(100,mass):1;
     body.applyImpulse?.({x:impulse.x*factor,y:impulse.y*factor,z:impulse.z*factor},true);
    }
-   this.editor.queueSave(obj);
-   window.solviRoomSocket?.send({type:'object-carry',action:'throw',id:robot.userData.editorId,target:obj.userData.editorId,x:obj.position.x,y:obj.position.y,z:obj.position.z});
+   if(!obj.userData.temporaryCarryTest){
+    this.editor.queueSave(obj);
+    window.solviRoomSocket?.send({type:'object-carry',action:'throw',id:robot.userData.editorId,target:obj.userData.editorId,x:obj.position.x,y:obj.position.y,z:obj.position.z});
+   }
   }
  }
  tick(dt){
   for(const robot of this.editor.items){const state=robot.userData?.robotCarry;if(!state)continue;
    const obj=this.editor.items.find(o=>o.userData.editorId===state.objectId);
-   if(!obj||!robot.parent){if(obj)delete obj.userData.carriedBy;robot.userData.robotCarry=null;continue;}
+   if(!obj||!robot.parent){if(obj?.userData.temporaryCarryTest)this.disposeTestSphere(obj);else if(obj)delete obj.userData.carriedBy;robot.userData.robotCarry=null;continue;}
    state.elapsed+=Math.min(Math.max(Number(dt)||0,0),.12);
    if(state.stage==='pickup'){
-    if(!state.attached&&state.elapsed>=state.duration*.5)this.attach(robot,obj,state);
+    if(!state.attached&&state.elapsed>=(state.attachAt??state.duration*.5))this.attach(robot,obj,state);
     if(state.elapsed>=state.duration){if(!state.attached)this.attach(robot,obj,state);state.stage='hold';robot.userData.robotPlaying=null;}
    }else if(state.stage==='throw'){
     if(!state.released&&state.elapsed>=state.releaseAt)this.release(robot,obj,state,state.remote);
@@ -186,11 +216,18 @@ export class ObjectCarry{
    }
    if(state.attached&&!state.released)this.updateGrip(robot,obj,state);
   }
+  // Temporary test spheres fall under real physics and are removed after a short trial.
+  for(const obj of [...this.editor.items]){
+   if(!obj.userData?.temporaryCarryTest||obj.userData.carriedBy)continue;
+   obj.userData.testLife=(obj.userData.testLife||0)+Math.min(Math.max(Number(dt)||0,0),.12);
+   if(obj.userData.testLife>=12)this.disposeTestSphere(obj);
+  }
   // Do not leave an invisible collider after a robot is removed or the carrier is lost.
-  for(const obj of this.editor.items){
+  for(const obj of [...this.editor.items]){
    if(!obj.userData?.carriedBy)continue;
    const actor=this.editor.items.find(bot=>bot.userData?.editorId===obj.userData.carriedBy);
    if(actor?.userData?.robotCarry?.objectId===obj.userData.editorId)continue;
+   if(obj.userData.temporaryCarryTest){this.disposeTestSphere(obj);continue;}
    delete obj.userData.carriedBy;
    delete obj.userData.carryOrigin;
    obj.userData.physics={...obj.userData.physics,mode:'dynamic'};

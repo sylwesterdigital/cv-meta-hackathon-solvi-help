@@ -1,3 +1,11 @@
+## v0.2.146 — Configurable pickup timing and temporary hand test sphere (2 November 2026)
+
+- **Pickup delay (%):** A compact per-avatar field in **Pickup & Throw · right hand** controls when the object attaches during the one-shot Lifting clip (5–95%, default 55%). The hand reaches for the floor object first; after grasp, Idle/Walk/Run resumes normally. The existing Throw release delay (%) remains separate.
+- **Test sphere:** Press **Test sphere** in the robot's Pickup & Throw panel to attach a small local-only sphere directly to its metacarpal/palm. It does not need a floor object or the I key. Press **O** while controlling the avatar to test the existing Throw animation timing, angle, hand-height offset and direction, with Rapier dynamic collision and gentle impulse. Requires room Physics enabled. Test sphere vanishes 12 seconds after release, or when the scene changes.
+- **Privacy/persistence:** Test spheres are transient and never enter scene saves, object lists, avatar settings, realm exports, carry events or physics-state network broadcasts. The regular Pickable-object path continues to replicate to other users.
+- **Compatibility:** Existing saved `throwSettings` with the four original fields remain valid server-side, and the new fifth `pickupDelay` is used on updated saves. No GLB or backend schema migration required.
+- **Validation:** 637/637 JavaScript tests after three new focused runtime checks; syntax, Nginx and realm archive checks. Local Flask integration/real Three.js GPU rendering unverified.
+
 ## v0.2.145 — Palm/metacarpal pickup and timed configurable throws (2 November 2026)
 
 - **Right-hand grip:** Prefer the authored middle metacarpal or palm bone over wrist; fall back to proximal fingers, then a hand bone or a rig-independent palm position. Snowballs and other Pickable objects follow the palm area rather than the wrist.

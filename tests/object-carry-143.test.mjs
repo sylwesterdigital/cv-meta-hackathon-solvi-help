@@ -195,8 +195,8 @@ test('Lifting, like Throw, is a non-looping authored animation',()=>{
 });
 
 test('throw tuning clamps invalid settings and controls angle/direction/height/delay',()=>{
- assert.deepEqual(exports.cleanThrowSettings(),{angle:12,height:0,direction:0,delay:55});
- assert.deepEqual(exports.cleanThrowSettings({angle:NaN,height:Infinity,direction:180,delay:-4}),{angle:12,height:0,direction:0,delay:55});
+ assert.deepEqual(exports.cleanThrowSettings(),{angle:12,height:0,direction:0,delay:55,pickupDelay:55});
+ assert.deepEqual(exports.cleanThrowSettings({angle:NaN,height:Infinity,direction:180,delay:-4}),{angle:12,height:0,direction:0,delay:55,pickupDelay:55});
  const f=fixture();f.robot.userData.robotThrowSettings={angle:35,height:.3,direction:90,delay:80};
  f.carry.pickup(f.robot);for(let i=0;i<9;i++)f.carry.tick(.1);
  f.carry.throw(f.robot);const state=f.robot.userData.robotCarry;
@@ -234,4 +234,56 @@ test('robot inspector has compact throw tuning saved per avatar and backend + ar
  assert.match(backend,/def valid_robot_throw_settings\(settings\):/);
  assert.match(backend,/Invalid throw settings/);
  assert.match(archive,/'throwSettings'/);
+});
+
+
+test('Lifting attaches at configurable pickup delay, not fixed halfway',()=>{
+ const f=fixture();f.robot.userData.robotThrowSettings={pickupDelay:80};
+ f.carry.pickup(f.robot);
+ assert.equal(f.robot.userData.robotCarry.attachAt,.62*.8);
+ for(let i=0;i<4;i++)f.carry.tick(.1);
+ assert.equal(f.item.userData.carriedBy,undefined,'reaching hand must not grasp before 80% of Lifting');
+ f.carry.tick(.1);
+ assert.equal(f.item.userData.carriedBy,f.robot.userData.editorId,'hand closes at configured pickup point');
+ for(let i=0;i<2;i++)f.carry.tick(.1);
+ assert.equal(f.robot.userData.robotCarry.stage,'hold');
+ assert.equal(f.editor.physics.enabled,true);
+});
+
+test('temporary test sphere starts held at the palm, throws into physics, and is never persisted or broadcast',()=>{
+ const f=fixture();
+ class TestMesh{
+  constructor(geo,mat){this.geometry=geo;this.material=mat;this.userData={};this.position=new V3();this.quaternion={setFromAxisAngle(){}};this.scale={x:1,y:1,z:1,setScalar(n){this.x=n;this.y=n;this.z=n;}};this.parent=null;}
+ }
+ THREE.Mesh=TestMesh;
+ THREE.SphereGeometry=class{dispose(){}};
+ THREE.MeshStandardMaterial=class{dispose(){}};
+ const scene={add(o){o.parent=this;},remove(o){o.parent=null;}};
+ f.editor.world={scene};
+ assert.equal(f.carry.testSphere(f.robot),true);
+ const sphere=f.editor.items.at(-1);
+ assert.equal(sphere.userData.temporaryCarryTest,true);
+ assert.equal(sphere.userData.carriedBy,f.robot.userData.editorId);
+ assert.equal(f.robot.userData.robotCarry.stage,'hold','no pickup animation needed for a test sphere');
+ assert.ok(sphere.scale.x<.2,'sphere is visually small');
+ assert.equal(f.carry.throw(f.robot),true);
+ for(let i=0;i<6;i++)f.carry.tick(.1);
+ assert.equal(sphere.userData.carriedBy,undefined);
+ assert.equal(sphere.userData.physics.mode,'dynamic');
+ assert.equal(f.saves.length,0,'temporary test prop must never trigger a scene save');
+ assert.equal(f.packets.length,0,'temporary test prop must never create room carry packets');
+ for(let i=0;i<125;i++)f.carry.tick(.1);
+ assert.equal(f.editor.items.includes(sphere),false,'expired test sphere removed from the scene');
+ assert.equal(sphere.parent,null);
+});
+
+test('temporary props are excluded from persistence and replicated physics streams',()=>{
+ const editor=fs.readFileSync(new URL('../js/editor.js',import.meta.url),'utf8');
+ const physics=fs.readFileSync(new URL('../js/scene-physics.js',import.meta.url),'utf8');
+ const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+ assert.match(editor,/serialize\(\)\{return this\.items\.filter\(o=>!o\.userData\.temporaryCarryTest\)/);
+ assert.match(editor,/queueSave\(o\)\{if\(!o\|\|o\.userData\.temporaryCarryTest/);
+ assert.match(physics,/!object\.userData\.temporaryCarryTest&&awake/);
+ assert.match(html,/id="robotPickupDelay"/);
+ assert.match(html,/id="robotTestThrowSphere"/);
 });

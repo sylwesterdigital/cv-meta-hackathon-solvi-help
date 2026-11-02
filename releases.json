@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.145",
+  "currentVersion": "0.2.146",
   "releases": [
+    {
+      "version": "0.2.146",
+      "publishedAt": "2026-11-02T01:33:44Z",
+      "changes": [
+        "Configurable Pickup delay (%) determines when the one-shot Lifting animation attaches the selected Pickable object to the hand, independently of the existing Throw release delay.",
+        "Add a local Test sphere action to per-avatar Pickup & Throw calibration: immediately place a small sphere in the right palm; press O to throw with the same animation, release timing and Dynamic Rapier physics.",
+        "Temporary test spheres expire after twelve seconds and are excluded from room saves, object lists, carry events and physics-state multiplayer packets.",
+        "Retain backward compatibility for four-field throwSettings on the backend and add timed-grasp, test-sphere and persistence-regression tests."
+      ]
+    },
     {
       "version": "0.2.145",
       "publishedAt": "2026-11-02T01:16:07Z",
@@ -293,16 +303,6 @@
         "Ensure moving walkway and escalator riders are carried by the owning client using geometric tread support, authorized conveyor robot-motion packets, and shared visual marker phase",
         "Carry the WebXR headset vertically with a moving lift cabin using tracking reference-space offsets while the viewer is inside its footprint",
         "Restore vertical displacement for WebXR portal teleportation and preserve local entry height at the paired exit, without changing ordinary ground-ray teleportation"
-      ]
-    },
-    {
-      "version": "0.2.112",
-      "publishedAt": "2026-10-31T17:13:23Z",
-      "changes": [
-        "Lift passengers no longer enter airborne gravity when a different client commands downward or reverse travel",
-        "The lift carries both the robot transform and Rapier body before running character physics and maintains grounded support while aboard",
-        "Remote lift start packets wait for the rider-aware transport tick; remote y corrections cannot fight the active cabin",
-        "Robots can still jump or walk out of the cabin, releasing the support attachment"
       ]
     }
   ]
