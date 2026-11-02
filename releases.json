@@ -1,6 +1,20 @@
 {
-  "currentVersion": "0.2.151",
+  "currentVersion": "0.2.152",
   "releases": [
+    {
+      "version": "0.2.152",
+      "publishedAt": "2026-11-02T13:23:19Z",
+      "changes": [
+        "Unify Basic Furniture numeric inputs and dropdowns with the compact dark Transform inspector appearance; expose one reusable contextual slider for the currently focused numeric property without rendering a slider on every row.",
+        "Preserve numeric focus and linked slider during dimension editing; expand the contextual numeric-slider pattern across compatible Properties inspector fields.",
+        "Fix resetting or entering rotation/position on Dynamic Rapier objects by explicitly synchronising the edited rigid-body pose and clearing inherited velocities without changing ordinary gravity updates.",
+        "Fix presets spawning back at world origin for Dynamic objects: after camera-centre ground placement, also move the Rapier body to the new transform.",
+        "Fix audio-only recording null getTracks crash when both optional video streams were null; log recording exceptions to developer console and display actionable permission/device errors.",
+        "Unify webcam recordings under the single draggable My camera panel with capture status, time, audio-level meter, playback and Attach to chat / Add to scene / Place on surface / Discard actions; keep audio-only recordings in chat composer.",
+        "Retain the My camera feed during recording (no duplicate preview) and display recorded playback in the same panel; use existing window drag and position persistence.",
+        "Add five focused regressions for physics transform edits, preset placement, compact numeric inspector, null audio recording, and single camera interface. Browser/WebRTC and live Rapier gameplay require deployment testing."
+      ]
+    },
     {
       "version": "0.2.151",
       "publishedAt": "2026-11-02T12:14:39Z",
@@ -308,15 +322,6 @@
         "Rebuild portal visuals so every effect is constrained to the actual aperture: door effects stay inside the opening, the rounded gate has a flat floor-aligned base, the floor field is a square floor portal, and the orb variant is a real sphere.",
         "Add animated frame FX, better centered interior shaders, and sparkle / star-like particles so portals read as intentional in-world devices rather than loose planes or ring placeholders.",
         "Preserve linked Entry/Exit transport behaviour, button triggering, persistence, and watcher-safe packaging while updating portal regression coverage for the rebuilt geometry."
-      ]
-    },
-    {
-      "version": "0.2.119",
-      "publishedAt": "2026-10-31T21:58:03Z",
-      "changes": [
-        "Rework portal visuals so effect modes are materially different in-world: a clearly visible animated rainbow border, stronger glow/pulse treatments, and a new shader-driven mystery / reality-pull interior effect.",
-        "Compact the Portal inspector to match the rest of SOLVI properties: remove explanatory filler text, add one-line slider-plus-number controls, compact selects, curated colour swatches and a tighter layout with less vertical waste.",
-        "Keep paired portal transport, Entry/Exit linking, trigger modes and persistence intact while preserving watcher-safe packaging and versioned browser cache keys."
       ]
     }
   ]

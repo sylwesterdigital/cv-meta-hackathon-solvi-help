@@ -11,10 +11,10 @@ export async function setupFaceTracking(world){
  const status=document.getElementById('webcamStatus');
  function buttonStates(){faceToggle.setAttribute('aria-pressed',String(faceEnabled));poseToggle.setAttribute('aria-pressed',String(poseEnabled));faceToggle.textContent=faceEnabled?'Face on':'Face off';poseToggle.textContent=poseEnabled?'Hands on':'Hands off';webcamBtn.setAttribute('aria-pressed',String(active));webcamBtn.setAttribute('aria-label',active?'Close webcam':'Open webcam');webcamBtn.title=active?'Stop webcam and close preview':'Open webcam and tracking';status.textContent=active?'Local webcam · '+(faceEnabled?'Face ':'')+(poseEnabled?'Hands ':''):'Camera off';}
  const notify=message=>{const e=document.getElementById('toast');e.textContent=message;e.hidden=false;};
- function stop(){active=false;faceEnabled=false;poseEnabled=false;sequence++;stream?.getTracks().forEach(t=>t.stop());stream=null;preview.srcObject=null;preview.hidden=true;panel.hidden=true;
+ function stop(){window.solviStopCameraRecording?.();active=false;faceEnabled=false;poseEnabled=false;sequence++;stream?.getTracks().forEach(t=>t.stop());stream=null;preview.srcObject=null;preview.hidden=true;panel.hidden=true;
   faceBtn.textContent='Face tracking';poseBtn.textContent='Posture + hands';world.localFace={};world.localHeadRotation=[0,0,0];world.localBody={};buttonStates();}
  async function ensureCamera(){if(active)return true;
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480},audio:false});preview.srcObject=stream;panel.hidden=false;preview.hidden=false;await preview.play();active=true;buttonStates();runFrames();return true;}
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480},audio:false});preview.srcObject=stream;panel.hidden=false;preview.hidden=false;await preview.play();active=true;buttonStates();runFrames();window.dispatchEvent(new Event('solvi:webcam-ready'));return true;}
   catch(error){stop();notify('Webcam unavailable: '+error.message);return false;}}
  async function enableFace(){if(faceEnabled){faceEnabled=false;world.localFace={};world.localHeadRotation=[0,0,0];buttonStates();return;}
   if(!await ensureCamera())return;faceBtn.disabled=true;
@@ -49,6 +49,7 @@ export async function setupFaceTracking(world){
         }
       }requestAnimationFrame(run);};requestAnimationFrame(run);
  }
+ window.solviEnsureMyCamera=async()=>await ensureCamera()?preview.srcObject:null;
  webcamBtn.onclick=async()=>{if(active)stop();else await ensureCamera();};
  document.getElementById('closeWebcam').onclick=stop;
  faceBtn.onclick=enableFace;faceToggle.onclick=()=>faceBtn.click();

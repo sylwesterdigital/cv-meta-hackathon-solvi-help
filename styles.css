@@ -2171,3 +2171,27 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 #objectPresetsStatus{min-height:17px;opacity:.75}
 @media(max-width:570px){.object-presets-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#objectPresetsBackdrop .object-presets-gallery{padding:10px!important}}
 #addMenu .add-presets-shortcut{width:100%;text-align:left;margin:4px 0;padding:6px 10px;font-size:11px}
+
+/* v0.2.152 — one compact inspector input system for Transform and furniture. */
+#propertiesPanel #objectInspector :is(input[type="number"],select){
+ background:var(--ui-bg,#102538)!important;color:var(--ui-fg,#f3f8ff)!important;
+ border:1px solid #3e5972!important;border-radius:7px!important;
+ font:inherit!important;font-size:12px!important;line-height:1.25!important;
+ min-height:27px!important;height:27px!important;padding:3px 7px!important;
+ box-shadow:none!important;outline-offset:1px!important;
+}
+#propertiesPanel #objectInspector input[type="number"]:focus-visible{border-color:var(--solvi-accent,#b77dda)!important;outline:1px solid var(--solvi-accent,#b77dda)!important}
+#propertiesPanel #furnitureProperties .furniture-param{justify-content:initial!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,116px)!important;gap:7px!important}
+#propertiesPanel #furnitureProperties .furniture-param>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#propertiesPanel #furnitureProperties .furniture-param input[type="number"]{width:100%!important;max-width:100%!important;min-width:0!important;text-align:right!important;font-variant-numeric:tabular-nums!important}
+#propertiesPanel #furnitureProperties .furniture-param input[type="checkbox"]{justify-self:start;width:15px!important;height:15px!important;min-height:15px!important;margin:0!important}
+#propertiesPanel #furnitureProperties .furniture-param :is(select,input[type="color"]){max-width:100%!important;min-width:0!important}
+#webcamPanel.webcam-panel{z-index:var(--solvi-window-z,350);max-width:calc(100vw - 20px);width:min(335px,calc(100vw - 20px));max-height:min(85vh,850px);overflow-y:auto;touch-action:auto}
+#webcamPanel .webcam-head.drag-handle{cursor:grab;touch-action:none;user-select:none;padding:3px 2px}
+#webcamPanel .webcam-head.drag-handle:active{cursor:grabbing}
+#webcamPanel #facePreview[hidden],#webcamPanel #composerRecorderLivePreview[hidden]{display:none!important}
+#webcamPanel .webcam-recording-host:empty{display:none}
+#webcamPanel .composer-recorder-panel{background:none;border:0;padding:4px 0!important;margin:0}
+#webcamPanel #composerRecorderLivePreview{max-height:220px;aspect-ratio:4/3;object-fit:contain}
+#webcamPanel #composerRecorderPlayer video{max-height:230px}
+#webcamPanel .webcam-record-actions button:disabled{opacity:.5}

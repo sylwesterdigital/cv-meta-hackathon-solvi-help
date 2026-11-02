@@ -110,6 +110,25 @@ export class ScenePhysics{
   return R.ColliderDesc.trimesh(new Float32Array(positions),new Uint32Array(indices));
  }
  // Use bounds centered relative to the rigid body's origin; imported meshes have arbitrary pivots.
+ // Inspector edits explicitly teleport simulated rigid bodies; ordinary sync() must
+ // not do this, because it would continuously cancel dynamic gravity/rotation.
+ applyEditedPose(object,{stopMotion=true}={}){
+  if(!object?.userData?.editorId)return;
+  this.sync(object);
+  const body=this.bodies.get(object.userData.editorId);
+  if(!body)return;
+  body.setTranslation(object.position,true);
+  body.setRotation(object.quaternion,true);
+  if(body.isDynamic?.()&&stopMotion){
+   body.setLinvel({x:0,y:0,z:0},true);
+   body.setAngvel({x:0,y:0,z:0},true);
+  }
+  if(body.isKinematic?.()){
+   body.setNextKinematicTranslation(object.position);
+   body.setNextKinematicRotation(object.quaternion);
+  }
+  this.remoteTargets.delete(object.userData.editorId);
+ }
  colliderShape(object){
   const R=this.runtime;
   if(object.userData.editorKind==='sphere')return R.ColliderDesc.ball(Math.max(.055,.55*Math.max(Math.abs(object.scale.x),Math.abs(object.scale.y),Math.abs(object.scale.z))));

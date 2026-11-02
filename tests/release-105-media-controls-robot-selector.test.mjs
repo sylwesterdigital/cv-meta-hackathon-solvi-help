@@ -19,16 +19,14 @@ test('arrow-key robot control uses independent selected robot ID and not scene o
  assert.match(world,/this\.robotEditor\?\.cameraTargetRobot\?\.\(\)/);
  assert.match(world,/this\.robotEditor\?\.controlMode==='robot'&&robot/);
 });
-test('video preparation is non-recording until explicit Start click',()=>{
+test('video uses single My camera window while audio stays in chat composer',()=>{
  const source=get('js/studio.js'),html=get('index.html');
- assert.match(source,/function prepareVideoRecording\(sourceStream=null\)/);
- assert.match(source,/Camera ready · not recording/);
- assert.match(source,/\$\('composerRecorderStart'\)\.onclick=/);
- assert.match(source,/recorder\.start\(250\)/);
- assert.match(html,/id="composerRecorderStart" hidden>Start/);
- assert.match(source,/\$\('recordVideo'\)\.onclick=\(\)=>prepareVideoRecording\(\)/);
- assert.match(source,/\$\('webcamRecord'\)\.onclick=\(\)=>/);
- assert.match(source,/void prepareVideoRecording\(source\)/);
+ assert.match(source,/window\.solviEnsureMyCamera\?\.\(\)/);
+ assert.match(source,/recordingUIVisible\(true,video\)/);
+ assert.match(source,/\$\('webcamRecord'\)\.onclick=/);
+ assert.match(source,/void startRecording\(true,false,source\)/);
+ assert.match(html,/id="webcamRecordingHost"/);
+ assert.match(html,/class="webcam-head drag-handle"/);
 });
 test('custom chat video/audio controls are compact and lazy on-demand HLS',()=>{
  const attach=get('js/chat-attachments.js'),player=get('js/compact-media-player.js'),css=get('styles.css');

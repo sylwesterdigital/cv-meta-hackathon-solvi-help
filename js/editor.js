@@ -453,7 +453,7 @@ export class SceneEditor{
    const field=number.id.match(/^(position|rotation|scale)-[012]$/)?.[1];
    const limits=field==='rotation'?[-180,180,'0.5']:field==='scale'?[0,1000,'1']:field==='position'?[-Math.max(25,this.world.environment?.floorSize/2||25),Math.max(25,this.world.environment?.floorSize/2||25),'0.05']:
       [Number(number.min||0),Number(number.max||100),number.step||'any'];
-   if(!field||!limits.every((n,i)=>i===2||Number.isFinite(n))||limits[0]>=limits[1])return;
+   if(!limits.every((n,i)=>i===2||Number.isFinite(n))||limits[0]>=limits[1])return;
    range.min=String(limits[0]);range.max=String(limits[1]);range.step=limits[2];
    range.setAttribute('aria-label',text+' slider');
    range.value=String(field==='scale'?scaleToSlider(Number(number.value)):Math.min(limits[1],Math.max(limits[0],Number(number.value)||0)));
@@ -502,7 +502,7 @@ export class SceneEditor{
   for(const field of ['position','rotation','scale'])byId(field+'-reset').onclick=()=>{
    const obj=this.selected;if(!obj||!this.canTransform(obj))return;
    const before=this.snapshot(obj);const neutral=field==='scale'?1:0;
-   obj[field].set(neutral,neutral,neutral);this.physics.sync(obj);
+   obj[field].set(neutral,neutral,neutral);this.physics.applyEditedPose(obj);
    this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.updateInspector();
    byId('inspectorValueSlider').hidden=true;
   };
@@ -515,7 +515,7 @@ export class SceneEditor{
      if(Math.abs(vec[name]-v)>0.00001){if(byId('scaleUniform').checked){const next=linkedScale(vec,name,v);vec.set(next.x,next.y,next.z);}else vec[name]=v;}
      syncScaleFields(obj,el);scaleEditBefore.delete(el);
     }else vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
-    this.physics.sync(obj);this.recordEdit(before,this.snapshot(obj));this.refreshList();this.queueSave(obj);};}
+    this.physics.applyEditedPose(obj);this.recordEdit(before,this.snapshot(obj));this.refreshList();this.queueSave(obj);};}
   byId('objectColor').addEventListener('focus',()=>this.colorBefore=this.snapshot(this.selected));byId('objectColor').addEventListener('change',()=>{this.recordEdit(this.colorBefore,this.snapshot(this.selected));this.colorBefore=null;});
   byId('objectColor').oninput=e=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||obj.userData.editorKind==='robot')return;obj.traverse(o=>{if(o.material?.color)o.material.color.set(e.target.value);});this.queueSave(obj);};
   byId('texturePreset').onchange=e=>{const before=this.snapshot(this.selected);this.texture(e.target.value);this.recordEdit(before,this.snapshot(this.selected));};byId('textureUploadButton').onclick=()=>byId('textureUpload').click();
@@ -1121,7 +1121,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(!obj)return null;
   const point=centreGroundFromCamera(this.world.camera,this.world.controls?.target);
   positionNewOnGround(obj,point);
-  this.physics.sync(obj);
+  this.physics.applyEditedPose(obj);
   this.select(obj);this.refreshList();this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);
   return obj;
  }
@@ -1161,7 +1161,9 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
    const old=this.snapshot(obj);
    const value=target.type==='checkbox'?target.checked:target.value;
    rebuildFurniture(obj,key==='variant'?{variant:value,color:obj.userData.furniture.color,fabricColor:obj.userData.furniture.fabricColor,texture:obj.userData.furniture.texture}:{...obj.userData.furniture,[key]:value});
-   this.physics.sync(obj);this.recordEdit(old,this.snapshot(obj));this.queueSave(obj);this.renderFurnitureControls(obj);
+   this.physics.sync(obj);this.recordEdit(old,this.snapshot(obj));this.queueSave(obj);
+   // Keep numeric focus and the shared slider mounted while editing dimensions.
+   if(target.type!=='number')this.renderFurnitureControls(obj);
   });
  }
  renderFurnitureControls(obj){
@@ -1169,15 +1171,18 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   const isFurniture=obj?.userData?.editorKind==='furniture';section.hidden=!isFurniture;
   if(!isFurniture)return;
   const p=sanitiseFurniture(obj.userData.furniture);obj.userData.furniture=p;
+  // The shared contextual slider may be nested in this panel. Preserve it
+  // before replacing fields; a new selection will attach it to its numeric row.
+  const contextual=byId('inspectorValueSlider');if(root.contains(contextual)){section.append(contextual);contextual.hidden=true;}
   root.replaceChildren();
   const add=(key,label,type,choices=null)=>{
-   const holder=document.createElement('label');holder.className='furniture-param';
+   const holder=document.createElement('label');holder.className='furniture-param inspector-compact-field';
    const caption=document.createElement('span');caption.textContent=label;
    const control=document.createElement(type==='select'?'select':'input');control.dataset.furnitureParam=key;
    if(type==='select')for(const [value,title] of choices){const item=document.createElement('option');item.value=value;item.textContent=title;control.append(item);}
    else if(type==='checkbox')control.type='checkbox';
    else if(type==='color')control.type='color';
-   else{control.type='number';const [,min,max]=FURNITURE_NUMERIC[key];control.min=String(min);control.max=String(max);control.step=['shelves','corners','seats'].includes(key)?'1':'.01';}
+   else{control.type='number';control.className='inspector-compact-number';const [,min,max]=FURNITURE_NUMERIC[key];control.min=String(min);control.max=String(max);control.step=['shelves','corners','seats'].includes(key)?'1':'.01';control.setAttribute('aria-label',label);}
    if(type==='checkbox')control.checked=p[key];else control.value=p[key];control.disabled=!this.canEdit(obj);
    holder.append(caption,control);root.append(holder);
   };

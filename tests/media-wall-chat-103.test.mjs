@@ -28,10 +28,11 @@ test('face media browser offers bookmarks, webcam, recordings and media upload',
  assert.match(read('js/studio.js'),/window\.solviUploadMedia=file=>uploadFile\(file\)/);
 });
 
-test('webcam recording shows a live preview before the recording is stopped',()=>{
+test('video recording shows a single My camera feed before review',()=>{
  const html=read('index.html'),studio=read('js/studio.js');
  assert.match(html,/id="composerRecorderLivePreview"/);
- assert.match(studio,/livePreview\.srcObject=recordStream/);
+ assert.match(studio,/livePreview\.srcObject=virtual\?recordStream:null/);
+ assert.match(studio,/showOnlyCameraPreview\(\{playback:true\}\)/);
  assert.match(studio,/preview\.srcObject=null;preview\.hidden=true/);
  assert.match(studio,/compactMediaPlayer\(\{url:recordingUrl,kind:video\?'video':'audio',stream:false\}\)/);
 });
