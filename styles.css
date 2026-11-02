@@ -2334,3 +2334,20 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 .object-preset-image{aspect-ratio:1.4;border-radius:10px}.object-preset-image img{object-fit:contain;object-position:center}
 .object-preset-card{background:#202b36;padding:8px;border-radius:10px;gap:7px}
 .object-preset-actions{justify-content:end}.object-preset-actions button{flex:0 0 auto;min-width:80px}
+/* v0.2.158 — compact smart-screen playback, audio and IPTV configuration */
+.smart-channel-row>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.smart-channel-settings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px 8px;margin:8px 0;padding:7px;border-radius:7px;background:#101c2c}
+.smart-channel-settings label{display:flex;align-items:center;gap:5px;min-width:0;white-space:normal;font-size:10px;color:#cfdfed}
+.smart-channel-settings label input[type=checkbox]{appearance:auto!important;width:15px!important;height:15px!important;min-width:15px!important;margin:0!important;accent-color:#bd84d9}
+.smart-channel-settings label:has(select){grid-column:span 2;align-items:center;justify-content:space-between}
+.smart-channel-settings select{min-width:0;max-width:75%;height:27px!important;padding:2px 5px!important;color:#fff!important;background:#0d1826!important;border:1px solid #4a647c!important;border-radius:5px!important;font-size:11px!important}
+.smart-iptv-picker{margin-top:8px;border-top:1px solid #31495f;padding-top:6px}
+.smart-iptv-picker>summary{cursor:pointer;color:#a8cadf;font-size:11px;padding:3px 0}
+.smart-iptv-picker>input{display:block!important;width:100%!important;height:28px!important;box-sizing:border-box;margin:4px 0;padding:4px!important;background:#13283a!important;border:1px solid #48617b!important;border-radius:5px!important;color:#fff!important;font-size:11px!important}
+.smart-iptv-picker>button{padding:5px 8px;font-size:11px}
+.smart-iptv-status{display:block;padding:4px 0;color:#a8c1d5;font-size:10px;line-height:1.4}
+.smart-iptv-results{max-height:180px;overflow-y:auto;display:grid;gap:3px}
+.smart-iptv-result{display:flex;align-items:center;gap:4px;padding:4px;background:#15273a;border-radius:4px}
+.smart-iptv-result span{min-width:0;flex:1;font-size:10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.smart-iptv-result button{flex:0 0 auto;font-size:10px;padding:3px 7px}
+@media(max-width:510px){.smart-channel-settings{grid-template-columns:repeat(2,minmax(0,1fr))}}

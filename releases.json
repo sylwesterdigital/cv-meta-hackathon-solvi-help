@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.157",
+  "currentVersion": "0.2.158",
   "releases": [
+    {
+      "version": "0.2.158",
+      "publishedAt": "2026-11-02T22:57:22Z",
+      "changes": [
+        "Add selectable per-display audio enabled/start-muted, persistent mute overlay, optional original-aspect playback, recorded-video looping, configurable initial channel and opt-in startup playback.",
+        "Enable copying an HTTPS HLS/MP4/WebM URL and pasting directly while a TV or monitor is selected; add without a separate clipboard button.",
+        "Add CORS-aware IPTV .m3u playlist import, bounded search results and one-click channel selection from curated country/category playlists.",
+        "Apply smart playback options to procedural TVs/monitors and in-world media frames with strict frontend/backend validation; retain saved Rantlist channels and existing avatar models."
+      ]
+    },
     {
       "version": "0.2.157",
       "publishedAt": "2026-11-02T21:43:22Z",
@@ -324,15 +334,6 @@
         "Build the selected Trimesh with the existing transformed mesh geometry instead of forcing a box or compound collision; skip portal visual-only effect meshes and fall back to a box only when geometry creation fails or exceeds its safety budget.",
         "Keep the collider choice when making an object pushable and preserve the current physics mode when cutting a cube opening; accept these combinations in backend scene persistence without changing robot character physics.",
         "Add five dynamic/kinematic/static Trimesh regression tests, with fallback and default-box checks, and update the inspector runtime status for the actual collider choice."
-      ]
-    },
-    {
-      "version": "0.2.127",
-      "publishedAt": "2026-11-01T01:36:54Z",
-      "changes": [
-        "All robot and avatar types now resume their prior active gait directly after a deliberate near-level jump (<=0.35m net elevation change), without additional Landing or forced Idle.",
-        "Rapier and non-Rapier jump completion paths retain per-robot run/walk/backward/strafe intent; genuine falls preserve Landing, Hard Landing, and extreme Falling Flat Impact then Stand Up.",
-        "Five new level-jump regression tests; existing 40-floor lifts, portals and network transport retained."
       ]
     }
   ]

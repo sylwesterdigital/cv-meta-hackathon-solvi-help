@@ -193,7 +193,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.157',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.158',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3177,8 +3177,14 @@ def valid_smart_channels(value):
         if not re.fullmatch(r'https://[^\s@/]+(?:/[^\s]*)?\.(?:m3u8|mp4|webm)(?:[?#][^\s]*)?',url,re.I):return False
     return True
 
+def valid_smart_options(value):
+    if not isinstance(value,dict):return False
+    if any(type(value[k]) is not bool for k in ('smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect') if k in value):return False
+    if 'smartStartChannel' in value and (type(value['smartStartChannel']) is not int or not -1<=value['smartStartChannel']<12):return False
+    return True
+
 def valid_basic_furniture(value):
-    if not isinstance(value,dict) or len(value)>64:return False
+    if not isinstance(value,dict) or len(value)>80:return False
     variant=value.get('variant')
     if variant not in ('table','chair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box','tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker'):return False
     numeric={'width':(.06,8),'depth':(.06,4),'height':(.025,4),'topThickness':(.025,.3),
@@ -3186,9 +3192,10 @@ def valid_basic_furniture(value):
              'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35),
              'wallThickness':(.005,.15),'neckRadius':(.01,.5),'neckHeight':(.02,.6),
              'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'reclineDeg':(0,85),'canopyRadius':(.4,4),'canopySegments':(3,16),'lampIntensity':(0,20),'lampRange':(.5,80),'shadeOpacity':(.05,1),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3)}
-    allowed={'variant','topShape','legStyle','headrest','headboard','color','fabricColor','texture','handle','cap','soil','openTop','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle'}|set(numeric)
+    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','color','fabricColor','texture','handle','cap','soil','openTop','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle'}|set(numeric)
     if any(key not in allowed for key in value):return False
     if 'channels' in value and not valid_smart_channels(value['channels']):return False
+    if not valid_smart_options(value):return False
     for key,(lo,hi) in numeric.items():
         if key not in value:continue
         n=value[key]
@@ -3362,6 +3369,7 @@ def set_scene():
                 row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone() if media.get('id') else None
             if media.get('id') and (not row or row['mime']!=media.get('mime')):return json_error('Missing uploaded media reference')
             if 'channels' in media and not valid_smart_channels(media['channels']):return json_error('Invalid media channels')
+            if not valid_smart_options(media):return json_error('Invalid smart media options')
             if 'mount' in media and not valid_surface_mount(media['mount']):return json_error('Invalid media surface mount')
         if o['kind']=='robot':
             if 'combat' in o and not valid_robot_combat(o['combat']):return json_error('Invalid robot combat controls')
@@ -3464,6 +3472,7 @@ def patch_scene_object():
             with db() as con:media_row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone() if media.get('id') else None
             if media.get('id') and (not media_row or media_row['mime']!=media.get('mime')):return json_error('Missing uploaded media reference')
             if 'channels' in media and not valid_smart_channels(media['channels']):return json_error('Invalid media channels')
+            if not valid_smart_options(media):return json_error('Invalid smart media options')
             if 'mount' in media and not valid_surface_mount(media['mount']):return json_error('Invalid media surface mount')
         if obj['kind']!='model' and obj.get('model'):return json_error('Unexpected model reference')
         avatar=str(obj.get('avatar',''))

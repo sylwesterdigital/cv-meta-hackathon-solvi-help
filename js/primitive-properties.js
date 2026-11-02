@@ -84,6 +84,7 @@ export function sanitiseFurniture(raw={}){
  result.lampShape=['sphere','cube','pyramid'].includes(raw.lampShape)?raw.lampShape:'sphere';result.lampType=raw.lampType==='spot'?'spot':'point';result.lampOn=raw.lampOn!==false;
  result.speakerStyle=['single','tower'].includes(raw.speakerStyle)?raw.speakerStyle:'single';
  result.channels=Array.isArray(raw.channels)?raw.channels.slice(0,12).filter(c=>c&&typeof c==='object'&&typeof c.url==='string'&&/^https:\/\//.test(c.url)&&/\.(?:m3u8|mp4|webm)(?:$|[?#])/i.test(c.url)).map(c=>({title:String(c.title||'Channel').slice(0,65),url:c.url.slice(0,1500)})):[];
+ result.smartAudio=raw.smartAudio!==false;result.smartMuted=raw.smartMuted===true;result.smartLoop=raw.smartLoop===true;result.smartAutoPlay=raw.smartAutoPlay===true;result.smartPreserveAspect=raw.smartPreserveAspect!==false;result.smartStartChannel=Number.isInteger(raw.smartStartChannel)&&raw.smartStartChannel>=-1&&raw.smartStartChannel<12?raw.smartStartChannel:-1;
  result.mediaId=typeof raw.mediaId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.mediaId)?raw.mediaId:'';
  result.pairedDisplayId=typeof raw.pairedDisplayId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.pairedDisplayId)?raw.pairedDisplayId:'';
  result.headrest=raw.headrest===true;

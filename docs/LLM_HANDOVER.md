@@ -1,3 +1,20 @@
+# SOLVI.help — Master LLM Handover v0.2.158
+
+**Release:** v0.2.158 — Smart TV sound, startup channel, loop/aspect controls, paste-to-add and IPTV M3U catalogue.
+
+## Current implementation (2 November 2026)
+- `js/smart-media-playlist.js`: `cleanSmartOptions`, validated HTTPS media URLs, parsing and bounded CORS browser fetching for IPTV `.m3u` catalogues; mute overlay, saved startup playback, optional aspect-correct black bars, and finite-video loop handling. Smart media is never proxied via an unrestricted backend URL fetch.
+- `js/editor.js`: TV and media-frame inspector settings; direct clipboard paste for selected TVs/monitors; searchable playlist import and Add per channel, with existing 12 channel limit and duplicate URL prevention.
+- `js/primitive-properties.js`, `backend/server.py`: persisted strict smart option schema; imported scene objects and existing settings remain compatible.
+- `js/equipment-media.js`, `js/scene-media.js`: same smart screen configuration flows to procedural displays and uploaded video frame surfaces.
+- `styles.css`: compact dark panel layout.
+- **Limitations:** browser/media codec support and remote HLS CORS remain external; automatic unmuted playback may be blocked by the browser; IPTV URLs may be offline or subject to channel rights. No server changes are required for IPTV catalogue parsing, but a remote stream’s own origin may still need CORS permission.
+
+## Release verification
+- Run `npm test`, syntax checks, Python backend checks, and full archive manifest/hash check. Live WebXR, audio and Safari playback remain unverified until deployment.
+
+---
+
 # SOLVI.help — Master LLM Handover v0.2.157
 
 **Release:** v0.2.157 · Smart media playlists, lifestyle procedural objects, preset framing, wearable calibration.

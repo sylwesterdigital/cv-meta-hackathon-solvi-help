@@ -166,7 +166,7 @@ export function hydrateSceneMedia(mesh,world){
    front.map=new THREE.CanvasTexture(canvas);front.map.colorSpace=THREE.SRGBColorSpace;front.needsUpdate=true;
   }
   const kind=sceneMediaKind(media.mime);
-  if(syncSmartScreen(mesh,mesh,media.channels,!media.id))return;
+  if(syncSmartScreen(mesh,mesh,media.channels,!media.id,media))return;
   if(!media.id||kind==='file')return;
   if(media.width&&media.height&&kind!=='audio')applyAspect(mesh,media.width,media.height);
   if(kind==='image'){

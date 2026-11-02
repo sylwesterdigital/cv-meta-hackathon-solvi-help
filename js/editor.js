@@ -12,7 +12,7 @@ import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive,FURNITURE_TYPES,BASIC_PROP_TYPES,FURNITURE_NUMERIC,sanitiseFurniture,makeFurniture,rebuildFurniture} from './primitive-properties.js';
 import {syncEquipmentMedia,disposeEquipmentMedia,playEquipmentChannel,nextSpeakerChannel} from './equipment-media.js';
-import {smartScreenClick,openSmartChannel,parseChannel,cleanChannels} from './smart-media-playlist.js';
+import {smartScreenClick,openSmartChannel,parseChannel,cleanChannels,fetchIPTVPlaylist,safeIPTVPlaylistURL,cleanSmartOptions} from './smart-media-playlist.js';
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
 import {makeOfficeStairs,rebuildOfficeStairs,updateLiftPanel,updateConveyorControls,sanitiseStairs,stairSegments} from './office-stairs.js';
 import {tickStairTransport,startLift,stopLift} from './stair-transport.js';
@@ -1066,7 +1066,7 @@ export class SceneEditor{
   this.hitSmartScreen=ray=>{
    const hits=ray.intersectObjects(this.items,true);
    const first=hits[0];if(!first)return null;
-   const screenHit=hits.find(h=>['equipmentScreen','lampSwitch','equipmentSpeaker'].includes(h.object.name)||h.object.userData.smartScreenBack||h.object.userData.editorKind==='media');
+   const screenHit=hits.find(h=>['equipmentScreen','lampSwitch','equipmentSpeaker'].includes(h.object.name)||h.object.userData.smartScreenBack||h.object.userData.smartScreenAudio||h.object.userData.editorKind==='media');
    if(!screenHit||screenHit.distance>first.distance+.035)return null;
    let object=screenHit.object;
    while(object.parent&&!this.items.includes(object))object=object.parent;
@@ -1086,7 +1086,7 @@ export class SceneEditor{
    const hits=this.raycaster.intersectObjects(this.items,true);
    if(hits.length){let node=hits[0].object;while(node.parent&&!this.items.includes(node))node=node.parent;
     if(this.items.includes(node)){
-      if((hits[0].object.name==='equipmentScreen'||hits[0].object.userData.smartScreenBack||node.userData.editorKind==='media')&&smartScreenClick(node,hits[0])){e.solviObjectPicked=true;return;}
+      if((hits[0].object.name==='equipmentScreen'||hits[0].object.userData.smartScreenBack||hits[0].object.userData.smartScreenAudio||node.userData.editorKind==='media')&&smartScreenClick(node,hits[0])){e.solviObjectPicked=true;return;}
       this.select(node);e.solviObjectPicked=true;}}
    else if(this.selected?.userData.editorKind==='robot'&&this.selected?.userData.robotMode!=='idle'){
     const ground=this.raycaster.intersectObject(this.world.floor)[0];if(ground){setRobotDestination(this.selected,ground.point);this.queueSave(this.selected);}}
@@ -1222,6 +1222,13 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
  setupFurnitureControls(){
   const root=byId('furniturePropertiesFields');if(!root)return;
   root.addEventListener('click',event=>{const key=event.target.closest('button')?.dataset.smartAction;if(key)this.smartChannelAction(key,root,'furniture');});
+  window.addEventListener('paste',event=>{
+   const obj=this.selected;if(obj?.userData.editorKind!=='furniture'||!['tv','monitor'].includes(obj.userData.furniture?.variant)||!this.canEdit(obj))return;
+   const target=event.target;if(target?.matches?.('input,textarea,select,[contenteditable]')&&target.dataset?.smartInput!=='url')return;
+   const content=event.clipboardData?.getData('text/plain')?.trim();if(!content)return;
+   if(safeIPTVPlaylistURL(content)){event.preventDefault();this.smartChannelAction('iptv-import',root,'furniture',content);return;}
+   if(parseChannel(content)){event.preventDefault();this.smartChannelAction('pasteAdd',root,'furniture',content);}
+  },true);
   root.addEventListener('change',event=>{
    const obj=this.selected;if(obj?.userData.editorKind!=='furniture'||!this.canEdit(obj))return;
    const target=event.target,key=target?.dataset?.furnitureParam;if(!key)return;
@@ -1320,37 +1327,81 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   if(['tv','monitor','speaker'].includes(p.variant))this.renderSmartChannelControls(root,obj,'furniture');
  }
  renderSmartChannelControls(root,obj,kind){
-  const channels=cleanChannels(kind==='furniture'?obj.userData.furniture?.channels:obj.userData.media?.channels);
+  const value=kind==='furniture'?obj.userData.furniture:obj.userData.media;
+  const channels=cleanChannels(value?.channels),options=cleanSmartOptions(value);
   const section=document.createElement('details');section.className='smart-channel-controls';section.open=true;
-  const summary=document.createElement('summary');summary.textContent=(obj.userData.furniture?.variant==='speaker'?'Audio channels · ':'Smart screen · ')+channels.length+' channels';section.append(summary);
+  const summary=document.createElement('summary');summary.textContent=(value?.variant==='speaker'?'Audio channels · ':'Smart screen · ')+channels.length+' channels';section.append(summary);
   const list=document.createElement('div');list.className='smart-channel-list';
-  channels.forEach((c,i)=>{const row=document.createElement('div');row.className='smart-channel-row';const label=document.createElement('span');label.textContent=(i+1)+'. '+c.title+' · '+c.url;label.title=c.url;
-    const play=document.createElement('button');play.type='button';play.textContent='Play';play.title='Play channel '+(i+1);play.dataset.smartAction='play:'+i;row.append(label,play);
-    const remove=document.createElement('button');remove.type='button';remove.textContent='';remove.dataset.uiIcon='delete';remove.title='Remove channel';remove.setAttribute('aria-label','Remove channel');remove.dataset.smartAction='remove:'+i;row.append(remove);list.append(row);});
-  section.append(list);
-  const entry=document.createElement('input');entry.type='url';entry.dataset.smartInput='url';entry.placeholder='Paste HTTPS .m3u8 / .mp4 / .webm';entry.setAttribute('aria-label','New media channel URL');section.append(entry);
+  channels.forEach((c,i)=>{const row=document.createElement('div');row.className='smart-channel-row';
+   const label=document.createElement('span');label.textContent=(i+1)+'. '+c.title;label.title=c.url;
+   const play=document.createElement('button');play.type='button';play.title='Play '+c.title;play.setAttribute('aria-label','Play '+c.title);play.dataset.uiIcon='play';play.dataset.smartAction='play:'+i;row.append(label,play);
+   const remove=document.createElement('button');remove.type='button';remove.dataset.uiIcon='delete';remove.title='Remove channel';remove.setAttribute('aria-label','Remove channel');remove.dataset.smartAction='remove:'+i;row.append(remove);list.append(row);
+  });section.append(list);
+  if(value?.variant!=='speaker'){
+   const settings=document.createElement('div');settings.className='smart-channel-settings';
+   const field=(name,label,checked)=>{const l=document.createElement('label');const input=document.createElement('input');input.type='checkbox';input.checked=checked;input.dataset.smartOption=name;l.append(input,document.createTextNode(label));settings.append(l);};
+   field('smartAudio','Audio enabled',options.smartAudio);field('smartMuted','Start muted',options.smartMuted);
+   field('smartLoop','Loop video',options.smartLoop);field('smartAutoPlay','Play on startup',options.smartAutoPlay);
+   field('smartPreserveAspect','Original aspect',options.smartPreserveAspect);
+   const start=document.createElement('label');start.textContent='Startup';const select=document.createElement('select');select.dataset.smartOption='smartStartChannel';
+   const off=document.createElement('option');off.value='-1';off.textContent='Menu';select.append(off);
+   channels.forEach((c,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent=(i+1)+'. '+c.title;select.append(o);});select.value=String(options.smartStartChannel);start.append(select);settings.append(start);section.append(settings);
+   settings.addEventListener('change',event=>this.smartChannelOption(event.target,kind,obj));
+  }
+  const entry=document.createElement('input');entry.type='url';entry.dataset.smartInput='url';entry.placeholder='Paste HTTPS HLS / MP4 / WebM';entry.setAttribute('aria-label','New media channel URL');section.append(entry);
   const title=document.createElement('input');title.type='text';title.dataset.smartInput='title';title.placeholder='Channel name (optional)';title.maxLength=65;section.append(title);
   const buttons=document.createElement('div');buttons.className='smart-channel-actions';
-  for(const [action,label] of [['add','Add channel'],['paste','Paste clipboard']]){const btn=document.createElement('button');btn.type='button';btn.textContent=label;btn.dataset.smartAction=action;buttons.append(btn);}
-  section.append(buttons);root.append(section);
+  const add=document.createElement('button');add.type='button';add.textContent='Add channel';add.dataset.smartAction='add';buttons.append(add);section.append(buttons);
+  const iptv=document.createElement('details');iptv.className='smart-iptv-picker';
+  const heading=document.createElement('summary');heading.textContent='Import IPTV playlist (.m3u)';iptv.append(heading);
+  const playlist=document.createElement('input');playlist.type='url';playlist.dataset.smartInput='iptv';playlist.placeholder='https://iptv-org.github.io/iptv/index.m3u';iptv.append(playlist);
+  const importBtn=document.createElement('button');importBtn.type='button';importBtn.textContent='Load channels';importBtn.dataset.smartAction='iptv-import';iptv.append(importBtn);
+  const status=document.createElement('small');status.className='smart-iptv-status';iptv.append(status);
+  const search=document.createElement('input');search.type='search';search.placeholder='Search by channel or category';search.dataset.smartInput='iptv-search';iptv.append(search);
+  const results=document.createElement('div');results.className='smart-iptv-results';iptv.append(results);
+  search.addEventListener('input',()=>this.renderIPTVResults(iptv,obj));section.append(iptv);root.append(section);
+  const cache=this.iptvCatalog;if(cache?.id===obj.userData.editorId){playlist.value=cache.url;this.renderIPTVResults(iptv,obj);}
  }
- async smartChannelAction(action,root,kind){
+ smartChannelOption(input,kind,obj){
+  const name=input?.dataset?.smartOption;if(!name||this.selected!==obj||!this.canEdit(obj))return;
+  const value=kind==='furniture'?obj.userData.furniture:obj.userData.media;const before=this.snapshot(obj);
+  value[name]=name==='smartStartChannel'?Number(input.value):Boolean(input.checked);
+  if(kind==='furniture')syncEquipmentMedia(obj,this);else hydrateSceneMedia(obj,this.world);
+  this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
+ }
+ renderIPTVResults(section,obj){
+  const results=section.querySelector('.smart-iptv-results'),status=section.querySelector('.smart-iptv-status');if(!results||!status)return;results.replaceChildren();
+  const catalog=this.iptvCatalog;if(catalog?.id!==obj?.userData?.editorId){status.textContent='';return;}
+  const q=(section.querySelector('[data-smart-input="iptv-search"]')?.value||'').toLowerCase().trim();
+  const matching=catalog.entries.filter(c=>(c.title+' '+c.group).toLowerCase().includes(q));
+  status.textContent=matching.length+' matching / '+catalog.entries.length+' playable channels · select to add (12 per screen)';
+  for(const c of matching.slice(0,60)){
+   const row=document.createElement('div');row.className='smart-iptv-result';const label=document.createElement('span');label.textContent=c.title+' · '+c.group;label.title=c.url;
+   const button=document.createElement('button');button.type='button';button.textContent='Add';button.dataset.smartAction='iptv-add:'+catalog.entries.indexOf(c);row.append(label,button);results.append(row);
+  }
+ }
+ async smartChannelAction(action,root,kind,clipboardText=null){
   const obj=this.selected;if(!obj||!this.canEdit(obj)||!(kind==='furniture'?obj.userData.editorKind==='furniture':obj.userData.editorKind==='media'))return;
   const value=kind==='furniture'?obj.userData.furniture:obj.userData.media;
   let channels=cleanChannels(value.channels);
-  if(action==='paste'){
-   try{const clip=await navigator.clipboard.readText();const field=root.querySelector('[data-smart-input="url"]');if(field)field.value=clip;}
-   catch(error){this.toast('Clipboard unavailable · paste into the URL field using Ctrl/⌘ V');}return;
+  if(action==='iptv-import'){
+   const url=(clipboardText||root.querySelector('[data-smart-input="iptv"]')?.value||'').trim();
+   try{const entries=await fetchIPTVPlaylist(url);if(this.selected!==obj)return;
+    this.iptvCatalog={id:obj.userData.editorId,url,entries};
+    const section=root.querySelector('.smart-iptv-picker');if(section){section.open=true;this.renderIPTVResults(section,obj);}
+   }catch(error){this.toast('IPTV unavailable: '+error.message+' (check CORS)');}return;
   }
-  if(action.startsWith('play:')){const index=Number(action.slice(5));const done=kind==='furniture'&&value.variant==='speaker'?await playEquipmentChannel(obj,index,this.world):kind==='furniture'?await openSmartChannel(obj,index):await openSmartChannel(obj,index);
-    if(!done)this.toast('Could not play channel: verify the stream URL, CORS and codec');return;}
+  if(action.startsWith('play:')){const index=Number(action.slice(5));const done=kind==='furniture'&&value.variant==='speaker'?await playEquipmentChannel(obj,index,this.world):await openSmartChannel(obj,index);
+   if(!done)this.toast('Could not play channel: verify the stream URL, CORS and codec');return;}
   if(action.startsWith('remove:'))channels.splice(Number(action.split(':')[1]),1);
-  else if(action==='add'){
-   const parsed=parseChannel(root.querySelector('[data-smart-input="url"]')?.value);
-   if(!parsed){this.toast('Enter a valid HTTPS .m3u8, .mp4 or .webm URL');return;}
-   if(channels.length>=12){this.toast('Maximum 12 channels per screen');return;}
-   parsed.title=(root.querySelector('[data-smart-input="title"]')?.value||'').trim().slice(0,65)||parsed.title;
-   channels.push(parsed);
+  else if(action==='pasteAdd'||action==='add'||action.startsWith('iptv-add:')){
+   const catalog=this.iptvCatalog;
+   const parsed=action.startsWith('iptv-add:')&&catalog?.id===obj.userData.editorId?catalog.entries[Number(action.slice(9))]:parseChannel(clipboardText||root.querySelector('[data-smart-input="url"]')?.value);
+   if(!parsed){this.toast('Enter a valid HTTPS HLS, MP4 or WebM stream URL');return;}
+   if(channels.length>=12){this.toast('Maximum 12 channels per display');return;}
+   if(channels.some(c=>c.url===parsed.url)){this.toast('Channel already added');return;}
+   const name=action==='add'?(root.querySelector('[data-smart-input="title"]')?.value||'').trim().slice(0,65):'';
+   channels.push({title:name||parsed.title,url:parsed.url});
   }else return;
   const before=this.snapshot(obj);value.channels=channels;
   if(kind==='furniture')syncEquipmentMedia(obj,this);else hydrateSceneMedia(obj,this.world);
