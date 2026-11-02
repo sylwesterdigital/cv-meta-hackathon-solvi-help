@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.149",
+  "currentVersion": "0.2.150",
   "releases": [
+    {
+      "version": "0.2.150",
+      "publishedAt": "2026-11-02T03:04:20Z",
+      "changes": [
+        "Add per-Pickable-object Follow right-hand bone rotation checkbox. Animated metacarpal/palm orientation drives carried model rotation when enabled; opt-out preserves original orientation (useful for javelins).",
+        "Preserve hand orientation through release, with a validated optional quaternion in authoritative object-carry throw packets; save the new field through full/atomic scene, duplication and realm archives.",
+        "Subscribe to Rapier collision-start events for released objects with CCD, use world-space contact points and incoming speed to trigger head/body impact classification.",
+        "Play authored Head Hit or Hit to Body reactions on robot avatars, and one-shot matching clips on imported GLB/FBX scene models when available. No invented fallback animations.",
+        "Render brief, bounded and disposable spark lines at contact points. The ImpactEffects emitter registry is extensible for future particles; sparks are never saved or broadcast as scene objects.",
+        "Mirror eligible hit reactions and sparks with permission-checked recent projectile events, per-target deduplication and physics event expiry. No modifications to user-owned avatar GLBs.",
+        "Add focused runtime coverage for bone-rotation opt-out, contact-based hit and head classification, and network/effect integration."
+      ]
+    },
     {
       "version": "0.2.149",
       "publishedAt": "2026-11-02T02:43:00Z",
@@ -301,16 +314,6 @@
         "Reissue the v0.2.117 paired-portal geometry and animation update as v0.2.118 because the previous archive contained generated Python bytecode, which the deployment watcher correctly rejected at Git publishing.",
         "Exclude all __pycache__ directories and .pyc/.pyo or other generated artifacts from the watcher ZIP and the checksum manifest; preserve the original application source and avatar bytes.",
         "Refresh release, backend and Ubuntu installer versions, and all versioned browser import URLs and stylesheet cache keys for v0.2.118."
-      ]
-    },
-    {
-      "version": "0.2.116",
-      "publishedAt": "2026-10-31T19:28:47Z",
-      "changes": [
-        "WebXR headset standing on a moving walkway or escalator is carried by the actual tread displacement, including X/Z travel and stair elevation; spectators outside the treads are not moved",
-        "Optional compact Start, Stop and Reverse controls at both walkway/escalator endpoints, with selectable left/right side positioning and mouse/WebXR controller-ray interaction",
-        "Server-authorized conveyor-control WebSocket messages synchronize direction and running state, and a saved command timestamp prevents older scene snapshots from reversing newer controls",
-        "Preserve the original robot rider, lifts, teleportation, and procedural-stair geometry; add tests for XR carrying, switch actions, state validation, and backwards compatibility"
       ]
     }
   ]

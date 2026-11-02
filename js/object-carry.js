@@ -131,6 +131,15 @@ function gripPoint(robot){
  // Fallback rig: right palm roughly 0.35m from centre and 1.2m above feet.
  return new THREE.Vector3(.35,1.2,.25).applyAxisAngle(new THREE.Vector3(0,1,0),robot.rotation.y).add(robot.position);
 }
+// Get the animated palm's world-space orientation; fall back to the robot's facing.
+export function gripQuaternion(robot){
+ if(typeof THREE.Quaternion!=='function')return null;
+ robot.updateWorldMatrix(true,true);
+ const bone=findRightHand(robot);
+ if(bone){const q=bone.getWorldQuaternion(new THREE.Quaternion());
+  if([q.x,q.y,q.z,q.w].every(Number.isFinite)&&q.lengthSq()>.5)return q.normalize();}
+ return robot.getWorldQuaternion(new THREE.Quaternion());
+}
 export class ObjectCarry{
  constructor(editor){this.editor=editor;this.trajectoryEnabled=false;this.trajectoryLine=null;this.trajectoryEnd=null;this.trajectoryClock=0;}
  eligible(robot){return robot?.userData?.editorKind==='robot'&&this.editor.canEdit(robot)&&!robot.userData.robotLadderRide&&!robot.userData.robotJumpActive&&!robot.userData.robotOneShot&&!robot.userData.robotCarry;}
@@ -204,7 +213,13 @@ export class ObjectCarry{
   obj.userData.carriedBy=robot.userData.editorId;
   const box=new THREE.Box3().setFromObject(obj);
   const centre=box.getCenter(new THREE.Vector3());
-  state.pivotOffset=centre.sub(obj.position);
+  state.pivotOffset=centre.clone().sub(obj.position); // Backwards-compatible release/preview offset.
+  if(typeof THREE.Quaternion==='function'&&typeof obj.worldToLocal==='function'&&typeof obj.getWorldQuaternion==='function'){
+   state.centerLocal=obj.worldToLocal(centre.clone());
+   state.gripStart=gripQuaternion(robot);
+   state.initialRotation=obj.getWorldQuaternion(new THREE.Quaternion());
+   if(state.gripStart)state.handRelativeRotation=state.gripStart.clone().invert().multiply(state.initialRotation);
+  }
   state.attached=true;
   this.editor.physics.remove(obj.userData.editorId); // No collider blocking the holder's capsule.
   this.updateGrip(robot,obj,state);
@@ -212,9 +227,27 @@ export class ObjectCarry{
  }
  updateGrip(robot,obj,state){
   const point=gripPoint(robot);if(!finiteVector(point))return;
-  // Place the geometric centre in the palm while retaining the original scene parent.
-  obj.position.copy(point.sub(state.pivotOffset||new THREE.Vector3()));
-  obj.quaternion.setFromAxisAngle(new THREE.Vector3(0,1,0),robot.rotation.y);
+  if(!state.handRelativeRotation||typeof obj.localToWorld!=='function'){
+   obj.position.copy(point.sub(state.pivotOffset||new THREE.Vector3()));
+   obj.quaternion?.setFromAxisAngle?.(new THREE.Vector3(0,1,0),robot.rotation.y);
+   return;
+  }
+  // Preserve the object's original grip alignment and follow the *animated* palm,
+  // not just the robot root yaw. Opt-out keeps its original world orientation.
+  const handOrientation=gripQuaternion(robot);
+  const worldOrientation=obj.userData.followHandRotation===false
+   ?state.initialRotation:handOrientation.multiply(state.handRelativeRotation);
+  const parentOrientation=obj.parent?.getWorldQuaternion(new THREE.Quaternion())||new THREE.Quaternion();
+  obj.quaternion.copy(parentOrientation.invert().multiply(worldOrientation));
+  obj.updateWorldMatrix(true,true);
+  const center=obj.localToWorld((state.centerLocal||new THREE.Vector3()).clone());
+  const shift=point.sub(center);
+  if(obj.parent){const localShift=shift.applyQuaternion(obj.parent.getWorldQuaternion(new THREE.Quaternion()).invert());
+   const parentScale=obj.parent.getWorldScale(new THREE.Vector3());
+   if(parentScale.x&&parentScale.y&&parentScale.z){localShift.divide(parentScale);obj.position.add(localShift);}}
+  else obj.position.add(shift);
+  obj.updateWorldMatrix(true,true);
+  state.pivotOffset=obj.localToWorld(state.centerLocal.clone()).sub(obj.getWorldPosition(new THREE.Vector3()));
  }
  release(robot,obj,state,remote=false,remotePosition=null){
   if(state.released)return;
@@ -235,11 +268,14 @@ export class ObjectCarry{
   }
   state.released=true;
   obj.position.copy(position);
+  obj.userData.impactProbeUntil=performance.now()+12000;
+  obj.userData.impactAlreadyHit=new Set();
   // Remove attachment state before reintroducing the rigid body.
   delete obj.userData.carriedBy;
   delete obj.userData.carryOrigin;
   obj.userData.physics={...obj.userData.physics,mode:'dynamic'};
   this.editor.physics.sync(obj);
+  this.editor.physics.bodies.get(obj.userData.editorId)?.enableCcd?.(true);
   const impulse=throwImpulse(yaw,settings.force,settings.angle);
   if(!remote){
    const body=this.editor.physics.bodies.get(obj.userData.editorId);
@@ -259,7 +295,7 @@ export class ObjectCarry{
    }
    if(!obj.userData.temporaryCarryTest){
     this.editor.queueSave(obj);
-    window.solviRoomSocket?.send({type:'object-carry',action:'throw',id:robot.userData.editorId,target:obj.userData.editorId,x:obj.position.x,y:obj.position.y,z:obj.position.z});
+    window.solviRoomSocket?.send({type:'object-carry',action:'throw',id:robot.userData.editorId,target:obj.userData.editorId,x:obj.position.x,y:obj.position.y,z:obj.position.z,...(Number.isFinite(obj.quaternion.x)?{q:[obj.quaternion.x,obj.quaternion.y,obj.quaternion.z,obj.quaternion.w]}:{})});
    }
   }
  }
@@ -374,6 +410,12 @@ export class ObjectCarry{
    const state=robot.userData.robotCarry;
    if(!state||state.objectId!==packet.target)return;
    if(![packet.x,packet.y,packet.z].every(n=>typeof n==='number'&&Number.isFinite(n)))return;
+   if(Array.isArray(packet.q)&&packet.q.length===4&&packet.q.every(Number.isFinite)){
+    const q=new THREE.Quaternion(...packet.q);if(q.lengthSq()>.5&&q.lengthSq()<1.5){
+     const obj=this.editor.items.find(o=>o.userData.editorId===packet.target);
+     if(obj)obj.quaternion.copy(q.normalize());
+    }
+   }
    this.throw(robot,true,new THREE.Vector3(packet.x,packet.y,packet.z));
   }
  }

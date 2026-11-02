@@ -103,7 +103,7 @@ def read_archive(upload):
 def safe_scene(objects):
     if not isinstance(objects,list) or len(objects)>128:raise ValueError('Invalid object list')
     if len(json.dumps(objects,ensure_ascii=False))>1_200_000:raise ValueError('Scene metadata exceeds 1.2 MB')
-    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','combat','animationSpeed','throwSettings','runMultiplier','climbSpeed','climbable','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','transformLocked','pickable'}
+    allowed={'id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','brain','combat','animationSpeed','throwSettings','runMultiplier','climbSpeed','climbable','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','transformLocked','pickable','followHandRotation'}
     clean=[];remap={}
     for obj in objects:
         if not isinstance(obj,dict) or obj.get('kind') not in KINDS:continue

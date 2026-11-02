@@ -191,7 +191,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.149',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.150',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3249,6 +3249,7 @@ def set_scene():
         if 'text' in o and (o['kind']!='text' or not valid_text_geometry(o['text'])):return json_error('Invalid text geometry')
         if 'openings' in o and (o['kind']!='cube' or not valid_cube_openings(o['openings'])):return json_error('Invalid cube openings')
         if 'pickable' in o and (o['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','points','model','furniture') or not isinstance(o['pickable'],bool)):return json_error('Invalid pickable flag')
+        if 'followHandRotation' in o and (o['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','points','model','furniture') or type(o['followHandRotation']) is not bool):return json_error('Invalid hand rotation flag')
         if 'climbable' in o and (o['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','model','wall') or not isinstance(o['climbable'],bool)):return json_error('Invalid climbable flag')
         if o['kind']=='wall' and not valid_office_wall(o.get('wall')):return json_error('Invalid office wall')
         if o['kind']=='stairs' and not valid_office_stairs(o.get('stairs')):return json_error('Invalid office stairs')
@@ -3340,13 +3341,14 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','throwSettings','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','throwSettings','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','followHandRotation','transformLocked') if key in obj}
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')
         if 'text' in obj and (obj['kind']!='text' or not valid_text_geometry(obj['text'])):return json_error('Invalid text geometry')
         if 'openings' in obj and (obj['kind']!='cube' or not valid_cube_openings(obj['openings'])):return json_error('Invalid cube openings')
         if 'pickable' in obj and (obj['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','points','model','furniture') or not isinstance(obj['pickable'],bool)):return json_error('Invalid pickable flag')
+        if 'followHandRotation' in obj and (obj['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','points','model','furniture') or type(obj['followHandRotation']) is not bool):return json_error('Invalid hand rotation flag')
         if 'climbable' in obj and (obj['kind'] not in ('cube','sphere','cylinder','plane','torus','curve','surface','text','model','wall') or not isinstance(obj['climbable'],bool)):return json_error('Invalid climbable flag')
         if obj['kind']=='wall' and not valid_office_wall(obj.get('wall')):return json_error('Invalid office wall')
         if obj['kind']=='stairs' and not valid_office_stairs(obj.get('stairs')):return json_error('Invalid office stairs')
@@ -3512,6 +3514,7 @@ def websocket(ws):
         last=0
         last_physics=0
         last_action=0
+        active_throws={}  # Verified per-connection throw events; expire after 12 s.
         while True:
             raw=ws.receive()
             if raw is None:break
@@ -3660,7 +3663,32 @@ def websocket(ws):
                     except (TypeError,ValueError,OverflowError):continue
                     if any(not math.isfinite(v) or abs(v)>100000 for v in position):continue
                     payload.update(dict(zip(('x','y','z'),(round(v,3) for v in position))))
+                    q=msg.get('q')
+                    if q is not None:
+                        if not isinstance(q,list) or len(q)!=4 or any(type(v) not in (float,int) or not math.isfinite(v) or abs(v)>1.01 for v in q) or not .8<=sum(v*v for v in q)<=1.2:continue
+                        payload['q']=[round(v,5) for v in q]
+                    active_throws[target]=(time.monotonic(),set())
                 publish(payload,except_id=uid,room_id=room_id)
+            elif msg.get('type')=='throw-hit':
+                # Only the owner of a recently released Pickable projectile may
+                # broadcast an impact, and each projectile/victim pair is once-only.
+                source=str(msg.get('source',''));target=str(msg.get('target',''))
+                if source==target or not all(re.fullmatch(r'[A-Za-z0-9_-]{8,80}',v) for v in (source,target)):continue
+                recent=active_throws.get(source)
+                if not recent or time.monotonic()-recent[0]>12 or target in recent[1] or len(recent[1])>=5:continue
+                point=msg.get('point')
+                if not isinstance(point,list) or len(point)!=3 or any(type(v) not in (int,float) or not math.isfinite(v) or abs(v)>100000 for v in point):continue
+                if type(msg.get('head')) is not bool:continue
+                with db() as con:
+                    row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+                    objects=json.loads(row['payload']) if row else []
+                    projectile=next((o for o in objects if o.get('id')==source and o.get('pickable') is True),None)
+                    victim=next((o for o in objects if o.get('id')==target and o.get('kind') in ('robot','model')),None)
+                if not projectile or not victim or not may_edit(uid,projectile,room_policy(room_id),ws_admin_enabled()):continue
+                recent[1].add(target)
+                publish({'type':'throw-hit','room':room_id,'by':uid,'source':source,
+                         'target':target,'point':[round(v,3) for v in point],
+                         'head':msg['head']},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-input':
                 identifier=str(msg.get('id',''))
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue

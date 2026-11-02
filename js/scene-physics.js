@@ -8,6 +8,9 @@ import {CHARACTER,characterMotion,resolveCharacterMotion,easedRemotePose} from '
 import {robotPushVector,pushedWalkState} from './robot-push.js';
 import {approachingRobotContact,ROBOT_CONTACT_DISTANCE,facingPushContact,sizeableFrontalPushContact} from './robot-contact.js';
 import {combatReach,combatDirection,impactImpulse,combatContact} from './robot-combat.js';
+import {triggerSceneModelHit,tickSceneModelHit} from './scene-models.js';
+import {ImpactEffects} from './impact-effects.js';
+import {throwHitRegion} from './throw-impact.js';
 
 // Bodies live for the lifetime of the scene object; movement never re-creates a GLB.
 export class ScenePhysics{
@@ -16,6 +19,7 @@ export class ScenePhysics{
   this.colliders=new Map();this.settings=new Map();this.characters=new Map();this.characterController=null;
   this.accumulator=0;this.lastBroadcast=new Map();this.lastSave=new Map();this.lastActivity=new Map();
   this.remoteTargets=new Map();this.localSequence=new Map();this.remoteSequence=new Map();this.loading=null;this.generation=0;
+  this.eventQueue=null;this.impactEffects=null;
  }
  async setEnabled(enabled){
   if(!enabled){if(!this.enabled&&!this.world&&!this.loading)return;this.generation++;this.enabled=false;this.clear();return;}
@@ -31,6 +35,8 @@ export class ScenePhysics{
     }
     if(generation!==this.generation)return;
     this.clear();const R=this.runtime;this.world=new R.World({x:0,y:-9.81,z:0});
+    this.eventQueue=typeof R.EventQueue==='function'?new R.EventQueue(true):null;
+    if(this.editor.world?.scene&&!this.impactEffects)this.impactEffects=new ImpactEffects(this.editor.world.scene);
     this.world.createCollider(R.ColliderDesc.cuboid(100,.12,100).setTranslation(0,-.12,0));
     this.characterController=this.world.createCharacterController(.012);
     this.characterController.enableAutostep(CHARACTER.maxStep,.13,false);
@@ -62,6 +68,7 @@ export class ScenePhysics{
   this.remoteTargets.clear();this.lastBroadcast.clear();this.lastSave.clear();this.lastActivity.clear();
   this.remoteSequence.clear();this.localSequence.clear();
   if(this.world){this.world.free();this.world=null;}
+  this.eventQueue?.free?.();this.eventQueue=null;this.impactEffects?.clear();
   this.characterController=null;this.accumulator=0;
   for(const object of this.editor.items||[]){if(object.userData.editorKind==='robot'){
    object.userData.physicsCharacterActive=false;object.userData.physicsAirborne=false;
@@ -174,6 +181,7 @@ export class ScenePhysics{
    shape=this.colliderShape(object);
   }
   if(!isRobot)shape.setFriction(opts.friction).setRestitution(opts.restitution);
+  if(object.userData.impactProbeUntil&&R.ActiveEvents)shape.setActiveEvents(R.ActiveEvents.COLLISION_EVENTS);
   else shape.setFriction(.85).setRestitution(0);
   let collider;
   if(!useTrimesh&&(kind==='wall'||kind==='stairs'||kind==='ladder'||kind==='portal'||kind==='furniture')&&object.children.length){
@@ -219,7 +227,9 @@ export class ScenePhysics{
    try{collider=this.world.createCollider(shape,body);}catch(error){
     if(!useTrimesh)throw error;
     object.userData.colliderStatus='Trimesh creation failed; using bounding box: '+String(error?.message||error).slice(0,120);
-    collider=this.world.createCollider(this.colliderShape(object).setFriction(opts.friction).setRestitution(opts.restitution),body);
+    const fallback=this.colliderShape(object).setFriction(opts.friction).setRestitution(opts.restitution);
+    if(object.userData.impactProbeUntil&&R.ActiveEvents)fallback.setActiveEvents(R.ActiveEvents.COLLISION_EVENTS);
+    collider=this.world.createCollider(fallback,body);
    }
   }
   this.bodies.set(id,body);this.colliders.set(id,collider);this.settings.set(id,signature);
@@ -382,6 +392,85 @@ export class ScenePhysics{
   }
   return true;
  }
+  // Use the animated model's authored reaction when one is available. The
+  // reaction and particles are visual; they never create scene-save records.
+  applyThrowHit(target,point,head=false){
+   if(!target||!['robot','model'].includes(target.userData?.editorKind))return false;
+   if(!point||![point.x,point.y,point.z].every(Number.isFinite))return false;
+   if(target.userData.editorKind==='model')triggerSceneModelHit(target,head);
+   else{
+    const animator=target.userData.robotAnimator;
+    const clip=head?'hitHead':'hitBody';
+    if(animator?.actions?.has?.(clip)){
+     target.userData.robotReaction={clip,duration:Math.max(.22,animator.clipDuration(clip)||.58),elapsed:0,next:null};
+     target.userData.robotPlaying=null;
+    }else if(head&&animator?.actions?.has?.('hitBody')){
+     target.userData.robotReaction={clip:'hitBody',duration:Math.max(.22,animator.clipDuration('hitBody')||.58),elapsed:0,next:null};
+     target.userData.robotPlaying=null;
+    }
+   }
+   this.impactEffects?.emit(point);
+   return true;
+  }
+  applyRemoteThrowHit(packet){
+   const target=this.editor.items.find(o=>o.userData.editorId===packet?.target);
+   if(!target||!['model','robot'].includes(target.userData.editorKind))return false;
+   if(!Array.isArray(packet.point)||packet.point.length!==3||!packet.point.every(Number.isFinite))return false;
+   const point=new THREE.Vector3(...packet.point);
+   // Avoid rendering forged effects at a remote location unrelated to the victim.
+   const box=new THREE.Box3().setFromObject(target).expandByScalar(.65);
+   if(!box.containsPoint(point))return false;
+   return this.applyThrowHit(target,point,packet.head===true);
+  }
+  resolveProjectileContact(projectile,target,first,second){
+   const body=this.bodies.get(projectile.userData.editorId);
+   if(!body)return false;
+   const speed=this.beforeStepImpactSpeed?.get(projectile.userData.editorId);
+   if(!Number.isFinite(speed)||speed<.6)return false;
+   let point=null;
+   // Rapier provides world-space solver contact positions for the actual pair.
+   try{this.world.contactPair(first,second,(manifold)=>{
+    if(point)return;
+    const p=manifold.numSolverContacts?.()>0?manifold.solverContactPoint?.(0):null;
+    if(p&&[p.x,p.y,p.z].every(Number.isFinite))point=new THREE.Vector3(p.x,p.y,p.z);
+   });}catch{/* Use closest collision-surface estimate when no solver point exists. */}
+   if(!point){
+    const projectilePoint=new THREE.Vector3(body.translation().x,body.translation().y,body.translation().z);
+    point=target?new THREE.Box3().setFromObject(target).clampPoint(projectilePoint,new THREE.Vector3()):projectilePoint;
+    if(!target)point.y=Math.max(0,point.y);
+   }
+   const id=target?.userData.editorId||'world';
+   const hit=projectile.userData.impactAlreadyHit||(projectile.userData.impactAlreadyHit=new Set());
+   if(hit.has(id)||hit.size>=5)return false;
+   hit.add(id);
+   if(target&&['robot','model'].includes(target.userData.editorKind)){
+    const box=new THREE.Box3().setFromObject(target);
+    const head=throwHitRegion(box,point)==='head';
+    this.applyThrowHit(target,point,head);
+    if(!projectile.userData.temporaryCarryTest){
+     window.solviRoomSocket?.send({type:'throw-hit',source:projectile.userData.editorId,
+      target:id,point:[point.x,point.y,point.z],head});
+    }
+   }else this.impactEffects?.emit(point);
+   return true;
+  }
+  handleProjectileCollisions(){
+   if(!this.eventQueue||!this.world)return;
+   const colliders=new Map();
+   // Body handles also resolve compound collider segments and imported models.
+   for(const object of this.editor.items){const body=this.bodies.get(object.userData.editorId);
+    if(body)colliders.set(body.handle,object);
+   }
+   this.eventQueue.drainCollisionEvents((a,b,started)=>{
+    if(!started)return;
+    const first=this.world.getCollider(a),second=this.world.getCollider(b);
+    if(!first||!second)return;
+    const objA=colliders.get(first.parent()?.handle),objB=colliders.get(second.parent()?.handle);
+    const active=(obj)=>obj&&obj.userData.impactProbeUntil>performance.now()&&this.owns(obj);
+    if(active(objA)&&objA!==objB)this.resolveProjectileContact(objA,objB,first,second);
+    else if(active(objB)&&objA!==objB)this.resolveProjectileContact(objB,objA,second,first);
+   });
+  }
  // Rapier handles movement of dynamic bodies. Show Push only when a movable
  // body actually receives contact in front of the actor, never for a fixed mesh.
  noteDynamicPush(actor,delta,distance){
@@ -621,6 +710,8 @@ export class ScenePhysics{
  tick(dt){
   if(!this.enabled||!this.world)return;
   const step=Math.max(0,Math.min(.05,Number(dt)||0)),now=performance.now();
+  this.impactEffects?.tick(step);
+  for(const item of this.editor.items)if(item.userData?.editorKind==='model')tickSceneModelHit(item,step);
   // Kinematic avatars are evaluated AFTER local and remote movement intent for this frame.
   for(const object of this.editor.items){
    const id=object.userData.editorId,body=this.bodies.get(id);if(!body)continue;
@@ -640,7 +731,15 @@ export class ScenePhysics{
    }
   }
   this.accumulator=Math.min(.10,this.accumulator+step);let n=0;
-  while(this.accumulator>=1/60&&n++<6){this.world.timestep=1/60;this.world.step();this.accumulator-=1/60;}
+  while(this.accumulator>=1/60&&n++<6){
+   this.beforeStepImpactSpeed=new Map();
+   for(const item of this.editor.items){
+    if(!(item.userData?.impactProbeUntil>now)||!this.owns(item))continue;
+    const velocity=this.bodies.get(item.userData.editorId)?.linvel?.();
+    if(velocity)this.beforeStepImpactSpeed.set(item.userData.editorId,Math.hypot(velocity.x,velocity.y,velocity.z));
+   }
+   this.world.timestep=1/60;this.world.step(this.eventQueue||undefined);this.handleProjectileCollisions();this.accumulator-=1/60;
+  }
   for(const object of this.editor.items){
    const id=object.userData.editorId,body=this.bodies.get(id);
    if(!body||object.userData.physics?.mode!=='dynamic'||object.userData.editorKind==='robot'||!this.owns(object))continue;

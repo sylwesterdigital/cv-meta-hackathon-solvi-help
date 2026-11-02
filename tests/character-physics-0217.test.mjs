@@ -23,7 +23,7 @@ test('remote rigid-body snapshots ease without teleport',()=>{
 });
 test('Rapier character controller runs after movement intent and before rendering',()=>{
  const physics=source('js/scene-physics.js'),editor=source('js/editor.js');
- for(const signature of ['createCharacterController','ColliderDesc.capsule','computeColliderMovement','computedMovement','computedGrounded','enableAutostep','enableSnapToGround','setMaxSlopeClimbAngle','setApplyImpulsesToDynamicBodies','setNextKinematicTranslation','world.step()'])assert.ok(physics.includes(signature),signature);
+ for(const signature of ['createCharacterController','ColliderDesc.capsule','computeColliderMovement','computedMovement','computedGrounded','enableAutostep','enableSnapToGround','setMaxSlopeClimbAngle','setApplyImpulsesToDynamicBodies','setNextKinematicTranslation','world.step(this.eventQueue||undefined)'])assert.ok(physics.includes(signature),signature);
  assert.match(editor,/tickRobots\(this\.items,dt,[\s\S]*?this\.physics\.tick\(dt\)/);
  assert.match(source('js/robots.js'),/!robot\.userData\.physicsCharacterActive/);
 });
