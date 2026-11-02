@@ -9,13 +9,13 @@ export function pickUpClip(names=[],name){
  return null;
 }
 // Avatar-specific defaults; release delay is a percentage of the authored Throw clip.
-export const DEFAULT_THROW_SETTINGS=Object.freeze({angle:12,height:0,direction:0,delay:55,pickupDelay:55});
+export const DEFAULT_THROW_SETTINGS=Object.freeze({angle:12,height:0,direction:0,delay:55,pickupDelay:55,pickupSpeed:1,throwSpeed:1,force:3.1});
 export function cleanThrowSettings(raw={}){
  const bound=(key,min,max)=>{
   const value=Number(raw?.[key]);
   return Number.isFinite(value)&&value>=min&&value<=max?value:DEFAULT_THROW_SETTINGS[key];
  };
- return {angle:bound('angle',-20,65),height:bound('height',-.35,.65),direction:bound('direction',-90,90),delay:bound('delay',5,95),pickupDelay:bound('pickupDelay',5,95)};
+ return {angle:bound('angle',-20,65),height:bound('height',-.35,.65),direction:bound('direction',-90,90),delay:bound('delay',5,95),pickupDelay:bound('pickupDelay',5,95),pickupSpeed:bound('pickupSpeed',.5,3),throwSpeed:bound('throwSpeed',.5,3),force:bound('force',1.2,10)};
 }
 function handBoneScore(name){
  const n=String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -65,10 +65,29 @@ export function pickableTarget(robot,items,{maxReach=1.65}={}){
  return best;
 }
 export function throwImpulse(yaw,force=3.1,elevation=12){
- const strength=Math.max(1.2,Math.min(6,Number(force)||3.1));
+ const strength=Math.max(1.2,Math.min(10,Number.isFinite(Number(force))?Number(force):3.1));
  // A short, predominantly horizontal hand-height arc, not a lobbed snowball.
  const pitch=Math.max(-20,Math.min(65,Number(elevation)||0))*Math.PI/180;
  return {x:Math.sin(yaw)*strength*Math.cos(pitch),y:strength*Math.sin(pitch),z:Math.cos(yaw)*strength*Math.cos(pitch)};
+}
+// Use exactly the launch velocity that is converted to mass-scaled Rapier impulse.
+// The optional segmentCheck stops the guide at the first physics obstacle.
+export function predictThrowPath(start,yaw,settings={},segmentCheck=null){
+ if(!start||![start.x,start.y,start.z,yaw].every(Number.isFinite))return [];
+ const cfg=cleanThrowSettings(settings);
+ const velocity=throwImpulse(yaw,cfg.force,cfg.angle);
+ const points=[new THREE.Vector3(start.x,start.y,start.z)];
+ const dt=.075,gravity=9.81;
+ for(let i=1;i<=34;i++){
+  const t=i*dt;
+  const next=new THREE.Vector3(start.x+velocity.x*t,start.y+velocity.y*t-.5*gravity*t*t,start.z+velocity.z*t);
+  const previous=points[points.length-1];
+  if(segmentCheck){const hit=segmentCheck(previous,next);if(hit&&[hit.x,hit.y,hit.z].every(Number.isFinite)){points.push(new THREE.Vector3(hit.x,hit.y,hit.z));break;}}
+  if(next.y<=0){const fraction=Math.max(0,Math.min(1,previous.y/(previous.y-next.y||1)));
+   points.push(new THREE.Vector3(previous.x+(next.x-previous.x)*fraction,0,previous.z+(next.z-previous.z)*fraction));break;}
+  points.push(next);
+ }
+ return points;
 }
 function finiteVector(vec){return vec&&Number.isFinite(vec.x)&&Number.isFinite(vec.y)&&Number.isFinite(vec.z);}
 function gripPoint(robot){
@@ -80,7 +99,7 @@ function gripPoint(robot){
  return new THREE.Vector3(.35,1.2,.25).applyAxisAngle(new THREE.Vector3(0,1,0),robot.rotation.y).add(robot.position);
 }
 export class ObjectCarry{
- constructor(editor){this.editor=editor;}
+ constructor(editor){this.editor=editor;this.trajectoryEnabled=false;this.trajectoryLine=null;this.trajectoryEnd=null;this.trajectoryClock=0;}
  eligible(robot){return robot?.userData?.editorKind==='robot'&&this.editor.canEdit(robot)&&!robot.userData.robotLadderRide&&!robot.userData.robotJumpActive&&!robot.userData.robotOneShot&&!robot.userData.robotCarry;}
  pickup(robot,remote=false,targetId=null){
   if(!remote&&!this.eligible(robot))return false;
@@ -89,10 +108,10 @@ export class ObjectCarry{
   if(!remote&&(!this.editor.canEdit(target)||!this.editor.physics.owns(target)||!this.editor.physics.enabled)){this.editor.toast('Pickup needs object permission and room Physics enabled');return false;}
   // One-shot Lifting reaches for the object, then ordinary Idle/Walk/Run resumes.
   const clip=pickUpClip(robot.userData.robotAvailableActions,'liftCarry');
-  const duration=Math.max(.38,Math.min(1.45,robot.userData.robotAnimator?.clipDuration(clip)||.65));
-  target.userData.carryOrigin={position:target.position.clone(),rotation:target.rotation?.clone?.()};
   const settings=cleanThrowSettings(robot.userData.robotThrowSettings);
-  robot.userData.robotCarry={objectId:target.userData.editorId,stage:'pickup',elapsed:0,duration,attachAt:duration*settings.pickupDelay/100,attached:false,remote};
+  const duration=Math.max(.2,Math.min(4,(robot.userData.robotAnimator?.clipDuration(clip)||.65)/settings.pickupSpeed));
+  target.userData.carryOrigin={position:target.position.clone(),rotation:target.rotation?.clone?.()};
+  robot.userData.robotCarry={objectId:target.userData.editorId,stage:'pickup',elapsed:0,duration,attachAt:duration*settings.pickupDelay/100,attached:false,settings,remote};
   robot.userData.robotPlaying=null;
   if(!remote)window.solviRoomSocket?.send({type:'object-carry',action:'pickup',id:robot.userData.editorId,target:target.userData.editorId});
   return true;
@@ -132,8 +151,8 @@ export class ObjectCarry{
   // If pickup animation has not reached the hand yet, attach before throwing.
   if(!state.attached)this.attach(robot,target,state);
   const clip=pickUpClip(robot.userData.robotAvailableActions,'throwObject');
-  state.stage='throw';state.elapsed=0;state.duration=Math.max(.4,Math.min(1.5,robot.userData.robotAnimator?.clipDuration(clip)||.9));
-  state.settings=cleanThrowSettings(robot.userData.robotThrowSettings);
+  state.stage='throw';state.elapsed=0;state.settings=cleanThrowSettings(robot.userData.robotThrowSettings);
+  state.duration=Math.max(.2,Math.min(4,(robot.userData.robotAnimator?.clipDuration(clip)||.9)/state.settings.throwSpeed));
   state.releaseAt=state.duration*state.settings.delay/100;
   state.released=false;
   // Keep the object attached throughout the arm swing. The owner publishes
@@ -181,7 +200,7 @@ export class ObjectCarry{
   delete obj.userData.carryOrigin;
   obj.userData.physics={...obj.userData.physics,mode:'dynamic'};
   this.editor.physics.sync(obj);
-  const impulse=throwImpulse(yaw,3.1,settings.angle);
+  const impulse=throwImpulse(yaw,settings.force,settings.angle);
   if(!remote){
    const body=this.editor.physics.bodies.get(obj.userData.editorId);
    if(body){
@@ -199,7 +218,75 @@ export class ObjectCarry{
    }
   }
  }
+ toggleTrajectory(enabled){
+  this.trajectoryEnabled=Boolean(enabled);
+  if(!this.trajectoryEnabled)this.hideTrajectory();
+ }
+ hideTrajectory(){if(this.trajectoryLine)this.trajectoryLine.visible=false;if(this.trajectoryEnd)this.trajectoryEnd.visible=false;}
+ clearTrajectory(){
+  this.trajectoryLine?.parent?.remove(this.trajectoryLine);
+  this.trajectoryEnd?.parent?.remove(this.trajectoryEnd);
+  this.trajectoryLine?.geometry?.dispose();this.trajectoryLine?.material?.dispose();
+  this.trajectoryEnd?.geometry?.dispose();this.trajectoryEnd?.material?.dispose();
+  this.trajectoryLine=null;this.trajectoryEnd=null;
+ }
+ collisionOnSegment(robot,start,end){
+  const physics=this.editor.physics,R=physics?.runtime,world=physics?.world;
+  if(!physics?.enabled||!world||typeof R?.Ray!=='function')return null;
+  const dx=end.x-start.x,dy=end.y-start.y,dz=end.z-start.z;
+  const length=Math.hypot(dx,dy,dz);
+  if(!Number.isFinite(length)||length<.0001)return null;
+  try{
+   const ray=new R.Ray({x:start.x,y:start.y,z:start.z},{x:dx/length,y:dy/length,z:dz/length});
+   const excluded=physics.colliders?.get(robot.userData.editorId);
+   const hit=world.castRay(ray,length,true,undefined,undefined,excluded);
+   const distance=hit?.timeOfImpact;
+   if(!Number.isFinite(distance)||distance<.015||distance>length)return null;
+   return {x:start.x+dx*distance/length,y:start.y+dy*distance/length,z:start.z+dz*distance/length};
+  }catch{return null;}
+ }
+ trajectoryOrigin(robot,cfg){
+  const hand=gripPoint(robot);
+  const yaw=robot.rotation.y+cfg.direction*Math.PI/180;
+  const pivot=robot.userData.robotCarry?.pivotOffset;
+  const origin=new THREE.Vector3(hand.x+Math.sin(yaw)*.12,Math.max(robot.position.y+.8,hand.y+cfg.height),hand.z+Math.cos(yaw)*.12);
+  // A predicted launch uses the held object's geometric centre; test sphere
+  // or a default hand-sized prop has a negligible pivot offset.
+  if(pivot&&finiteVector(pivot))origin.sub(pivot);
+  return origin;
+ }
+ updateTrajectory(dt){
+  if(!this.trajectoryEnabled){this.hideTrajectory();return;}
+  const robot=this.editor.selected;
+  if(!robot||robot.userData?.editorKind!=='robot'||!robot.parent||!finiteVector(robot.position)||!Number.isFinite(robot.rotation.y)){this.hideTrajectory();return;}
+  this.trajectoryClock+=Math.max(0,Math.min(.12,Number(dt)||0));
+  if(this.trajectoryClock<.12&&this.trajectoryLine?.visible)return;
+  this.trajectoryClock=0;
+  const cfg=cleanThrowSettings(robot.userData.robotThrowSettings);
+  const yaw=robot.rotation.y+cfg.direction*Math.PI/180;
+  const origin=this.trajectoryOrigin(robot,cfg);
+  const points=predictThrowPath(origin,yaw,cfg,(a,b)=>this.collisionOnSegment(robot,a,b));
+  if(points.length<2){this.hideTrajectory();return;}
+  if(!this.trajectoryLine){
+   const geometry=new THREE.BufferGeometry();
+   geometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(35*3),3));
+   this.trajectoryLine=new THREE.Line(geometry,new THREE.LineBasicMaterial({color:'#ffe38b',depthTest:false,transparent:true,opacity:.94}));
+   this.trajectoryLine.frustumCulled=false;this.trajectoryLine.renderOrder=992;
+   this.trajectoryLine.userData.throwPreview=true;
+   this.trajectoryEnd=new THREE.Mesh(new THREE.SphereGeometry(.055,8,6),new THREE.MeshBasicMaterial({color:'#ffc96e',depthTest:false}));
+   this.trajectoryEnd.renderOrder=993;this.trajectoryEnd.userData.throwPreview=true;
+  }
+  const scene=this.editor.world.scene;
+  if(this.trajectoryLine.parent!==scene)scene.add(this.trajectoryLine);
+  if(this.trajectoryEnd.parent!==scene)scene.add(this.trajectoryEnd);
+  const attr=this.trajectoryLine.geometry.getAttribute('position');
+  for(let i=0;i<points.length;i++){const p=points[i];attr.setXYZ(i,p.x,p.y,p.z);}
+  attr.needsUpdate=true;this.trajectoryLine.geometry.setDrawRange(0,points.length);
+  this.trajectoryEnd.position.copy(points[points.length-1]);
+  this.trajectoryLine.visible=true;this.trajectoryEnd.visible=true;
+ }
  tick(dt){
+  this.updateTrajectory(dt);
   for(const robot of this.editor.items){const state=robot.userData?.robotCarry;if(!state)continue;
    const obj=this.editor.items.find(o=>o.userData.editorId===state.objectId);
    if(!obj||!robot.parent){if(obj?.userData.temporaryCarryTest)this.disposeTestSphere(obj);else if(obj)delete obj.userData.carriedBy;robot.userData.robotCarry=null;continue;}

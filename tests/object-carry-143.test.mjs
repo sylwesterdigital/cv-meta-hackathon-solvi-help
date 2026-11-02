@@ -195,8 +195,8 @@ test('Lifting, like Throw, is a non-looping authored animation',()=>{
 });
 
 test('throw tuning clamps invalid settings and controls angle/direction/height/delay',()=>{
- assert.deepEqual(exports.cleanThrowSettings(),{angle:12,height:0,direction:0,delay:55,pickupDelay:55});
- assert.deepEqual(exports.cleanThrowSettings({angle:NaN,height:Infinity,direction:180,delay:-4}),{angle:12,height:0,direction:0,delay:55,pickupDelay:55});
+ assert.deepEqual(exports.cleanThrowSettings(),{angle:12,height:0,direction:0,delay:55,pickupDelay:55,pickupSpeed:1,throwSpeed:1,force:3.1});
+ assert.deepEqual(exports.cleanThrowSettings({angle:NaN,height:Infinity,direction:180,delay:-4}),{angle:12,height:0,direction:0,delay:55,pickupDelay:55,pickupSpeed:1,throwSpeed:1,force:3.1});
  const f=fixture();f.robot.userData.robotThrowSettings={angle:35,height:.3,direction:90,delay:80};
  f.carry.pickup(f.robot);for(let i=0;i<9;i++)f.carry.tick(.1);
  f.carry.throw(f.robot);const state=f.robot.userData.robotCarry;
@@ -286,4 +286,98 @@ test('temporary props are excluded from persistence and replicated physics strea
  assert.match(physics,/!object\.userData\.temporaryCarryTest&&awake/);
  assert.match(html,/id="robotPickupDelay"/);
  assert.match(html,/id="robotTestThrowSphere"/);
+});
+
+// v0.2.147: hand-action playback, mass-scaled impulse strength and opt-in aiming preview.
+test('per-avatar animation speed changes pickup and release timing without looping the held pose',()=>{
+ const f=fixture();f.robot.userData.robotThrowSettings={pickupSpeed:2,throwSpeed:2,pickupDelay:50,delay:60,force:6};
+ assert.equal(f.carry.pickup(f.robot),true);
+ assert.ok(Math.abs(f.robot.userData.robotCarry.duration-.31)<.001);
+ f.carry.tick(.12);assert.equal(f.item.userData.carriedBy,undefined);
+ f.carry.tick(.12);assert.equal(f.item.userData.carriedBy,f.robot.userData.editorId);
+ f.carry.tick(.12);assert.equal(f.robot.userData.robotCarry.stage,'hold');
+ assert.equal(f.carry.throw(f.robot),true);
+ const throwState=f.robot.userData.robotCarry;
+ assert.ok(Math.abs(throwState.duration-.31)<.001);
+ assert.ok(Math.abs(throwState.releaseAt-.186)<.001);
+ f.carry.tick(.12);assert.equal(f.item.userData.carriedBy,f.robot.userData.editorId);
+ f.carry.tick(.12);assert.equal(f.item.userData.carriedBy,undefined);
+ assert.ok(f.impulses.at(-1).z>=5.8,'configurable launch force increases the forward impulse');
+ f.carry.tick(.12);assert.equal(f.robot.userData.robotCarry,null);
+});
+
+test('predicted guide follows the actual release velocity and gravity, clips ground and collisions',()=>{
+ const guideExports=new Function('THREE',source+'\nreturn {predictThrowPath,throwImpulse};')(THREE);
+ const cfg={force:5,angle:20,direction:15};
+ const origin={x:0,y:1.5,z:0};const yaw=15*Math.PI/180;
+ const points=guideExports.predictThrowPath(origin,yaw,cfg);
+ assert.ok(points.length>5);
+ const vel=guideExports.throwImpulse(yaw,5,20);
+ assert.ok(Math.abs(points[1].x-vel.x*.075)<.00001);
+ assert.ok(Math.abs(points[1].y-(origin.y+vel.y*.075-.5*9.81*.075**2))<.00001);
+ assert.ok(Math.abs(points[1].z-vel.z*.075)<.00001);
+ assert.equal(points.at(-1).y,0,'predicted arc stops at the ground');
+ let checked=0;
+ const blocked=guideExports.predictThrowPath(origin,yaw,cfg,(a,b)=>{checked++;return checked===3?{x:b.x,y:b.y,z:b.z}:null;});
+ assert.equal(blocked.length,4,'guide ends at first collided wall or ceiling');
+ assert.deepEqual(guideExports.predictThrowPath({x:NaN,y:1,z:0},0,cfg),[]);
+});
+
+test('temporary preview uses physics ray hits, does not persist and can be toggled off',()=>{
+ const f=fixture();f.editor.selected=f.robot;
+ class Ray{constructor(origin,direction){this.origin=origin;this.direction=direction;}}
+ f.editor.physics.runtime={Ray};
+ f.editor.physics.colliders=new Map([[f.robot.userData.editorId,{robot:true}]]);
+ f.editor.physics.world={castRay(ray,distance,_solid,_filters,_groups,excluded){
+  assert.ok(excluded.robot);
+  return {timeOfImpact:Math.min(.035,distance)};
+ }};
+ const result=f.carry.collisionOnSegment(f.robot,{x:0,y:1,z:0},{x:0,y:1,z:3});
+ assert.ok(result&&Math.abs(result.z-.035)<.00001);
+ f.editor.physics.world.castRay=()=>({timeOfImpact:NaN});
+ assert.equal(f.carry.collisionOnSegment(f.robot,{x:0,y:1,z:0},{x:0,y:1,z:3}),null);
+ f.carry.toggleTrajectory(true);assert.equal(f.carry.trajectoryEnabled,true);
+ f.carry.toggleTrajectory(false);assert.equal(f.carry.trajectoryEnabled,false);
+ assert.equal(f.saves.length,0,'preview never saves scene or avatar state');
+ assert.equal(f.packets.length,0,'preview never broadcasts a multiplayer event');
+});
+
+test('inspector, animation clock and server validator expose speed, force and live guide controls',()=>{
+ const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+ const editor=fs.readFileSync(new URL('../js/editor.js',import.meta.url),'utf8');
+ const robotSource=fs.readFileSync(new URL('../js/robots.js',import.meta.url),'utf8');
+ const backend=fs.readFileSync(new URL('../backend/server.py',import.meta.url),'utf8');
+ for(const id of ['robotPickupSpeed','robotThrowSpeed','robotThrowForce','robotThrowTrajectory'])assert.match(html,new RegExp(`id="${id}"`));
+ assert.match(editor,/carry\.toggleTrajectory\(e\.target\.checked\)/);
+ assert.match(robotSource,/data\.robotCarry\.settings\?\.pickupSpeed/);
+ assert.match(robotSource,/data\.robotCarry\.settings\?\.throwSpeed/);
+ assert.match(backend,/\('force',1\.2,10\)/);
+ assert.match(backend,/\('throwSpeed',\.5,3\)/);
+ assert.deepEqual(exports.cleanThrowSettings({force:Infinity,pickupSpeed:7,throwSpeed:-1}),{
+  angle:12,height:0,direction:0,delay:55,pickupDelay:55,pickupSpeed:1,throwSpeed:1,force:3.1});
+});
+
+test('guide builds a visible transient line and marker and cleans up GPU resources',()=>{
+ const prior={};for(const k of ['BufferGeometry','BufferAttribute','Line','LineBasicMaterial','SphereGeometry','Mesh','MeshBasicMaterial'])prior[k]=THREE[k];
+ let disposed=0;
+ class BufferAttribute{constructor(array,itemSize){this.array=array;this.itemSize=itemSize;}setXYZ(i,x,y,z){this.array.set([x,y,z],i*3);}}
+ class BufferGeometry{setAttribute(k,v){this[k]=v;}getAttribute(k){return this[k];}setDrawRange(start,count){this.count=count;}dispose(){disposed++;}}
+ class Material{constructor(data){this.data=data;}dispose(){disposed++;}}
+ class Object3D{constructor(geometry,material){this.geometry=geometry;this.material=material;this.visible=true;this.position=new V3();this.userData={};this.parent=null;}}
+ try{
+  Object.assign(THREE,{BufferGeometry,BufferAttribute,Line:class extends Object3D{},LineBasicMaterial:Material,SphereGeometry:class{dispose(){disposed++;}},Mesh:class extends Object3D{},MeshBasicMaterial:Material});
+  const f=fixture();f.editor.selected=f.robot;
+  f.editor.world={scene:{add(o){o.parent=this;},remove(o){o.parent=null;}}};
+  f.carry.toggleTrajectory(true);f.carry.updateTrajectory(.2);
+  assert.equal(f.carry.trajectoryLine.visible,true);
+  assert.equal(f.carry.trajectoryEnd.visible,true);
+  assert.ok(f.carry.trajectoryLine.geometry.count>5);
+  assert.ok(f.carry.trajectoryEnd.position.y>=0);
+  f.carry.toggleTrajectory(false);
+  assert.equal(f.carry.trajectoryLine.visible,false);
+  f.carry.clearTrajectory();
+  assert.equal(f.carry.trajectoryLine,null);
+  assert.ok(disposed>=4);
+  assert.equal(f.saves.length,0);
+ }finally{for(const [k,v] of Object.entries(prior)){if(v===undefined)delete THREE[k];else THREE[k]=v;}}
 });

@@ -1,3 +1,11 @@
+## v0.2.147 — Pickup/Throw animation speeds, force and trajectory guide (2 November 2026)
+
+- **Animation speeds:** In robot **Pickup & Throw · right hand**, Lifting speed (0.50–3.00×) and Throw speed (0.50–3.00×) affect both animation playback and the configured grip/release delays, which remain percentages of those animations. The held object remains attached while the robot returns to Idle/Walking/Running.
+- **Throw force:** New per-avatar Throw force value (1.2–10 m/s, default 3.1) sets desired launch speed. The dynamic Rapier impulse is `mass × velocity`, so objects with different mass launch at similar speed in the selected aim direction (subject to physics simulation). Existing Angle (elevation), Direction (yaw) and Hand height offset remain editable.
+- **Trajectory guide:** Toggle **Trajectory guide** in that panel to draw a temporary world-space aiming line and endpoint at the right-hand release position. It uses the same launch velocity and gravity as the real thrown object, tries Rapier raycasts to stop at walls/ceilings/other colliders, and otherwise stops at the basic floor plane. The line is a fast approximate prediction, not a guarantee of collision results after moving objects or further impulses. It only updates roughly every 120 ms, creates no scene-object records and never broadcasts.
+- **Compatibility:** Former four/five-field saved `throwSettings` are accepted; three new numeric fields default to 1×/1×/3.1 m/s. No changes to original GLB assets.
+- **Validation:** 642/642 JavaScript tests before final versioning, including five new runtime tests; Python/Nginx/archive/installer syntax and checks. Live browser, skeletal alignment and real WebXR behaviour unverified.
+
 ## v0.2.146 — Configurable pickup timing and temporary hand test sphere (2 November 2026)
 
 - **Pickup delay (%):** A compact per-avatar field in **Pickup & Throw · right hand** controls when the object attaches during the one-shot Lifting clip (5–95%, default 55%). The hand reaches for the floor object first; after grasp, Idle/Walk/Run resumes normally. The existing Throw release delay (%) remains separate.

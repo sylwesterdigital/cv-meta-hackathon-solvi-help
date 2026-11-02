@@ -363,6 +363,8 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     }
     const tune=animationSpeedSettings(data.robotAnimationSpeed);
     if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){/* playOnce owns rate */}
+    else if(data.robotCarry?.stage==='pickup'&&mode==='liftCarry')animator?.setPlaybackSpeed(data.robotCarry.settings?.pickupSpeed||1);
+    else if(data.robotCarry?.stage==='throw'&&mode==='throwObject')animator?.setPlaybackSpeed(data.robotCarry.settings?.throwSpeed||1);
     else if(mode==='climbLadder')animator?.setPlaybackSpeed(Math.max(.3,Math.min(3.2,(Number(data.robotClimbSpeed)||1.25)/1.25)));
     else if(data.robotPushState&&now-data.robotPushState.at<420&&mode===data.robotPushState.kind)animator?.setPlaybackSpeed(data.robotPushState.rate);
     else if(['walk','walkBackward','run','strafeLeft','strafeRight'].includes(mode)){
