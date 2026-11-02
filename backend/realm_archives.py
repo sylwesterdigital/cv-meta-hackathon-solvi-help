@@ -139,7 +139,8 @@ def _scene_refs(objects):
         kind=item.get('kind')
         if kind=='model':models.add(str(item.get('model') or ''))
         if kind=='media':
-            media.add(str((item.get('media') or {}).get('id') or ''))
+            media_id=str((item.get('media') or {}).get('id') or '')
+            if media_id:media.add(media_id)
             speaker=str((item.get('media') or {}).get('model') or '')
             if speaker:models.add(speaker)
         if kind=='wall' and (item.get('wall') or {}).get('texture')=='custom':

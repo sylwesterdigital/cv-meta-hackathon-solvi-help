@@ -387,12 +387,12 @@ export function animateRobots(items,dt,onImpact=()=>{}){
       // Align the *avatar model*, not the physics capsule, to the ladder's
       // world-space incline. The default avatar's 180-degree mesh correction
       // reverses local pitch, so account for that when applying the lean.
-      const incline=data.robotLadderRide?(Number(data.robotLadderVisualPitch)||0):0;
+      const incline=data.robotLadderRide?(Number(data.robotLadderVisualPitch)||0):data.robotSeated&&data.robotSitPose==='reclined'?(Number(data.robotReclineAngle)||0):0;
       const pitch=incline*(Math.cos(visual.rotation.y)<0?-1:1);
       visual.rotation.x+=(pitch-visual.rotation.x)*Math.min(1,Math.max(0,dt)*14);
       visual.position.y=Number(data.robotVisualStepOffset)||0;
     }
-    if(robot.userData.robotSeated&&robot.userData.robotSitPose==='procedural'){
+    if(robot.userData.robotSeated&&['procedural','reclined'].includes(robot.userData.robotSitPose)){
       const visualModel=visual?.children[0];
       if(visualModel){visualModel.position.y+=(Math.max(-.40,(visualModel.userData.sitBaseY??visualModel.position.y)-.32)-visualModel.position.y)*Math.min(1,dt*4);
         visualModel.traverse(bone=>{if(!bone.isBone)return;const name=bone.name.toLowerCase();

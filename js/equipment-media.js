@@ -1,8 +1,11 @@
 import * as THREE from 'three';
+import {syncSmartScreen,disposeSmartScreen} from './smart-media-playlist.js';
 // Reuse the authenticated media-blob API, storing only a reference in scene JSON.
 const handles=new WeakMap();
-export function disposeEquipmentMedia(group){const state=handles.get(group);if(!state)return;handles.delete(group);state.video?.pause();if(state.video){state.video.removeAttribute('src');state.video.load();}state.texture?.dispose();if(state.url)URL.revokeObjectURL(state.url);}
-export function syncEquipmentMedia(group,editor){const p=group?.userData?.furniture,screen=group?.getObjectByName?.('equipmentScreen');const prior=handles.get(group);if(prior?.screen===screen&&prior?.id===p?.mediaId&&prior?.powered===p?.powered)return;disposeEquipmentMedia(group);if(!screen||!p?.powered||!p.mediaId||!group.parent)return;const media=editor?.items?.find(o=>o.userData.editorKind==='media'&&o.userData.media?.id===p.mediaId)?.userData.media;if(!media||!/^image\/|^video\//.test(media.mime))return;
+export function disposeEquipmentMedia(group){disposeSmartScreen(group);const state=handles.get(group);if(!state)return;handles.delete(group);state.video?.pause();if(state.video){state.video.removeAttribute('src');state.video.load();}state.texture?.dispose();if(state.url)URL.revokeObjectURL(state.url);}
+export function syncEquipmentMedia(group,editor){const p=group?.userData?.furniture,screen=group?.getObjectByName?.('equipmentScreen');const prior=handles.get(group);if(prior?.screen===screen&&prior?.id===p?.mediaId&&prior?.powered===p?.powered&&prior?.channels===JSON.stringify(p?.channels||[]))return;disposeEquipmentMedia(group);if(!screen||!p?.powered||!group.parent)return;
+ if(syncSmartScreen(group,screen,p.channels,!p.mediaId)) {handles.set(group,{screen,id:p.mediaId,powered:p.powered,channels:JSON.stringify(p.channels||[])});return;}
+ if(!p.mediaId)return;const media=editor?.items?.find(o=>o.userData.editorKind==='media'&&o.userData.media?.id===p.mediaId)?.userData.media;if(!media||!/^image\/|^video\//.test(media.mime))return;
  const state={screen,id:p.mediaId,powered:p.powered,url:null,video:null,texture:null};handles.set(group,state);
  window.solviAPI?.mediaBlobInfo?.(p.mediaId).then(async ({url})=>{if(handles.get(group)!==state||!group.parent){URL.revokeObjectURL(url);return;}state.url=url;
   if(media.mime.startsWith('image/')){state.texture=await new THREE.TextureLoader().loadAsync(url);if(handles.get(group)!==state){state.texture?.dispose();return;}}

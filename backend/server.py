@@ -193,7 +193,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.155',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.156',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3147,8 +3147,16 @@ def valid_office_wall(wall):
             if not isinstance(values,list) or len(values)!=3 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not -limit<=v<=limit for v in values):return False
     return isinstance(wall.get('smooth',False),bool) and isinstance(wall.get('closed',False),bool)
 
+def valid_wear_attachment(value):
+    if not isinstance(value,dict) or set(value)!={'bone','followRotation','position','rotation'}:return False
+    if value['bone'] not in ('auto','spine','spine1','spine2','spine3','chest','head','hips','leftShoulder','rightShoulder') or type(value['followRotation']) is not bool:return False
+    for key,limit in (('position',2),('rotation',720)):
+        arr=value[key]
+        if not isinstance(arr,list) or len(arr)!=3 or any(type(n) not in (float,int) or not math.isfinite(n) or abs(n)>limit for n in arr):return False
+    return True
+
 def valid_inventory_item(value):
-    return isinstance(value,dict) and set(value)<= {'category','size','consumable'} and value.get('category') in ('world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable') and value.get('size') in ('pocket','bag') and type(value.get('consumable')) is bool
+    return isinstance(value,dict) and set(value)<= {'category','size','consumable','attachment'} and ('attachment' not in value or valid_wear_attachment(value['attachment'])) and value.get('category') in ('world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable') and value.get('size') in ('pocket','bag') and type(value.get('consumable')) is bool
 
 def valid_inventory_storage(value):
     if value is None:return True
@@ -3160,22 +3168,32 @@ def valid_inventory_storage(value):
     if kind=='bag':return set(value)=={'type','bagId'} and re.fullmatch(id_pattern,str(value.get('bagId',''))) is not None
     return False
 
+def valid_smart_channels(value):
+    if not isinstance(value,list) or len(value)>12:return False
+    for item in value:
+        if not isinstance(item,dict) or set(item)!={'title','url'}:return False
+        title,url=item['title'],item['url']
+        if not isinstance(title,str) or len(title)>65 or not isinstance(url,str) or len(url)>1500:return False
+        if not re.fullmatch(r'https://[^\s@/]+(?:/[^\s]*)?\.(?:m3u8|mp4|webm)(?:[?#][^\s]*)?',url,re.I):return False
+    return True
+
 def valid_basic_furniture(value):
     if not isinstance(value,dict) or len(value)>52:return False
     variant=value.get('variant')
-    if variant not in ('table','chair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box','tv','monitor','miniComputer','bin','backpack'):return False
+    if variant not in ('table','chair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box','tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella'):return False
     numeric={'width':(.06,8),'depth':(.06,4),'height':(.025,4),'topThickness':(.025,.3),
              'legRadius':(.025,.3),'topRadius':(.15,4),'corners':(3,8),'seatHeight':(.25,.9),
              'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35),
              'wallThickness':(.005,.15),'neckRadius':(.01,.5),'neckHeight':(.02,.6),
-             'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3)}
-    allowed={'variant','topShape','legStyle','headrest','headboard','color','fabricColor','texture','handle','cap','soil','openTop','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId'}|set(numeric)
+             'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'reclineDeg':(0,85),'canopyRadius':(.4,4),'canopySegments':(3,16),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3)}
+    allowed={'variant','topShape','legStyle','headrest','headboard','color','fabricColor','texture','handle','cap','soil','openTop','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels'}|set(numeric)
     if any(key not in allowed for key in value):return False
+    if 'channels' in value and not valid_smart_channels(value['channels']):return False
     for key,(lo,hi) in numeric.items():
         if key not in value:continue
         n=value[key]
         if isinstance(n,bool) or not isinstance(n,(int,float)) or not math.isfinite(n) or not lo<=n<=hi:return False
-        if key in ('corners','shelves','seats') and int(n)!=n:return False
+        if key in ('corners','shelves','seats','canopySegments') and int(n)!=n:return False
     if value.get('topShape','rectangle') not in ('rectangle','round','polygon'):return False
     if value.get('legStyle','four') not in ('four','three','single','casters','none'):return False
     if value.get('texture','none') not in ('none','plaster','concrete','bricks','metal','wood','marble','granite'):return False
@@ -3338,11 +3356,12 @@ def set_scene():
         if o['kind']=='model' and not model_asset_exists(o.get('model')):return json_error('Unknown scene model')
         if o['kind']=='media':
             media=o.get('media',{})
-            if not isinstance(media,dict) or not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id',''))) or not str(media.get('mime','')).startswith(('image/','video/','audio/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):
+            if not isinstance(media,dict) or (media.get('id')!='' and not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id','')))) or not str(media.get('mime','')).startswith(('image/','video/','audio/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):
                 return json_error('Invalid media surface')
             with db() as con:
-                row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone()
-            if not row or row['mime']!=media.get('mime'):return json_error('Missing uploaded media reference')
+                row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone() if media.get('id') else None
+            if media.get('id') and (not row or row['mime']!=media.get('mime')):return json_error('Missing uploaded media reference')
+            if 'channels' in media and not valid_smart_channels(media['channels']):return json_error('Invalid media channels')
             if 'mount' in media and not valid_surface_mount(media['mount']):return json_error('Invalid media surface mount')
         if o['kind']=='robot':
             if 'combat' in o and not valid_robot_combat(o['combat']):return json_error('Invalid robot combat controls')
@@ -3441,9 +3460,10 @@ def patch_scene_object():
         if obj['kind']=='model' and not model_asset_exists(obj.get('model')):return json_error('Unknown scene model')
         if obj['kind']=='media':
             media=obj.get('media',{})
-            if not isinstance(media,dict) or not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id',''))) or not str(media.get('mime','')).startswith(('image/','video/','audio/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):return json_error('Invalid media surface')
-            with db() as con:media_row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone()
-            if not media_row or media_row['mime']!=media.get('mime'):return json_error('Missing uploaded media reference')
+            if not isinstance(media,dict) or (media.get('id')!='' and not re.fullmatch(r'[0-9a-f-]{8,80}',str(media.get('id','')))) or not str(media.get('mime','')).startswith(('image/','video/','audio/')) or media.get('backing','white') not in ('white','black','mirror') or media.get('stream','direct') not in ('direct','hls'):return json_error('Invalid media surface')
+            with db() as con:media_row=con.execute('SELECT mime FROM media WHERE id=?',(media.get('id'),)).fetchone() if media.get('id') else None
+            if media.get('id') and (not media_row or media_row['mime']!=media.get('mime')):return json_error('Missing uploaded media reference')
+            if 'channels' in media and not valid_smart_channels(media['channels']):return json_error('Invalid media channels')
             if 'mount' in media and not valid_surface_mount(media['mount']):return json_error('Invalid media surface mount')
         if obj['kind']!='model' and obj.get('model'):return json_error('Unexpected model reference')
         avatar=str(obj.get('avatar',''))

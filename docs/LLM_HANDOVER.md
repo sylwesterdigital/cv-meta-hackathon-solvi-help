@@ -1,3 +1,28 @@
+# SOLVI.help — Master LLM Handover v0.2.156
+
+**Release:** v0.2.156 · Smart media playlists, lifestyle procedural objects, preset framing, wearable calibration.
+
+**Local validation:** 701/701 JavaScript tests passed, backend Python AST and Nginx tests passed, realm archives passed, JavaScript syntax and installer shell syntax passed. Watcher-based npm dependency preparation, actual browser/WebGL/Rapier, external HLS CORS, webcam and multi-client rendering have not been verified here. Original bundled GLBs preserved; no user model edits.
+
+**Usage:** Select a TV, monitor or video media frame; under Smart screen, paste a named HTTPS `.m3u8`, `.mp4`, or `.webm` URL and choose Add channel. Clipboard button requires user activation and browser permission. Switch to Exploration Mode and click the channel tile on the in-world display; in Edit Mode Alt-click it. External HLS requires a server permitting cross-origin segment requests. Use a small on-screen Menu control to return.
+
+**Wearable:** Mark the object Pickable and set its category to Backpack, Jetpack, Parachute or Wearable. In the collapsed Wearable attachment section select bone, follow bone rotation, XYZ position offsets (metres), and XYZ rotation offsets (degrees). Back slot defaults to 90° additional yaw and 0.2 m lower. Model geometry is never modified.
+
+**Outdoor:** Add → Equipment → Sunbed / Deck chair / Beach umbrella. J near the seat enters an authored lying/reclining action if available or the procedural recline; J again stands up and keeps facing. This is a first pass, not verified against all GLB bone rigs.
+
+**Next:** v0.2.157 2D Planner pad; v0.2.158+ AI-assisted layout generation and plan upload interpretation. Test these goals separately.
+
+---
+
+## v0.2.156 — Smart HLS channel galleries, preset thumbnail framing, wearable calibration and outdoor procedural furniture (2 November 2026)
+
+- TV/monitor screens accept up to 12 named HTTPS .m3u8/.mp4/.webm URL channels. The inspector offers direct Paste from clipboard with permission fallback. Each screen boots to an in-world channel grid; clicking a tile starts playback, and a return hotspot returns to the menu. Uses native HLS or vendored Hls.js; muted autoplay is requested only after interaction. Browser codecs, remote CORS, signed URL lifetimes and XR clicks are not guaranteed. No backend proxy for arbitrary URLs. Existing account-uploaded media-ID support remains.
+- Video/image media-frame objects reuse the channel gallery when channels are configured. Blank video frames are valid scene objects without an uploaded media ID; they can be configured with streams. Existing uploaded media references remain checked server-side.
+- Preset thumbnail capture now frames cloned procedural geometry using an orthographic camera and projected bounding-box corners. Browsing saved furniture presets recreates a thumbnail locally from saved furniture config rather than trusting old off-centre screenshots; no changes to existing saved presets are required.
+- Wearable inventory config now optionally saves bone (`auto`, spine levels, chest, head, hips, shoulders), rotation following, XYZ position offsets (m) and XYZ Euler rotation offsets (degrees). Back slot defaults to 90-degree yaw and lower placement, front to opposite yaw; offsets are editable in a compact collapsible inspector. Original GLBs are never modified.
+- Procedural sunbed, deck chair and beach umbrella use the existing furniture/preset pipeline. Sunbeds/chairs have adjustable recline angle and a procedural reclined pose or authored Lying/Lie down clip where available. Umbrella has adjustable canopy radius and 3–16 segments, stick, and base. Geometry, collision and real-avatar fit require live evaluation.
+- Validation: npm tests, Python syntax/Nginx checks and SHA-256 manifest must be run for each release build. Live GPU, external HLS, stereo/WebXR and multiplayer are not verified locally.
+
 ## v0.2.155 deployment correction — test harness dependency injection (2 November 2026)
 
 - **Watcher failure:** the first v0.2.155 ZIP was rejected by `npm test` before any GitHub push or website deployment. Both failing tests threw `ReferenceError: EQUIPMENT_TYPES is not defined`.

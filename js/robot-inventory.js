@@ -6,10 +6,18 @@ import {pickableTarget,canBePickable} from './object-carry.js';
 
 export const INVENTORY_CATEGORIES=Object.freeze(['world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable']);
 export const INVENTORY_SIZES=Object.freeze(['pocket','bag']);
+export const ATTACH_BONES=Object.freeze(['auto','spine','spine1','spine2','spine3','chest','head','hips','leftShoulder','rightShoulder']);
+export function cleanWearAttachment(raw){
+ const o=raw&&typeof raw==='object'?raw:{};
+ const vector=(value,max)=>[0,1,2].map(i=>{const n=Number(Array.isArray(value)?value[i]:0);return Number.isFinite(n)?Math.max(-max,Math.min(max,n)):0;});
+ return {bone:ATTACH_BONES.includes(o.bone)?o.bone:'auto',followRotation:o.followRotation!==false,
+  position:vector(o.position,2),rotation:vector(o.rotation,720)};
+}
+
 export function cleanInventory(raw){
  if(!raw||typeof raw!=='object')return {category:'world',size:'pocket',consumable:false};
  const category=INVENTORY_CATEGORIES.includes(raw.category)?raw.category:'world';
- return {category,size:INVENTORY_SIZES.includes(raw.size)?raw.size:'pocket',consumable:raw.consumable===true};
+ return {...{category,size:INVENTORY_SIZES.includes(raw.size)?raw.size:'pocket',consumable:raw.consumable===true},...(raw.attachment?{attachment:cleanWearAttachment(raw.attachment)}:{})};
 }
 export function cleanStorage(raw){
  if(!raw||typeof raw!=='object')return null;
@@ -21,14 +29,16 @@ export function cleanStorage(raw){
   raw.type==='pocket'?{type:'pocket',holderId:raw.holderId}:null;
 }
 export function inventoryLocation(obj){return cleanStorage(obj?.userData?.storage)?.type||'ground';}
-export function bodyBackBone(robot){
+export function bodyBackBone(robot,chosen='auto'){
  const visual=robot?.children?.find(c=>c.userData?.robotVisual);
  let best=null,score=-1;
+ const terms={spine:/spine(?!\d)/,spine1:/spine1/,spine2:/spine2/,spine3:/spine3/,chest:/chest/,head:/head/,hips:/hips|pelvis/,leftShoulder:/leftshoulder|lshoulder/,rightShoulder:/rightshoulder|rshoulder/};
  visual?.traverse?.(bone=>{
   if(!bone.isBone)return;
   const n=String(bone.name).toLowerCase().replace(/[^a-z0-9]/g,'');
-  const s=/spine2|upperchest|chestupper/.test(n)?100:/spine3|chest/.test(n)?90:/spine1/.test(n)?65:/spine/.test(n)?45:0;
-  if(s>score){score=s;best=bone;}
+  const exact=terms[chosen]?.test(n);
+  const value=chosen==='auto'?(/spine2|upperchest|chestupper/.test(n)?100:/spine3|chest/.test(n)?90:/spine1/.test(n)?65:/spine/.test(n)?45:0):(exact?100:0);
+  if(value>score){score=value;best=bone;}
  });
  return score>0?best:null;
 }
@@ -92,16 +102,24 @@ export class RobotInventory{
   }
  }
  wearablePose(robot,obj){
-  const bone=bodyBackBone(robot);
+  const settings=cleanWearAttachment(obj.userData.inventory?.attachment);
+  const bone=bodyBackBone(robot,settings.bone);
   robot.updateWorldMatrix(true,true);
-  const local=new THREE.Vector3(0,.0,obj.userData.storage.slot==='front'?.24:-.26);
-  let p,q;
-  if(bone){p=bone.localToWorld(local.clone());q=bone.getWorldQuaternion(new THREE.Quaternion());}
-  else {p=robot.localToWorld(new THREE.Vector3(0,1.3,obj.userData.storage.slot==='front'?.27:-.27));q=robot.getWorldQuaternion(new THREE.Quaternion());}
-  // Avoid assuming all authored GLBs use the same orientation convention.
+  const slot=obj.userData.storage.slot;
+  const reference=bone||robot;
+  const bonePos=bone?bone.getWorldPosition(new THREE.Vector3()):robot.localToWorld(new THREE.Vector3(0,1.3,0));
+  const boneRotation=bone?bone.getWorldQuaternion(new THREE.Quaternion()):robot.getWorldQuaternion(new THREE.Quaternion());
+  const rootRotation=robot.getWorldQuaternion(new THREE.Quaternion());
+  const follow=settings.followRotation?boneRotation:rootRotation;
+  // Configurable bone-space translation, including front/back slot offset.
+  const offset=new THREE.Vector3(settings.position[0],settings.position[1]-.2,settings.position[2]+(slot==='front'?.24:-.26));
+  const worldPos=bonePos.add(offset.applyQuaternion(follow));
+  const angles=settings.rotation.map(THREE.MathUtils.degToRad);
+  const yawDefault=slot==='back'?90:-90; // Backpack should lie along the spine, rather than sideways.
+  const rotation=new THREE.Quaternion().setFromEuler(new THREE.Euler(angles[0],angles[1]+THREE.MathUtils.degToRad(yawDefault),angles[2],'XYZ'));
   const parent=obj.parent?.getWorldQuaternion?.(new THREE.Quaternion())||new THREE.Quaternion();
-  obj.quaternion.copy(parent.invert().multiply(q));
-  obj.position.copy(obj.parent?.worldToLocal?.(p.clone())||p);
+  obj.quaternion.copy(parent.invert().multiply(follow).multiply(rotation));
+  obj.position.copy(obj.parent?.worldToLocal?.(worldPos.clone())||worldPos);
  }
  tick(){
   for(const obj of this.editor.items){const storage=cleanStorage(obj.userData?.storage);if(!storage)continue;

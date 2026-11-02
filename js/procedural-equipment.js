@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 // Procedural assets share the existing furniture scene, preset and collider paths.
-export const EQUIPMENT_TYPES=['tv','monitor','miniComputer','bin','backpack'];
-export const EQUIPMENT_NUMERIC={diagonalInches:[27,6,120],bezel:[.015,.003,.12],standHeight:[.17,0,1.2],curvature:[0,0,1],strapWidth:[.04,.01,.15],rimWidth:[.018,.005,.1]};
+export const EQUIPMENT_TYPES=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella'];
+export const EQUIPMENT_NUMERIC={diagonalInches:[27,6,120],bezel:[.015,.003,.12],standHeight:[.17,0,1.2],curvature:[0,0,1],strapWidth:[.04,.01,.15],rimWidth:[.018,.005,.1],reclineDeg:[30,0,85],canopyRadius:[1.35,.4,4],canopySegments:[8,3,16]};
 export function displayDimensions(p){const [a,b]=({'16:9':[16,9],'21:9':[21,9],'4:3':[4,3]})[p.aspect]||[16,9];const diagonal=p.diagonalInches*.0254;return {width:diagonal*a/Math.hypot(a,b),height:diagonal*b/Math.hypot(a,b)};}
 export function buildEquipment(p,{add,box,cylinder,wood,fabric}){
  const dark=new THREE.MeshStandardMaterial({color:'#17202a',roughness:.5,metalness:.2});
@@ -37,6 +37,22 @@ export function buildEquipment(p,{add,box,cylinder,wood,fabric}){
    if(p.lid)cylinder(r*1.04,.03,0,h+.015,0,dark);
    else {const rim=add(new THREE.RingGeometry(r-p.rimWidth,r+.005,32),0,h,0,dark);rim.rotation.x=-Math.PI/2;rim.userData.furniturePart=false;}
   }
+ }else if(p.variant==='sunbed'||p.variant==='deckChair'){
+  const {width:w,depth:d}=p,legHeight=p.height;
+  // Two independent slabs; a rotated back does not create an invisible full-length collider.
+  const frame=box(w,.07,d*.57,0,legHeight, -d*.22,wood);
+  box(w*.93,.06,d*.55,0,legHeight+.065,-d*.22,fabric);
+  const rise=d*.43,angle=THREE.MathUtils.degToRad(p.reclineDeg);
+  const back=box(w,.065,rise,0,legHeight+Math.sin(angle)*rise/2,d*.285,wood);back.rotation.x=-angle;
+  const upholstery=box(w*.94,.055,rise*.98,0,legHeight+.06+Math.sin(angle)*rise/2,d*.285,fabric);upholstery.rotation.x=-angle;
+  for(const x of [-w*.43,w*.43])for(const z of [-d*.40,d*.35])box(.048,legHeight,.048,x,legHeight/2,z,dark);
+ }else if(p.variant==='beachUmbrella'){
+  const radius=p.canopyRadius,h=p.height,seg=p.canopySegments;
+  cylinder(.027,h,0,h/2,0,dark,16);cylinder(.21,.045,0,.023,0,wood,28);
+  const canopy=new THREE.ConeGeometry(radius,radius*.23,seg,1,false);
+  // Open-sided, shallow pyramidal canopy. Cone is visual; pole and base have colliders.
+  const shape=add(canopy,0,h-.08,0,fabric);shape.userData.furniturePart=false;
+  for(let i=0;i<seg;i++){const a=i*2*Math.PI/seg;const rim=add(new THREE.SphereGeometry(.018,6,4),radius*Math.cos(a),h-radius*.23,radius*Math.sin(a),wood);rim.userData.furniturePart=false;}
  }else if(p.variant==='backpack'){
   const {width:w,height:h,depth:d}=p;
   box(w,h,d,0,h/2,0,wood);

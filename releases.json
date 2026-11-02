@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.155",
+  "currentVersion": "0.2.156",
   "releases": [
+    {
+      "version": "0.2.156",
+      "publishedAt": "2026-11-02T20:27:14Z",
+      "changes": [
+        "Add TV, monitor and media-frame smart-channel galleries for up to 12 HTTPS HLS/MP4/WebM sources, with explicit in-world selection and return-to-menu controls.",
+        "Allow clipboard paste of validated media URLs in Properties; playback uses native HLS or bundled Hls.js when supported, without arbitrary server-side URL fetching.",
+        "Reframe new procedural preset thumbnails using geometry-bound orthographic projection; regenerate existing furniture thumbnails locally when browsing Presets.",
+        "Expose wearable attachment skeleton bone, follow-rotation choice and XYZ position/rotation offsets in object Properties; lower default backpack position and rotate back slot by 90 degrees.",
+        "Add procedural sunbed, deck chair and beach umbrella variants with compact parameters and safe compound collision; sunbed and deck chair support reclined sitting and authored lying-clip fallback.",
+        "Retain versioned browser modules, existing scene/preset structures and uploaded avatar files; validate new fields in backend and import/export paths."
+      ]
+    },
     {
       "version": "0.2.155",
       "publishedAt": "2026-11-02T19:44:32Z",
@@ -319,15 +331,6 @@
         "Arrange lift cabin floor buttons into a four-column, up-to-ten-row keypad for 13\u201340 floors; preserve existing single-column controls for 2\u201312 floors and optional per-floor landing call stations.",
         "For a genuinely extreme fall over 8 m, play Falling Flat Impact after ground contact then Stand Up when both authentic clips exist; otherwise retain the one-shot Hard Landing to Idle, without duplicate recovery.",
         "Add regression tests for 40th-floor travel and bounds, server validation, and fall clip availability and recovery sequencing."
-      ]
-    },
-    {
-      "version": "0.2.125",
-      "publishedAt": "2026-11-01T00:22:39Z",
-      "changes": [
-        "Hard Landing has its own complete recovery: after a hard fall (>2.5 m), play Hard Landing then return directly to Idle/locomotion; do not queue a redundant Stand Up.",
-        "Ignore a legacy queued Stand Up after Hard Landing while preserving separate Stand Up recovery for severe combat impacts.",
-        "Add an executable hard-landing lifecycle regression and preserve all existing transport, portals, scene, backend and avatar files."
       ]
     }
   ]

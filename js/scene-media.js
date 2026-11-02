@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {clone as cloneSkeleton} from 'three/addons/utils/SkeletonUtils.js';
 import {loadSceneAsset,isSceneModelURL} from './scene-models.js';
+import {syncSmartScreen,disposeSmartScreen} from './smart-media-playlist.js';
 
 const loaders=new Map();
 const activeMediaObjects=new WeakMap();
@@ -72,7 +73,7 @@ async function hydrateSpeakerModel(mesh,modelURL){
     const materials=Array.isArray(mesh.material)?mesh.material:[mesh.material];for(const material of materials){if(material){material.transparent=true;material.opacity=0;material.needsUpdate=true;}}
   }catch(error){console.warn('Speaker model unavailable',modelURL,error);}
 }
-function disposeAsset(mesh){
+function disposeAsset(mesh){disposeSmartScreen(mesh);
   for(const name of ['mediaSourceLabel','mediaDateLabel','mediaCaptionLabel']){const old=mesh.getObjectByName(name);if(old){old.removeFromParent();old.material?.map?.dispose?.();old.material?.dispose?.();}}
   mesh.userData.mediaModelTicket=(mesh.userData.mediaModelTicket||0)+1;
   const model=mesh.getObjectByName('audioSpeakerCustomModel');if(model)mesh.remove(model);
@@ -133,7 +134,7 @@ export function makeSceneMedia(){
   mesh.name='Media surface';
   mesh.userData.editorKind='media';
   mesh.userData.editorId=crypto.randomUUID();
-  mesh.userData.media={id:'',mime:'',name:'',backing:'white',stream:'direct',width:null,height:null,loop:true,muted:false,refDistance:4,maxDistance:18,autoplayDistance:0,constantVolume:false,group:'',volume:1};
+  mesh.userData.media={id:'',mime:'video/mp4',name:'Smart media frame',backing:'white',stream:'direct',width:null,height:null,loop:true,muted:false,refDistance:4,maxDistance:18,autoplayDistance:0,constantVolume:false,group:'',volume:1};
   mesh.position.set(0,1.2,0);
   return mesh;
 }
@@ -165,6 +166,7 @@ export function hydrateSceneMedia(mesh,world){
    front.map=new THREE.CanvasTexture(canvas);front.map.colorSpace=THREE.SRGBColorSpace;front.needsUpdate=true;
   }
   const kind=sceneMediaKind(media.mime);
+  if(syncSmartScreen(mesh,mesh,media.channels,!media.id))return;
   if(!media.id||kind==='file')return;
   if(media.width&&media.height&&kind!=='audio')applyAspect(mesh,media.width,media.height);
   if(kind==='image'){

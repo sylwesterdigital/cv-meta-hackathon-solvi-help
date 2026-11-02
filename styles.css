@@ -2302,3 +2302,22 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 #objectInventoryOptions{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 #objectInventoryOptions select{height:30px!important;width:100%!important;min-width:0!important;padding:2px 22px 2px 7px!important;font-size:11px!important;white-space:nowrap;text-overflow:ellipsis;color:#f0f6ff!important;background:#15283b!important}
 @media(max-width:420px){#propertiesPanel #physicsObjectControls #objectPhysicsToggles{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+
+/* v0.2.156: compact wearable calibration and smart media playlists. */
+#propertiesPanel .wearable-attachment-details{margin:5px 0;border:1px solid #33485f;border-radius:7px;padding:4px 6px}
+#propertiesPanel .wearable-attachment-details[hidden]{display:none!important}
+#propertiesPanel .wearable-attachment-details summary{font-size:11px;cursor:pointer;color:var(--ui-fg)}
+#propertiesPanel .wearable-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding-top:5px}
+#propertiesPanel .wearable-fields label{min-width:0;display:flex;flex-direction:column;gap:2px;font-size:10px}
+#propertiesPanel .wearable-fields .wearable-wide{grid-column:1/-1}
+#propertiesPanel .wearable-fields :is(select,input[type=number]){min-width:0;width:100%;height:27px;box-sizing:border-box;background:#122236;color:#eef5ff;border:1px solid #48617b;border-radius:5px;padding:2px 5px;font-size:11px}
+#propertiesPanel .wearable-fields input[type=checkbox]{width:15px;height:15px}
+.smart-channel-controls,.smart-channel-frame{grid-column:1/-1;width:100%;box-sizing:border-box;border:1px solid #33495e;padding:6px;border-radius:7px}
+.smart-channel-controls>summary{font-size:11px;padding:3px;cursor:pointer}
+.smart-channel-controls>input{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;height:28px!important;box-sizing:border-box;background:#15293b!important;color:#fff!important;border:1px solid #48617b;border-radius:5px;margin:3px 0;padding:4px;font-size:11px!important}
+.smart-channel-list{display:grid;gap:3px;max-height:110px;overflow-y:auto}
+.smart-channel-row{display:flex;gap:4px;align-items:center;font-size:10px}
+.smart-channel-row>span{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.smart-channel-row button{flex:0 0 24px;min-height:24px;padding:2px 5px}
+.smart-channel-actions{display:flex;gap:5px}
+.smart-channel-actions button{font-size:11px;min-height:26px;padding:3px 7px}

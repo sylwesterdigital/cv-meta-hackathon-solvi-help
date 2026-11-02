@@ -12,6 +12,7 @@ import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive,FURNITURE_TYPES,BASIC_PROP_TYPES,FURNITURE_NUMERIC,sanitiseFurniture,makeFurniture,rebuildFurniture} from './primitive-properties.js';
 import {syncEquipmentMedia,disposeEquipmentMedia} from './equipment-media.js';
+import {smartScreenClick,parseChannel,cleanChannels} from './smart-media-playlist.js';
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
 import {makeOfficeStairs,rebuildOfficeStairs,updateLiftPanel,updateConveyorControls,sanitiseStairs,stairSegments} from './office-stairs.js';
 import {tickStairTransport,startLift,stopLift} from './stair-transport.js';
@@ -31,7 +32,7 @@ import {robotPathVisible} from './robot-debug.js';
 import {plannedRouteLength,newMovementTelemetry,sampleMovementTelemetry,missionMovementEvidence,shouldRejectClaimedArrival} from './robot-telemetry.js';
 import {physicsOptions} from './physics-options.js';
 import {canBeClimbable} from './climbable-surfaces.js';
-import {RobotInventory,cleanInventory,cleanStorage} from './robot-inventory.js';
+import {RobotInventory,cleanInventory,cleanStorage,cleanWearAttachment} from './robot-inventory.js';
 import {seatPlan,takeSeat,standUp} from './robot-seating.js';
 import {canBePickable,ObjectCarry,cleanThrowSettings,editThrowSetting,pickableTarget} from './object-carry.js';
 import {combatSettings,combatForKey,combatClip,combatTimeline,COMBAT_ACTIONS} from './robot-combat.js';
@@ -150,7 +151,7 @@ export class SceneEditor{
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Equipment',['tv','monitor','miniComputer','bin','backpack']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Equipment',['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';const head=document.createElement('div');head.className='add-fixed-head';head.append(bar);const content=document.createElement('div');content.className='add-scroll-content';menu.append(head,content);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';head.append(search);
   const openPresets=document.createElement('button');openPresets.type='button';openPresets.className='add-presets-shortcut';openPresets.textContent='Presets · saved objects';openPresets.onclick=()=>{menu.hidden=true;this.objectPresets?.open();};head.append(openPresets);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
@@ -168,6 +169,7 @@ export class SceneEditor{
   byId('mediaPlayPause').onclick=()=>{if(this.selected?.userData.editorKind!=='media')return;const playing=toggleSceneMediaPlayback(this.selected);byId('mediaPlayPause').textContent=playing?'Pause':'Play';};
   byId('mediaMuteToggle').onclick=()=>{if(this.selected?.userData.editorKind!=='media')return;const next=!sceneMediaMuted(this.selected);setSceneMediaMuted(this.selected,next);byId('mediaMuteToggle').textContent=next?'Unmute':'Mute';};
   byId('mediaBacking').onchange=()=>{if(this.selected?.userData.editorKind!=='media'||!this.canEdit(this.selected))return;setSceneMediaBacking(this.selected,byId('mediaBacking').value,this.world);this.queueSave(this.selected);};
+  byId('mediaSmartChannelControls')?.addEventListener('click',event=>{const action=event.target.closest('button')?.dataset.smartAction;if(action)this.smartChannelAction(action,byId('mediaSmartChannelControls'),'media');});
   byId('mediaStreamMode').onchange=()=>{if(this.selected?.userData.editorKind!=='media'||!this.canEdit(this.selected))return;this.selected.userData.media.stream=byId('mediaStreamMode').value;hydrateSceneMedia(this.selected,this.world);this.queueSave(this.selected);};
   byId('mediaLoopToggle').onchange=()=>{if(this.selected?.userData.editorKind!=='media'||!this.canEdit(this.selected))return;setSceneMediaLoop(this.selected,byId('mediaLoopToggle').checked);this.queueSave(this.selected);this.updateInspector();};
   byId('mediaRefDistance').onchange=()=>{if(this.selected?.userData.editorKind!=='media'||!this.canEdit(this.selected))return;setSceneMediaSpatial(this.selected,{refDistance:byId('mediaRefDistance').value});this.queueSave(this.selected);};
@@ -254,6 +256,15 @@ export class SceneEditor{
   for(const id of ['objectInventorySize','objectInventoryConsumable'])byId(id)?.addEventListener('change',()=>{
    const obj=this.selected;if(!obj||!this.canEdit(obj)||!obj.userData.pickable)return;
    const before=this.snapshot(obj);obj.userData.inventory=cleanInventory({...obj.userData.inventory,size:byId('objectInventorySize').value,consumable:byId('objectInventoryConsumable').checked});
+   this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
+  });
+  byId('wearableAttachmentDetails')?.addEventListener('change',e=>{
+   const obj=this.selected,field=e.target?.dataset?.wearField;if(!obj||!field||!this.canEdit(obj))return;
+   const before=this.snapshot(obj),attachment=cleanWearAttachment(obj.userData.inventory?.attachment);
+   if(field==='bone')attachment.bone=e.target.value;
+   else if(field==='followRotation')attachment.followRotation=e.target.checked;
+   else if(field==='position'||field==='rotation')attachment[field][Number(e.target.dataset.axis)]=Number(e.target.value);
+   obj.userData.inventory=cleanInventory({...obj.userData.inventory,attachment:cleanWearAttachment(attachment)});
    this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
   });
   byId('objectFollowHandRotation').addEventListener('change',()=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||!canBePickable(obj.userData.editorKind))return;const before=this.snapshot(obj);obj.userData.followHandRotation=byId('objectFollowHandRotation').checked;this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);});
@@ -1055,7 +1066,9 @@ export class SceneEditor{
    this.raycaster.setFromCamera(this.pointer,this.world.camera);
    const hits=this.raycaster.intersectObjects(this.items,true);
    if(hits.length){let node=hits[0].object;while(node.parent&&!this.items.includes(node))node=node.parent;
-    if(this.items.includes(node)){this.select(node);e.solviObjectPicked=true;}}
+    if(this.items.includes(node)){
+      if((!isEditMode()||e.altKey)&&(hits[0].object.name==='equipmentScreen'||hits[0].object.userData.smartScreenBack||node.userData.editorKind==='media')&&smartScreenClick(node,hits[0])){e.solviObjectPicked=true;return;}
+      this.select(node);e.solviObjectPicked=true;}}
    else if(this.selected?.userData.editorKind==='robot'&&this.selected?.userData.robotMode!=='idle'){
     const ground=this.raycaster.intersectObject(this.world.floor)[0];if(ground){setRobotDestination(this.selected,ground.point);this.queueSave(this.selected);}}
   },true);
@@ -1173,7 +1186,14 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
   if(obj.userData.editorKind==='robot'){const settings=combatSettings(obj.userData.robotCombat);for(const el of byId('robotCombatList').querySelectorAll('[data-combat-action]'))el.value=String(settings[el.dataset.combatAction][el.dataset.combatField]);}
-  byId('objectAppearance').hidden=['robot','light','model','media','wall','ladder','furniture'].includes(obj.userData.editorKind);for(const id of ['replaceModelFile','replaceModelGallery']){byId(id).hidden=obj.userData.editorKind!=='model';byId(id).disabled=!this.canEdit(obj); }if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed??2.5;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed??2.5).toFixed(1)+'×';byId('robotRunMultiplier').value=obj.userData.robotRunMultiplier??2.8;const factor=obj.userData.robotSpeed??1.8;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed??4;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';const climbFactor=obj.userData.robotClimbSpeed??1.25;byId('robotClimbSpeed').value=climbFactor;byId('robotClimbLabel').textContent=Number(climbFactor).toFixed(2)+' m/s';const throwConfig=cleanThrowSettings(obj.userData.robotThrowSettings);for(const [key,id] of [['angle','robotThrowAngle'],['height','robotThrowHeight'],['direction','robotThrowDirection'],['delay','robotThrowDelay'],['pickupDelay','robotPickupDelay'],['pickupSpeed','robotPickupSpeed'],['throwSpeed','robotThrowSpeed'],['force','robotThrowForce']]){const field=byId(id);if(field!==document.activeElement||this.throwEditingRobotId!==obj.userData.editorId)field.value=throwConfig[key];}const anim=animationSpeedSettings(obj.userData.robotAnimationSpeed);byId('animationWalk').value=anim.walk;byId('animationRun').value=anim.run;byId('animationJump').value=anim.jump;this.syncRobotSpeed?.();}if(obj.userData.editorKind==='media'){const media=obj.userData.media||{};const kind=sceneMediaKind(media.mime);byId('mediaSourceLabel').textContent=media.name||'Uploaded media';byId('mediaBacking').value=media.backing||'white';byId('mediaStreamMode').value=media.stream||'direct';byId('mediaPlayPause').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaMuteToggle').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';byId('mediaLoopToggle').checked=media.loop!==false;byId('mediaRefDistance').value=media.refDistance??4;byId('mediaMaxDistance').value=media.maxDistance??18;byId('mediaAutoplayDistance').value=media.autoplayDistance??0;byId('mediaConstantVolume').checked=media.constantVolume===true;byId('mediaGroup').value=media.group||'';byId('mediaVolume').value=media.volume??1;byId('mediaStreamRow').hidden=kind!=='video';byId('mediaBackingRow').hidden=kind==='audio';byId('mediaAudioFields').hidden=kind!=='audio';byId('mediaOrbAppearance').hidden=media.shape!=='orb';byId('mediaOrbColor').value=media.color||'#3c9bd2';byId('mediaOrbTexture').value=media.orbTexture||'none';byId('mediaTranscriptText').textContent=media.caption||'No transcription yet';this.updateMediaHUDPosition?.();}
+  const worn=byId('wearableAttachmentDetails'),category=cleanInventory(obj.userData.inventory).category;
+  worn.hidden=!['backpack','jetpack','parachute','wearable'].includes(category)||!obj.userData.pickable;
+  if(!worn.hidden){const cfg=cleanWearAttachment(obj.userData.inventory?.attachment);for(const el of worn.querySelectorAll('[data-wear-field]')){
+   const key=el.dataset.wearField;el.disabled=!this.canEdit(obj);
+   if(key==='followRotation')el.checked=cfg.followRotation;else if(key==='bone')el.value=cfg.bone;
+   else el.value=cfg[key][Number(el.dataset.axis)];
+  }}
+  byId('objectAppearance').hidden=['robot','light','model','media','wall','ladder','furniture'].includes(obj.userData.editorKind);for(const id of ['replaceModelFile','replaceModelGallery']){byId(id).hidden=obj.userData.editorKind!=='model';byId(id).disabled=!this.canEdit(obj); }if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed??2.5;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed??2.5).toFixed(1)+'×';byId('robotRunMultiplier').value=obj.userData.robotRunMultiplier??2.8;const factor=obj.userData.robotSpeed??1.8;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed??4;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';const climbFactor=obj.userData.robotClimbSpeed??1.25;byId('robotClimbSpeed').value=climbFactor;byId('robotClimbLabel').textContent=Number(climbFactor).toFixed(2)+' m/s';const throwConfig=cleanThrowSettings(obj.userData.robotThrowSettings);for(const [key,id] of [['angle','robotThrowAngle'],['height','robotThrowHeight'],['direction','robotThrowDirection'],['delay','robotThrowDelay'],['pickupDelay','robotPickupDelay'],['pickupSpeed','robotPickupSpeed'],['throwSpeed','robotThrowSpeed'],['force','robotThrowForce']]){const field=byId(id);if(field!==document.activeElement||this.throwEditingRobotId!==obj.userData.editorId)field.value=throwConfig[key];}const anim=animationSpeedSettings(obj.userData.robotAnimationSpeed);byId('animationWalk').value=anim.walk;byId('animationRun').value=anim.run;byId('animationJump').value=anim.jump;this.syncRobotSpeed?.();}if(obj.userData.editorKind==='media'){this.renderSmartMediaChannels(obj);const media=obj.userData.media||{};const kind=sceneMediaKind(media.mime);byId('mediaSourceLabel').textContent=media.name||'Uploaded media';byId('mediaBacking').value=media.backing||'white';byId('mediaStreamMode').value=media.stream||'direct';byId('mediaPlayPause').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaMuteToggle').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';byId('mediaLoopToggle').checked=media.loop!==false;byId('mediaRefDistance').value=media.refDistance??4;byId('mediaMaxDistance').value=media.maxDistance??18;byId('mediaAutoplayDistance').value=media.autoplayDistance??0;byId('mediaConstantVolume').checked=media.constantVolume===true;byId('mediaGroup').value=media.group||'';byId('mediaVolume').value=media.volume??1;byId('mediaStreamRow').hidden=kind!=='video';byId('mediaBackingRow').hidden=kind==='audio';byId('mediaAudioFields').hidden=kind!=='audio';byId('mediaOrbAppearance').hidden=media.shape!=='orb';byId('mediaOrbColor').value=media.color||'#3c9bd2';byId('mediaOrbTexture').value=media.orbTexture||'none';byId('mediaTranscriptText').textContent=media.caption||'No transcription yet';this.updateMediaHUDPosition?.();}
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
     const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);if(this.activateInspectorValue && !byId('inspectorValueSlider').hidden && byId('inspectorActiveRange') && document.activeElement?.id===`${name}-${i}`)this.activateInspectorValue(document.activeElement);
   });
@@ -1182,6 +1202,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
  }
  setupFurnitureControls(){
   const root=byId('furniturePropertiesFields');if(!root)return;
+  root.addEventListener('click',event=>{const key=event.target.closest('button')?.dataset.smartAction;if(key)this.smartChannelAction(key,root,'furniture');});
   root.addEventListener('change',event=>{
    const obj=this.selected;if(obj?.userData.editorKind!=='furniture'||!this.canEdit(obj))return;
    const target=event.target,key=target?.dataset?.furnitureParam;if(!key)return;
@@ -1214,7 +1235,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    holder.append(caption,control);root.append(holder);
   };
   add('variant','Type','select',FURNITURE_TYPES.map(kind=>[kind,kind==='miniComputer'?'Mini computer':kind[0].toUpperCase()+kind.slice(1)]));
-  const equipment=['tv','monitor','miniComputer','bin','backpack'].includes(p.variant);
+  const equipment=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella'].includes(p.variant);
   if(['tv','monitor'].includes(p.variant)){
    add('diagonalInches','Diagonal (in)','number');add('aspect','Aspect','select',[['16:9','16:9'],['21:9','21:9'],['4:3','4:3']]);
    add('bezel','Bezel (m)','number');add('mount','Mount','select',[['feet','Two feet'],['center','Centre stand'],['wall','VESA / wall'],['none','None']]);
@@ -1230,6 +1251,10 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   }else if(p.variant==='bin'){
    for(const [k,label] of [['width','Width / diameter'],['depth','Depth'],['height','Height'],['rimWidth','Rim width']])add(k,label,'number');
    add('binShape','Shape','select',[['round','Cylinder'],['square','Box']]);add('lid','Closed lid','checkbox');
+  }else if(['sunbed','deckChair'].includes(p.variant)){
+   for(const [k,label] of [['width','Width'],['depth','Length'],['height','Seat height'],['reclineDeg','Back angle °']])add(k,label,'number');
+  }else if(p.variant==='beachUmbrella'){
+   for(const [k,label] of [['height','Height'],['canopyRadius','Canopy radius'],['canopySegments','Canopy segments']])add(k,label,'number');
   }else if(p.variant==='backpack'){
    for(const [k,label] of [['width','Width'],['depth','Depth'],['height','Height'],['strapWidth','Strap width']])add(k,label,'number');
    add('backpackStyle','Style','select',[['box','Cuboid'],['bag','Soft bag']]);add('straps','Shoulder straps','checkbox');add('frontPocket','Front pocket','checkbox');
@@ -1266,8 +1291,45 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   add('texture','Texture','select',[['none','Plain'],['plaster','Plaster'],['concrete','Concrete'],['bricks','Bricks'],['metal','Metal'],['wood','Wood'],['marble','Marble'],['granite','Granite']]);
   if(['wood','marble','granite'].includes(p.texture)){add('textureScale','Pattern scale','number');add('textureDistortion','Distortion','number');add('textureContrast','Contrast','number');}
   add('color',isProp?'Colour':'Frame colour','color');
-  if(['chair','stool','armchair','sofa','bed'].includes(p.variant))add('fabricColor','Upholstery','color');
+  if(['chair','stool','armchair','sofa','bed','sunbed','deckChair','beachUmbrella'].includes(p.variant))add('fabricColor',p.variant==='beachUmbrella'?'Canopy colour':'Fabric colour','color');
+  if(['tv','monitor'].includes(p.variant))this.renderSmartChannelControls(root,obj,'furniture');
  }
+ renderSmartChannelControls(root,obj,kind){
+  const channels=cleanChannels(kind==='furniture'?obj.userData.furniture?.channels:obj.userData.media?.channels);
+  const section=document.createElement('details');section.className='smart-channel-controls';section.open=true;
+  const summary=document.createElement('summary');summary.textContent='Smart screen · '+channels.length+' channels';section.append(summary);
+  const list=document.createElement('div');list.className='smart-channel-list';
+  channels.forEach((c,i)=>{const row=document.createElement('div');row.className='smart-channel-row';const label=document.createElement('span');label.textContent=(i+1)+'. '+c.title+' · '+c.url;label.title=c.url;
+    const remove=document.createElement('button');remove.type='button';remove.textContent='';remove.dataset.uiIcon='delete';remove.title='Remove channel';remove.setAttribute('aria-label','Remove channel');remove.dataset.smartAction='remove:'+i;row.append(label,remove);list.append(row);});
+  section.append(list);
+  const entry=document.createElement('input');entry.type='url';entry.dataset.smartInput='url';entry.placeholder='Paste HTTPS .m3u8 / .mp4 / .webm';entry.setAttribute('aria-label','New media channel URL');section.append(entry);
+  const title=document.createElement('input');title.type='text';title.dataset.smartInput='title';title.placeholder='Channel name (optional)';title.maxLength=65;section.append(title);
+  const buttons=document.createElement('div');buttons.className='smart-channel-actions';
+  for(const [action,label] of [['add','Add channel'],['paste','Paste clipboard']]){const btn=document.createElement('button');btn.type='button';btn.textContent=label;btn.dataset.smartAction=action;buttons.append(btn);}
+  section.append(buttons);root.append(section);
+ }
+ async smartChannelAction(action,root,kind){
+  const obj=this.selected;if(!obj||!this.canEdit(obj)||!(kind==='furniture'?obj.userData.editorKind==='furniture':obj.userData.editorKind==='media'))return;
+  const value=kind==='furniture'?obj.userData.furniture:obj.userData.media;
+  let channels=cleanChannels(value.channels);
+  if(action==='paste'){
+   try{const clip=await navigator.clipboard.readText();const field=root.querySelector('[data-smart-input="url"]');if(field)field.value=clip;}
+   catch(error){this.toast('Clipboard unavailable · paste into the URL field using Ctrl/⌘ V');}return;
+  }
+  if(action.startsWith('remove:'))channels.splice(Number(action.split(':')[1]),1);
+  else if(action==='add'){
+   const parsed=parseChannel(root.querySelector('[data-smart-input="url"]')?.value);
+   if(!parsed){this.toast('Enter a valid HTTPS .m3u8, .mp4 or .webm URL');return;}
+   if(channels.length>=12){this.toast('Maximum 12 channels per screen');return;}
+   parsed.title=(root.querySelector('[data-smart-input="title"]')?.value||'').trim().slice(0,65)||parsed.title;
+   channels.push(parsed);
+  }else return;
+  const before=this.snapshot(obj);value.channels=channels;
+  if(kind==='furniture')syncEquipmentMedia(obj,this);else hydrateSceneMedia(obj,this.world);
+  this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
+  if(kind==='furniture')this.renderFurnitureControls(obj);else this.renderSmartMediaChannels(obj);
+ }
+ renderSmartMediaChannels(obj){const root=byId('mediaSmartChannelControls');if(!root)return;root.replaceChildren();root.hidden=obj?.userData.editorKind!=='media';if(!root.hidden)this.renderSmartChannelControls(root,obj,'media');}
  setupLadderControls(){
   for(const id of ['ladderWidth','ladderHeight','ladderAdhesion','ladderRungSpacing','ladderRungs','ladderRungMode','ladderTexture','ladderColor']){
    const el=byId(id);if(!el)continue;

@@ -59,7 +59,9 @@ const furniturePreset={
  flowerpot:{width:.22,depth:.22,height:.23,legStyle:'none'},
  box:{width:.35,depth:.3,height:.28,legStyle:'none'},
  tv:{width:1.21,depth:.12,height:.73,legStyle:'none'},monitor:{width:.61,depth:.13,height:.42,legStyle:'none'},
- miniComputer:{width:.2,depth:.2,height:.08,legStyle:'none'},bin:{width:.35,depth:.35,height:.5,legStyle:'none'},backpack:{width:.35,depth:.2,height:.45,legStyle:'none'}
+ miniComputer:{width:.2,depth:.2,height:.08,legStyle:'none'},bin:{width:.35,depth:.35,height:.5,legStyle:'none'},backpack:{width:.35,depth:.2,height:.45,legStyle:'none'},
+ sunbed:{width:.8,depth:1.95,height:.31,legStyle:'none'},deckChair:{width:.64,depth:1.72,height:.42,legStyle:'none'},
+ beachUmbrella:{width:2.4,depth:2.4,height:2.15,legStyle:'none'}
 };
 export function sanitiseFurniture(raw={}){
  const variant=FURNITURE_TYPES.includes(raw.variant)?raw.variant:'table';
@@ -67,7 +69,7 @@ export function sanitiseFurniture(raw={}){
  for(const [key,[def,min,max]] of Object.entries(FURNITURE_NUMERIC)){
   const source=raw[key]??defaults[key]??def;
   const value=Number(source);
-  result[key]=['corners','shelves','seats'].includes(key)?Math.round(Math.max(min,Math.min(max,Number.isFinite(value)?value:(defaults[key]??def)))):Math.max(min,Math.min(max,Number.isFinite(value)?value:(defaults[key]??def)));
+  result[key]=['corners','shelves','seats','canopySegments'].includes(key)?Math.round(Math.max(min,Math.min(max,Number.isFinite(value)?value:(defaults[key]??def)))):Math.max(min,Math.min(max,Number.isFinite(value)?value:(defaults[key]??def)));
  }
  if(variant==='sofa'&&raw.width===undefined)result.width=result.seats*.82+.22;
  result.topShape=['rectangle','polygon','round'].includes(raw.topShape)?raw.topShape:'rectangle';
@@ -78,6 +80,7 @@ export function sanitiseFurniture(raw={}){
  result.powered=raw.powered!==false;result.curved=raw.curved===true;result.binShape=raw.binShape==='square'?'square':'round';
  result.lid=raw.lid===true;result.straps=raw.straps!==false;result.frontPocket=raw.frontPocket===true;
  result.backpackStyle=raw.backpackStyle==='bag'?'bag':'box';
+ result.channels=Array.isArray(raw.channels)?raw.channels.slice(0,12).filter(c=>c&&typeof c==='object'&&typeof c.url==='string'&&/^https:\/\//.test(c.url)&&/\.(?:m3u8|mp4|webm)(?:$|[?#])/i.test(c.url)).map(c=>({title:String(c.title||'Channel').slice(0,65),url:c.url.slice(0,1500)})):[];
  result.mediaId=typeof raw.mediaId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.mediaId)?raw.mediaId:'';
  result.pairedDisplayId=typeof raw.pairedDisplayId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.pairedDisplayId)?raw.pairedDisplayId:'';
  result.headrest=raw.headrest===true;

@@ -11,7 +11,7 @@ export function seatPlan(target,robotPosition){
  const size=bounds.getSize(new THREE.Vector3());
  if(Math.min(size.x,size.z)<.42||!Number.isFinite(size.y))return null;
  const furniture=target.userData.editorKind==='furniture'?target.userData.furniture:null;
- if(furniture&& !['chair','armchair','sofa','stool','bed','table'].includes(furniture.variant))return null;
+ if(furniture&& !['chair','armchair','sofa','stool','bed','table','sunbed','deckChair'].includes(furniture.variant))return null;
  const face=target.getWorldQuaternion(new THREE.Quaternion());
  // No seats on steeply pitched surfaces.
  const vertical=new THREE.Vector3(0,1,0).applyQuaternion(face);
@@ -32,17 +32,17 @@ export function seatPlan(target,robotPosition){
  let localX=xMid,localZ=zMid,angle=0;
  if(furniture){
   const seatY=Number(furniture.seatHeight);
-  const top=Number.isFinite(seatY)?seatY:
+  const top=['sunbed','deckChair'].includes(furniture.variant)?(Number(furniture.height)||.4)+.07:Number.isFinite(seatY)?seatY:
     furniture.variant==='bed'?Number(furniture.height)||.50:Number(furniture.height)||.5;
   // Furniture geometry typically has a back at +Z, so sit towards its -Z edge.
   localX=Math.max(localBounds.min.x+.22,Math.min(localBounds.max.x-.22,local.x));
-  localZ=furniture.variant==='table'?zMid:localBounds.min.z+Math.min(.35,depth*.48);
+  localZ=furniture.variant==='table'?zMid:['sunbed','deckChair'].includes(furniture.variant)?zMid:localBounds.min.z+Math.min(.35,depth*.48);
   angle=Math.PI;
   const spot=target.localToWorld(new THREE.Vector3(localX,top,localZ));
   const forward=new THREE.Vector3(0,0,-1).applyQuaternion(face);
   const yaw=Math.atan2(forward.x,forward.z);
   const distance=Math.hypot(spot.x-robotPosition.x,spot.z-robotPosition.z);
-  return Number.isFinite(spot.y)&&distance<2.1&&spot.y-robotPosition.y>.20&&spot.y-robotPosition.y<1.35?{spot,yaw,height:spot.y,targetId:target.userData.editorId}:null;
+  return Number.isFinite(spot.y)&&distance<2.1&&spot.y-robotPosition.y>.20&&spot.y-robotPosition.y<1.35?{spot,yaw,height:spot.y,targetId:target.userData.editorId,reclined:['sunbed','deckChair'].includes(furniture.variant),reclineDeg:Number(furniture.reclineDeg)||0}:null;
  }
  // General flat shapes: choose the edge nearest to the avatar, not always +Z.
  const edges=[{d:Math.abs(local.x-localBounds.min.x),x:localBounds.min.x+.23,z:zMid,yaw:-Math.PI/2},
@@ -72,8 +72,10 @@ export function takeSeat(robot,target,editor){
  robot.position.x=plan.spot.x;robot.position.z=plan.spot.z;
  robot.rotation.y=plan.yaw;robot.userData.robotSeated=true;
  const clip=sittingClip(robot.userData.robotAvailableActions);
- robot.userData.robotSitPose=clip?'clip':'procedural';
- robot.userData.robotMode=clip||'idle';robot.userData.robotPlaying=null;
+ const recline=plan.reclined;const lying=(robot.userData.robotAvailableActions||[]).find(n=>/^(?:lying|lie down|reclining|lay down)(?:__\d+)?$/i.test(String(n)));
+ robot.userData.robotSitPose=recline?(lying?'clip':'reclined'):(clip?'clip':'procedural');
+ robot.userData.robotReclineAngle=recline?THREE.MathUtils.degToRad(Math.max(0,85-plan.reclineDeg)):0;
+ robot.userData.robotMode=recline?(lying?'clip:'+lying:'idle'):(clip||'idle');robot.userData.robotPlaying=null;
  robot.userData.robotSeatedTarget=plan.targetId;
  editor.physics?.applyEditedPose?.(robot);
  editor.queueSave?.(robot);
@@ -81,7 +83,7 @@ export function takeSeat(robot,target,editor){
 }
 export function standUp(robot,editor){
  if(!robot?.userData?.robotSeated)return false;
- robot.userData.robotSeated=false;robot.userData.robotSitPose=null;
+ robot.userData.robotSeated=false;robot.userData.robotSitPose=null;robot.userData.robotReclineAngle=0;
  robot.userData.robotSeatedTarget=null;robot.userData.robotMode='idle';
  robot.userData.robotPlaying=null;
  // The aligned yaw is intentionally retained when standing up.
