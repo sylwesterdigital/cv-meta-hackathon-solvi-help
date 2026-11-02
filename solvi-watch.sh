@@ -106,8 +106,12 @@ def verify_zip(archive,stage):
     display(f'Checking {archive.name}: paths, SHA-256 hashes, version','STEP')
     with zipfile.ZipFile(archive) as z:
         members=z.infolist()
-        if len(members)>350 or sum(m.file_size for m in members)>110*1024*1024:
-            raise ReleaseError('Archive exceeds file-count or extracted-size safety limits')
+        # File-count is a resource safeguard, not a feature cap; 350 was too small for SOLVI.
+        # Keep extracted-size, exact manifests, safe paths, version and checksum checks intact.
+        MAX_ARCHIVE_FILES=4096
+        MAX_EXTRACTED_BYTES=110*1024*1024
+        if len(members)>MAX_ARCHIVE_FILES or sum(m.file_size for m in members)>MAX_EXTRACTED_BYTES:
+            raise ReleaseError(f'Archive exceeds safety limits ({MAX_ARCHIVE_FILES} entries, {MAX_EXTRACTED_BYTES//(1024*1024)} MiB extracted)')
         names=[m.filename for m in members if not m.is_dir()]
         if len(set(names))!=len(names) or 'manifest.json' not in names:raise ReleaseError('ZIP has duplicate filenames or lacks manifest')
         for member in members:
