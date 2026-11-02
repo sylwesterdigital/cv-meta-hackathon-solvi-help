@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.147",
+  "currentVersion": "0.2.148",
   "releases": [
+    {
+      "version": "0.2.148",
+      "publishedAt": "2026-11-02T02:10:48Z",
+      "changes": [
+        "Fix Release delay settings snapping to the 55% default while editing by committing valid numeric input immediately and protecting focused fields from inspector refresh.",
+        "Clamp out-of-range completed release/pickup delays to the valid 5\u201395% interval; preserve the last saved value for empty/invalid inputs.",
+        "Apply reliable editing to all eight per-avatar Pickup & Throw numeric controls, keeping undo history and ordinary scene persistence.",
+        "Retain v0.2.147 throw force, animation speeds, trajectory guide, procedural models and original GLB assets unchanged; five new regression tests; 647/647 JavaScript tests passed."
+      ]
+    },
     {
       "version": "0.2.147",
       "publishedAt": "2026-11-02T01:42:26Z",
@@ -296,15 +306,6 @@
       "changes": [
         "Reissue the v0.2.114 WebXR surface teleport improvements under a strictly newer release version after the watcher rejected re-deployment of v0.2.114",
         "Refresh all browser import-map and CSS cache keys, backend health version, installer default version and release metadata; no change to XR teleport behaviour"
-      ]
-    },
-    {
-      "version": "0.2.114",
-      "publishedAt": "2026-10-31T18:24:18Z",
-      "changes": [
-        "WebXR teleport controller rays target actual nearby static/trimesh surfaces, stairs, moving walkways and lift cabin floors instead of only the world floor",
-        "Apply XR teleport limits to controller range and headset-to-target distance, reject steep surfaces and large downward jumps, and provide a personal 2\u201320 m limit in World Settings",
-        "Track XR standing-surface elevation across surface teleports, lifts and paired portals; render teleport rings at true hit height and orientation"
       ]
     }
   ]

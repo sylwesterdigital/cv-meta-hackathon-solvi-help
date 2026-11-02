@@ -1,3 +1,10 @@
+## v0.2.148 — Fix Release delay reverting to 55% (2 November 2026)
+
+- **Problem:** The Release delay control could appear to snap to 55%: the existing settings sanitizer treated out-of-range numeric edits as invalid and returned the default, and the inspector only applied changes on the browser `change` event (usually blur). A property refresh during editing could rewrite the field before the edit was committed.
+- **Fix:** Numeric throw controls now commit valid input as it is typed, protect the actively focused field from same-robot inspector refresh, and preserve the pre-edit snapshot for undo. Completed entries outside the allowed range are clamped to the nearest boundary instead of being reset to the default. An empty/invalid entry restores the last valid value.
+- **Scope:** Release delay and Pickup delay remain 5–95%, with the existing 55% default for newly created robots. Angle, direction, hand height, lifting speed, throw speed and throw force share the improved input lifecycle. Per-avatar saving/duplication/imports and animation-frame timing are unchanged; no backend schema change and no avatar GLB changes.
+- **Verification:** 647/647 JavaScript tests pass, including five new runtime/UI-listener regressions. Node syntax, Python syntax, Nginx and watcher shell syntax passed. Real browser rendering, full Flask service, deployed multiplayer and live Rapier throw timing not verified locally.
+
 ## v0.2.147 — Pickup/Throw animation speeds, force and trajectory guide (2 November 2026)
 
 - **Animation speeds:** In robot **Pickup & Throw · right hand**, Lifting speed (0.50–3.00×) and Throw speed (0.50–3.00×) affect both animation playback and the configured grip/release delays, which remain percentages of those animations. The held object remains attached while the robot returns to Idle/Walking/Running.

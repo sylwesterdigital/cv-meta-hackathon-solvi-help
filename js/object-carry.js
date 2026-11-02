@@ -17,6 +17,21 @@ export function cleanThrowSettings(raw={}){
  };
  return {angle:bound('angle',-20,65),height:bound('height',-.35,.65),direction:bound('direction',-90,90),delay:bound('delay',5,95),pickupDelay:bound('pickupDelay',5,95),pickupSpeed:bound('pickupSpeed',.5,3),throwSpeed:bound('throwSpeed',.5,3),force:bound('force',1.2,10)};
 }
+// Inspector edits are different from reading a legacy saved configuration:
+// do not silently replace a user's out-of-range numeric entry with the 55% default.
+const THROW_FIELD_RANGES=Object.freeze({
+ angle:[-20,65],height:[-.35,.65],direction:[-90,90],delay:[5,95],
+ pickupDelay:[5,95],pickupSpeed:[.5,3],throwSpeed:[.5,3],force:[1.2,10]
+});
+export function editThrowSetting(settings,key,raw,{clamp=false}={}){
+ const range=THROW_FIELD_RANGES[key];
+ if(!range||raw==null||(typeof raw==='string'&&!raw.trim()))return null;
+ const value=Number(raw);
+ if(!Number.isFinite(value))return null;
+ if(!clamp&&(value<range[0]||value>range[1]))return null;
+ const bounded=Math.max(range[0],Math.min(range[1],value));
+ return cleanThrowSettings({...settings,[key]:bounded});
+}
 function handBoneScore(name){
  const n=String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
  if(/left/.test(n)||/(?:metacarpal|hand|wrist|palm|finger|index|middle|ring|thumb)l$/.test(n))return -1;

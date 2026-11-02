@@ -30,7 +30,7 @@ import {robotPathVisible} from './robot-debug.js';
 import {plannedRouteLength,newMovementTelemetry,sampleMovementTelemetry,missionMovementEvidence,shouldRejectClaimedArrival} from './robot-telemetry.js';
 import {physicsOptions} from './physics-options.js';
 import {canBeClimbable} from './climbable-surfaces.js';
-import {canBePickable,ObjectCarry,cleanThrowSettings} from './object-carry.js';
+import {canBePickable,ObjectCarry,cleanThrowSettings,editThrowSetting} from './object-carry.js';
 import {combatSettings,combatForKey,combatClip,combatTimeline,COMBAT_ACTIONS} from './robot-combat.js';
 import {animationSpeedSettings} from './animation-tuning.js';
 import {isTransformLocked,mayTransform} from './transform-lock.js';
@@ -269,13 +269,40 @@ export class SceneEditor{
   for(const [field,kind] of [['animationWalk','walk'],['animationRun','run'],['animationJump','jump']]){
    byId(field).oninput=()=>{const bot=this.robot();if(!bot||!this.canEdit(bot))return;const speeds=animationSpeedSettings(bot.userData.robotAnimationSpeed);speeds[kind]=Number(byId(field).value);bot.userData.robotAnimationSpeed=animationSpeedSettings(speeds);this.queueSave(bot);};
   }
+  // Commit valid values as they are entered; a later inspector refresh must not
+  // overwrite a focused field before its browser "change"/blur event fires.
+  const throwEditBefore=new WeakMap();
   for(const [key,id] of [['angle','robotThrowAngle'],['height','robotThrowHeight'],['direction','robotThrowDirection'],['delay','robotThrowDelay'],['pickupDelay','robotPickupDelay'],['pickupSpeed','robotPickupSpeed'],['throwSpeed','robotThrowSpeed'],['force','robotThrowForce']]){
-   byId(id).addEventListener('change',()=>{
-    const bot=this.selected;if(!bot||bot.userData.editorKind!=='robot'||!this.canEdit(bot))return;
-    const before=this.snapshot(bot);
-    bot.userData.robotThrowSettings=cleanThrowSettings({...bot.userData.robotThrowSettings,[key]:Number(byId(id).value)});
-    byId(id).value=bot.userData.robotThrowSettings[key];
-    this.recordEdit(before,this.snapshot(bot));this.queueSave(bot);
+   const field=byId(id);
+   field.addEventListener('focus',()=>{
+    const bot=this.selected;
+    if(bot?.userData.editorKind!=='robot'||!this.canEdit(bot))return;
+    throwEditBefore.set(field,{robotId:bot.userData.editorId,snapshot:this.snapshot(bot)});
+    this.throwEditingRobotId=bot.userData.editorId;
+   });
+   field.addEventListener('input',()=>{
+    const bot=this.selected;
+    if(bot?.userData.editorKind!=='robot'||!this.canEdit(bot))return;
+    const next=editThrowSetting(bot.userData.robotThrowSettings,key,field.value);
+    if(!next)return; // Partial values (including empty strings) are still being typed.
+    bot.userData.robotThrowSettings=next;
+    this.queueSave(bot);
+   });
+   field.addEventListener('change',()=>{
+    const bot=this.selected;
+    if(bot?.userData.editorKind!=='robot'||!this.canEdit(bot))return;
+    const prior=throwEditBefore.get(field);
+    const before=prior?.robotId===bot.userData.editorId?prior.snapshot:this.snapshot(bot);
+    const next=editThrowSetting(bot.userData.robotThrowSettings,key,field.value,{clamp:true});
+    if(next)bot.userData.robotThrowSettings=next;
+    field.value=cleanThrowSettings(bot.userData.robotThrowSettings)[key];
+    const after=this.snapshot(bot);
+    if(JSON.stringify(before)!==JSON.stringify(after))this.recordEdit(before,after);
+    if(next)this.queueSave(bot);
+   });
+   field.addEventListener('blur',()=>{
+    throwEditBefore.delete(field);
+    if(this.throwEditingRobotId===this.selected?.userData.editorId)this.throwEditingRobotId=null;
    });
   }
   byId('robotThrowTrajectory').addEventListener('change',e=>this.carry.toggleTrajectory(e.target.checked));
@@ -1097,7 +1124,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
   if(obj.userData.editorKind==='robot'){const settings=combatSettings(obj.userData.robotCombat);for(const el of byId('robotCombatList').querySelectorAll('[data-combat-action]'))el.value=String(settings[el.dataset.combatAction][el.dataset.combatField]);}
-  byId('objectAppearance').hidden=['robot','light','model','media','wall','ladder','furniture'].includes(obj.userData.editorKind);for(const id of ['replaceModelFile','replaceModelGallery']){byId(id).hidden=obj.userData.editorKind!=='model';byId(id).disabled=!this.canEdit(obj); }if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed??2.5;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed??2.5).toFixed(1)+'×';byId('robotRunMultiplier').value=obj.userData.robotRunMultiplier??2.8;const factor=obj.userData.robotSpeed??1.8;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed??4;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';const climbFactor=obj.userData.robotClimbSpeed??1.25;byId('robotClimbSpeed').value=climbFactor;byId('robotClimbLabel').textContent=Number(climbFactor).toFixed(2)+' m/s';const throwConfig=cleanThrowSettings(obj.userData.robotThrowSettings);for(const [key,id] of [['angle','robotThrowAngle'],['height','robotThrowHeight'],['direction','robotThrowDirection'],['delay','robotThrowDelay'],['pickupDelay','robotPickupDelay'],['pickupSpeed','robotPickupSpeed'],['throwSpeed','robotThrowSpeed'],['force','robotThrowForce']])byId(id).value=throwConfig[key];const anim=animationSpeedSettings(obj.userData.robotAnimationSpeed);byId('animationWalk').value=anim.walk;byId('animationRun').value=anim.run;byId('animationJump').value=anim.jump;this.syncRobotSpeed?.();}if(obj.userData.editorKind==='media'){const media=obj.userData.media||{};const kind=sceneMediaKind(media.mime);byId('mediaSourceLabel').textContent=media.name||'Uploaded media';byId('mediaBacking').value=media.backing||'white';byId('mediaStreamMode').value=media.stream||'direct';byId('mediaPlayPause').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaMuteToggle').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';byId('mediaLoopToggle').checked=media.loop!==false;byId('mediaRefDistance').value=media.refDistance??4;byId('mediaMaxDistance').value=media.maxDistance??18;byId('mediaAutoplayDistance').value=media.autoplayDistance??0;byId('mediaConstantVolume').checked=media.constantVolume===true;byId('mediaGroup').value=media.group||'';byId('mediaVolume').value=media.volume??1;byId('mediaStreamRow').hidden=kind!=='video';byId('mediaBackingRow').hidden=kind==='audio';byId('mediaAudioFields').hidden=kind!=='audio';byId('mediaOrbAppearance').hidden=media.shape!=='orb';byId('mediaOrbColor').value=media.color||'#3c9bd2';byId('mediaOrbTexture').value=media.orbTexture||'none';byId('mediaTranscriptText').textContent=media.caption||'No transcription yet';this.updateMediaHUDPosition?.();}
+  byId('objectAppearance').hidden=['robot','light','model','media','wall','ladder','furniture'].includes(obj.userData.editorKind);for(const id of ['replaceModelFile','replaceModelGallery']){byId(id).hidden=obj.userData.editorKind!=='model';byId(id).disabled=!this.canEdit(obj); }if(obj.userData.editorKind==='light'){this.refreshLightControls();this.showLightHelper(obj);}if(obj.userData.editorKind==='robot'){byId('robotStrafeSpeed').value=obj.userData.robotStrafeSpeed??2.5;byId('robotStrafeLabel').textContent=Number(obj.userData.robotStrafeSpeed??2.5).toFixed(1)+'×';byId('robotRunMultiplier').value=obj.userData.robotRunMultiplier??2.8;const factor=obj.userData.robotSpeed??1.8;byId('robotSpeed').value=factor;byId('robotSpeedLabel').textContent=Number(factor).toFixed(2)+'×';const turnFactor=obj.userData.robotTurnSpeed??4;byId('robotTurnSpeed').value=turnFactor;byId('robotTurnLabel').textContent=Number(turnFactor).toFixed(2)+'×';const climbFactor=obj.userData.robotClimbSpeed??1.25;byId('robotClimbSpeed').value=climbFactor;byId('robotClimbLabel').textContent=Number(climbFactor).toFixed(2)+' m/s';const throwConfig=cleanThrowSettings(obj.userData.robotThrowSettings);for(const [key,id] of [['angle','robotThrowAngle'],['height','robotThrowHeight'],['direction','robotThrowDirection'],['delay','robotThrowDelay'],['pickupDelay','robotPickupDelay'],['pickupSpeed','robotPickupSpeed'],['throwSpeed','robotThrowSpeed'],['force','robotThrowForce']]){const field=byId(id);if(field!==document.activeElement||this.throwEditingRobotId!==obj.userData.editorId)field.value=throwConfig[key];}const anim=animationSpeedSettings(obj.userData.robotAnimationSpeed);byId('animationWalk').value=anim.walk;byId('animationRun').value=anim.run;byId('animationJump').value=anim.jump;this.syncRobotSpeed?.();}if(obj.userData.editorKind==='media'){const media=obj.userData.media||{};const kind=sceneMediaKind(media.mime);byId('mediaSourceLabel').textContent=media.name||'Uploaded media';byId('mediaBacking').value=media.backing||'white';byId('mediaStreamMode').value=media.stream||'direct';byId('mediaPlayPause').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaMuteToggle').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';byId('mediaLoopToggle').checked=media.loop!==false;byId('mediaRefDistance').value=media.refDistance??4;byId('mediaMaxDistance').value=media.maxDistance??18;byId('mediaAutoplayDistance').value=media.autoplayDistance??0;byId('mediaConstantVolume').checked=media.constantVolume===true;byId('mediaGroup').value=media.group||'';byId('mediaVolume').value=media.volume??1;byId('mediaStreamRow').hidden=kind!=='video';byId('mediaBackingRow').hidden=kind==='audio';byId('mediaAudioFields').hidden=kind!=='audio';byId('mediaOrbAppearance').hidden=media.shape!=='orb';byId('mediaOrbColor').value=media.color||'#3c9bd2';byId('mediaOrbTexture').value=media.orbTexture||'none';byId('mediaTranscriptText').textContent=media.caption||'No transcription yet';this.updateMediaHUDPosition?.();}
   for(const name of ['position','rotation','scale'])['x','y','z'].forEach((axis,i)=>{
     const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);if(this.activateInspectorValue && !byId('inspectorValueSlider').hidden && byId('inspectorActiveRange') && document.activeElement?.id===`${name}-${i}`)this.activateInspectorValue(document.activeElement);
   });
