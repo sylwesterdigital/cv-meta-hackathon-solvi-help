@@ -11,6 +11,7 @@ import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneMode
 import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,toggleSceneMediaPlayback,setSceneMediaMuted,setSceneMediaLoop,setSceneMediaSpatial,syncSceneMediaGroup,sceneMediaMuted,sceneMediaPlaying,sceneMediaKind,showSceneMediaCaptions} from './scene-media.js';
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive,FURNITURE_TYPES,BASIC_PROP_TYPES,FURNITURE_NUMERIC,sanitiseFurniture,makeFurniture,rebuildFurniture} from './primitive-properties.js';
+import {syncEquipmentMedia,disposeEquipmentMedia} from './equipment-media.js';
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
 import {makeOfficeStairs,rebuildOfficeStairs,updateLiftPanel,updateConveyorControls,sanitiseStairs,stairSegments} from './office-stairs.js';
 import {tickStairTransport,startLift,stopLift} from './stair-transport.js';
@@ -149,7 +150,7 @@ export class SceneEditor{
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Equipment',['tv','monitor','miniComputer','bin','backpack']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';const head=document.createElement('div');head.className='add-fixed-head';head.append(bar);const content=document.createElement('div');content.className='add-scroll-content';menu.append(head,content);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';head.append(search);
   const openPresets=document.createElement('button');openPresets.type='button';openPresets.className='add-presets-shortcut';openPresets.textContent='Presets · saved objects';openPresets.onclick=()=>{menu.hidden=true;this.objectPresets?.open();};head.append(openPresets);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
@@ -1132,11 +1133,11 @@ export class SceneEditor{
  }
  // compatibility marker: addSceneMedia(media,{backing='white',width=null,height=null}={})
 addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistance=4,maxDistance=18,autoplayDistance=0,constantVolume=false,group='',shape='speaker',mount=null}={}){const object=objectFor('media');const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.cameraDropPosition(3.2);object.position.copy(point);object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;object.userData.media={id:media.id,mime:media.mime,name:media.name,backing,stream:'direct',width:width??media.width??null,height:height??media.height??null,loop,muted:false,refDistance,maxDistance,autoplayDistance,constantVolume,group,shape,volume:1,color:'#3c9bd2',author:media.author||window.solviAPI?.auth()?.profile?.name||'User',created:media.created||new Date().toISOString(),caption:''};if(mount)object.userData.media.mount=structuredClone(mount);const kind=sceneMediaKind(media.mime);object.name=(kind==='video'?'Video screen · ':kind==='audio'?'Audio speaker · ':'Picture frame · ')+(media.name||'media');this.items.push(object);this.world.scene.add(object);this.physics.sync(object);hydrateSceneMedia(object,this.world);if(mount){object.userData.physics={mode:'off'};this.updateMountedMedia();this.physics.sync(object);}this.select(object);this.refreshList();this.recordEdit(null,this.snapshot(object));this.queueSave(object);return object;}
- add(kind,showGallery=true,lightType=undefined,persist=true,furnitureVariant='table'){const object=objectFor(kind);if(kind==='furniture'){rebuildFurniture(object,{variant:furnitureVariant});object.name=furnitureVariant[0].toUpperCase()+furnitureVariant.slice(1);}if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
+ add(kind,showGallery=true,lightType=undefined,persist=true,furnitureVariant='table'){const object=objectFor(kind);if(kind==='furniture'){rebuildFurniture(object,{variant:furnitureVariant});if(furnitureVariant==='backpack'){object.userData.pickable=true;object.userData.inventory={category:'backpack',size:'bag',consumable:false};}object.name=furnitureVariant[0].toUpperCase()+furnitureVariant.slice(1);}if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
  const point=centreGroundFromCamera(this.world.camera,this.world.controls?.target);
  if(!['robot','model','media','light'].includes(kind))positionNewOnGround(object,point);
  else {const near=this.cameraDropPosition(3.2);object.position.x=near.x;object.position.z=near.z;if(kind!=='robot')object.position.y=Math.max(.8,near.y);}
- object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;if(PRIMITIVE_FIELDS[kind])object.userData.primitive=sanitisePrimitive(kind);this.items.push(object);this.world.scene.add(object);this.physics.sync(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}if(kind==='model'&&object.userData.modelUrl)hydrateSceneModel(object);if(kind!=='model'&&persist){this.recordEdit(null,this.snapshot(object));this.queueSave(object);}return object;}
+ object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;if(PRIMITIVE_FIELDS[kind])object.userData.primitive=sanitisePrimitive(kind);this.items.push(object);this.world.scene.add(object);if(kind==='furniture')syncEquipmentMedia(object,this);this.physics.sync(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}if(kind==='model'&&object.userData.modelUrl)hydrateSceneModel(object);if(kind!=='model'&&persist){this.recordEdit(null,this.snapshot(object));this.queueSave(object);}return object;}
  addFromPreset(saved){
   const data=presetEntry(saved);
   if(!data)return null;
@@ -1164,7 +1165,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  updateInspector(){const obj=this.selected;if(!isEditMode()){byId('objectInspector').hidden=true;byId('propertiesPanel').hidden=true;byId('inspectorValueSlider').hidden=true;return;}byId('objectInspector').hidden=!obj;byId('inspectorValueSlider').hidden=true;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
   this.syncTransformLockControls(obj);
   this.renderPrimitiveControls(obj);this.renderCurveControls(obj);this.renderTextGeometryControls(obj);this.renderPortalControls(obj);this.renderLadderControls(obj);this.renderFurnitureControls(obj);
-  byId('objectPickableRow').hidden=!canBePickable(obj.userData.editorKind);byId('objectPickable').checked=obj.userData.pickable===true;byId('objectPickable').disabled=!this.canEdit(obj);  byId('objectInventoryOptions').hidden=!canBePickable(obj.userData.editorKind)||obj.userData.pickable!==true;byId('objectInventoryCategory').value=cleanInventory(obj.userData.inventory).category;byId('objectInventorySize').value=cleanInventory(obj.userData.inventory).size;byId('objectInventoryConsumable').checked=cleanInventory(obj.userData.inventory).consumable;
+  byId('objectPickableRow').hidden=!canBePickable(obj.userData.editorKind);byId('objectPickable').checked=obj.userData.pickable===true;byId('objectPickable').disabled=!this.canEdit(obj);  byId('objectConsumableRow').hidden=!canBePickable(obj.userData.editorKind)||obj.userData.pickable!==true;byId('objectInventoryOptions').hidden=!canBePickable(obj.userData.editorKind)||obj.userData.pickable!==true;byId('objectInventoryCategory').value=cleanInventory(obj.userData.inventory).category;byId('objectInventorySize').value=cleanInventory(obj.userData.inventory).size;byId('objectInventoryConsumable').checked=cleanInventory(obj.userData.inventory).consumable;
 byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKind)||obj.userData.pickable!==true;byId('objectFollowHandRotation').checked=obj.userData.followHandRotation!==false;byId('objectFollowHandRotation').disabled=!this.canEdit(obj);
   byId('saveObjectPreset').hidden=!canPreset(this.snapshot(obj));byId('saveObjectPreset').disabled=!this.canEdit(obj);
   byId('objectClimbableRow').hidden=!canBeClimbable(obj.userData.editorKind);byId('objectClimbable').checked=obj.userData.climbable===true;byId('objectClimbable').disabled=!this.canEdit(obj);
@@ -1187,7 +1188,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    const old=this.snapshot(obj);
    const value=target.type==='checkbox'?target.checked:target.value;
    rebuildFurniture(obj,key==='variant'?{variant:value,color:obj.userData.furniture.color,fabricColor:obj.userData.furniture.fabricColor,texture:obj.userData.furniture.texture}:{...obj.userData.furniture,[key]:value});
-   this.physics.sync(obj);this.recordEdit(old,this.snapshot(obj));this.queueSave(obj);
+   this.physics.sync(obj);syncEquipmentMedia(obj,this);this.recordEdit(old,this.snapshot(obj));this.queueSave(obj);
    // Keep numeric focus and the shared slider mounted while editing dimensions.
    if(target.type!=='number')this.renderFurnitureControls(obj);
   });
@@ -1212,9 +1213,29 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    if(type==='checkbox')control.checked=p[key];else control.value=p[key];control.disabled=!this.canEdit(obj);
    holder.append(caption,control);root.append(holder);
   };
-  add('variant','Type','select',FURNITURE_TYPES.map(kind=>[kind,kind[0].toUpperCase()+kind.slice(1)]));
+  add('variant','Type','select',FURNITURE_TYPES.map(kind=>[kind,kind==='miniComputer'?'Mini computer':kind[0].toUpperCase()+kind.slice(1)]));
+  const equipment=['tv','monitor','miniComputer','bin','backpack'].includes(p.variant);
+  if(['tv','monitor'].includes(p.variant)){
+   add('diagonalInches','Diagonal (in)','number');add('aspect','Aspect','select',[['16:9','16:9'],['21:9','21:9'],['4:3','4:3']]);
+   add('bezel','Bezel (m)','number');add('mount','Mount','select',[['feet','Two feet'],['center','Centre stand'],['wall','VESA / wall'],['none','None']]);
+   if(['feet','center'].includes(p.mount))add('standHeight','Stand height','number');
+   if(p.variant==='monitor'){add('curved','Curved','checkbox');if(p.curved)add('curvature','Curve depth','number');}
+   add('powered','Screen on','checkbox');
+   const mediaSources=this.items.filter(o=>o.userData.editorKind==='media'&&/^(video|image)\//.test(o.userData.media?.mime||''));
+   add('mediaId','Media source','select',[['','None / offline'],...mediaSources.map(o=>[o.userData.media.id,o.name||'Scene media'])]);
+  }else if(p.variant==='miniComputer'){
+   for(const [k,label] of [['width','Width'],['depth','Depth'],['height','Height']])add(k,label,'number');
+   add('powered','Power LED','checkbox');const monitors=this.items.filter(o=>o!==obj&&o.userData.editorKind==='furniture'&&['monitor','tv'].includes(o.userData.furniture?.variant));
+   add('pairedDisplayId','Paired display','select',[['','None'],...monitors.map(o=>[o.userData.editorId,o.name])]);
+  }else if(p.variant==='bin'){
+   for(const [k,label] of [['width','Width / diameter'],['depth','Depth'],['height','Height'],['rimWidth','Rim width']])add(k,label,'number');
+   add('binShape','Shape','select',[['round','Cylinder'],['square','Box']]);add('lid','Closed lid','checkbox');
+  }else if(p.variant==='backpack'){
+   for(const [k,label] of [['width','Width'],['depth','Depth'],['height','Height'],['strapWidth','Strap width']])add(k,label,'number');
+   add('backpackStyle','Style','select',[['box','Cuboid'],['bag','Soft bag']]);add('straps','Shoulder straps','checkbox');add('frontPocket','Front pocket','checkbox');
+  }
   const isProp=BASIC_PROP_TYPES.includes(p.variant);
-  for(const [key,title] of [['width',isProp?'Diameter / width (m)':'Width (m)'],['depth','Depth (m)'],['height','Height (m)']])if(!isProp||key!=='depth'||p.variant==='box')add(key,title,'number');
+  if(!equipment)for(const [key,title] of [['width',isProp?'Diameter / width (m)':'Width (m)'],['depth','Depth (m)'],['height','Height (m)']])if(!isProp||key!=='depth'||p.variant==='box')add(key,title,'number');
   if(isProp){
    if(p.variant!=='plate')add('wallThickness','Wall thickness','number');
    if(p.variant==='bottle'){add('neckRadius','Neck radius','number');add('neckHeight','Neck height','number');add('cap','Cap','checkbox');}
@@ -1238,7 +1259,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    add('cushionThickness','Mattress','number');add('headboard','Headboard','checkbox');
   }
   if(p.variant==='cabinet')add('shelves','Shelves','number');
-  if(p.variant!=='cabinet'&&!isProp){
+  if(p.variant!=='cabinet'&&!isProp&&!equipment){
    add('legStyle','Base / legs','select',[['four','4 legs'],['three','3 legs'],['single','Pedestal'],['casters','Casters'],['none','No legs / floor']]);
    if(p.legStyle!=='none')add('legRadius','Leg width','number');
   }
@@ -1381,7 +1402,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   }
  }
  beginSceneReplacement(){this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.liftCeilingSignature=null;this.selected=null;this.controlledRobotId=null;this.robotKeys.clear();this.sceneRestorePhysics=this.physics.enabled;this.physics.clear();this.carry.clearTrajectory();byId('propertiesPanel').hidden=true;}
- addSceneEntry(entry){if(!kinds.includes(entry.kind))return;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotRunMultiplier=entry.runMultiplier??2.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotClimbSpeed=entry.climbSpeed??1.25;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.robotCombat=combatSettings(entry.combat);o.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);o.userData.robotThrowSettings=cleanThrowSettings(entry.throwSettings);o.userData.physics=physicsOptions(entry.physics||(['ladder','furniture'].includes(entry.kind)?{mode:'static'}:undefined));o.userData.pickable=entry.pickable===true&&canBePickable(entry.kind);o.userData.followHandRotation=entry.followHandRotation!==false;o.userData.inventory=cleanInventory(entry.inventory);o.userData.storage=cleanStorage(entry.storage);o.userData.climbable=entry.climbable===true&&canBeClimbable(entry.kind);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='curve'){o.userData.curve=cleanCurve(entry.curve);o.geometry.dispose();o.geometry=buildCurveGeometry(o.userData.curve);}if(entry.kind==='text')rebuildText(o,entry.text,()=>{if(this.items.includes(o))this.physics.sync(o);});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{},this.liftObjects());if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(entry.kind==='ladder')rebuildLadder(o,entry.ladder||{});if(entry.kind==='furniture')rebuildFurniture(o,entry.furniture||{});if(entry.kind==='portal')rebuildPortal(o,entry.portal||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.userData.openings=entry.kind==='cube'?cleanOpenings(entry.openings):undefined;o.geometry=entry.kind==='cube'?cutCubeGeometry(o.userData.primitive,o.userData.openings):buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
+ addSceneEntry(entry){if(!kinds.includes(entry.kind))return;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;o.userData.robotSpeed=entry.speed??1.8;o.userData.robotRunMultiplier=entry.runMultiplier??2.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotClimbSpeed=entry.climbSpeed??1.25;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.robotCombat=combatSettings(entry.combat);o.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);o.userData.robotThrowSettings=cleanThrowSettings(entry.throwSettings);o.userData.physics=physicsOptions(entry.physics||(['ladder','furniture'].includes(entry.kind)?{mode:'static'}:undefined));o.userData.pickable=entry.pickable===true&&canBePickable(entry.kind);o.userData.followHandRotation=entry.followHandRotation!==false;o.userData.inventory=cleanInventory(entry.inventory);o.userData.storage=cleanStorage(entry.storage);o.userData.climbable=entry.climbable===true&&canBeClimbable(entry.kind);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='curve'){o.userData.curve=cleanCurve(entry.curve);o.geometry.dispose();o.geometry=buildCurveGeometry(o.userData.curve);}if(entry.kind==='text')rebuildText(o,entry.text,()=>{if(this.items.includes(o))this.physics.sync(o);});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{},this.liftObjects());if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(entry.kind==='ladder')rebuildLadder(o,entry.ladder||{});if(entry.kind==='furniture'){rebuildFurniture(o,entry.furniture||{});syncEquipmentMedia(o,this);}if(entry.kind==='portal')rebuildPortal(o,entry.portal||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.userData.openings=entry.kind==='cube'?cleanOpenings(entry.openings):undefined;o.geometry=entry.kind==='cube'?cutCubeGeometry(o.userData.primitive,o.userData.openings):buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.kind==='stairs'&&o.userData.stairs?.variant==='lift'){
     const lift=o.userData.stairs.lift,h=Number(lift.currentHeight)||0;
@@ -1391,8 +1412,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    }
    if(entry.color&&o.material?.color)o.material.color.set(entry.color);
    o.userData.textureName=entry.texture||'none';if(entry.texture&&entry.texture!=='none'&&entry.texture!=='custom')o.traverse(x=>{if(x.material?.isMeshStandardMaterial){x.material.map=makeTexture(entry.texture);x.material.needsUpdate=true;}});
-   this.items.push(o);this.world.scene.add(o);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);if(entry.kind==='media')hydrateSceneMedia(o,this.world);this.physics.sync(o);if(o.userData.storage)this.inventory.applyState(o);}
- endSceneReplacement(){this.inventory.reconcile();this.refreshList();if(this.sceneRestorePhysics&&!this.realmTransitioning)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));}
+   this.items.push(o);this.world.scene.add(o);if(entry.kind==='furniture')syncEquipmentMedia(o,this);if(entry.kind==='robot')hydrateRobot(o);if(entry.kind==='model')hydrateSceneModel(o);if(entry.kind==='media')hydrateSceneMedia(o,this.world);this.physics.sync(o);if(o.userData.storage)this.inventory.applyState(o);}
+ endSceneReplacement(){for(const obj of this.items)if(obj.userData.editorKind==='furniture')syncEquipmentMedia(obj,this);this.inventory.reconcile();this.refreshList();if(this.sceneRestorePhysics&&!this.realmTransitioning)this.physics.setEnabled(true).catch(e=>this.toast('Physics unavailable: '+e.message));}
  apply(data){this.beginSceneReplacement();for(const entry of data)this.addSceneEntry(entry);this.endSceneReplacement();}
  async applyCooperatively(data,stillCurrent){
   // Both disposal and hydration are chunked. Removing a large room in one
@@ -1419,6 +1440,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
  }
 
  disposeObject(obj){
+  if(obj.userData.editorKind==='furniture')disposeEquipmentMedia(obj);
   if(obj.userData.editorKind==='wall')obj.userData.wallTextureSource=null;
   if(obj.userData.editorKind==='model'){invalidateSceneModel(obj);return;}
   if(obj.userData.editorKind==='media'){disposeSceneMedia(obj);return;}
@@ -1482,8 +1504,16 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    for(const child of obj.children)if(child.userData.stairShaft)child.position.y=-runtime.height;
    updateLiftPanel(obj);
   }
+  // Incremental update: do not leave old procedural children behind on peers.
+  if(entry.kind==='furniture'){
+   const effective=sanitiseFurniture(entry.furniture||{});
+   if(JSON.stringify(obj.userData.furniture)!==JSON.stringify(effective)){
+    disposeEquipmentMedia(obj);rebuildFurniture(obj,effective);
+   }
+   syncEquipmentMedia(obj,this);
+  }
   if(entry.kind==='portal'&&JSON.stringify(obj.userData.portal)!==JSON.stringify(cleanPortal(entry.portal)))rebuildPortal(obj,entry.portal||{});if(entry.kind==='curve'&&JSON.stringify(obj.userData.curve)!==JSON.stringify(cleanCurve(entry.curve))){obj.userData.curve=cleanCurve(entry.curve);obj.geometry.dispose();obj.geometry=buildCurveGeometry(obj.userData.curve);}if(entry.kind==='text'&&(isNew||JSON.stringify(obj.userData.text)!==JSON.stringify(cleanText(entry.text))))rebuildText(obj,entry.text,()=>{if(this.items.includes(obj))this.physics.sync(obj);});if(PRIMITIVE_FIELDS[entry.kind]){const next=sanitisePrimitive(entry.kind,entry.primitive),holes=entry.kind==='cube'?cleanOpenings(entry.openings):[];if(JSON.stringify(obj.userData.primitive)!==JSON.stringify(next)||JSON.stringify(obj.userData.openings||[])!==JSON.stringify(holes)){const prior=obj.geometry;obj.geometry=entry.kind==='cube'?cutCubeGeometry(next,holes):buildPrimitive(entry.kind,next);prior?.dispose();}obj.userData.primitive=next;if(entry.kind==='cube')obj.userData.openings=holes;}
-  if(entry.color&&entry.kind!=='model'&&entry.kind!=='media'){obj.traverse(node=>{if(node.material?.color&&node.userData.editorKind!=='robot'){
+  if(entry.color&&entry.kind!=='model'&&entry.kind!=='media'&&entry.kind!=='furniture'){obj.traverse(node=>{if(node.material?.color&&node.userData.editorKind!=='robot'){
    if(node.isMesh&&!node.userData.robotPlaceholder&&entry.kind==='robot')return;
    if(node.material.color.getHexString()!==entry.color.slice(1))node.material.color.set(entry.color);
   }});}

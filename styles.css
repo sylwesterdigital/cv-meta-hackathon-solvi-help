@@ -2295,3 +2295,10 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 .robot-inventory-panel header{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
 .robot-inventory-panel nav{display:flex;gap:6px;margin:9px 0}.robot-inventory-panel nav button{flex:1;min-width:0;font-size:12px;padding:8px 4px;border:0;border-radius:7px;background:#2a3443;color:#c6d6e7}.robot-inventory-panel nav button.active{background:#305975;color:#fff}
 .robot-inventory-item{display:flex;gap:6px;align-items:center;padding:7px 1px;border-bottom:1px solid #3f4a59}.robot-inventory-item div{flex:1;min-width:0;display:grid;gap:3px}.robot-inventory-item small{color:#a7b6c5}.robot-inventory-item button{font-size:11px;padding:6px 7px}
+
+/* v0.2.155 compact three-across object capabilities and full-width selects */
+#propertiesPanel #physicsObjectControls #objectPhysicsToggles{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important}
+#propertiesPanel #physicsObjectControls #objectPhysicsToggles .climbable-toggle{gap:4px!important;font-size:10.5px!important}
+#objectInventoryOptions{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+#objectInventoryOptions select{height:30px!important;width:100%!important;min-width:0!important;padding:2px 22px 2px 7px!important;font-size:11px!important;white-space:nowrap;text-overflow:ellipsis;color:#f0f6ff!important;background:#15283b!important}
+@media(max-width:420px){#propertiesPanel #physicsObjectControls #objectPhysicsToggles{grid-template-columns:repeat(2,minmax(0,1fr))!important}}

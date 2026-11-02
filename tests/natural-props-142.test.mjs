@@ -41,7 +41,8 @@ test('natural wood marble and granite textures are deterministic, bounded, and v
 
 test('each basic prop has real generated mesh parts, bounded editable parameters and optional features',()=>{
  const THREE=mockThree();
- const p=evaluate('js/primitive-properties.js',THREE,{wallPresetTexture:()=>null},'{BASIC_PROP_TYPES,sanitiseFurniture,makeFurniture,rebuildFurniture}');
+ const equipment=evaluate('js/procedural-equipment.js',THREE,{},'{EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment}');
+ const p=evaluate('js/primitive-properties.js',THREE,{wallPresetTexture:()=>null,...equipment},'{BASIC_PROP_TYPES,sanitiseFurniture,makeFurniture,rebuildFurniture}');
  assert.deepEqual(p.BASIC_PROP_TYPES,['plate','mug','glass','bowl','bottle','can','flowerpot','box']);
  for(const variant of p.BASIC_PROP_TYPES){
   const object=p.makeFurniture({variant});

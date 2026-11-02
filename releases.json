@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.154",
+  "currentVersion": "0.2.155",
   "releases": [
+    {
+      "version": "0.2.155",
+      "publishedAt": "2026-11-02T19:44:32Z",
+      "changes": [
+        "Fix incoming remote procedural furniture updates by rebuilding changed geometry under the existing object ID and refreshing colliders.",
+        "Introduce five editable procedural equipment types: TV, monitor, mini computer, bin and wearable backpack; existing furniture/preset scene kinds are reused.",
+        "Use compact three-across interaction checkboxes with the consumable option next to Pickable and Follow hand rotation; clarify inventory category and size choices.",
+        "Allow TVs and monitors to select existing scene image/video sources by media ID; use account-authenticated blob loading, muted playback and offline state when unavailable.",
+        "Generate basic backpack mesh and straps with the existing wearable inventory category and front/back slots; preserve original avatar and imported model bytes.",
+        "Open bins use side-part compound colliders rather than an invisible solid spanning the opening; procedural objects remain configurable and eligible for presets."
+      ]
+    },
     {
       "version": "0.2.154",
       "publishedAt": "2026-11-02T17:06:33Z",
@@ -316,19 +328,6 @@
         "Hard Landing has its own complete recovery: after a hard fall (>2.5 m), play Hard Landing then return directly to Idle/locomotion; do not queue a redundant Stand Up.",
         "Ignore a legacy queued Stand Up after Hard Landing while preserving separate Stand Up recovery for severe combat impacts.",
         "Add an executable hard-landing lifecycle regression and preserve all existing transport, portals, scene, backend and avatar files."
-      ]
-    },
-    {
-      "version": "0.2.124",
-      "publishedAt": "2026-10-31T23:11:04Z",
-      "changes": [
-        "Simplify Portal inspector to one Width and one Height controlling the doorway and surrounding frame together, with automatic thickness and legacy saved geometry compatibility.",
-        "Replace seven duplicate geometry sliders with one contextual range slider linked to focused Width, Height, Depth, Delay or Opacity and compact numeric inputs.",
-        "Remove decorative colour pills and use one matching native portal colour input; simplify the compact layout while preserving portal effects, paired teleportation, WebXR and persistence.",
-        "Add executable portal UI and dimension regression tests and package as an incremented watcher-safe release.",
-        "Replace solid-looking Orb sphere and ring decorations with a luminous transparent event-horizon shader, an inward spiraling centered vortex throat, and contained star particles, preserving Entry/Exit visual distinction.",
-        "Keep Orb gates traversable: exclude spherical visual shells from Rapier collision and allow standing WebXR visitor capsules to activate the orb at natural headset height.",
-        "Add runtime regression checks for transparent orb materials, absence of opaque globes or decorative rings, shader animation across all four effect modes, and XR standing-body activation."
       ]
     }
   ]

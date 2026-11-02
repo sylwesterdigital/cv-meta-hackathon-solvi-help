@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {wallPresetTexture} from './office-walls.js';
+import {EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment} from './procedural-equipment.js';
 
 // Parameter bounds prevent generating enormous meshes through a shared scene payload.
 export const PRIMITIVE_FIELDS={
@@ -32,14 +33,14 @@ export function buildPrimitive(kind,values){
 // Basic furniture is built from individually collidable, editable primitive parts.
 // Keeping it here avoids a new module and preserves the deployment watcher's file budget.
 export const BASIC_PROP_TYPES=['plate','mug','glass','bowl','bottle','can','flowerpot','box'];
-export const FURNITURE_TYPES=['table','chair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES];
+export const FURNITURE_TYPES=['table','chair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...EQUIPMENT_TYPES];
 export const FURNITURE_NUMERIC={
  width:[1.2,.06,8],depth:[.75,.06,4],height:[.76,.025,4],
  topThickness:[.07,.025,.3],topRadius:[.55,.15,4],legRadius:[.04,.025,.3],
  corners:[4,3,8],seatHeight:[.46,.25,.9],backHeight:[.5,.2,1.3],
  shelves:[3,0,16],seats:[2,1,4],cushionThickness:[.14,.05,.35],
  wallThickness:[.025,.005,.15],neckRadius:[.065,.01,.5],neckHeight:[.12,.02,.6],
- rimHeight:[.018,.005,.1],textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
+ rimHeight:[.018,.005,.1],...EQUIPMENT_NUMERIC,textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
 };
 const furniturePreset={
  table:{width:1.4,depth:.8,height:.75,legStyle:'four'},
@@ -56,7 +57,9 @@ const furniturePreset={
  bottle:{width:.085,depth:.085,height:.27,legStyle:'none'},
  can:{width:.066,depth:.066,height:.12,legStyle:'none'},
  flowerpot:{width:.22,depth:.22,height:.23,legStyle:'none'},
- box:{width:.35,depth:.3,height:.28,legStyle:'none'}
+ box:{width:.35,depth:.3,height:.28,legStyle:'none'},
+ tv:{width:1.21,depth:.12,height:.73,legStyle:'none'},monitor:{width:.61,depth:.13,height:.42,legStyle:'none'},
+ miniComputer:{width:.2,depth:.2,height:.08,legStyle:'none'},bin:{width:.35,depth:.35,height:.5,legStyle:'none'},backpack:{width:.35,depth:.2,height:.45,legStyle:'none'}
 };
 export function sanitiseFurniture(raw={}){
  const variant=FURNITURE_TYPES.includes(raw.variant)?raw.variant:'table';
@@ -70,6 +73,13 @@ export function sanitiseFurniture(raw={}){
  result.topShape=['rectangle','polygon','round'].includes(raw.topShape)?raw.topShape:'rectangle';
  result.legStyle=['four','three','single','casters','none'].includes(raw.legStyle)?raw.legStyle:defaults.legStyle;
  result.handle=raw.handle!==false;result.cap=raw.cap!==false;result.soil=raw.soil===true;result.openTop=raw.openTop!==false;
+ result.aspect=['16:9','21:9','4:3'].includes(raw.aspect)?raw.aspect:'16:9';
+ result.mount=['wall','center','feet','none'].includes(raw.mount)?raw.mount:(variant==='tv'?'feet':'center');
+ result.powered=raw.powered!==false;result.curved=raw.curved===true;result.binShape=raw.binShape==='square'?'square':'round';
+ result.lid=raw.lid===true;result.straps=raw.straps!==false;result.frontPocket=raw.frontPocket===true;
+ result.backpackStyle=raw.backpackStyle==='bag'?'bag':'box';
+ result.mediaId=typeof raw.mediaId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.mediaId)?raw.mediaId:'';
+ result.pairedDisplayId=typeof raw.pairedDisplayId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.pairedDisplayId)?raw.pairedDisplayId:'';
  result.headrest=raw.headrest===true;
  result.headboard=raw.headboard!==false;
  result.color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#9b8068';
@@ -124,6 +134,8 @@ export function rebuildFurniture(group,raw={}){
   box(p.width,t,p.depth,0,t/2,0);box(p.width,t,p.depth,0,p.height-t/2,0);
   box(p.width-2*t,p.height-2*t,t,0,p.height/2,p.depth/2-t/2);
   for(let i=1;i<=p.shelves;i++)box(p.width-2*t,t,p.depth-t,0,t+(p.height-2*t)*i/(p.shelves+1),-t/2);
+ }else if(EQUIPMENT_TYPES.includes(p.variant)){
+  buildEquipment(p,{add,box,cylinder,wood,fabric});
  }else if(p.variant==='box'){
   const t=Math.min(p.wallThickness,p.width*.24,p.height*.24,p.depth*.24);
   box(p.width,t,p.depth,0,t/2,0);

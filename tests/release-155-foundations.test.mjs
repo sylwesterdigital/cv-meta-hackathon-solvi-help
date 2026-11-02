@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const read=(path)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+test('five equipment variants are reachable through the furniture add menu',()=>{const e=read('js/editor.js'),p=read('js/procedural-equipment.js');for(const key of ['tv','monitor','miniComputer','bin','backpack']){assert.ok(e.includes("'"+key+"'"));assert.ok(p.includes("'"+key+"'"));}});
+test('incoming incremental furniture update compares sanitised settings before rebuilding',()=>{const e=read('js/editor.js');assert.match(e,/if\(entry\.kind==='furniture'\)\{\s*const effective=sanitiseFurniture/);assert.match(e,/JSON\.stringify\(obj\.userData\.furniture\)!==JSON\.stringify\(effective\)/);assert.match(e,/disposeEquipmentMedia\(obj\);rebuildFurniture\(obj,effective\)/);});
+test('source media is a reference loaded through authenticated blob API',()=>{const m=read('js/equipment-media.js');assert.match(m,/mediaBlobInfo/);assert.match(m,/THREE\.VideoTexture/);assert.match(m,/\.muted=true/);assert.match(read('js/primitive-properties.js'),/result\.mediaId/);});
+test('open round bin has separate wall colliders, not a solid blocking cylinder',()=>{const p=read('js/procedural-equipment.js');assert.match(p,/for\(let i=0;i<sides;i\+\+\)/);assert.match(p,/panel\.rotation\.y/);});
+test('consumable shares the interaction grid with pickable and follow hand',()=>{const h=read('index.html');const group=h.slice(h.indexOf('id="objectPhysicsToggles"'),h.indexOf('id="objectInventoryOptions"'));for(const id of ['objectPickable','objectFollowHandRotation','objectInventoryConsumable'])assert.ok(group.includes('id="'+id+'"'));});
+test('server validates equipment and excludes unknown furniture fields',()=>{const s=read('backend/server.py');assert.match(s,/miniComputer.*bin.*backpack/);assert.match(s,/if any\(key not in allowed for key in value\)/);});
+test('release metadata and module cache versions agree',()=>{assert.equal(JSON.parse(read('package.json')).version,'0.2.155');assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.155');assert.match(read('index.html'),/equipment-media\.js\?v=0\.2\.155/);});
