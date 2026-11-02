@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.143",
+  "currentVersion": "0.2.144",
   "releases": [
+    {
+      "version": "0.2.144",
+      "publishedAt": "2026-11-02T00:33:30Z",
+      "changes": [
+        "Use only one non-looping Lifting animation for pickup (I); stop overriding animation once the object is in hand so Idle, Walk and Run work normally while carrying.",
+        "Throw (O) detaches the object immediately, then rebuilds its Dynamic Rapier collider and applies a bounded, mass-scaled forward impulse from hand height with a small vertical arc.",
+        "Reset stale rigid-body velocity before the throw and preserve object-save and multiplayer throw events; validate authoritative remote release positions.",
+        "Add five executable regressions for single Lifting action, Idle/Walk/Run while held, detach-before-impulse, hand-height forward launch and remote throw."
+      ]
+    },
     {
       "version": "0.2.143",
       "publishedAt": "2026-11-02T00:14:45Z",
@@ -293,17 +303,6 @@
         "Lift clients animate the same height, floor readout, landing buttons, shaft and collision position without jumping on scene revisions",
         "Robot riders are predicted locally and owner pose updates include lift elevation; scene persistence remains ownership-checked",
         "Robot control switcher is draggable with 25% larger portraits, active-selection highlight and scene-to-control synchronization"
-      ]
-    },
-    {
-      "version": "0.2.110",
-      "publishedAt": "2026-10-31T16:18:38Z",
-      "changes": [
-        "Add paired portal Entry and Exit, each movable independently in the realm",
-        "True doorway frames with static piecewise colliders, colour, texture and opacity",
-        "Automatic or button-triggered portal teleport with bounded delay, scene mouse and WebXR controls",
-        "Robot/object and XR/free-camera transport, physics sync, loop cooldown, Web Audio chime and portal glow",
-        "Reduce z-fighting on adjacent procedural stairs, roof/wall panels and overlays"
       ]
     }
   ]

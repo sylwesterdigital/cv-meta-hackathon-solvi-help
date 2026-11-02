@@ -1,3 +1,10 @@
+## v0.2.144 — One-shot Lifting and palm-height forward throws (2 November 2026)
+
+- **Pickup (I):** run only the authored **Lifting** clip once, not Picking Up followed by looping Lifting. Attach at the hand midpoint of the pickup, then clear the action and resume the avatar's normal **Idle / Walk / Run** while the object stays in the right hand.
+- **Throw (O):** start the one-shot **Throw** animation, detach the object *immediately*, place it at hand height with safe forward clearance, restore Dynamic Rapier collision, clear old velocity, and apply a mild **mostly forward** mass-scaled physics impulse with a small upward component. The object subsequently flies and falls with normal collisions.
+- Server-synchronised carry events retain the authority/client release coordinates; no permanent carried state is saved. Existing Pickable settings and avatar models are unchanged.
+- **Testing:** 631/631 JavaScript tests (five new cases cover Lifting-only, post-pickup Idle/Walk/Run, detach-before-physics, hand-height forward throw and remote positions). No live Chrome, Three.js GPU, Rapier or multiplayer session was executed locally.
+
 ## v0.2.143 — Pickable objects, right-hand pickup and throw (2 November 2026)
 
 - Add opt-in Pickable property to primitives, models and Basic Furniture; serialize through scene save, duplication, per-object updates and realm archives, with server-side validation.

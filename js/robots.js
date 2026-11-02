@@ -297,8 +297,12 @@ export function animateRobots(items,dt,onImpact=()=>{}){
       else{data.robotOneShot=null;mode=data.robotMode||'idle';}
     }
     if(data.robotCarry){
-      const carry=data.robotCarry;mode=carry.stage==='pickup'?'pickUp':carry.stage==='throw'?'throwObject':'liftCarry';
-      if(!data.robotAnimator?.actions?.has(mode))mode=carry.stage==='hold'?'idle':mode;
+      const carry=data.robotCarry;
+      // A held object is not an animation state: preserve Idle/Walk/Run.
+      // Lifting plays just once while acquiring the object.
+      if(carry.stage==='pickup')mode='liftCarry';
+      else if(carry.stage==='throw')mode='throwObject';
+      if(carry.stage!=='hold'&&!data.robotAnimator?.actions?.has(mode))mode=data.robotMode||'idle';
     }
     // Jump owns animation until Rapier confirms landing. Movement input,
     // stair autostep and contact clips cannot abort a jump in midair.

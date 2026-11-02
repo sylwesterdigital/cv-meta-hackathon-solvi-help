@@ -40,7 +40,7 @@ test('pickable is opt-in, restricted to suitable scene objects and targets in fr
  const huge=fixture();huge.item._bounds={x:3,y:2,z:3};assert.equal(exports.pickableTarget(huge.robot,huge.editor.items),null);
  const flat=fixture();flat.item._bounds={x:.25,y:0,z:.25};assert.equal(exports.pickableTarget(flat.robot,flat.editor.items),flat.item,'a thin primitive plane is pickable');
 });
-test('pickup plays authored right-hand sequence, releases collider at hand and holds without persisting a temporary physics mode',()=>{
+test('pickup plays authored Lifting once, attaches at hand and holds without persisting a temporary physics mode',()=>{
  const {robot,item,carry,remove,saves,packets}=fixture();
  assert.equal(exports.pickUpClip(robot.userData.robotAvailableActions,'pickUp'),'clip:Picking Up');
  assert.equal(exports.pickUpClip(robot.userData.robotAvailableActions,'liftCarry'),'clip:Lifting');
@@ -57,7 +57,7 @@ test('pickup plays authored right-hand sequence, releases collider at hand and h
  assert.equal(robot.userData.robotCarry.stage,'hold');
  assert.equal(packets[0].action,'pickup');
 });
-test('throw releases at authored action phase with dynamic Rapier impulse and saves the result',()=>{
+test('throw detaches immediately with dynamic Rapier impulse and saves the result',()=>{
  const {robot,item,carry,sync,saves,packets,impulses}=fixture();
  carry.pickup(robot);for(let i=0;i<8;i++)carry.tick(.1);
  assert.equal(carry.throw(robot),true);assert.equal(robot.userData.robotCarry.stage,'throw');
@@ -113,4 +113,77 @@ test('source wires I/O through exploration mode, captures physics and validates 
  assert.match(server,/elif msg\.get\('type'\)=='object-carry'/);
  assert.match(live,/applyRemoteCarry/);
  assert.match(archive,/'pickable'/);
+});
+
+test('Lifting is the only pickup action, and completes before hand-hold without looping',()=>{
+ const f=fixture();const requested=[];
+ f.robot.userData.robotAnimator.clipDuration=(clip)=>{requested.push(clip);return .72;};
+ assert.equal(f.carry.pickup(f.robot),true);
+ assert.deepEqual(requested,['clip:Lifting'],'Picking Up must never be requested');
+ assert.equal(f.robot.userData.robotCarry.duration,.72);
+ for(let i=0;i<8;i++)f.carry.tick(.1);
+ assert.equal(f.robot.userData.robotCarry.stage,'hold');
+ assert.equal(f.item.userData.carriedBy,f.robot.userData.editorId);
+ assert.equal(f.robot.userData.robotPlaying,null,'ready to transition to locomotion');
+});
+
+test('holding an object resumes Idle, Walk and Run instead of looping Lifting',()=>{
+ const file=fs.readFileSync(new URL('../js/robots.js',import.meta.url),'utf8');
+ const start=file.indexOf('export function animateRobots(');
+ assert.ok(start>0);
+ const animate=new Function('performance','combatPhase','landingClipFor','permittedRobotLocomotion','continuousGaitMode','animationSpeedSettings','gaitCadence',
+  file.slice(start).replace(/^export /gm,'')+'\nreturn animateRobots;')(
+    {now:()=>1000},()=>0,(k)=>k,()=>true,(_data,mode)=>mode,()=>({walk:1,run:1,jump:1}),()=>1);
+ const f=fixture();const played=[];
+ f.robot.userData.robotMode='idle';
+ f.robot.userData.robotActualSpeed=3;
+ f.robot.userData.robotAnimator={actions:new Map([['liftCarry',{}],['throwObject',{}],['idle',{}],['walk',{}],['run',{}]]),play(kind){played.push(kind);},update(){},setPlaybackSpeed(){},clipDuration:()=>.62};
+ assert.equal(f.carry.pickup(f.robot),true);
+ animate([f.robot],.08);
+ assert.equal(played.at(-1),'liftCarry');
+ for(let i=0;i<9;i++)f.carry.tick(.1);
+ animate([f.robot],.08);
+ assert.equal(played.at(-1),'idle');
+ f.robot.userData.robotMode='walk';f.robot.userData.robotPlaying=null;
+ animate([f.robot],.08);
+ assert.equal(played.at(-1),'walk','carrying must allow walking');
+ f.robot.userData.robotMode='run';f.robot.userData.robotPlaying=null;
+ animate([f.robot],.08);
+ assert.equal(played.at(-1),'run','carrying must allow running');
+ assert.equal(f.item.userData.carriedBy,f.robot.userData.editorId,'object stays in hand while moving');
+});
+
+test('O detaches at hand height BEFORE dynamic physics and launches primarily forward',()=>{
+ const f=fixture();f.carry.pickup(f.robot);for(let i=0;i<9;i++)f.carry.tick(.1);
+ const order=[];
+ f.editor.physics.sync=obj=>{order.push(['sync',obj.userData.carriedBy,obj.position.y]);};
+ f.editor.physics.bodies.set(f.item.userData.editorId,{
+  mass:()=>2,setLinvel(){order.push(['velocity-reset']);},applyImpulse(v){order.push(['impulse',v]);}
+ });
+ assert.equal(f.carry.throw(f.robot),true);
+ assert.equal(f.item.userData.carriedBy,undefined,'must detach before launch');
+ assert.ok(f.item.position.y>1,'launch from hand, not floor');
+ assert.equal(order[0][0],'sync');
+ assert.equal(order[0][1],undefined,'dynamic body cannot be constructed while attached');
+ assert.equal(order[1][0],'velocity-reset');
+ assert.equal(order[2][0],'impulse');
+ assert.ok(order[2][1].z>order[2][1].y*2,'forward throw rather than upward lob');
+ assert.equal(f.robot.userData.robotCarry.stage,'throw');
+ assert.equal(f.packets.at(-1).action,'throw');
+});
+
+test('remote throw detaches at authoritative release position, without local impulse',()=>{
+ const f=fixture();f.carry.pickup(f.robot,true,f.item.userData.editorId);
+ for(let i=0;i<9;i++)f.carry.tick(.1);
+ f.carry.remotePacket({action:'throw',id:f.robot.userData.editorId,target:f.item.userData.editorId,x:4,y:2.3,z:8});
+ assert.equal(f.item.userData.carriedBy,undefined);
+ assert.deepEqual([f.item.position.x,f.item.position.y,f.item.position.z],[4,2.3,8]);
+ assert.equal(f.item.userData.physics.mode,'dynamic');
+ assert.equal(f.impulses.length,0,'remote clients cannot apply duplicate throw forces');
+});
+
+test('Lifting, like Throw, is a non-looping authored animation',()=>{
+ const animations=fs.readFileSync(new URL('../js/animations.js',import.meta.url),'utf8');
+ assert.match(animations,/oneShot=\['pickUp','liftCarry','throwObject'/);
+ assert.match(animations,/action\.setLoop\(oneShot\?this\.THREE\.LoopOnce:this\.THREE\.LoopRepeat/);
 });
