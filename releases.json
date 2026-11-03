@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.170",
+  "currentVersion": "0.2.172",
   "releases": [
+    {
+      "version": "0.2.172",
+      "publishedAt": "2026-11-03T19:46:30Z",
+      "changes": [
+        "Fix an uncommented note in js/editor.js that caused node --check to reject the full v0.2.171 deployment before tests could run.",
+        "Repair TV and monitor HLS startup: attach MediaSource before requesting the playlist, wait for HLS manifest and media metadata, and start playback only once ready.",
+        "Retry muted playback when browser autoplay rules block remote audio; preserve spatial audio and existing screen controls.",
+        "Surface failed stream playback in the in-world menu instead of leaving a black/blank monitor, and apply the same readiness handling to smart speakers.",
+        "Add a release regression that checks JavaScript syntax for every shipped JS/MJS file and tests HLS event ordering, media readiness, and playback fallback."
+      ]
+    },
     {
       "version": "0.2.170",
       "publishedAt": "2026-11-03T18:30:04Z",
@@ -327,18 +338,6 @@
         "Add polygon and round tabletop radius, polygon-corner legs, 3/4 supports, central pedestal, castors, cushions, headrests, headboards and shelving.",
         "Store and validate furniture as editable real scene objects; preserve geometry in duplication, saved worlds, multiplayer object updates and realm archives.",
         "Create accurate compound collider parts for furniture when room physics is enabled, and extend runtime geometry and backend regression checks."
-      ]
-    },
-    {
-      "version": "0.2.140",
-      "publishedAt": "2026-11-01T20:13:50Z",
-      "changes": [
-        "Fix tiny robot +/\u2212 buttons by removing the baked white rectangles from both SVG icons, drawing white strokes on transparent backgrounds and overriding button backgrounds in all interaction states.",
-        "Highlight the active controlled robot with a clearly visible accent ring and contrasting name colour, preserving portrait-only switcher layout and drag handling.",
-        "Add optional Room Array to closed Office Space wall outlines. Repeat the room from 1 to 16 copies on X/Y/Z with +1/\u22121 direction, gap, per-copy rotation X/Y/Z and scale X/Y/Z increments; edit an existing room without recreating it.",
-        "Generate real wall, window, glass, button and ceiling meshes for every array copy in one saved object; preserve separate window open/close states and per-copy compound wall and ceiling physics.",
-        "Save, restore and validate array settings server-side, including upgraded open-window identifier bounds, and correct the wall record field limit so current windows-plus-ceiling payloads are accepted.",
-        "Add four focused regression tests for array geometry, controls, save schema and independent window states; keep existing rooms unchanged until Array is enabled."
       ]
     }
   ]

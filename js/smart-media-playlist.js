@@ -48,6 +48,63 @@ export async function hlsLibrary(){
   script.onerror=()=>reject(Error('HLS.js could not load'));document.head.append(script);
  }).catch(e=>{hlsPromise=null;throw e;});return hlsPromise;
 }
+// A remote HLS playlist is not immediately a playable MediaSource. Wait for its
+// manifest and for the video element's metadata before calling play(); doing so
+// avoids NotSupportedError on slower networks and native HLS browsers.
+export function waitForStreamReady(video,timeoutMs=22000){
+ if(video.readyState>=2)return Promise.resolve();
+ return new Promise((resolve,reject)=>{
+  let finished=false;
+  const done=(error)=>{
+   if(finished)return;finished=true;clearTimeout(timer);
+   for(const name of ['loadedmetadata','loadeddata','canplay','error','abort'])video.removeEventListener(name,onEvent);
+   if(error)reject(error);else resolve();
+  };
+  const onEvent=event=>{
+   if(event.type==='error'||event.type==='abort')done(new Error('Media load failed: check stream URL, CORS and supported codecs'));
+   else if(video.readyState>=1)done();
+  };
+  for(const name of ['loadedmetadata','loadeddata','canplay','error','abort'])video.addEventListener(name,onEvent);
+  const timer=setTimeout(()=>done(new Error('Stream did not become ready (timeout / CORS / server response)')),timeoutMs);
+  if(video.readyState>=1)done();
+ });
+}
+export async function attachRemoteStream(video,url,{isCurrent=()=>true,storeHls=()=>{},onFailure=()=>{}}={}){
+ if(/\.m3u8(?:$|[?#])/i.test(url)&&!video.canPlayType('application/vnd.apple.mpegurl')){
+  const Hls=await hlsLibrary();if(!isCurrent())return false;
+  const hls=new Hls({enableWorker:true});storeHls(hls);
+  await new Promise((resolve,reject)=>{
+   let finished=false,attached=false;
+   const finish=error=>{if(finished)return;finished=true;clearTimeout(timer);error?reject(error):resolve();};
+   const timer=setTimeout(()=>finish(Error('HLS playlist timed out; check the remote host and CORS')),22000);
+   hls.on(Hls.Events.MEDIA_ATTACHED,()=>{if(attached||!isCurrent())return;attached=true;hls.loadSource(url);});
+   hls.on(Hls.Events.MANIFEST_PARSED,()=>finish());
+   hls.on(Hls.Events.ERROR,(_,detail)=>{
+    if(!detail?.fatal)return;
+    const failure=Error('HLS '+String(detail.type||'stream')+': '+String(detail.details||'unavailable'));
+    if(finished)onFailure(failure);else finish(failure);
+   });
+   // Attach the MediaSource before loading the manifest; loading beforehand
+   // causes a race on some browsers and on slower IPTV sources.
+   try{hls.attachMedia(video);}catch(error){finish(error);}
+  });
+ }else{
+  video.src=url;
+  video.load?.();
+ }
+ if(!isCurrent())return false;
+ await waitForStreamReady(video);
+ return isCurrent();
+}
+export async function startStreamPlayback(video,{allowMutedFallback=true,onMuted=()=>{}}={}){
+ try{await video.play();return true;}
+ catch(error){
+  if(allowMutedFallback&&error?.name==='NotAllowedError'&&!video.muted){
+   video.muted=true;onMuted();await video.play();return true;
+  }
+  throw error;
+ }
+}
 function screenMaterial(s){return Array.isArray(s.screen?.material)?s.screen.material[4]:s.screen?.material;}
 function showMaterial(s,map){const mat=screenMaterial(s);if(mat){mat.map=map;mat.color?.set('#ffffff');mat.needsUpdate=true;}}
 function drawingRatio(s){s.screen.geometry?.computeBoundingBox?.();const box=s.screen.geometry?.boundingBox;
@@ -95,7 +152,7 @@ function disposeSource(s){
 }
 function drawMenu(s){const c=document.createElement('canvas');c.width=768;c.height=432;const ctx=c.getContext('2d');ctx.fillStyle='#0b1421';ctx.fillRect(0,0,768,432);
  ctx.fillStyle='#eff5ff';ctx.font='bold 33px system-ui';ctx.fillText('SOLVI · Media',38,59);
- ctx.font='18px system-ui';ctx.fillStyle='#a3b5cb';const list=s.channels.slice(0,12);ctx.fillText(list.length?'Choose a channel':'Add an HTTPS media URL in Properties',38,91);
+ ctx.font='18px system-ui';ctx.fillStyle=s.error?'#ffb6a9':'#a3b5cb';const list=s.channels.slice(0,12);ctx.fillText(s.error|| (s.mode==='loading'?'Connecting to stream…':list.length?'Choose a channel':'Add an HTTPS media URL in Properties'),38,91);
  for(let i=0;i<list.length;i++){const col=i%3,row=Math.floor(i/3),x=24+col*247,y=115+row*75;ctx.fillStyle='#203549';ctx.beginPath();ctx.roundRect(x,y,233,63,11);ctx.fill();
   ctx.fillStyle='#88d1f4';ctx.font='bold 19px system-ui';ctx.fillText(String(i+1).padStart(2,'0'),x+13,y+35);
   ctx.fillStyle='#fff';ctx.font='17px system-ui';const label=list[i].title||'Channel';ctx.fillText(label.length>17?label.slice(0,16)+'…':label,x+49,y+35);}
@@ -128,7 +185,7 @@ export function syncSmartScreen(root,screen,channels,showEmpty=false,options={},
   if(prior.signature!==signature){
    const playing=prior.currentChannel>=0?prior.channels[prior.currentChannel]?.url:null;
    prior.channels=list;prior.options=cfg;prior.signature=signature;prior.audioListener=audioListener;
-   const updated=drawMenu(prior);prior.menuTexture.dispose();prior.menuTexture=updated;
+   prior.error=null;const updated=drawMenu(prior);prior.menuTexture.dispose();prior.menuTexture=updated;
    const newIndex=playing?list.findIndex(channel=>channel.url===playing):-1;
    if(prior.mode==='video'&&newIndex<0)backToSmartMenu(root);
    else if(prior.mode==='video')prior.currentChannel=newIndex;
@@ -139,7 +196,7 @@ export function syncSmartScreen(root,screen,channels,showEmpty=false,options={},
   return true;
  }
  disposeSmartScreen(root);
- const s={root,screen,audioListener,channels:list,options:cfg,signature,mode:'menu',currentChannel:-1,hls:null,video:null,sound:null,videoTexture:null,frameCanvas:null,menuTexture:null,buttons:[]};states.set(root,s);
+ const s={root,screen,audioListener,channels:list,options:cfg,signature,mode:'menu',currentChannel:-1,hls:null,video:null,sound:null,videoTexture:null,frameCanvas:null,menuTexture:null,buttons:[],error:null};states.set(root,s);
  s.menuTexture=drawMenu(s);showMaterial(s,s.menuTexture);
  s.backButton=buttonPlane(s,'back');renderButton(s.backButton,s,'back');s.backButton.mesh.visible=false;
  s.audioButton=buttonPlane(s,'audio');updateButton(s);s.audioButton.mesh.visible=false;
@@ -153,11 +210,18 @@ function createVideoTexture(s,v){if(!s.options.smartPreserveAspect){const tex=ne
  const draw=()=>{if(states.get(s.root)!==s||s.video!==v||!s.frameCanvas)return;
   if(v.readyState>=2&&v.videoWidth&&v.videoHeight){const w=canvas.width,h=canvas.height,ratio=Math.min(w/v.videoWidth,h/v.videoHeight),dw=v.videoWidth*ratio,dh=v.videoHeight*ratio;ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);ctx.drawImage(v,(w-dw)/2,(h-dh)/2,dw,dh);texture.needsUpdate=true;}
   if('requestVideoFrameCallback' in v)v.requestVideoFrameCallback(draw);else requestAnimationFrame(draw);
- };v.addEventListener('loadeddata',draw,{once:true});return texture;
+ };if(v.readyState>=2)draw();else v.addEventListener('loadeddata',draw,{once:true});return texture;
+}
+function showSmartStreamError(root,s,error){
+ if(states.get(root)!==s)return;
+ const message=String(error?.message||error||'Stream unavailable');
+ backToSmartMenu(root);s.error='Stream unavailable · check URL / CORS / codec';
+ const updated=drawMenu(s);s.menuTexture.dispose();s.menuTexture=updated;showMaterial(s,updated);
+ console.warn('SOLVI smart screen stream:',message);
 }
 export async function openSmartChannel(root,index,automatic=false){
  const s=states.get(root);if(!s||!Number.isInteger(index)||index<0||index>=s.channels.length)return false;
- disposeSource(s);s.mode='loading';const channel=s.channels[index],v=document.createElement('video');
+ disposeSource(s);s.mode='loading';s.error=null;const loading=drawMenu(s);s.menuTexture.dispose();s.menuTexture=loading;showMaterial(s,loading);const channel=s.channels[index],v=document.createElement('video');
  v.crossOrigin='anonymous';v.playsInline=true;v.muted=automatic||s.options.smartMuted||!s.options.smartAudio;
  v.loop=s.options.smartLoop;v.preload='auto';s.video=v;s.currentChannel=index;
  // Attach before starting playback: one audio path, physically anchored to TV.
@@ -168,17 +232,18 @@ export async function openSmartChannel(root,index,automatic=false){
  if(s.sound){try{void s.audioListener.context.resume().catch(error=>console.warn('TV audio requires user activation',error));}catch(error){console.warn('TV audio context unavailable',error);}}
  s.backButton.mesh.visible=true;s.audioButton.mesh.visible=true;updateButton(s);
  v.addEventListener('ended',()=>{if(states.get(root)===s&&!s.options.smartLoop)backToSmartMenu(root);});
- v.addEventListener('error',()=>{if(states.get(root)===s)console.warn('Smart screen playback error (CORS/codec/source)',channel.url,v.error);});
+ v.addEventListener('error',()=>{if(states.get(root)===s&&s.video===v)showSmartStreamError(root,s,v.error||Error('Remote media rejected by browser'));});
  try{
-  if(/\.m3u8(?:$|[?#])/i.test(channel.url)){
-   if(v.canPlayType('application/vnd.apple.mpegurl'))v.src=channel.url;
-   else{const Hls=await hlsLibrary();if(states.get(root)!==s||s.video!==v)return false;s.hls=new Hls({enableWorker:true});s.hls.loadSource(channel.url);s.hls.attachMedia(v);}
-  }else v.src=channel.url;
-  if(states.get(root)!==s||s.video!==v)return false;
+  const stillCurrent=()=>states.get(root)===s&&s.video===v;
+  const ready=await attachRemoteStream(v,channel.url,{isCurrent:stillCurrent,storeHls:hls=>{s.hls=hls;},onFailure:error=>showSmartStreamError(root,s,error)});
+  if(!ready||!stillCurrent())return false;
   s.videoTexture=createVideoTexture(s,v);showMaterial(s,s.videoTexture);s.mode='video';
-  await v.play();return true;
- }catch(e){console.warn('Smart screen playback failed; check user activation, CORS and codecs',channel.url,e);
-  if(states.get(root)===s){backToSmartMenu(root);}return false;}
+  await startStreamPlayback(v,{onMuted:()=>{setSmartSpatialMuted(s.sound,true);updateButton(s);}});
+  return stillCurrent();
+ }catch(e){
+  if(states.get(root)===s&&s.video===v)showSmartStreamError(root,s,e);
+  return false;
+ }
 }
 export function backToSmartMenu(root){const s=states.get(root);if(!s)return false;disposeSource(s);s.mode='menu';s.currentChannel=-1;s.backButton.mesh.visible=false;s.audioButton.mesh.visible=false;showMaterial(s,s.menuTexture);return true;}
 export function toggleSmartScreenAudio(root){const s=states.get(root);if(!s?.video)return false;

@@ -42,6 +42,7 @@ import {isTransformLocked,mayTransform} from './transform-lock.js';
 import {OrbitGesture,recoverStaleOrbitPointers} from './orbit-gesture.js';
 import {readPreferences} from './preferences.js';
 import {sliderToScale,scaleToSlider,linkedScale} from './transform-values.js';
+import {inspectorSliderRow} from './inspector-slider-layout.js';
 import {cleanCurve,buildCurveGeometry} from './curve-geometry.js';
 import {makeEditableText,rebuildText} from './text-geometry.js';
 import {cleanText} from './text-parameters.js';
@@ -251,7 +252,7 @@ export class SceneEditor{
     byId('scenePanel').hidden=true;byId('scenePanel').classList.remove('minimized');
   };
   byId('closeScenePanel').onclick=()=>byId('scenePanel').hidden=true;
-  byId('closeProperties').onclick=()=>{byId('propertiesPanel').hidden=true;this.clearLightHelper();};
+  byId('closeProperties').onclick=()=>{byId('propertiesPanel').hidden=true;byId('inspectorValueSlider').hidden=true;this.clearLightHelper();};
   byId('objectPickable').addEventListener('change',()=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||!canBePickable(obj.userData.editorKind))return;const before=this.snapshot(obj);if(obj.userData.storage&&!byId('objectPickable').checked){byId('objectPickable').checked=true;this.toast('Drop the stored item before disabling Pickable');return;}obj.userData.pickable=byId('objectPickable').checked;this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.updateInspector();});
   byId('objectInventoryCategory')?.addEventListener('change',()=>{
    const obj=this.selected;if(!obj||!this.canEdit(obj)||!obj.userData.pickable)return;
@@ -474,21 +475,25 @@ export class SceneEditor{
   let activeNumeric=null;
   if(context.parentElement!==document.body)document.body.append(context);
   const positionValueSlider=()=>{
+   // This one control always floats below the FULL active row. It never
+   // participates in the furniture 3-column grid or the Transform XYZ grid.
    if(context.hidden||!activeNumeric?.isConnected){context.hidden=true;return;}
-   const anchor=activeNumeric.closest('.furniture-param')||activeNumeric.closest('.transform-group')||activeNumeric.closest('label')||activeNumeric;
-   const rect=anchor.getBoundingClientRect();
-   const panel=byId('propertiesPanel')?.getBoundingClientRect();
-   const width=Math.min(Math.max(225,(panel?.width||rect.width)-20),window.innerWidth-16);
-   const left=Math.max(8,Math.min(window.innerWidth-width-8,(panel?.left||rect.left)+10));
-   const estimatedHeight=Math.max(64,context.getBoundingClientRect().height||70);
-   let top=rect.bottom+5;
-   if(top+estimatedHeight>window.innerHeight-8)top=Math.max(8,rect.top-estimatedHeight-5);
+   const bounds=inspectorSliderRow(activeNumeric,byId('furniturePropertiesFields'));
+   const viewportWidth=document.documentElement.clientWidth||window.innerWidth;
+   const viewportHeight=document.documentElement.clientHeight||window.innerHeight;
+   const width=Math.max(160,Math.min(bounds.width,viewportWidth-16));
+   const left=Math.max(8,Math.min(viewportWidth-width-8,bounds.left));
+   const height=Math.max(64,context.getBoundingClientRect().height||70);
+   let top=bounds.bottom+6;
+   // If the active row is at the bottom of the window, use the space above.
+   if(top+height>viewportHeight-8)top=Math.max(8,bounds.top-height-6);
    context.style.left=`${left}px`;context.style.top=`${top}px`;context.style.width=`${width}px`;
   };
   window.addEventListener('resize',positionValueSlider);
   // Capturing scroll handles the inspector's own scroll container as well as
   // browser/OS scrolling; the layout of every input remains unchanged.
   document.addEventListener('scroll',positionValueSlider,true);
+  window.addEventListener('pointermove',event=>{if(!context.hidden&&event.buttons)positionValueSlider();},true);
   document.addEventListener('pointerdown',event=>{
    if(!context.hidden&&!context.contains(event.target)&&!event.target?.matches?.('input[type=number]'))context.hidden=true;
  },true);
@@ -496,12 +501,11 @@ export class SceneEditor{
   const activateValue=(number)=>{
    if(!number || !number.matches('input[type="number"]') || !byId('objectInspector').contains(number))return;
    if(number.disabled)return;
-   // Furniture fields have a dedicated always-visible range directly under
-   // their number input; retain the floating popover for transform XYZ only.
-   if(number.closest('#furniturePropertiesFields')){context.hidden=true;return;}
+   // Both furniture/vegetation and Transform XYZ share the SAME wide slider.
    const group=number.closest('.transform-value') || number.closest('label') || number.parentElement;
    if(!group)return;
    activeNumeric=number;
+   this.inspectorSliderSession={id:this.selected?.userData.editorId,key:number.dataset.furnitureParam||number.id,furniture:!!number.dataset.furnitureParam};
    const text=number.getAttribute('aria-label')||number.closest('label')?.textContent?.trim()||number.id;
    byId('inspectorSliderLabel').textContent=text;
    const field=number.id.match(/^(position|rotation|scale)-[012]$/)?.[1];
@@ -516,22 +520,41 @@ export class SceneEditor{
    positionValueSlider();
   };
   this.activateInspectorValue=activateValue;
+  // Reconnect to the new input when a scene transform refresh rebuilds the
+  // inspector. This avoids losing the slider in the middle of a drag/commit.
+  this.restoreInspectorValue=()=>{
+   const token=this.inspectorSliderSession;
+   if(context.hidden||!token||token.id!==this.selected?.userData.editorId)return;
+   const number=token.furniture
+     ?[...byId('furniturePropertiesFields').querySelectorAll('input[type=number]')].find(field=>field.dataset.furnitureParam===token.key)
+     :byId(token.key);
+   if(!number||number.disabled){context.hidden=true;return;}
+   activateValue(number);
+  };
   byId('objectInspector').addEventListener('focusin',event=>activateValue(event.target));
   byId('objectInspector').addEventListener('click',event=>{
     if(event.target.matches?.('input[type="number"]'))activateValue(event.target);
   });
   byId('objectInspector').addEventListener('input',event=>{
-    if(activeNumeric===event.target)byId('inspectorSliderValue').textContent=activeNumeric.value;
+   if(activeNumeric!==event.target)return;
+   byId('inspectorSliderValue').textContent=activeNumeric.value;
+   // Typing in furniture fields keeps the shared slider in sync just as
+   // typing in position/rotation/scale does.
+   if(activeNumeric.dataset.furnitureParam&&Number.isFinite(Number(activeNumeric.value)))range.value=activeNumeric.value;
   });
   range.addEventListener('input',()=>{
    if(!activeNumeric||activeNumeric.disabled)return;
    const isScale=activeNumeric.id.startsWith('scale-');activeNumeric.value=isScale?String(Number(sliderToScale(Number(range.value)).toFixed(3))):range.value;
    byId('inspectorSliderValue').textContent=activeNumeric.value;
    // Linked XYZ must update while the pointer moves, not after leaving the slider.
-   activeNumeric.dispatchEvent(new Event(isScale?'input':'change',{bubbles:true}));
+   const furniture=Boolean(activeNumeric.dataset.furnitureParam);
+   // Preview a furniture value while dragging; do not create a separate
+   // history/save entry on every pointer movement.
+   activeNumeric.dispatchEvent(new Event(isScale||furniture?'input':'change',{bubbles:true}));
   });
   range.addEventListener('change',()=>{
-   if(activeNumeric?.id.startsWith('scale-'))activeNumeric.dispatchEvent(new Event('change',{bubbles:true}));
+   if(activeNumeric?.id.startsWith('scale-')||activeNumeric?.dataset.furnitureParam)
+    activeNumeric.dispatchEvent(new Event('change',{bubbles:true}));
   });
   const scaleEditBefore=new WeakMap();
   const syncScaleFields=(obj,changed)=>{
@@ -1232,7 +1255,12 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   window.dispatchEvent(new CustomEvent('solvi:properties-robot-selected',{detail:{robotId:obj?.userData.editorKind==='robot'?obj.userData.editorId:null}}));
   // Selection must never move the camera; numpad presets and zoom remain explicit.
   if(obj&&isEditMode())this.broadcastEdit(true);}
- updateInspector(){const obj=this.selected;if(!isEditMode()){byId('objectInspector').hidden=true;byId('propertiesPanel').hidden=true;byId('inspectorValueSlider').hidden=true;return;}byId('objectInspector').hidden=!obj;byId('inspectorValueSlider').hidden=true;if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
+ updateInspector(){const obj=this.selected,slider=byId('inspectorValueSlider');
+  const restoreSlider=!slider.hidden&&obj?.userData?.editorId===this.inspectorSliderSession?.id;
+  if(!isEditMode()){byId('objectInspector').hidden=true;byId('propertiesPanel').hidden=true;slider.hidden=true;return;}
+  byId('objectInspector').hidden=!obj;
+  if(!restoreSlider)slider.hidden=true;
+  if(obj)byId('propertiesPanel').hidden=false;if(!obj)return;
   this.syncTransformLockControls(obj);
   this.renderPrimitiveControls(obj);this.renderCurveControls(obj);this.renderTextGeometryControls(obj);this.renderPortalControls(obj);this.renderLadderControls(obj);this.renderFurnitureControls(obj);
   byId('objectPickableRow').hidden=!canBePickable(obj.userData.editorKind);byId('objectPickable').checked=obj.userData.pickable===true;byId('objectPickable').disabled=!this.canEdit(obj);  byId('objectConsumableRow').hidden=!canBePickable(obj.userData.editorKind)||obj.userData.pickable!==true;byId('objectInventoryOptions').hidden=!canBePickable(obj.userData.editorKind)||obj.userData.pickable!==true;byId('objectInventoryCategory').value=cleanInventory(obj.userData.inventory).category;byId('objectInventorySize').value=cleanInventory(obj.userData.inventory).size;byId('objectInventoryConsumable').checked=cleanInventory(obj.userData.inventory).consumable;
@@ -1256,6 +1284,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   });
   const color=obj.material?.color||obj.children.find(c=>c.material?.color)?.material?.color;
   byId('objectColor').value=color?'#'+color.getHexString():'#88bbdd';byId('texturePreset').value=obj.userData.textureName||'none';
+  if(restoreSlider)this.restoreInspectorValue?.();
  }
  setupFurnitureControls(){
   const root=byId('furniturePropertiesFields');if(!root)return;
@@ -1282,32 +1311,6 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     this.physics.sync(obj);syncEquipmentMedia(obj,this);
    },90);
   });
-  // Companion ranges drive the existing numeric preview/undo/save pipeline.
-  // The slider itself carries no furnitureParam, so only the paired number
-  // commits the value. This keeps one edit history entry and multiplayer sync.
-  root.addEventListener('input',event=>{
-   const slider=event.target;
-   if(!slider?.matches?.('input.furniture-param-range')){
-    const control=slider;
-    if(control?.matches?.('input.inspector-compact-number')){
-     const range=control.parentElement?.querySelector('input.furniture-param-range');
-     if(range&&Number.isFinite(Number(control.value)))range.value=control.value;
-    }
-    return;
-   }
-   const number=slider.parentElement?.querySelector('input.inspector-compact-number');
-   if(!number||number.disabled)return;
-   number.value=slider.value;
-   number.dispatchEvent(new Event('input',{bubbles:true}));
-  });
-  root.addEventListener('change',event=>{
-   const slider=event.target;
-   if(!slider?.matches?.('input.furniture-param-range'))return;
-   const number=slider.parentElement?.querySelector('input.inspector-compact-number');
-   if(!number||number.disabled)return;
-   number.value=slider.value;
-   number.dispatchEvent(new Event('change',{bubbles:true}));
-  });
   root.addEventListener('change',event=>{
    const obj=this.selected;if(obj?.userData.editorKind!=='furniture'||!this.canEdit(obj))return;
    const target=event.target,key=target?.dataset?.furnitureParam;if(!key)return;
@@ -1331,9 +1334,9 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   const contextual=byId('inspectorValueSlider');if(root.contains(contextual)){section.append(contextual);contextual.hidden=true;}
   root.replaceChildren();
   const add=(key,label,type,choices=null)=>{
-   // A numeric field has TWO interactive controls (number + range): a div
-   // avoids nesting both inside one HTML label, while both keep aria labels.
-   const holder=document.createElement(type==='number'?'div':'label');holder.className='furniture-param inspector-compact-field furniture-field-'+type+(key==='variant'?' furniture-field-full':'');
+   // Only one numeric input per cell. The one wide range lives outside the
+   // grid, so focusing any field never changes this row's height or layout.
+   const holder=document.createElement('label');holder.className='furniture-param inspector-compact-field furniture-field-'+type+(key==='variant'?' furniture-field-full':'');
    const caption=document.createElement('span');caption.textContent=label;
    const control=document.createElement(type==='select'?'select':'input');control.dataset.furnitureParam=key;
    if(type==='select')for(const [value,title] of choices){const item=document.createElement('option');item.value=value;item.textContent=title;control.append(item);}
@@ -1342,21 +1345,6 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    else{control.type='number';control.className='inspector-compact-number';const [,min,max]=FURNITURE_NUMERIC[key];control.min=String(min);control.max=String(max);control.step=['shelves','corners','seats'].includes(key)?'1':'.01';control.setAttribute('aria-label',label);}
    if(type==='checkbox')control.checked=p[key];else control.value=p[key];control.disabled=!this.canEdit(obj);
    holder.append(caption,control);
-   // Keep an always-visible, compact slider below EVERY numeric furniture/nature
-   // field. All controls in the three-column grid reserve the same row height,
-   // so focusing/sliding one value never pushes adjacent inputs out of place.
-   if(type==='number'){
-    const [defaultValue,min,max]=FURNITURE_NUMERIC[key];
-    const integer=['corners','shelves','seats','canopySegments','branchCount','leafClusters','treeSeed','palmFronds','cropRows','plotSeed','scatterCount','shrubLeaves','shrubBranches'].includes(key);
-    const step=integer?'1':(max-min<=1?'0.005':max-min<=10?'0.01':'0.1');
-    control.step=integer?'1':'.01';
-    const slider=document.createElement('input');slider.type='range';slider.className='furniture-param-range';slider.dataset.furnitureRange=key;
-    slider.min=String(min);slider.max=String(max);slider.step=step;
-    slider.value=String(Math.max(min,Math.min(max,Number(p[key])||0)));
-    slider.disabled=control.disabled;slider.setAttribute('aria-label',label+' slider');
-    slider.setAttribute('title','Adjust '+label.toLowerCase());
-    holder.append(slider);
-   }
    root.append(holder);
   };
   add('variant','Type','select',FURNITURE_TYPES.map(kind=>[kind,kind==='miniComputer'?'Mini computer':kind==='officeChair'?'Office chair':kind[0].toUpperCase()+kind.slice(1)]));

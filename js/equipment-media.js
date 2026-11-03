@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {syncSmartScreen,disposeSmartScreen,cleanChannels,hlsLibrary} from './smart-media-playlist.js';
+import {syncSmartScreen,disposeSmartScreen,cleanChannels,attachRemoteStream,startStreamPlayback} from './smart-media-playlist.js';
 // Reuse the authenticated media-blob API, storing only a reference in scene JSON.
 const handles=new WeakMap();
 const speakers=new WeakMap();
@@ -11,12 +11,13 @@ export async function playEquipmentChannel(group,index=0,world=null){
  const channels=cleanChannels(cfg.channels),item=channels[index];if(!item)return false;
  stopSpeaker(group);const video=document.createElement('video');video.crossOrigin='anonymous';video.playsInline=true;video.muted=false;video.preload='auto';const state={video,index,hls:null,sound:null};speakers.set(group,state);
  try{
-  if(/\.m3u8(?:$|[?#])/i.test(item.url)){
-   if(video.canPlayType('application/vnd.apple.mpegurl'))video.src=item.url;
-   else{const Hls=await hlsLibrary();if(speakers.get(group)!==state)return false;state.hls=new Hls({enableWorker:true});state.hls.loadSource(item.url);state.hls.attachMedia(video);}
-  }else video.src=item.url;
+  const stillCurrent=()=>speakers.get(group)===state;
+  const ready=await attachRemoteStream(video,item.url,{isCurrent:stillCurrent,storeHls:hls=>{state.hls=hls;},onFailure:error=>{if(stillCurrent()){console.warn('Speaker HLS playback failed',error);stopSpeaker(group);}}});
+  if(!ready||!stillCurrent())return false;
   if(world?.audioListener){const sound=new THREE.PositionalAudio(world.audioListener);try{sound.setMediaElementSource(video);sound.setRefDistance(3);sound.setMaxDistance(22);sound.setRolloffFactor(.75);group.add(sound);state.sound=sound;}catch(error){console.warn('Speaker spatial audio fallback',error);}}
-  await world?.audioListener?.context?.resume?.();await video.play();return true;
+  await world?.audioListener?.context?.resume?.();
+  await startStreamPlayback(video,{onMuted:()=>state.sound?.setVolume?.(0)});
+  return stillCurrent();
  }catch(e){console.warn('Speaker stream could not play: check remote CORS/codec',item.url,e);if(speakers.get(group)===state)stopSpeaker(group);return false;}
 }
 export function nextSpeakerChannel(group,world){const channels=cleanChannels(group?.userData?.furniture?.channels);if(!channels.length)return false;const now=speakers.get(group);const next=now?(now.index+1)%channels.length:0;void playEquipmentChannel(group,next,world);return true;}

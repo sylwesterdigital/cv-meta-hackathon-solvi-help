@@ -889,3 +889,27 @@ Implementation points: `js/robot-seating.js` owns seat-local anchors and physics
 - Add regression checks for slider creation, numeric bounds, change propagation and consistent non-reflow layout.
 
 Modified: `js/editor.js`, `styles.css`, test `tests/release-170-furniture-ranges.test.mjs`; deployed via strict manifest-hashed full-app ZIP. Browser rendering remains unverified.
+
+
+## v0.2.171 — Single full-width contextual slider, layout and Transform corrections
+
+- Restore exactly one shared, full-width contextual range slider below the active furniture, vegetation, or Transform XYZ row; remove all v0.2.170 per-field sliders.
+- Preserve three-column numeric input positions and dimensions when a user focuses or adjusts values; the common slider is fixed-position and outside the inspector grid.
+- Ensure the Transform range remains visible and attached to the correct field through updateInspector refreshes and while editing; make the floating slider appear above draggable panels.
+- Synchronise the shared range with typed furniture values; preview changes during a drag, then commit/save one edit on release using the existing scene/physics/undo path.
+- Cover row-alignment, transform restoration, no per-field sliders, and furniture preview/commit with release regression tests.
+
+Files: `js/editor.js`, `js/inspector-slider-layout.js`, `styles.css`, `tests/release-170-furniture-ranges.test.mjs`, `tests/release-171-single-row-range.test.mjs`. DOM row geometry uses bounding rectangles and the active field is reconnected after inspector refresh. No duplicated sliders, no per-field range inputs. Full archive manifest and avatar checks required.
+
+
+## v0.2.172 — Fix deploy-blocking JavaScript syntax and delayed HLS playback
+
+- Fixed **`js/editor.js` line 552**: an accidentally uncommented prose line made `node --check` fail the v0.2.171 deployment. This release adds a test that syntax-checks **every** JavaScript application module, build script and regression test, including during full `npm test`.
+- Remote HLS screens and monitors no longer call `HTMLVideoElement.play()` immediately after handing a URL to hls.js. `attachRemoteStream` attaches the media element first, then loads the playlist upon `MEDIA_ATTACHED`; it waits for `MANIFEST_PARSED` and video metadata before playback. Direct MP4/WebM and browser-native HLS also wait for ready metadata.
+- If a browser denies unmuted playback (`NotAllowedError`), the playback code automatically retries muted and synchronises the screen's spatial-audio state, allowing viewers to unmute via the existing display button.
+- Failed streams now show an explicit message in the on-screen channel menu. `VideoTexture` frame drawing also starts when a source was ready before the canvas was created. Audio speakers use the same readiness checks.
+- Existing stream-link restrictions remain: **HTTPS .m3u8/.mp4/.webm** with remote host CORS permissions and browser-supported codecs. A stream hosted without usable CORS, a broken playlist, blocked credentials or incompatible codec cannot be made playable purely by frontend fixes.
+
+Files: `js/editor.js`, `js/smart-media-playlist.js`, `js/equipment-media.js`, `tests/release-172-media-startup-syntax.test.mjs`, versioned `index.html`, backend release metadata, `releases.json`.
+
+Release requirements: archive root `manifest.json` with exact `sha256` hashes of all and only `app/` files; unchanged original bundled GLBs; `npm test` and `node --check` on every JS/MJS file run against the final extracted archive. Browser playback with a real remote IPTV/HLS URL still requires live validation.

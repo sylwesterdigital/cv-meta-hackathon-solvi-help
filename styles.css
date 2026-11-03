@@ -2440,38 +2440,21 @@ body>#inspectorValueSlider[hidden]{display:none!important}
 body>#inspectorValueSlider .inspector-slider-head{display:flex;gap:8px;justify-content:space-between;align-items:center;font-size:11px;margin:0!important}
 body>#inspectorValueSlider #inspectorActiveRange{display:block;width:100%!important;height:27px!important;min-height:27px!important;margin:0!important;accent-color:var(--solvi-accent)}
 
-/* v0.2.170: each furniture/nature numeric control has its own ALWAYS visible
-   companion range. Fixed cell footprint prevents focus-driven grid reflow. */
-#propertiesPanel #furnitureProperties #furniturePropertiesFields.furniture-properties-fields{
-  align-items:stretch!important;
+/* v0.2.171 — ONE full-width shared slider below the active row, for BOTH
+   furniture/vegetation fields and Transform XYZ. The three-column grid is
+   unchanged: the range is positioned over the scene rather than in the grid. */
+body>#inspectorValueSlider.inspector-value-slider{
+ z-index:6200!important;
+ min-width:0!important;
+ box-sizing:border-box!important;
+ border-radius:9px!important;
+ padding:8px 12px!important;
+}
+body>#inspectorValueSlider #inspectorActiveRange{
+ display:block!important;width:100%!important;
+ min-height:27px!important;height:27px!important;
+ margin:0!important;touch-action:pan-x!important;
 }
 #propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param.furniture-field-number{
-  min-height:58px!important;
-  justify-content:start!important;
-  position:relative;
-}
-#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param .furniture-param-range{
-  display:block!important;box-sizing:border-box!important;flex:none!important;
-  margin:2px 0 0!important;padding:0!important;width:100%!important;
-  min-width:0!important;max-width:100%!important;
-  height:13px!important;min-height:13px!important;
-  accent-color:var(--solvi-accent,#b77dda)!important;
-  cursor:pointer;touch-action:pan-x;
-}
-#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param .furniture-param-range:disabled{
-  opacity:.38;cursor:default;
-}
-#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param .furniture-param-range::-webkit-slider-runnable-track{
-  height:3px!important;border-radius:9px;
-  background:color-mix(in srgb,var(--ui-fg) 28%,var(--ui-bg));
-}
-#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param .furniture-param-range::-webkit-slider-thumb{
-  width:13px!important;height:13px!important;border-radius:50%!important;
-  margin-top:-5px!important;background:var(--solvi-accent,#b77dda)!important;
-}
-#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param .furniture-param-range::-moz-range-track{
-  height:3px!important;border-radius:9px;
-}
-#propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param .furniture-param-range::-moz-range-thumb{
-  width:13px!important;height:13px!important;border-radius:50%!important;
+ min-height:0!important;
 }

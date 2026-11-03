@@ -27,7 +27,8 @@ test('Profile offers a real accessible iOS-style Edit Mode switch',()=>{
 });
 test('Scene object selection never opens edit windows or transform handles during exploration',()=>{
  const editor=source('js/editor.js');
- assert.match(editor,/updateInspector\(\)\{const obj=this.selected;if\(!isEditMode\(\)\)/);
+ assert.match(editor,/updateInspector\(\)\{const obj=this.selected,slider=byId\('inspectorValueSlider'\);/);
+ assert.match(editor,/if\(!isEditMode\(\)\)\{byId\('objectInspector'\)\.hidden=true/);
  assert.match(editor,/if\(isEditMode\(\)\&\&this.canTransform\(obj\)/);
  assert.match(editor,/if\(isEditMode\(\)\&\&\['wall','stairs'\]/);
  assert.match(editor,/solvi:edit-mode-changed/);
