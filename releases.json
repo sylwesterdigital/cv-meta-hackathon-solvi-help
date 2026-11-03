@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.165",
+  "currentVersion": "0.2.166",
   "releases": [
+    {
+      "version": "0.2.166",
+      "publishedAt": "2026-11-03T15:37:06Z",
+      "changes": [
+        "Add seeded Nature arrays as a single persistent Vegetation Area object with orchard rows, mixed forests, clustered thickets, and brushwood patches; keep the entire patch under one multiplayer object ID.",
+        "Add individually editable Shrub / Brushwood objects with adjustable height, spread, branch count, foliage clusters and shape, all compatible with the existing Nature preset gallery.",
+        "Draw orchard/forest/brushwood planting areas on the ground with the existing polygon closure, smoothing and redraw tools; expose density, spacing, species, scatter seed, cluster strength and scale variation in compact Properties.",
+        "Use bounded shared InstancedMesh batches for trunks, crowns, conifers, palms, shrubs and undergrowth rather than creating a separate mesh per plant; retain deterministic restoration and prior v0.2.165 Nature scenes.",
+        "Extend backend validation and add multi-mode deterministic scattering, geometry-budget and editor integration regression tests."
+      ]
+    },
     {
       "version": "0.2.165",
       "publishedAt": "2026-11-03T14:49:31Z",
@@ -328,16 +339,6 @@
         "Reject missing, infinite, negative or out-of-range hit distances before writing a robot landing position; remain attached if unsupported.",
         "Recover any non-finite camera pose before Three.js AudioListener render and stop following the invalid robot until stable.",
         "Add four executable regression tests for successful and invalid Rapier-shaped landing hits and camera recovery."
-      ]
-    },
-    {
-      "version": "0.2.136",
-      "publishedAt": "2026-11-01T04:50:37Z",
-      "changes": [
-        "Add an editable Ladder Adhesion distance (0.12\u20130.85 m; default 0.30 m) that positions avatars relative to the rungs on both sides.",
-        "Align the climbing avatar visual with the ladder world-space inclination, including rotated objects and both faces, while leaving the upright Rapier capsule unchanged.",
-        "Straighten the avatar when it releases or dismounts; preserve Climbing Up Wall priority, climbing speed and existing ladder traversal.",
-        "Validate and persist the adhesion setting, accept older saved ladders, and include attachment, visual tilt and backend regression tests."
       ]
     }
   ]

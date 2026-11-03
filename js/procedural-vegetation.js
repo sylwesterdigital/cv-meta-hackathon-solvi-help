@@ -2,14 +2,16 @@
 // References: Roystan and Alisavakis grass tutorials (concepts adapted from Unity to WebGL).
 import * as THREE from 'three';
 
-export const VEGETATION_TYPES=['tree','groundPlot','cropBed'];
+export const VEGETATION_TYPES=['tree','shrub','vegetationArea','groundPlot','cropBed'];
 export const VEGETATION_NUMERIC={
  treeHeight:[4.5,.4,18],trunkRadius:[.18,.025,1.4],canopyRadius:[1.5,.15,7],
  branchCount:[9,0,28],leafClusters:[30,0,80],leafSize:[.23,.05,.8],treeSeed:[42,0,999999],
  trunkWobble:[.16,0,.7],blossomDensity:[.55,0,1],palmFronds:[9,4,16],
  grassDensity:[.7,0,1],grassHeight:[.21,.02,.7],grassWidth:[.025,.005,.1],
  windStrength:[.22,0,1.5],windSpeed:[1.1,0,6],soilRoughness:[.55,0,1],
- cropRows:[4,1,12],cropSpacing:[.45,.15,2],growthPercent:[65,0,100],plotSeed:[17,0,999999]
+ cropRows:[4,1,12],cropSpacing:[.45,.15,2],growthPercent:[65,0,100],plotSeed:[17,0,999999],
+ scatterCount:[36,1,160],scatterSpacing:[2.0,.3,12],scatterJitter:[.24,0,1],scatterCluster:[.58,0,1],
+ scatterScale:[.28,0,.85],shrubHeight:[.85,.12,3.5],shrubRadius:[.65,.12,2.5],shrubLeaves:[15,3,48],shrubBranches:[4,0,16]
 };
 export const DEFAULT_PLOT=[[-2,-1.25],[2,-1.25],[2,1.25],[-2,1.25]];
 const hex=(value,def)=>typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value)?value:def;
@@ -44,7 +46,7 @@ export function cleanVegetation(p={}){
  const value={...p};
  for(const [key,[def,min,max]] of Object.entries(VEGETATION_NUMERIC)){
   const n=Number(p[key]);let v=Number.isFinite(n)?Math.max(min,Math.min(max,n)):def;
-  if(['branchCount','leafClusters','treeSeed','palmFronds','cropRows','plotSeed'].includes(key))v=Math.round(v);
+  if(['branchCount','leafClusters','treeSeed','palmFronds','cropRows','plotSeed','scatterCount','shrubLeaves','shrubBranches'].includes(key))v=Math.round(v);
   value[key]=v;
  }
  value.treeStyle=['deciduous','conifer','orchard','blossom','palm'].includes(p.treeStyle)?p.treeStyle:'deciduous';
@@ -52,7 +54,10 @@ export function cleanVegetation(p={}){
  value.groundCover=['soil','grass','mixed'].includes(p.groundCover)?p.groundCover:'mixed';
  value.soilPreset=['loam','sand','clay','compost'].includes(p.soilPreset)?p.soilPreset:'loam';
  value.cropType=['carrot','tomato','lettuce','strawberry'].includes(p.cropType)?p.cropType:'carrot';
- value.plotSmooth=p.plotSmooth===true;value.plotPoints=cleanPlotPoints(p.plotPoints);
+ value.scatterMode=['orchard','forest','thicket','brushwood'].includes(p.scatterMode)?p.scatterMode:'forest';
+ value.scatterSpecies=['mixed','deciduous','conifer','orchard','blossom','palm'].includes(p.scatterSpecies)?p.scatterSpecies:'mixed';
+ value.shrubShape=['round','oval','wild','hedge'].includes(p.shrubShape)?p.shrubShape:'wild';
+ value.plotSmooth=p.plotSmooth===true;value.plotPoints=cleanPlotPoints(p.plotPoints??(p.variant==='vegetationArea'?[[-7,-5],[7,-5],[7,5],[-7,5]]:undefined));
  value.leafColor=hex(p.leafColor,'#4a9254');value.soilColor=hex(p.soilColor,'#66503a');value.blossomColor=hex(p.blossomColor,'#eea6c2');
  return value;
 }
@@ -165,7 +170,7 @@ function grassBladeMaterial(p){
      transformed.z += cos(windPhase*.78) * uWindStrength * pow(max(position.y,0.0),2.0) * .08;`);
   mat.userData.windShader=shader;
  };
- mat.customProgramCacheKey=()=>`solvi-grass-wind-165`;
+ mat.customProgramCacheKey=()=>`solvi-grass-wind-166`;
  return mat;
 }
 function plotGeometry(p,isCrop){
@@ -204,9 +209,137 @@ function plotGeometry(p,isCrop){
  }
  return out;
 }
+
+// Deterministic, shape-contained vegetation scattering. One saved patch owns the entire
+// distribution; no child scene objects, physics bodies or multiplayer network entities.
+// The work is bounded even for huge, malicious, or extremely thin polygons.
+export function scatterVegetationPositions(config={}){
+ const p=cleanVegetation(config),pts=p.plotSmooth?smoothClosedPlot(p.plotPoints):p.plotPoints;
+ const xs=pts.map(v=>v[0]),zs=pts.map(v=>v[1]);
+ const minX=Math.min(...xs),maxX=Math.max(...xs),minZ=Math.min(...zs),maxZ=Math.max(...zs);
+ const rand=random(p.plotSeed),area=plotArea(pts),limit=Math.min(160,p.scatterCount);
+ if(area<.01)return [];
+ const result=[],cell=Math.max(.3,p.scatterSpacing),tooClose=(x,z,clearance)=>result.some(v=>Math.hypot(x-v.x,z-v.z)<clearance);
+ const classify=()=>p.scatterMode==='brushwood'?'shrub':p.scatterMode==='thicket'?(rand()<.75?'shrub':'tree'):p.scatterMode==='forest'?(rand()<.18?'shrub':'tree'):'tree';
+ const species=()=>p.scatterSpecies!=='mixed'?p.scatterSpecies:['deciduous','conifer','orchard','blossom','palm'][Math.floor(rand()*5)];
+ const push=(x,z)=>{
+  if(result.length>=limit||!polygonContains(pts,x,z))return false;
+  const kind=classify(),scale=1+(rand()*2-1)*p.scatterScale;
+  result.push({x,z,kind,style:species(),scale,rotation:rand()*Math.PI*2});return true;
+ };
+ if(p.scatterMode==='orchard'){
+  // Regular agricultural planting rows with optional bounded irregularity.
+  for(let z=minZ+cell*.5;z<maxZ&&result.length<limit;z+=cell)
+   for(let x=minX+cell*.5;x<maxX&&result.length<limit;x+=cell){
+    const j=cell*p.scatterJitter*.38;
+    push(x+(rand()-.5)*j,z+(rand()-.5)*j);
+   }
+ }else{
+  const clusters=[],number=p.scatterMode==='forest'?5:Math.max(3,Math.ceil(Math.sqrt(limit)/2));
+  for(let i=0,attempt=0;i<number&&attempt<100;attempt++){
+   const x=minX+rand()*(maxX-minX),z=minZ+rand()*(maxZ-minZ);
+   if(polygonContains(pts,x,z)){clusters.push([x,z]);i++;}
+  }
+  // Spatially clustered proposals are mixed with uniform ones; thinning maintains
+  // minimum spacing and produces natural gaps rather than a uniformly packed grid.
+  for(let attempt=0;attempt<limit*75&&result.length<limit;attempt++){
+   let x,z;
+   if(clusters.length&&rand()<p.scatterCluster){
+    const [cx,cz]=clusters[Math.floor(rand()*clusters.length)],radius=cell*(p.scatterMode==='forest'?2.8:1.7);
+    const theta=rand()*Math.PI*2,r=radius*Math.sqrt(rand());x=cx+Math.cos(theta)*r;z=cz+Math.sin(theta)*r;
+   }else{x=minX+rand()*(maxX-minX);z=minZ+rand()*(maxZ-minZ);}
+   const clearance=cell*(p.scatterMode==='brushwood'?.42:p.scatterMode==='thicket'?.57:.78);
+   if(!tooClose(x,z,clearance))push(x,z);
+  }
+ }
+ return result;
+}
+function shrubGeometry(p){
+ const out=[],rand=random(p.treeSeed),wood=new THREE.MeshStandardMaterial({color:p.color||'#79513a',roughness:1,flatShading:true});
+ const leaves=leafMaterial(p.leafColor),height=p.shrubHeight,radius=p.shrubRadius;
+ const branches=p.shrubBranches;
+ for(let i=0;i<branches;i++){
+  const a=(i+rand()*.3)*Math.PI*2/Math.max(1,branches),r=radius*(.35+rand()*.4);
+  branchBetween(out,[0,.06,0],[Math.cos(a)*r,height*(.45+rand()*.4),Math.sin(a)*r],.028,.008,wood);
+ }
+ const count=p.shrubLeaves,leavesMesh=instanceMaterialGeometry(new THREE.IcosahedronGeometry(1,0),leaves,count);
+ const mat=new THREE.Matrix4(),pos=new THREE.Vector3(),quat=new THREE.Quaternion(),scale=new THREE.Vector3();
+ for(let i=0;i<count;i++){
+  const a=rand()*Math.PI*2,r=Math.sqrt(rand())*radius;
+  pos.set(Math.cos(a)*r,height*(.36+rand()*.57),Math.sin(a)*r);
+  const sz=radius*(.28+rand()*.28);
+  scale.set(sz*(p.shrubShape==='hedge'?1.4:1),sz*(p.shrubShape==='oval'?.65:1),sz*(p.shrubShape==='hedge'?.7:1));
+  mat.compose(pos,quat,scale);leavesMesh.setMatrixAt(i,mat);
+ }
+ leavesMesh.instanceMatrix.needsUpdate=true;leavesMesh.castShadow=false;out.push(leavesMesh);
+ return out;
+}
+function vegetationAreaGeometry(p,trunkMaterial){
+ const out=plotGeometry(p,false),positions=scatterVegetationPositions(p);
+ // One instanced batch per geometry/material family, including all shrubs and trees.
+ // This avoids one draw call per plant in WebXR and bounds output mesh count.
+ const makeBatch=(geometry,material,entries)=>{
+  if(!entries.length)return;
+  const mesh=instanceMaterialGeometry(geometry,material,entries.length);
+  const matrix=new THREE.Matrix4(),v=new THREE.Vector3(),q=new THREE.Quaternion(),s=new THREE.Vector3();
+  entries.forEach((item,i)=>{v.set(...item.pos);q.setFromAxisAngle(new THREE.Vector3(0,1,0),item.angle||0);s.set(...item.scale);matrix.compose(v,q,s);mesh.setMatrixAt(i,matrix);});
+  mesh.instanceMatrix.needsUpdate=true;mesh.castShadow=false;mesh.userData.furniturePart=false;out.push(mesh);
+ };
+ const trunks=[],crowns=[],conifers=[],palms=[],shrubs=[],branches=[],blossoms=[],fruits=[];
+ const rnd=random(p.treeSeed^p.plotSeed);
+ for(const v of positions){
+  if(v.kind==='shrub'){
+   const height=p.shrubHeight*v.scale,radius=p.shrubRadius*v.scale;
+   branches.push({pos:[v.x,height*.24,v.z],scale:[.027,height*.48,.027],angle:v.rotation});
+   for(let i=0;i<Math.min(p.shrubLeaves,22);i++){
+    const a=rnd()*6.283,r=Math.sqrt(rnd())*radius,z=v.z+Math.sin(a)*r,x=v.x+Math.cos(a)*r;
+    const size=radius*(.22+rnd()*.21),y=height*(.33+rnd()*.62);
+    shrubs.push({pos:[x,y,z],scale:[size*(p.shrubShape==='hedge'?1.35:1),size*(p.shrubShape==='oval'?.75:1),size],angle:a});
+   }
+  }else{
+   const H=p.treeHeight*v.scale,R=p.canopyRadius*v.scale;
+   trunks.push({pos:[v.x,H*.39,v.z],scale:[p.trunkRadius*v.scale,H*.78,p.trunkRadius*v.scale],angle:v.rotation});
+   if(v.style==='conifer'){
+    conifers.push({pos:[v.x,H*.72,v.z],scale:[R,H*.62,R],angle:v.rotation});
+   }else if(v.style==='palm'){
+    for(let i=0;i<Math.min(p.palmFronds,12);i++){
+     const a=6.283*i/p.palmFronds+v.rotation,rad=R*.5;
+     palms.push({pos:[v.x+Math.cos(a)*rad,H*.91,v.z+Math.sin(a)*rad],scale:[R*.51,R*.13,R*.18],angle:a});
+    }
+   }else{
+    for(let i=0;i<8;i++){
+     const a=rnd()*6.283,r=R*Math.sqrt(rnd())*.75,sz=R*p.leafSize*(.75+rnd()*.45);
+     crowns.push({pos:[v.x+Math.cos(a)*r,H*(.66+rnd()*.28),v.z+Math.sin(a)*r],scale:[sz,sz*.8,sz],angle:a});
+    }
+    if(v.style==='orchard')for(let i=0;i<4;i++){
+     const a=rnd()*6.283,r=R*Math.sqrt(rnd())*.8,sz=.075*v.scale;
+     fruits.push({pos:[v.x+Math.cos(a)*r,H*(.65+rnd()*.2),v.z+Math.sin(a)*r],scale:[sz,sz,sz],angle:a});
+    }
+    if(v.style==='blossom')for(let i=0;i<6;i++){
+     const a=rnd()*6.283,r=R*Math.sqrt(rnd())*.8,sz=.10*v.scale;
+     blossoms.push({pos:[v.x+Math.cos(a)*r,H*(.7+rnd()*.2),v.z+Math.sin(a)*r],scale:[sz,sz*.5,sz],angle:a});
+    }
+   }
+  }
+ }
+ const wood=trunkMaterial||new THREE.MeshStandardMaterial({color:p.color||'#90735b',roughness:1,flatShading:true});
+ const leaf=leafMaterial(p.leafColor);
+ makeBatch(new THREE.CylinderGeometry(1,1,1,6),wood,trunks);
+ makeBatch(new THREE.CylinderGeometry(.4,1,1,4),wood,branches);
+ makeBatch(new THREE.IcosahedronGeometry(1,0),leaf,crowns);
+ makeBatch(new THREE.ConeGeometry(1,1,7),leaf,conifers);
+ makeBatch(new THREE.IcosahedronGeometry(1,0),leaf,palms);
+ makeBatch(new THREE.IcosahedronGeometry(1,0),leaf,shrubs);
+ makeBatch(new THREE.IcosahedronGeometry(1,0),leafMaterial(p.blossomColor),blossoms);
+ makeBatch(new THREE.IcosahedronGeometry(1,0),leafMaterial('#cd4936'),fruits);
+ return out;
+}
+
 export function vegetationParts(config,trunkMaterial=null){
  const p=cleanVegetation(config);
  if(p.variant==='tree')return treeGeometry(p,trunkMaterial);
+ if(p.variant==='shrub')return shrubGeometry(p);
+ if(p.variant==='vegetationArea')return vegetationAreaGeometry(p,trunkMaterial);
  if(p.variant==='groundPlot'||p.variant==='cropBed')return plotGeometry(p,p.variant==='cropBed');
  return [];
 }

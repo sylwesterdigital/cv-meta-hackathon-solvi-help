@@ -66,6 +66,8 @@ const furniturePreset={
  beachUmbrella:{width:2.4,depth:2.4,height:2.15,legStyle:'none'},
  lamp:{width:.45,depth:.45,height:1.6,legStyle:'none'},speaker:{width:.33,depth:.27,height:.65,legStyle:'none'},
  tree:{width:2.8,depth:2.8,height:5,legStyle:'none',color:'#79513a',fabricColor:'#4a9254'},
+ shrub:{width:1.4,depth:1.4,height:.9,legStyle:'none',color:'#79513a',fabricColor:'#4a9254'},
+ vegetationArea:{width:8,depth:8,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
  groundPlot:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
  cropBed:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'}
 };
@@ -98,7 +100,7 @@ export function sanitiseFurniture(raw={}){
  result.color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#9b8068';
  result.fabricColor=typeof raw.fabricColor==='string'&&/^#[0-9a-f]{6}$/i.test(raw.fabricColor)?raw.fabricColor:'#64798e';
  if(VEGETATION_TYPES.includes(variant))Object.assign(result,cleanVegetation({...raw,variant}));
- result.texture=['none','plaster','concrete','bricks','metal','wood','marble','granite'].includes(raw.texture)?raw.texture:(variant==='tree'?'wood':'none');
+ result.texture=['none','plaster','concrete','bricks','metal','wood','marble','granite'].includes(raw.texture)?raw.texture:(['tree','shrub','vegetationArea'].includes(variant)?'wood':'none');
  return result;
 }
 export function rebuildFurniture(group,raw={}){
@@ -123,7 +125,7 @@ export function rebuildFurniture(group,raw={}){
    if(style==='casters')cylinder(p.legRadius*1.3,.08,x,.04,z,fabric,12);
   }
  };
- if(VEGETATION_TYPES.includes(p.variant))for(const part of vegetationParts(p,p.variant==='tree'?wood:null))parts.push(part);
+ if(VEGETATION_TYPES.includes(p.variant))for(const part of vegetationParts(p,['tree','vegetationArea'].includes(p.variant)?wood:null))parts.push(part);
  if(p.variant==='table'||p.variant==='stool'){
   const topY=p.height-p.topThickness/2;
   if(p.topShape!=='rectangle'){const sides=p.topShape==='round'?48:p.corners;add(new THREE.CylinderGeometry(p.topRadius,p.topRadius,p.topThickness,sides),0,topY,0);}

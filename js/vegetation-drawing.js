@@ -30,10 +30,10 @@ function redraw(editor){
  if(status)status.textContent=count?`${count} corners · click to continue, Enter to auto-close and save`:'Click ground to place vertices · Enter closes the boundary';
  if(save)save.disabled=count<3;
 }
-export function startVegetationPlot(editor,variant='groundPlot'){
+export function startVegetationPlot(editor,variant='groundPlot',scatterMode='forest'){
  if(editor.vegetationDrawing)cancelVegetationPlot(editor);
  editor.cancelSpatialDrawing?.();editor.endWallDrawing?.();
- editor.vegetationDrawing={variant,points:[],cursor:null,redraw:()=>redraw(editor)};
+ editor.vegetationDrawing={variant,scatterMode,points:[],cursor:null,redraw:()=>redraw(editor)};
  const panel=$('vegetationDrawPanel');if(panel)panel.hidden=false;
  $('addMenu').hidden=true;editor.transform.detach();editor.world.controls.enabled=false;
  $('spatialDrawShield').hidden=false;redraw(editor);
@@ -68,8 +68,8 @@ export function finishVegetationPlot(editor){
  cancelVegetationPlot(editor);
  const obj=editor.add('furniture',false,undefined,false,d.variant);if(!obj)return;
  const before=null;
- rebuildFurniture(obj,{...obj.userData.furniture,plotPoints:points,plotSmooth:smooth});
- obj.position.set(origin[0],0,origin[1]);obj.name=d.variant==='cropBed'?'Vegetable bed':'Grass & soil plot';
+ rebuildFurniture(obj,{...obj.userData.furniture,plotPoints:points,plotSmooth:smooth,scatterMode:d.scatterMode});
+ obj.position.set(origin[0],0,origin[1]);obj.name=d.variant==='cropBed'?'Vegetable bed':d.variant==='vegetationArea'?(d.scatterMode==='brushwood'?'Brushwood patch':'Forest / orchard patch'):'Grass & soil plot';
  obj.userData.physics={mode:'off'};
  editor.physics.sync(obj);editor.select(obj);editor.refreshList();
  editor.recordEdit(before,editor.snapshot(obj));editor.queueSave(obj);
