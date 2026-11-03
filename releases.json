@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.160",
+  "currentVersion": "0.2.161",
   "releases": [
+    {
+      "version": "0.2.161",
+      "publishedAt": "2026-11-03T11:46:01Z",
+      "changes": [
+        "Inventory window uses the shared draggable-window system and displays robot portrait plus thumbnail-based item cards.",
+        "Presets become truly image-only click targets without the global automatic Add icon; name and type overlay the preview and Delete remains a corner icon.",
+        "Rebuild all supported procedural preset thumbnails using the shared dedicated offscreen renderer, with centered orthographic object bounds.",
+        "Bottles support shell opacity, hollow uncapped opening, liquid colour and 0\u2013100% simulated fill level.",
+        "Shift+I picks up a nearby backpack or removes a worn backpack without losing its stored contents."
+      ]
+    },
     {
       "version": "0.2.160",
       "publishedAt": "2026-11-03T00:14:28Z",
@@ -323,16 +334,6 @@
         "Use actual staircase control points and complete world transform, preserve continuous obstacle-checked routes, and report blocked when the low entrance cannot be reached rather than claiming partial success.",
         "Make robot command planning and arrival feedback distinguish reaching the low entrance from climbing; retain existing navigation and collision physics for unrelated objects.",
         "Add five executed stair entry tests plus backend parser regression and refresh all browser/module/backend/release versions."
-      ]
-    },
-    {
-      "version": "0.2.130",
-      "publishedAt": "2026-11-01T02:56:09Z",
-      "changes": [
-        "Default to Exploration Mode: a persistent, account-local iOS-style Profile Edit Mode switch controls editing windows and transform handles across the application without changing robot control, chat or scene physics.",
-        "Make the controlSwitcher draggable from unused surface space rather than a visible handle; retain interactive portraits/buttons and add compact minus/plus controls for portrait size.",
-        "Keep Rate and Pitch labels on one line in the robot voice panel.",
-        "Correct positive-yaw robot camera orientation to match panorama left-to-right stitching; verify six 60-degree views, seam blending and 360-degree wrap using synthetic source images."
       ]
     }
   ]

@@ -50,7 +50,7 @@ test('one draggable My camera panel owns video capture controls and recorded pre
  assert.match(studio,/if\(video\)host\.append\(panel\)/);
  assert.match(studio,/showOnlyCameraPreview\(\{playback:true\}\)/);
  assert.match(studio,/window\.solviEnsureMyCamera\?\.\(\)/);
- assert.match(studio,/'webcamPanel'\]/);
+ assert.match(studio,/'webcamPanel','robotRoutinePanel','robotInventoryPanel'\]/);
  assert.match(tracking,/window\.solviEnsureMyCamera=/);
  assert.match(css,/#webcamPanel \.webcam-head\.drag-handle/);
 });

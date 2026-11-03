@@ -16,7 +16,7 @@ test('Routine panel participates in the common window drag and position persiste
  const studio=code('js/studio.js'),css=code('styles.css'),html=code('index.html');
  assert.match(html,/id="robotRoutinePanel" class="solvi-floating-window/);
  assert.match(html,/Active robot routines/);
- assert.match(studio,/'robotRoutinePanel'\]/);
+ assert.match(studio,/'robotRoutinePanel','robotInventoryPanel'\]/);
  assert.match(studio,/#diagnosticsPanel,#robotRoutinePanel/);
  assert.match(css,/#robotRoutinePanel \.panel-title\.drag-handle/);
  assert.match(css,/#robotRoutinePanel \.robot-routine-controls\{overflow-y:auto/);

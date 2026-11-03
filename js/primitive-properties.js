@@ -39,7 +39,7 @@ export const FURNITURE_NUMERIC={
  topThickness:[.07,.025,.3],topRadius:[.55,.15,4],legRadius:[.04,.025,.3],
  corners:[4,3,8],seatHeight:[.46,.25,.9],backHeight:[.5,.2,1.3],
  shelves:[3,0,16],seats:[2,1,4],cushionThickness:[.14,.05,.35],
- wallThickness:[.025,.005,.15],neckRadius:[.065,.01,.5],neckHeight:[.12,.02,.6],
+ wallThickness:[.025,.005,.15],neckRadius:[.065,.01,.5],neckHeight:[.12,.02,.6],bottleOpacity:[.7,0,1],fluidLevel:[50,0,100],
  rimHeight:[.018,.005,.1],...EQUIPMENT_NUMERIC,textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
 };
 const furniturePreset={
@@ -54,7 +54,7 @@ const furniturePreset={
  mug:{width:.09,depth:.09,height:.105,legStyle:'none'},
  glass:{width:.075,depth:.075,height:.14,legStyle:'none'},
  bowl:{width:.19,depth:.19,height:.085,legStyle:'none'},
- bottle:{width:.085,depth:.085,height:.27,legStyle:'none'},
+ bottle:{width:.085,depth:.085,height:.27,legStyle:'none',bottleOpacity:.65,fluidLevel:50},
  can:{width:.066,depth:.066,height:.12,legStyle:'none'},
  flowerpot:{width:.22,depth:.22,height:.23,legStyle:'none'},
  box:{width:.35,depth:.3,height:.28,legStyle:'none'},
@@ -76,6 +76,7 @@ export function sanitiseFurniture(raw={}){
  result.topShape=['rectangle','polygon','round'].includes(raw.topShape)?raw.topShape:'rectangle';
  result.legStyle=['four','three','single','casters','none'].includes(raw.legStyle)?raw.legStyle:defaults.legStyle;
  result.handle=raw.handle!==false;result.cap=raw.cap!==false;result.soil=raw.soil===true;result.openTop=raw.openTop!==false;
+ result.fluidColor=typeof raw.fluidColor==='string'&&/^#[0-9a-f]{6}$/i.test(raw.fluidColor)?raw.fluidColor:'#6eabd4';
  result.aspect=['16:9','21:9','4:3'].includes(raw.aspect)?raw.aspect:'16:9';
  result.mount=['wall','center','feet','none'].includes(raw.mount)?raw.mount:(variant==='tv'?'feet':'center');
  result.powered=raw.powered!==false;result.curved=raw.curved===true;result.binShape=raw.binShape==='square'?'square':'round';
@@ -171,8 +172,16 @@ export function rebuildFurniture(group,raw={}){
    point(0,0);point(radius*.75,0);point(radius*.82,p.height*.08);point(wide,p.height);
    point(Math.max(.01,wide-t),p.height);point(Math.max(.01,radius*.82-t),t);point(0,t);
   }
-  const vessel=add(new THREE.LatheGeometry(profile,32),0,0,0);
+  const vessel=add(new THREE.LatheGeometry(profile,32),0,0,0,
+   p.variant==='bottle'?new THREE.MeshStandardMaterial({color:p.color,transparent:p.bottleOpacity<1,opacity:p.bottleOpacity,depthWrite:p.bottleOpacity>=1,roughness:.19,metalness:0,side:THREE.DoubleSide}):wood);
   vessel.userData.furnitureHollow=true;
+  if(p.variant==='bottle'&&p.fluidLevel>0){
+   // Leave a real air gap and inner wall; the top liquid plane is visible through the neck.
+   const fluidHeight=Math.max(.001,(p.height-Math.min(p.neckHeight,p.height*.43)*1.5)*p.fluidLevel/100);
+   const liquidRadius=Math.max(.003,radius-t*.93);
+   const liquid=new THREE.Mesh(new THREE.CylinderGeometry(liquidRadius,liquidRadius*.82,fluidHeight,32,1,false),new THREE.MeshStandardMaterial({color:p.fluidColor,transparent:true,opacity:.82,roughness:.18,metalness:0,depthWrite:false}));
+   liquid.position.y=t+fluidHeight/2;liquid.userData.furniturePart=true;liquid.userData.bottleLiquid=true;parts.push(liquid);
+  }
   if(['mug','can','flowerpot','glass'].includes(p.variant)){
    const lip=new THREE.Mesh(new THREE.TorusGeometry(radius*.96,Math.max(.003,t*.26),6,32),wood);
    lip.rotation.x=Math.PI/2;lip.position.y=p.height;lip.userData.furniturePart=true;parts.push(lip);

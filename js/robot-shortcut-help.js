@@ -4,7 +4,7 @@ export const ROBOT_KEY_ACTIONS=Object.freeze({KeyI:'pickup-place',KeyO:'throw',K
 export const ROBOT_SHORTCUTS=Object.freeze([
  ['Movement','↑ / ↓','Move forward / reverse'],['Movement','← / →','Steer / sidestep when stopped'],
  ['Movement','Shift + ↑','Run (also automatically after holding forward)'],['Movement','Space','Jump / release ladder'],
- ['Actions','I','Pick up or place a held object'],['Actions','O','Throw held object'],
+ ['Actions','I','Pick up or place a held object'],['Inventory','Shift + I','Pick up / take off / drop a backpack'],['Actions','O','Throw held object'],
  ['Actions','J','Sit / stand'],['Inventory','B','Open inventory: pockets, wearables and backpacks'],
  ['Navigation','Shift + A','Add object menu'],['Help','⌘ + /','Show / hide these shortcuts']]);
 export function robotShortcutRows(robot){const rows=ROBOT_SHORTCUTS.map(r=>[...r]);

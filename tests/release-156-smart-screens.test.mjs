@@ -54,9 +54,9 @@ test('outdoor furniture is procedural with independently collidable pieces and r
 test('preset thumbnail uses actual projected bounds and regenerates older furniture gallery images',()=>{
  const code=read('js/object-presets.js');
  assert.match(code,/new THREE\.OrthographicCamera/);
- assert.match(code,/presetProjectedFrustum\(bounds,camera,width,height\)/);
- assert.match(code,/thumbnailFor\(preset\)/);assert.match(code,/makeFurniture\(preset\.payload\.furniture\)/);
- assert.match(code,/setScissorTest\?\.\(false\)/);
+ assert.match(code,/presetProjectedFrustum\(bounds,camera,width,height,\.14\)/);
+ assert.match(code,/thumbnailFor\(preset\)/);assert.match(code,/makeFurniture\(data\.furniture\|\|\{\}\)/);
+ assert.match(code,/renderModelThumbnail\(scene,camera,width,height/);
 });
 test('backend validators accept equipment, streams and finite wearable offsets while rejecting invalid values',()=>{
  const script=`import ast,math,re,sys\nsrc=open(sys.argv[1]).read()\nneed={'valid_smart_channels','valid_smart_options','valid_wear_attachment','valid_inventory_item','valid_basic_furniture'}\ntree=ast.parse(src)\nnodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in need]\nnamespace={'math':math,'re':re}\nexec(compile(ast.Module(body=nodes,type_ignores=[]),'<validators>','exec'),namespace)\nu='https://rantlist.me/media/051ddbe8-32ba-4d6b-ba99-c8122f69ac64/index.m3u8'\nch=[{'title':'Live','url':u}]\nassert namespace['valid_smart_channels'](ch)\nassert not namespace['valid_smart_channels']([{'title':'unsafe','url':'http://evil.example/live.m3u8'}])\nfor variant in ['sunbed','deckChair','beachUmbrella','tv']:\n assert namespace['valid_basic_furniture']({'variant':variant,'channels':ch})\nassert not namespace['valid_basic_furniture']({'variant':'tv','channels':[{'title':'bad','url':'javascript:1'}]})\nwear={'bone':'spine2','followRotation':False,'position':[0,-.3,0],'rotation':[0,90,0]}\nassert namespace['valid_inventory_item']({'category':'backpack','size':'bag','consumable':False,'attachment':wear})\nwear['position'][0]=float('nan')\nassert not namespace['valid_wear_attachment'](wear)\nprint('backend smart-channel and wearable validators passed')`;

@@ -1093,6 +1093,11 @@ export class SceneEditor{
   },true);
   window.addEventListener('keydown',e=>{
    if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||document.activeElement?.isContentEditable)return;
+   if(e.shiftKey&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.repeat&&e.code==='KeyI'&&this.controlMode==='robot'&&this.controlledRobot()){
+    e.preventDefault();const bot=this.controlledRobot();
+    if(!this.inventory.toggleBackpack(bot))this.toast('Face a nearby backpack or wear one to remove it');
+    return;
+   }
    if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.repeat&&this.controlMode==='robot'&&this.controlledRobot()&&Object.hasOwn(ROBOT_KEY_ACTIONS,e.code)){
     e.preventDefault();const bot=this.controlledRobot();if(!this.canEdit(bot))return;
     if(e.code==='KeyI'){
@@ -1296,7 +1301,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   if(!equipment)for(const [key,title] of [['width',isProp?'Diameter / width (m)':'Width (m)'],['depth','Depth (m)'],['height','Height (m)']])if(!isProp||key!=='depth'||p.variant==='box')add(key,title,'number');
   if(isProp){
    if(p.variant!=='plate')add('wallThickness','Wall thickness','number');
-   if(p.variant==='bottle'){add('neckRadius','Neck radius','number');add('neckHeight','Neck height','number');add('cap','Cap','checkbox');}
+   if(p.variant==='bottle'){add('neckRadius','Neck radius','number');add('neckHeight','Neck height','number');add('bottleOpacity','Opacity (0–1)','number');add('fluidLevel','Fill level %','number');add('fluidColor','Liquid colour','color');add('cap','Cap / cork','checkbox');}
    if(p.variant==='mug')add('handle','Handle','checkbox');
    if(p.variant==='flowerpot')add('soil','Soil','checkbox');
    if(p.variant==='can')add('cap','Lid','checkbox');

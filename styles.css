@@ -2366,3 +2366,42 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 #objectPresetsBackdrop .object-preset-delete{display:grid;place-items:center;min-width:0;width:29px;height:29px;padding:4px;border-radius:8px;background:rgba(13,23,35,.83);border:1px solid rgba(218,230,242,.38);color:#fff;cursor:pointer}
 #objectPresetsBackdrop .object-preset-delete:hover,#objectPresetsBackdrop .object-preset-delete:focus-visible{background:#8b304b;color:#fff}
 @media(max-width:570px){#objectPresetsBackdrop .object-presets-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
+
+/* v0.2.161 — image-first preset tiles, no decorative Add icon from auto-decorated buttons. */
+#objectPresetsBackdrop .object-presets-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+#objectPresetsBackdrop .object-preset-card{isolation:isolate;position:relative;aspect-ratio:4 / 3;min-height:0;background:#304355;border-radius:12px;overflow:hidden}
+#objectPresetsBackdrop .object-preset-image{position:absolute;inset:0;display:block;width:100%;height:100%;aspect-ratio:auto;border:0;border-radius:0;cursor:pointer;outline-offset:-3px}
+#objectPresetsBackdrop .object-preset-image::before,#objectPresetsBackdrop .object-preset-image::after{content:none!important;display:none!important}
+#objectPresetsBackdrop .object-preset-image img{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
+#objectPresetsBackdrop .object-preset-caption{position:absolute;bottom:0;left:0;right:0;z-index:1;padding:22px 11px 10px;pointer-events:none;background:linear-gradient(transparent,#091522ef);color:#fff}
+#objectPresetsBackdrop .object-preset-caption strong{font-size:13px}
+#objectPresetsBackdrop .object-preset-caption small{font-size:11px;opacity:.86}
+#objectPresetsBackdrop .object-preset-delete{width:29px;height:29px}
+#objectPresetsSearch{background:#16283b!important;color:#f0f6ff!important;border:1px solid #4c6882!important}
+@media(max-width:570px){#objectPresetsBackdrop .object-presets-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
+
+/* Inventory is a draggable SOLVI tool window, matching other object galleries. */
+#robotInventoryPanel{width:min(560px,94vw);max-height:min(78vh,720px);overflow:hidden;display:flex;flex-direction:column;padding:0;background:#1c252f;border:1px solid #4b657e;border-radius:13px;color:#eff6ff;box-shadow:0 20px 54px #0009}
+#robotInventoryPanel[hidden]{display:none}
+#robotInventoryPanel .inventory-window-head{display:flex;align-items:center;gap:10px;flex:0 0 auto;margin:0;padding:11px 13px;border-bottom:1px solid #415467;cursor:grab;touch-action:none;user-select:none}
+#robotInventoryPanel .inventory-window-head:active{cursor:grabbing}
+#robotInventoryPanel .inventory-robot-portrait{display:flex;justify-content:center;align-items:center;flex:0 0 43px;width:43px;height:43px;border-radius:50%;overflow:hidden;background:#0d1724;border:1px solid #6988a4;font-size:17px;font-weight:700}
+#robotInventoryPanel .inventory-robot-portrait img{width:100%;height:100%;object-fit:cover}
+#robotInventoryPanel .inventory-window-heading{display:flex;flex-direction:column;flex:1;min-width:0;gap:3px}
+#robotInventoryPanel .inventory-window-heading strong{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#robotInventoryPanel .inventory-window-heading small{font-size:10px;color:#a5b9cb}
+#robotInventoryPanel [data-inventory-close]{flex:0 0 32px;width:32px;height:32px;border-radius:8px;padding:6px;background:#293646;border:1px solid #56718a;color:#fff}
+#robotInventoryPanel nav{display:flex;gap:5px;margin:0;padding:9px 12px;border-bottom:1px solid #34495b}
+#robotInventoryPanel nav button{min-height:32px;font-size:12px;font-weight:600;padding:5px 10px;background:#293747;border:1px solid #344d60;border-radius:7px;color:#c8d8e8}
+#robotInventoryPanel nav button.active{background:#244763;border-color:#8baec9;color:#fff}
+#robotInventoryPanel .robot-inventory-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(156px,1fr));gap:9px;padding:12px;overflow-y:auto;align-content:start;min-height:92px}
+#robotInventoryPanel .robot-inventory-item{display:flex;flex-direction:column;align-items:stretch;min-width:0;gap:5px;padding:0;background:#213345;border:1px solid #40566b;border-radius:9px;overflow:hidden}
+#robotInventoryPanel .inventory-item-thumb{display:grid;place-items:center;overflow:hidden;aspect-ratio:3/2;background:#354759;color:#d6e8f8;font-size:29px;font-weight:600}
+#robotInventoryPanel .inventory-item-thumb img{width:100%;height:100%;object-fit:cover}
+#robotInventoryPanel .inventory-item-info{display:grid;gap:2px;padding:2px 9px;min-width:0}
+#robotInventoryPanel .inventory-item-info strong{font-size:12px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+#robotInventoryPanel .inventory-item-info small{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#robotInventoryPanel .inventory-item-actions{display:flex;gap:4px;flex-wrap:wrap;align-items:center;padding:4px 7px 8px}
+#robotInventoryPanel .inventory-item-actions button{font-size:10px;min-height:25px;padding:4px 7px;background:#2d4053;border:1px solid #445d72;border-radius:6px;color:#edf4fd;flex:1 1 auto;cursor:pointer}
+#robotInventoryPanel .inventory-item-actions button:disabled{opacity:.48;cursor:default}
+#robotInventoryPanel .small-note{grid-column:1/-1;color:#a7bdd2;font-size:12px}

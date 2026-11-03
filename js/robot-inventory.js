@@ -3,6 +3,8 @@
 // bag therefore never extracts/destroys its contents.
 import * as THREE from 'three';
 import {pickableTarget,canBePickable} from './object-carry.js';
+import {capturePresetThumbnail} from './object-presets.js';
+import {makeFurniture} from './primitive-properties.js';
 
 export const INVENTORY_CATEGORIES=Object.freeze(['world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable']);
 export const INVENTORY_SIZES=Object.freeze(['pocket','bag']);
@@ -44,7 +46,7 @@ export function bodyBackBone(robot,chosen='auto'){
 }
 function stableId(o){return String(o?.userData?.editorId||'');}
 export class RobotInventory{
- constructor(editor){this.editor=editor;this.activeRobot=null;this.tab='pocket';}
+ constructor(editor){this.editor=editor;this.activeRobot=null;this.tab='pocket';this.previewCache=new Map();this.portraitToken=0;}
  owned(robot,obj){return this.editor.canEdit(robot)&&this.editor.canEdit(obj)&&obj.userData?.pickable===true&&canBePickable(obj.userData.editorKind);}
  entries(robot){
   if(!robot)return [];
@@ -79,6 +81,19 @@ export class RobotInventory{
   this.applyState(obj);this.editor.queueSave(obj);
   this.editor.toast?.(`${obj.name} → ${storage.type==='worn'?storage.slot:storage.type}`);
   this.render();return true;
+ }
+ toggleBackpack(robot){
+  if(!robot||robot.userData.editorKind!=='robot'||!this.editor.canEdit(robot))return false;
+  const carry=robot.userData.robotCarry;
+  if(carry){const held=this.editor.items.find(o=>stableId(o)===carry.objectId);
+   if(held&&cleanInventory(held.userData.inventory).category==='backpack')return this.editor.carry?.drop?.(robot)===true;
+   return false;
+  }
+  const nearby=pickableTarget(robot,this.editor.items);
+  if(nearby&&cleanInventory(nearby.userData.inventory).category==='backpack')return this.collect(robot,nearby);
+  const worn=this.entries(robot).filter(o=>o.userData.storage?.type==='worn'&&cleanInventory(o.userData.inventory).category==='backpack');
+  const bag=worn.find(o=>o.userData.storage.slot==='back')||worn[0];
+  return bag?this.drop(robot,bag):false;
  }
  pickupNearest(robot){
   const obj=pickableTarget(robot,this.editor.items);
@@ -180,11 +195,37 @@ export class RobotInventory{
   this.editor.toast?.(`${cfg.category==='food'?'Ate':'Used'} ${obj.name}`);this.render();return true;
  }
  show(robot){if(!robot||robot.userData.editorKind!=='robot')return;this.activeRobot=robot;const panel=document.getElementById('robotInventoryPanel');if(panel)panel.hidden=false;this.render();}
+ updatePortrait(robot){
+  const frame=document.getElementById('inventoryRobotPortrait');if(!frame)return;
+  frame.textContent=(robot.name||'R').slice(0,1).toUpperCase();
+  const portrait=robot.userData.robotBrain?.portrait,token=++this.portraitToken;
+  if(!portrait||!window.solviAPI?.mediaBlob)return;
+  const cached=this.editor.robotPortraitCache?.get(portrait);
+  const promise=cached||window.solviAPI.mediaBlob(portrait).catch(()=>null);
+  if(!cached)this.editor.robotPortraitCache?.set(portrait,promise);
+  Promise.resolve(promise).then(url=>{
+   if(!url||token!==this.portraitToken||this.activeRobot!==robot||!frame.isConnected)return;
+   const image=document.createElement('img');image.src=url;image.alt='';frame.replaceChildren(image);
+  });
+ }
+ itemThumbnail(item){
+  const id=stableId(item),kind=item.userData.editorKind;
+  const key=id+':'+JSON.stringify(item.userData.furniture||{});
+  if(this.previewCache.has(key))return this.previewCache.get(key);
+  let source=null,image='';
+  try{
+   if(kind==='furniture')source=makeFurniture(item.userData.furniture||{});
+   else if(item.isObject3D)source=item;
+   if(source)image=capturePresetThumbnail(this.editor,source);
+  }catch(error){console.warn('Inventory thumbnail unavailable',error);}
+  finally{if(source&&source!==item){source.traverse(o=>{o.geometry?.dispose?.();for(const mat of Array.isArray(o.material)?o.material:[o.material])mat?.dispose?.();});}}
+  this.previewCache.set(key,image);return image;
+ }
  render(){
   const panel=document.getElementById('robotInventoryPanel');if(!panel||panel.hidden)return;
   const robot=this.activeRobot;
   if(!robot||!this.editor.items.includes(robot)){panel.hidden=true;return;}
-  const title=document.getElementById('inventoryRobotName');if(title)title.textContent=robot.name;
+  const title=document.getElementById('inventoryRobotName');if(title)title.textContent=robot.name;this.updatePortrait(robot);
   for(const tab of panel.querySelectorAll('[data-inventory-tab]')){
    tab.classList.toggle('active',tab.dataset.inventoryTab===this.tab);
    tab.setAttribute('aria-selected',String(tab.dataset.inventoryTab===this.tab));
@@ -196,10 +237,15 @@ export class RobotInventory{
   });
   if(!items.length){const empty=document.createElement('p');empty.className='small-note';empty.textContent='No items in this category';rows.append(empty);return;}
   for(const item of items){
-   const line=document.createElement('div');line.className='robot-inventory-item';
+   const line=document.createElement('article');line.className='robot-inventory-item';line.setAttribute('role','listitem');
+   const picture=document.createElement('div');picture.className='inventory-item-thumb';
+   const thumbnail=this.itemThumbnail(item);
+   if(thumbnail){const img=document.createElement('img');img.src=thumbnail;img.alt='';picture.append(img);}
+   else{const type=document.createElement('span');type.textContent=cleanInventory(item.userData.inventory).category.slice(0,1).toUpperCase();picture.append(type);}
+   line.append(picture);
    const info=document.createElement('div');const name=document.createElement('strong');name.textContent=item.name;
-   const detail=document.createElement('small');detail.textContent=cleanInventory(item.userData.inventory).category+(item.userData.storage?.slot?' · '+item.userData.storage.slot:'');info.append(name,detail);line.append(info);
-   const action=(text,fn)=>{const button=document.createElement('button');button.type='button';button.textContent=text;button.disabled=!this.editor.canEdit(item)||!this.editor.canEdit(robot);button.onclick=()=>fn.call(this,robot,item);line.append(button);};
+   const detail=document.createElement('small');detail.textContent=cleanInventory(item.userData.inventory).category+(item.userData.storage?.slot?' · '+item.userData.storage.slot:'');info.className='inventory-item-info';info.append(name,detail);line.append(info);const actions=document.createElement('div');actions.className='inventory-item-actions';line.append(actions);
+   const action=(text,fn)=>{const button=document.createElement('button');button.type='button';button.textContent=text;button.disabled=!this.editor.canEdit(item)||!this.editor.canEdit(robot);button.onclick=()=>fn.call(this,robot,item);actions.append(button);};
    if(item.userData.storage?.type==='worn'){action('Front / Back',this.moveBag);action('Take off',this.drop);}
    else action(item.userData.storage.type==='pocket'?'To bag':'To pocket',this.transfer);
    if(cleanInventory(item.userData.inventory).consumable)action(cleanInventory(item.userData.inventory).category==='food'?'Eat':'Use',this.use);

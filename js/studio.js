@@ -1064,15 +1064,15 @@ function configureDragging(){
  const toFront=panel=>{
   if(!panel||panel.hidden)return;
   // Rebase occasionally; z-index never grows without bound during long sessions.
-  if(windowZ>6000){windowZ=210;for(const id of ['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel','robotRoutinePanel','webcamPanel'])document.getElementById(id)?.style.removeProperty('--solvi-window-z');}
+  if(windowZ>6000){windowZ=210;for(const id of ['scenePanel','propertiesPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel','robotRoutinePanel','webcamPanel','robotInventoryPanel'])document.getElementById(id)?.style.removeProperty('--solvi-window-z');}
   panel.style.setProperty('--solvi-window-z',String(++windowZ));
  };
  window.solviBringWindowToFront=toFront;
  document.addEventListener('pointerdown',event=>{
-  const panel=event.target.closest?.('#scenePanel,#propertiesPanel,#wallPanel,#addMenu,#chatPanel.windowed,#editorToolbox,#robotBrainsPanel,#diagnosticsPanel,#robotRoutinePanel,#webcamPanel');
+  const panel=event.target.closest?.('#scenePanel,#propertiesPanel,#wallPanel,#addMenu,#chatPanel.windowed,#editorToolbox,#robotBrainsPanel,#diagnosticsPanel,#robotRoutinePanel,#webcamPanel,#robotInventoryPanel');
   if(panel)toFront(panel);
  },true);
- const panelIds=['scenePanel','propertiesPanel','wallPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel','curveDrawPanel','surfaceDrawPanel','webcamPanel','robotRoutinePanel'];
+ const panelIds=['scenePanel','propertiesPanel','wallPanel','addMenu','chatPanel','editorToolbox','robotBrainsPanel','diagnosticsPanel','curveDrawPanel','surfaceDrawPanel','webcamPanel','robotRoutinePanel','robotInventoryPanel'];
  const save=(id,panel)=>{
    const rect=panel.getBoundingClientRect();
    const data={left:rect.left,top:rect.top,minimized:panel.classList.contains('minimized'),windowed:panel.classList.contains('windowed')};
