@@ -1,4 +1,4 @@
-// SOLVI v0.2.173 — deterministic, bounded outdoor paths, roads, fences and hedges.
+// SOLVI v0.2.174 — continuous-road, bounded outdoor paths, roads, fences and hedges.
 // All generated components are children of ONE persistent furniture entity.
 import * as THREE from 'three';
 
@@ -45,16 +45,27 @@ export function cleanInfrastructure(raw={}){
 }
 export function infrastructurePath(config){
  const p=cleanInfrastructure(config);
- let pts=p.infraPoints.map(a=>a.slice());
- if(p.infraSmooth&&pts.length>2){
-  const smooth=[];
-  for(let i=0;i<pts.length-1;i++){
-   const a=pts[i],b=pts[i+1];smooth.push(a.map((v,k)=>v*.75+b[k]*.25),a.map((v,k)=>v*.25+b[k]*.75));
+ const points=p.infraPoints.map(q=>q.slice());
+ if(!p.infraSmooth||points.length<3){if(p.infraClose&&points.length>2)points.push(points[0].slice());return points;}
+ // Catmull–Rom centripetal-inspired Hermite sampling, bounded to 8 samples
+ // per original segment. Continuous tangents avoid rectangular road gaps.
+ const count=points.length,closed=p.infraClose,output=[];
+ const total=closed?count:count-1;
+ const at=i=>points[closed?(i+count)%count:Math.max(0,Math.min(count-1,i))];
+ for(let i=0;i<total;i++){
+  const a=at(i-1),b=at(i),c=at(i+1),d=at(i+2),len=Math.hypot(c[0]-b[0],c[1]-b[1]);
+  const steps=Math.max(2,Math.min(8,Math.ceil(len/1.5),Math.floor(158/total)));
+  for(let k=0;k<steps;k++){
+   const t=k/steps,t2=t*t,t3=t2*t;
+   const v=[0,1].map(j=>{
+    const m0=(c[j]-a[j])*.5,m1=(d[j]-b[j])*.5;
+    return (2*t3-3*t2+1)*b[j]+(t3-2*t2+t)*m0+(-2*t3+3*t2)*c[j]+(t3-t2)*m1;
+   });
+   output.push(v);
   }
-  pts=[pts[0],...smooth,pts.at(-1)];
  }
- if(p.infraClose&&pts.length>2)pts.push(pts[0].slice());
- return pts;
+ output.push(closed?output[0].slice():points[count-1].slice());
+ return output;
 }
 export function infrastructureSegments(config){
  const pts=infrastructurePath(config),segments=[];
@@ -110,27 +121,72 @@ function along(seg,t,offset=0){
  const c=Math.cos(seg.yaw),sn=Math.sin(seg.yaw);
  return [seg.x+c*t+sn*offset,seg.z-sn*t+c*offset];
 }
+// A single indexed road mesh is built from the full centreline. Each pair of
+// successive cross sections shares vertices, so every corner has filled surface;
+// there are no disjoint rectangular road slabs or missing triangular wedges.
+export function continuousPathRibbon(points,width,offset=0,level=.01,thickness=.08){
+ if(!Array.isArray(points)||points.length<2)return null;
+ const closed=points.length>2&&Math.hypot(points[0][0]-points.at(-1)[0],points[0][1]-points.at(-1)[1])<.0001;
+ const n=closed?points.length-1:points.length;
+ const sections=[];
+ for(let i=0;i<n;i++){
+  const prev=points[(i-1+n)%n],cur=points[i],next=points[(i+1)%n];
+  let ax=cur[0]-prev[0],az=cur[1]-prev[1],bx=next[0]-cur[0],bz=next[1]-cur[1];
+  if(!closed&&i===0){ax=bx;az=bz;}if(!closed&&i===n-1){bx=ax;bz=az;}
+  let al=Math.hypot(ax,az)||1,bl=Math.hypot(bx,bz)||1;
+  ax/=al;az/=al;bx/=bl;bz/=bl;
+  // Left normals; the averaging + miter correction creates a watertight join.
+  const nx1=-az,nz1=ax,nx2=-bz,nz2=bx;
+  let nx=nx1+nx2,nz=nz1+nz2,len=Math.hypot(nx,nz);
+  if(len<.03){nx=nx2;nz=nz2;len=1;}
+  nx/=len;nz/=len;
+  const miter=Math.min(3.5,1/Math.max(.286,Math.abs(nx*nx2+nz*nz2)));
+  sections.push({x:cur[0]+nx*offset*miter,z:cur[1]+nz*offset*miter,nx,nz,miter});
+ }
+ const vertices=[],indices=[],uv=[];
+ const rows=closed?n+1:n,half=width*.5,top=level+thickness,bottom=level;
+ for(let i=0;i<rows;i++){
+  const v=sections[i%n],span=half*v.miter;
+  for(const y of [top,bottom])for(const sign of [-1,1]){
+   vertices.push(v.x+v.nx*span*sign,y,v.z+v.nz*span*sign);
+   uv.push(i/Math.max(1,rows-1),sign*.5+.5);
+  }
+ }
+ for(let i=0;i<rows-1;i++){
+  const a=i*4,b=(i+1)*4;
+  indices.push(a,b,a+1,b,b+1,a+1); // top (upward normals)
+  indices.push(a+2,b+2,a+3,b+2,b+3,a+3); // underside
+  indices.push(a,b,a+2,b,b+2,a+2); // left side
+  indices.push(a+1,a+3,b+1,b+1,a+3,b+3); // right side
+ }
+ if(!closed){
+  const last=(rows-1)*4;
+  indices.push(0,2,1,1,2,3,last,last+1,last+2,last+1,last+3,last+2);
+ }
+ return {vertices,indices,uv,sectionCount:rows};
+}
+function addRibbon(parts,points,width,offset,level,thickness,material,collider=true){
+ const data=continuousPathRibbon(points,width,offset,level,thickness);if(!data)return null;
+ const g=new THREE.BufferGeometry();
+ g.setAttribute('position',new THREE.Float32BufferAttribute(data.vertices,3));
+ g.setAttribute('uv',new THREE.Float32BufferAttribute(data.uv,2));
+ g.setIndex(data.indices);g.computeVertexNormals();
+ const m=new THREE.Mesh(g,material);m.receiveShadow=true;m.castShadow=false;
+ m.userData.furniturePart=collider;
+ if(collider)m.userData.trimeshCollider=true;
+ parts.push(m);return m;
+}
 function addRoad(seg,p,parts,batches,materials){
  const roadWidth=p.infraType==='footpath'?p.infraWidth:p.infraType==='curb'?Math.max(.12,p.infraWidth*.12):p.infraWidth;
  const roadThick=p.infraType==='curb'?p.infraCurbHeight:Math.max(.065,p.infraThickness);
- createBox(parts,seg.length,roadThick,roadWidth,seg.x,roadThick*.5+.006,seg.z,seg.yaw,materials.surface,true);
+ // The road, pavement and curb surfaces are generated once as a joined ribbon.
  if(p.infraType==='curb')return;
  const sideOffset=roadWidth/2;
- if(p.infraCurbs&&p.infraType==='road')for(const sign of [-1,1]){
-  const [x,z]=along(seg,0,sign*(sideOffset+.075));
-  createBox(parts,seg.length,p.infraCurbHeight,.15,x,p.infraCurbHeight/2, z,seg.yaw,materials.concrete,true);
- }
- if(p.infraSidewalks&&p.infraType==='road')for(const sign of [-1,1]){
-  const [x,z]=along(seg,0,sign*(sideOffset+p.infraSidewalkWidth/2+.15));
-  createBox(parts,seg.length,.13,p.infraSidewalkWidth,x,.065,z,seg.yaw,materials.concrete,true);
- }
+
  if(!p.infraMarkings||p.infraType!=='road')return;
  const y=roadThick+.008;
  // Solid outer lines and optional painted arrows are intentionally small raised surfaces.
- for(const side of [-1,1]){
-  const [x,z]=along(seg,0,side*(sideOffset-.17));
-  createBox(parts,seg.length,.007,p.infraMarkingWidth,x,y,z,seg.yaw,materials.edge,false);
- }
+ // Joined edge markings are added over the entire path below.
  // Distinct painted directional arrows make one-way roads visually recognizable.
  if(seg.length>3){
   const arrowCount=p.infraTraffic==='oneway'?1:Math.min(2,p.infraLanes);
@@ -204,8 +260,21 @@ function addFence(seg,p,parts,batches,materials){
 }
 export function infrastructureParts(raw){
  const p=cleanInfrastructure(raw),parts=[],segments=infrastructureSegments(p);
+ const path=infrastructurePath(p);
  const materials={surface:surfaceMaterial(p),frame:standard(p.infraColour,{metalness:p.infraStyle==='rods'||p.infraStyle==='mesh'?.52:0}),concrete:standard('#9b9992'),marking:standard(p.infraMarkingColour),centre:standard('#e9be4b'),edge:standard('#dfdfd2'),leaf:standard(p.infraHedgeColour,{flatShading:true})};
  const batches={posts:[],pickets:[],rods:[],meshWires:[],leaves:[],stripes:[],lampPosts:[],lampHeads:[]};
+ if(['road','footpath','curb'].includes(p.infraType)){
+  const width=p.infraType==='curb'?Math.max(.12,p.infraWidth*.12):p.infraWidth;
+  const height=p.infraType==='curb'?p.infraCurbHeight:Math.max(.065,p.infraThickness);
+  addRibbon(parts,path,width,0,.006,height,materials.surface,true);
+  if(p.infraType==='road'){
+   for(const side of [-1,1]){
+    if(p.infraCurbs)addRibbon(parts,path,.15,side*(width/2+.075),0,p.infraCurbHeight,materials.concrete,true);
+    if(p.infraSidewalks)addRibbon(parts,path,p.infraSidewalkWidth,side*(width/2+p.infraSidewalkWidth/2+.15),0,.13,materials.concrete,true);
+    if(p.infraMarkings)addRibbon(parts,path,p.infraMarkingWidth,side*(width/2-.17),height+.009,.006,materials.edge,false);
+   }
+  }
+ }
  for(const seg of segments){
   if(['road','footpath','curb'].includes(p.infraType))addRoad(seg,p,parts,batches,materials);
   else addFence(seg,p,parts,batches,materials);

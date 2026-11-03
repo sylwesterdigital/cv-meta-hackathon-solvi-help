@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.173",
+  "currentVersion": "0.2.174",
   "releases": [
+    {
+      "version": "0.2.174",
+      "publishedAt": "2026-11-03T22:54:42Z",
+      "changes": [
+        "Replace disconnected rectangular road slabs with one indexed connected ribbon surface and shared corner joins; use bounded smooth cubic paths and a continuous static road collision mesh.",
+        "Remove the separate Draw Infrastructure popup. Drawing a wall, fence, hedge, road or footpath opens the existing draggable Properties inspector with single-line, polyline and freehand choices plus Undo/Finish/Cancel.",
+        "Show only already placed drawing points instead of a ghost segment following the cursor; ensure Properties stays above the drawing shield and finished or cancelled paths release controls.",
+        "Keep brand-new paths unsaved until completed, preserving scene, multiplayer, presets and Undo behaviour. Full edited settings are retained on redraw.",
+        "Make the road lane count a whole integer from 1 to 6 in the numeric input and the single shared range slider; preserve road markings, paving materials, curbs, footpaths and streetlights."
+      ]
+    },
     {
       "version": "0.2.173",
       "publishedAt": "2026-11-03T21:48:54Z",
@@ -326,17 +337,6 @@
         "Carry objects have their collider temporarily removed to avoid ghost collisions with the avatar; dynamic physics is restored on throw or orphan cleanup; only released state is persisted.",
         "Add authenticated room object-carry events for other clients; keep ownership and permissions checks and reject invalid or unsuitable objects.",
         "Add seven focused runtime tests for pickup/throw, model bones, object sizing, packet safety, persistence and cleanup. No embedded asset modifications."
-      ]
-    },
-    {
-      "version": "0.2.142",
-      "publishedAt": "2026-11-01T23:39:36Z",
-      "changes": [
-        "Add 128x128 deterministic low-memory procedural Wood, Marble and Granite materials with layered noise, cellular speckles and distortion; no network textures.",
-        "Expose natural materials in wall, ceiling, stairs, ladder, furniture, primitive and floor selectors. Provide compact Scale, Distortion and Contrast controls on walls and natural furniture textures.",
-        "Add Basic props with eight editable procedural objects: Plate, Mug, Glass, Bowl, Bottle, Can, Flowerpot and Box; hollow/container profiles with optional handles, bottle lids, flowerpot soil and open-top boxes.",
-        "Preserve prop edits through the existing furniture scene persistence, duplication, room archives, compound collision and multiplayer object updates; update server validation.",
-        "Add procedural texture and prop runtime regressions, retain original avatar assets; requires the updated watcher with a 4096-entry archive safeguard."
       ]
     }
   ]

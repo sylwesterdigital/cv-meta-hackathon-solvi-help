@@ -2467,3 +2467,20 @@ body>#inspectorValueSlider #inspectorActiveRange{
 .infra-draw-field{display:grid;gap:4px;margin:8px 0}.infra-draw-field select{width:100%;background:#101821;border:1px solid #4f7289;color:#fafafa;border-radius:8px;padding:8px 9px;font:inherit}
 .infra-draw-inline{grid-template-columns:1fr 1fr}.infra-draw-inline label{display:flex;align-items:center;gap:7px}
 .infra-draw-status{font-size:12px;color:#b6c5d7;margin:10px 0}.infra-draw-actions{display:flex;gap:8px}.infra-draw-actions button{background:#2b3542;color:#f5f8fb;padding:8px 11px;border-radius:8px;border:1px solid #4c6277;flex:1;font:inherit}.infra-draw-actions button:disabled{opacity:.4}
+
+/* v0.2.174: one native draggable Properties window for line infrastructure. */
+#infraDrawPanel{display:none!important}
+#propertiesPanel #furniturePropertiesFields .infra-inspector-actions.furniture-field-full{
+ grid-column:1/-1!important;display:flex!important;align-items:center!important;gap:5px!important;
+ padding:3px 0!important;min-height:32px!important;
+}
+#propertiesPanel #furniturePropertiesFields .infra-inspector-actions button{
+ flex:1 1 auto!important;min-width:0!important;padding:6px 7px!important;
+ background:var(--ui-control,#2a313d)!important;color:var(--ui-fg,#f6f8ff)!important;
+ border:1px solid #4b6279!important;border-radius:7px!important;font-size:11px!important;
+ cursor:pointer!important;
+}
+#propertiesPanel #furniturePropertiesFields .infra-inspector-status{
+ grid-column:1/-1!important;display:block!important;color:var(--ui-fg,#dae4ef)!important;
+ font-size:11px!important;padding:3px 0!important;opacity:.85!important;
+}

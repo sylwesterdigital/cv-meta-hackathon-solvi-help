@@ -1,4 +1,6 @@
-// SOLVI v0.2.173 — draw one line, a polyline or a freehand infrastructure path on the ground.
+// SOLVI v0.2.174 — infrastructure drawing lives in the normal Properties panel.
+// The canvas receives the path; no extra floating window, no cursor-attached
+// phantom segment, and no saved scene object until the path is finished.
 import * as THREE from 'three';
 import {cleanInfrastructurePoints} from './procedural-infrastructure.js';
 import {rebuildFurniture} from './primitive-properties.js';
@@ -6,115 +8,122 @@ import {rebuildFurniture} from './primitive-properties.js';
 const id=name=>document.getElementById(name);
 function groundHit(editor,e){
  const rect=editor.world.renderer.domElement.getBoundingClientRect();
- if(!rect.width||!rect.height)return null;
+ if(!rect.width||!rect.height||e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)return null;
  editor.pointer.set(2*(e.clientX-rect.left)/rect.width-1,1-2*(e.clientY-rect.top)/rect.height);
  editor.world.camera.updateMatrixWorld?.(true);
  editor.raycaster.setFromCamera(editor.pointer,editor.world.camera);
  return editor.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),0),new THREE.Vector3());
 }
-function ensurePanel(){
- let el=id('infraDrawPanel');if(el)return el;
- el=document.createElement('section');el.id='infraDrawPanel';el.className='infra-draw-panel';el.hidden=true;
- el.innerHTML=`<div class="infra-draw-title">Draw infrastructure <button type="button" id="infraDrawCancel" aria-label="Cancel drawing">×</button></div>
- <div class="infra-draw-field"><label for="infraDrawType">Type</label><select id="infraDrawType"><option value="road">Road / motorway</option><option value="footpath">Footpath / pavement</option><option value="curb">Curb</option><option value="fence">Fence</option><option value="hedge">Plant hedge</option><option value="pathWall">Wall</option></select></div>
- <div class="infra-draw-field"><label for="infraDrawMode">Path</label><select id="infraDrawMode"><option value="line">Single line</option><option value="polyline" selected>Multi-line / polyline</option><option value="freehand">Freehand</option></select></div>
- <div class="infra-draw-field infra-draw-inline"><label><input id="infraDrawSmooth" type="checkbox"> Smooth bends</label><label><input id="infraDrawClose" type="checkbox"> Close path</label></div>
- <p id="infraDrawStatus" class="infra-draw-status">Click the ground to start · Enter to finish</p>
- <div class="infra-draw-actions"><button type="button" id="infraDrawUndo">Undo point</button><button type="button" id="infraDrawSave">Create</button></div>`;
- document.body.append(el);
- return el;
-}
 function resetPreview(editor){
- if(!editor.infrastructurePreview)return;
- const old=editor.infrastructurePreview;editor.world.scene.remove(old);old.geometry?.dispose?.();old.material?.dispose?.();editor.infrastructurePreview=null;
+ const old=editor.infrastructurePreview;if(!old)return;
+ editor.world.scene.remove(old);old.geometry?.dispose?.();old.material?.dispose?.();editor.infrastructurePreview=null;
 }
 function redraw(editor){
  resetPreview(editor);const d=editor.infrastructureDrawing;if(!d)return;
- const points=d.points.map(([x,z])=>new THREE.Vector3(x,.045,z));
- if(d.cursor&&points.length)points.push(new THREE.Vector3(d.cursor.x,.045,d.cursor.z));
- if(points.length>=2){
-  if(id('infraDrawClose')?.checked&&d.points.length>=3&&!d.cursor)points.push(points[0].clone());
-  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:0x9eeab9,depthTest:false}));
+ // A preview is never attached to pointer movement: only committed vertices.
+ const pts=d.points.map(([x,z])=>new THREE.Vector3(x,.05,z));
+ if(pts.length>=2){
+  if(d.editTarget?.userData?.furniture?.infraClose&&pts.length>=3)pts.push(pts[0].clone());
+  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x8ce7bb,depthTest:false}));
   line.renderOrder=250;editor.world.scene.add(line);editor.infrastructurePreview=line;
  }
- const n=d.points.length,status=id('infraDrawStatus'),save=id('infraDrawSave');
- if(status)status.textContent=n?`${n} points · Enter to create · Esc to cancel`:'Click ground to set points · drag in freehand mode';
- if(save)save.disabled=n<2;
+ const status=id('infraDrawingStatus'),undo=id('infraDrawingUndo'),done=id('infraDrawingFinish');
+ if(status)status.textContent=d.points.length?`${d.points.length} placed points · Enter / Finish to save · Esc to cancel`:'Click the ground to add the first point';
+ if(undo)undo.disabled=d.points.length===0;
+ if(done)done.disabled=d.points.length<2;
 }
 export function startInfrastructureDrawing(editor,type='road',mode='polyline',editTarget=null){
  if(editor.infrastructureDrawing)cancelInfrastructureDrawing(editor);
- if(editor.vegetationDrawing)editor.vegetationDrawing&&editor.vegetationDrawing.redraw?.();
  editor.cancelSpatialDrawing?.();editor.endWallDrawing?.();
- // The independent drawing tool keeps its own transient points until a successful save.
- const panel=ensurePanel(),selected=id('infraDrawType'),method=id('infraDrawMode');
- selected.value=type;method.value=mode;
- editor.infrastructureDrawing={type,mode,points:[],cursor:null,drawing:false,editTarget:editTarget?.userData?.furniture?.variant==='infrastructure'?editTarget:null};
- panel.hidden=false;
- id('addMenu').hidden=true;editor.transform.detach();editor.world.controls.enabled=false;
+ // A new object is just an invisible, unsaved inspector draft, so settings are
+ // available before the first point. Existing objects retain their scene IDs.
+ const existing=editTarget?.userData?.furniture?.variant==='infrastructure'&&editor.items.includes(editTarget);
+ const obj=existing?editTarget:editor.add('furniture',false,undefined,false,'infrastructure');
+ if(!obj)return;
+ if(!existing){
+  const config={...obj.userData.furniture,infraType:type,infraStyle:editor.infrastructureDefaultStyle||'plank',
+   infraLanes:editor.infrastructureDefaultRoadLanes||2,
+   infraWidth:type==='road'?(editor.infrastructureDefaultRoadLanes===4?15:7.2):type==='footpath'?2:type==='hedge'?1.15:type==='curb'?.25:.18};
+  rebuildFurniture(obj,config);obj.visible=false;obj.userData.physics={mode:'off'};editor.physics.remove(obj.userData.editorId);
+  obj.name={road:'Road',footpath:'Footpath',curb:'Curb',fence:'Fence',hedge:'Hedge',pathWall:'Wall'}[type]||'Infrastructure';
+  editor.infrastructureDefaultStyle=null;editor.infrastructureDefaultRoadLanes=null;
+ }
+ editor.infrastructureDrawing={type,mode,points:[],drawing:false,editTarget:obj,isNew:!existing,redraw:()=>redraw(editor),previousWindowZ:id('propertiesPanel')?.style.getPropertyValue('--solvi-window-z')||''};
+ editor.select(obj);
+ id('addMenu').hidden=true;
+ id('propertiesPanel').hidden=false;id('propertiesPanel').style.setProperty('--solvi-window-z','250');
+ editor.transform.detach();editor.world.controls.enabled=false;
  id('spatialDrawShield').hidden=false;
- id('infraDrawCancel').onclick=()=>cancelInfrastructureDrawing(editor);
- id('infraDrawUndo').onclick=()=>{editor.infrastructureDrawing?.points.pop();redraw(editor);};
- id('infraDrawSave').onclick=()=>finishInfrastructureDrawing(editor);
- selected.onchange=()=>{if(editor.infrastructureDrawing)editor.infrastructureDrawing.type=selected.value;};
- method.onchange=()=>{if(editor.infrastructureDrawing){editor.infrastructureDrawing.mode=method.value;editor.infrastructureDrawing.points=[];redraw(editor);}};
- id('infraDrawClose').onchange=()=>redraw(editor);
- redraw(editor);
+ editor.renderFurnitureControls(obj);redraw(editor);
 }
 export function infrastructurePointer(editor,e){
  const d=editor.infrastructureDrawing;if(!d)return false;
- const panel=id('infraDrawPanel');if(panel?.contains(e.target)||e.target?.closest?.('button,input,select,textarea,[role=dialog]'))return false;
+ // Never capture controls or move a ghost segment over the Properties window.
+ const sceneTarget=e.target===id('spatialDrawShield')||e.target===editor.world.renderer.domElement;
+ if(!sceneTarget){if(e.type==='pointerup'||e.type==='pointercancel')d.drawing=false;return false;}
  if(e.type==='pointercancel'){d.drawing=false;return true;}
  if(e.type==='pointermove'){
-  const pt=groundHit(editor,e);if(!pt)return true;
-  if(d.mode==='freehand'&&d.drawing){const prev=d.points.at(-1);if(!prev||Math.hypot(prev[0]-pt.x,prev[1]-pt.z)>.23){if(d.points.length<80)d.points.push([pt.x,pt.z]);}}
-  d.cursor=pt;redraw(editor);return true;
+  if(d.mode==='freehand'&&d.drawing){
+   const pt=groundHit(editor,e);if(!pt)return true;
+   const prev=d.points.at(-1);if((!prev||Math.hypot(prev[0]-pt.x,prev[1]-pt.z)>.2)&&d.points.length<80){
+    d.points.push([pt.x,pt.z]);redraw(editor);
+   }
+  }
+  return true;
  }
  if(e.type==='pointerdown'&&e.button===0){
   const pt=groundHit(editor,e);if(!pt)return true;
-  d.drawing=true;
+  d.drawing=d.mode==='freehand';
   const last=d.points.at(-1);
-  if(!last||Math.hypot(last[0]-pt.x,last[1]-pt.z)>.11){if(d.points.length<80)d.points.push([pt.x,pt.z]);}
-  if(d.mode==='line'&&d.points.length===2){finishInfrastructureDrawing(editor);return true;}
-  d.cursor=null;redraw(editor);return true;
+  if((!last||Math.hypot(last[0]-pt.x,last[1]-pt.z)>.10)&&d.points.length<80)d.points.push([pt.x,pt.z]);
+  redraw(editor);
+  if(d.mode==='line'&&d.points.length===2)finishInfrastructureDrawing(editor);
+  return true;
  }
  if(e.type==='pointerup'){
-  d.drawing=false;
-  if(d.mode==='freehand'&&d.points.length>2)d.cursor=null;
-  redraw(editor);return true;
+  if(d.mode==='freehand'&&d.drawing){
+   const pt=groundHit(editor,e),last=d.points.at(-1);
+   if(pt&&last&&Math.hypot(last[0]-pt.x,last[1]-pt.z)>.15&&d.points.length<80)d.points.push([pt.x,pt.z]);
+  }
+  d.drawing=false;redraw(editor);return true;
  }
  return true;
 }
 export function finishInfrastructureDrawing(editor){
  const d=editor.infrastructureDrawing;if(!d||d.points.length<2)return false;
- const raw=cleanInfrastructurePoints(d.points);
- const oldTarget=d.editTarget&&editor.items.includes(d.editTarget)&&editor.canEdit(d.editTarget)?d.editTarget:null;
+ const raw=cleanInfrastructurePoints(d.points),obj=d.editTarget;
+ if(!obj||!editor.items.includes(obj)||raw.length<2)return false;
+ const distance=raw.slice(1).reduce((sum,p,i)=>sum+Math.hypot(p[0]-raw[i][0],p[1]-raw[i][1]),0);
+ if(distance<.15)return false;
  const xs=raw.map(p=>p[0]),zs=raw.map(p=>p[1]);
  const origin=[(Math.min(...xs)+Math.max(...xs))/2,(Math.min(...zs)+Math.max(...zs))/2];
- // A redraw updates the existing object, preserving its rotation and scale.
- // Convert new ground points through the object's full inverse world transform.
- oldTarget?.updateMatrixWorld(true);
- const pivotY=oldTarget?.getWorldPosition?.(new THREE.Vector3()).y??0;
- const points=oldTarget?raw.map(([x,z])=>{
-  const local=oldTarget.worldToLocal(new THREE.Vector3(x,pivotY,z));return [local.x,local.z];
- }):raw.map(([x,z])=>[x-origin[0],z-origin[1]]);
- const p={variant:'infrastructure',infraType:d.type,infraPoints:points,infraSmooth:Boolean(id('infraDrawSmooth')?.checked),infraClose:Boolean(id('infraDrawClose')?.checked),...(oldTarget?{}:{infraStyle:editor.infrastructureDefaultStyle||'plank',infraLanes:editor.infrastructureDefaultRoadLanes||2,infraWidth:editor.infrastructureDefaultRoadLanes===4?15:d.type==='road'?7.2:d.type==='footpath'?2:d.type==='hedge'?1.15:d.type==='curb'?.25:.18})};
- if(points.reduce((s,[x,z],i)=>i?s+Math.hypot(x-points[i-1][0],z-points[i-1][1]):0,0)<.15)return false;
- const before=oldTarget?editor.snapshot(oldTarget):null;
- cancelInfrastructureDrawing(editor);
- const obj=oldTarget||editor.add('furniture',false,undefined,false,'infrastructure');if(!obj)return false;
- rebuildFurniture(obj,{...(oldTarget?obj.userData.furniture:{}),...p});
- if(!oldTarget)obj.position.set(origin[0],0,origin[1]);
- obj.name={road:'Road',footpath:'Footpath',curb:'Curb',fence:'Fence',hedge:'Hedge',pathWall:'Wall'}[p.infraType]||'Infrastructure';
- obj.userData.physics={mode:'static'};
+ const before=d.isNew?null:editor.snapshot(obj);
+ let points;
+ if(d.isNew){points=raw.map(([x,z])=>[x-origin[0],z-origin[1]]);obj.position.set(origin[0],0,origin[1]);}
+ else{
+  obj.updateMatrixWorld(true);const y=obj.getWorldPosition(new THREE.Vector3()).y;
+  points=raw.map(([x,z])=>{const local=obj.worldToLocal(new THREE.Vector3(x,y,z));return[local.x,local.z];});
+ }
+ rebuildFurniture(obj,{...obj.userData.furniture,infraPoints:points});
+ obj.visible=true;obj.userData.physics={mode:'static'};
+ cancelInfrastructureDrawing(editor,{keepTarget:true});
  editor.physics.sync(obj);editor.select(obj);editor.refreshList();
  editor.recordEdit(before,editor.snapshot(obj));editor.queueSave(obj);
- editor.toast(obj.name+' created · '+points.length+' points');return true;
+ editor.toast(obj.name+' · path saved · '+points.length+' points');return true;
 }
-export function cancelInfrastructureDrawing(editor){
- if(!editor.infrastructureDrawing)return;
- editor.infrastructureDrawing=null;editor.infrastructureDefaultStyle='plank';editor.infrastructureDefaultRoadLanes=null;resetPreview(editor);
- const el=id('infraDrawPanel');if(el)el.hidden=true;
- if(!editor.vegetationDrawing&&!editor.wallDrawing&&id('spatialDrawShield'))id('spatialDrawShield').hidden=true;
+export function cancelInfrastructureDrawing(editor,{keepTarget=false}={}){
+ const d=editor.infrastructureDrawing;if(!d)return;
+ editor.infrastructureDrawing=null;resetPreview(editor);
+ if(d.previousWindowZ)id('propertiesPanel')?.style.setProperty('--solvi-window-z',d.previousWindowZ);else id('propertiesPanel')?.style.removeProperty('--solvi-window-z');
+ if(id('spatialDrawShield')&&!editor.vegetationDrawing&&!editor.wallDrawing)id('spatialDrawShield').hidden=true;
  editor.world.controls.enabled=true;
- if(editor.selected&&editor.canTransform(editor.selected)&&editor.selected.userData.editorKind!=='robot')editor.transform.attach(editor.selected);
+ if(d.isNew&&!keepTarget){
+  const obj=d.editTarget;editor.transform.detach();
+  editor.items=editor.items.filter(x=>x!==obj);
+  editor.world.scene.remove(obj);editor.physics.remove(obj.userData.editorId);
+  editor.disposeObject?.(obj);if(editor.selected===obj)editor.selected=null;
+  editor.updateInspector();editor.refreshList();
+  id('propertiesPanel').hidden=true;
+ }else if(editor.selected&&editor.canTransform(editor.selected)&&editor.selected.userData.editorKind!=='robot')editor.transform.attach(editor.selected);
+ if(editor.selected?.userData?.furniture?.variant==='infrastructure')editor.renderFurnitureControls(editor.selected);
 }

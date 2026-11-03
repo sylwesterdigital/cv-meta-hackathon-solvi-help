@@ -1,3 +1,15 @@
+# SOLVI.help Master LLM Handover — v0.2.174
+
+## Release v0.2.174 — No-popup drawing & connected roads
+
+**Changes:** All outdoor line drawing (wall, plank/rod/mesh fence, hedge, curb, footpath, road/motorway) now starts in the standard draggable Properties window. Modes: single line, multiline/polyline, freehand. The Properties window shows type settings and Undo / Finish / Cancel buttons, using one existing inspector instead of an independent popup. Only committed vertices appear in the guide line; pointer movement over the canvas and controls never stretches a phantom segment. Newly drawn structures remain invisible, unsaved drafts until two or more valid points are committed; cancel discards them. Roads use a continuous indexed 3D ribbon with corner miters and optional sampled cubic smoothing; top/side faces are connected, and road/curb/sidewalk pieces use trimesh colliders. Existing paint, directional arrows, hedges, light fixtures and save/undo behaviour are preserved. Lanes are integers 1 through 6 (including the shared range slider).
+
+**Affected code:** `js/procedural-infrastructure.js` (connected ribbon), `js/infrastructure-drawing.js` (native inspector-only draw flow), `js/editor.js` (UI, integer control, draft lifecycle), `styles.css`, `tests/release-173-infrastructure.test.mjs`. Backend schema remains compatible.
+
+**Deployment discipline:** Root `manifest.json`, one SHA-256 entry for every `app/` file, synchronized versions in package/release/frontend/health/installer/tests, no caches/node_modules. Keep bundled avatar GLBs byte-identical. Full browser/WebXR graphics tests require deployed runtime.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.173
 
 ## Release v0.2.173 — Outdoor infrastructure drawing, road design and landscaping

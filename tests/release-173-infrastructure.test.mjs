@@ -7,6 +7,8 @@ const code=read('js/procedural-infrastructure.js').replace(/^import .*;\s*$/gm,'
 function mockThree(){
  class Obj{constructor(geo,mat){this.geometry=geo;this.material=mat;this.userData={};this.rotation={y:0};this.position={set:(x,y,z)=>{this.position.x=x;this.position.y=y;this.position.z=z;}};}}
  class Geometry{constructor(...args){this.args=args;this.type=this.constructor.name;}}
+ class BufferGeometry extends Geometry{setAttribute(name,attr){(this.attributes??={})[name]=attr;return this;}setIndex(indices){this.indices=indices;return this;}computeVertexNormals(){return this;}}
+ class Float32BufferAttribute{constructor(array,itemSize){this.array=array;this.itemSize=itemSize;}}
  class Mesh extends Obj{}
  class InstancedMesh extends Obj{constructor(geo,mat,n){super(geo,mat);this.count=n;this.instanceMatrix={};this.matrices=[];}setMatrixAt(i,m){this.matrices[i]=m;}}
  class Mat{constructor(p){Object.assign(this,p);}}
@@ -15,10 +17,10 @@ function mockThree(){
  class Matrix4{compose(){return this;}}
  class PointLight extends Obj{constructor(){super(null,null);}}
  class Color{constructor(value){this.value=value;}set(v){this.value=v;return this;}lerp(){return this;}}
- return {Mesh,InstancedMesh,MeshStandardMaterial:Mat,BoxGeometry:Geometry,CylinderGeometry:Geometry,IcosahedronGeometry:Geometry,PointLight,Vector3,Quaternion,Matrix4,Color,DoubleSide:2,SRGBColorSpace:'srgb',RepeatWrapping:'repeat',CanvasTexture:class {}};
+ return {Mesh,InstancedMesh,MeshStandardMaterial:Mat,BufferGeometry,Float32BufferAttribute,BoxGeometry:Geometry,CylinderGeometry:Geometry,IcosahedronGeometry:Geometry,PointLight,Vector3,Quaternion,Matrix4,Color,DoubleSide:2,SRGBColorSpace:'srgb',RepeatWrapping:'repeat',CanvasTexture:class {}};
 }
 const THREE=mockThree();
-const lib=new Function('THREE',`${code}\nreturn {INFRASTRUCTURE_VARIANTS,INFRASTRUCTURE_NUMERIC,cleanInfrastructure,cleanInfrastructurePoints,infrastructureSegments,infrastructurePath,infrastructureParts};`)(THREE);
+const lib=new Function('THREE',`${code}\nreturn {INFRASTRUCTURE_VARIANTS,INFRASTRUCTURE_NUMERIC,cleanInfrastructure,cleanInfrastructurePoints,infrastructureSegments,infrastructurePath,continuousPathRibbon,infrastructureParts};`)(THREE);
 
 test('all six outdoor infrastructure types and bounded numeric fields',()=>{
  assert.deepEqual(lib.INFRASTRUCTURE_VARIANTS,['road','footpath','curb','fence','hedge','pathWall']);
@@ -57,7 +59,7 @@ test('editor wiring exposes all drawing modes, save and redraw without bypassing
  const source=read('js/editor.js'),drawing=read('js/infrastructure-drawing.js');
  assert.match(source,/Outdoor infrastructure/);assert.match(source,/startInfrastructureDrawing/);
  assert.match(source,/infrastructurePointer/);assert.match(source,/infraMarkings/);assert.match(source,/infraStreetlights/);
- for(const mode of ['line','polyline','freehand'])assert.match(drawing,new RegExp(`value="${mode}"`));
+ for(const mode of ['line','polyline','freehand'])assert.ok(source.includes("['"+mode+"','"));
  assert.match(drawing,/editor\.recordEdit/);assert.match(drawing,/editor\.queueSave/);assert.match(drawing,/mode:'static'/);
  assert.match(read('js/object-preset-data.js'),/INFRASTRUCTURE/);
 });
@@ -89,4 +91,44 @@ assert not ns['valid_basic_furniture'](v),'Out-of-bounds path accepted'
 print('validated')`;
  const result=spawnSync('python3',['-c',py,new URL('../backend/server.py',import.meta.url).pathname],{input:JSON.stringify(payload),encoding:'utf8'});
  assert.equal(result.status,0,result.stderr);
+});
+
+test('continuous road ribbon shares joined cross sections through bends without gaps',()=>{
+ const path=[[0,0],[5,0],[5,4]];
+ const ribbon=lib.continuousPathRibbon(path,7);
+ assert.equal(ribbon.sectionCount,3);
+ assert.equal(ribbon.vertices.length,3*4*3);
+ assert.ok(ribbon.vertices.every(Number.isFinite));
+ assert.equal(ribbon.indices.length,2*4*6+12);
+ const centre=[ribbon.vertices[12],ribbon.vertices[14],ribbon.vertices[15],ribbon.vertices[17]];
+ assert.ok(centre.every(Number.isFinite));
+ const road=lib.infrastructureParts({infraType:'road',infraPoints:path,infraSmooth:false,infraMarkings:false});
+ const joined=road.filter(part=>part.geometry instanceof THREE.BufferGeometry);
+ assert.equal(joined.length,1,'exactly one connected surface mesh, not rectangular slabs');
+ assert.ok(joined[0].userData.trimeshCollider,'the joined surface must support robots and XR');
+});
+
+test('closed road ribbons and smooth corners remain bounded and finite',()=>{
+ const p=[[0,0],[6,0],[6,6],[0,6]];
+ const settings={infraPoints:p,infraClose:true,infraSmooth:true};
+ const path=lib.infrastructurePath(settings);
+ assert.ok(path.length>p.length);
+ assert.deepEqual(path[0],path.at(-1));
+ const ribbon=lib.continuousPathRibbon(path,5);
+ assert.ok(ribbon.vertices.every(Number.isFinite));
+ assert.ok(ribbon.indices.every(i=>i>=0&&i<ribbon.vertices.length/3));
+ assert.ok(path.length<=400);
+});
+
+test('road lanes are whole numbers and one property-window drawing replaces the independent popup',()=>{
+ assert.equal(lib.cleanInfrastructure({infraLanes:2.03}).infraLanes,2);
+ assert.equal(lib.cleanInfrastructure({infraLanes:5.8}).infraLanes,6);
+ const editor=read('js/editor.js'),drawing=read('js/infrastructure-drawing.js');
+ assert.match(editor,/infraLanes','infraSeed'/);
+ assert.match(editor,/infraDrawingMode/);
+ assert.match(editor,/infraDrawingFinish/);
+ assert.match(drawing,/id\('propertiesPanel'\)\.hidden=false/);
+ assert.doesNotMatch(drawing,/infra-draw-panel|ensurePanel\(/);
+ assert.doesNotMatch(drawing,/d\.cursor\s*=|points\.push\(new THREE\.Vector3\(d\.cursor/);
+ assert.match(drawing,/e\.target===id\('spatialDrawShield'\)/);
 });
