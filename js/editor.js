@@ -1234,6 +1234,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    const target=event.target,key=target?.dataset?.furnitureParam;if(!key)return;
    const old=this.snapshot(obj);
    const value=target.type==='checkbox'?target.checked:target.value;
+   disposeEquipmentMedia(obj);
    rebuildFurniture(obj,key==='variant'?{variant:value,color:obj.userData.furniture.color,fabricColor:obj.userData.furniture.fabricColor,texture:obj.userData.furniture.texture}:{...obj.userData.furniture,[key]:value});
    this.physics.sync(obj);syncEquipmentMedia(obj,this);this.recordEdit(old,this.snapshot(obj));this.queueSave(obj);
    // Keep numeric focus and the shared slider mounted while editing dimensions.

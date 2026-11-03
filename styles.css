@@ -2351,3 +2351,18 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 .smart-iptv-result span{min-width:0;flex:1;font-size:10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .smart-iptv-result button{flex:0 0 auto;font-size:10px;padding:3px 7px}
 @media(max-width:510px){.smart-channel-settings{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v0.2.160: one-image preset tiles; thumbnail click inserts and closes the gallery. */
+#objectPresetsBackdrop .object-presets-grid{grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:13px;align-content:start}
+#objectPresetsBackdrop .object-preset-card{position:relative;min-width:0;overflow:hidden;border-radius:12px;padding:0;gap:0;background:#202f3e;border:1px solid #405368;box-shadow:0 2px 8px #050b1429}
+#objectPresetsBackdrop .object-preset-image{display:block;position:relative;border:0;width:100%;aspect-ratio:3 / 2;border-radius:0;background:#354759;padding:0;overflow:hidden}
+#objectPresetsBackdrop .object-preset-image img{display:block;width:100%;height:100%;object-fit:cover;object-position:center center;transition:transform .15s ease}
+#objectPresetsBackdrop .object-preset-image:hover img,#objectPresetsBackdrop .object-preset-image:focus-visible img{transform:scale(1.025)}
+#objectPresetsBackdrop .object-preset-image:focus-visible{outline:2px solid var(--solvi-accent,#bb85dd);outline-offset:-2px}
+#objectPresetsBackdrop .object-preset-caption{display:flex;flex-direction:column;gap:2px;min-width:0;padding:9px 11px 10px}
+#objectPresetsBackdrop .object-preset-caption strong{font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#objectPresetsBackdrop .object-preset-caption small{font-size:10px;opacity:.76;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#objectPresetsBackdrop .object-preset-actions{position:absolute;right:7px;top:7px;width:auto;height:auto;z-index:2;display:block}
+#objectPresetsBackdrop .object-preset-delete{display:grid;place-items:center;min-width:0;width:29px;height:29px;padding:4px;border-radius:8px;background:rgba(13,23,35,.83);border:1px solid rgba(218,230,242,.38);color:#fff;cursor:pointer}
+#objectPresetsBackdrop .object-preset-delete:hover,#objectPresetsBackdrop .object-preset-delete:focus-visible{background:#8b304b;color:#fff}
+@media(max-width:570px){#objectPresetsBackdrop .object-presets-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}

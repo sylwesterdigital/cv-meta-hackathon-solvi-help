@@ -118,17 +118,35 @@ function renderButton(btn,s,kind){const {ctx,texture}=btn;ctx.clearRect(0,0,160,
  texture.needsUpdate=true;}
 function updateButton(s){if(s.audioButton)renderButton(s.audioButton,s,'audio');}
 export function disposeSmartScreen(root){const s=states.get(root);if(!s)return;states.delete(root);disposeSource(s);const mat=screenMaterial(s);if(mat){mat.map=null;mat.needsUpdate=true;}s.menuTexture.dispose();for(const btn of s.buttons){btn.removeFromParent();btn.geometry.dispose();btn.material.map?.dispose();btn.material.dispose();}}
+// One authoritative channel list drives the inspector, startup logic and in-world menu.
+// Updating a saved object's channels redraws the menu in-place (without having to
+// remove/recreate the screen or lose its existing HLS audio/video graph).
 export function syncSmartScreen(root,screen,channels,showEmpty=false,options={},audioListener=null){
  const list=cleanChannels(channels),cfg=cleanSmartOptions(options),signature=JSON.stringify([list,cfg]),prior=states.get(root);
- if(prior?.screen===screen&&prior.signature===signature)return true;
- disposeSmartScreen(root);if(!screen||(!list.length&&!showEmpty))return false;
- const s={root,screen,audioListener,channels:list,options:cfg,signature,mode:'menu',hls:null,video:null,sound:null,videoTexture:null,frameCanvas:null,menuTexture:null,buttons:[]};states.set(root,s);
+ if(!screen||(!list.length&&!showEmpty)){disposeSmartScreen(root);return false;}
+ if(prior?.screen===screen){
+  if(prior.signature!==signature){
+   const playing=prior.currentChannel>=0?prior.channels[prior.currentChannel]?.url:null;
+   prior.channels=list;prior.options=cfg;prior.signature=signature;prior.audioListener=audioListener;
+   const updated=drawMenu(prior);prior.menuTexture.dispose();prior.menuTexture=updated;
+   const newIndex=playing?list.findIndex(channel=>channel.url===playing):-1;
+   if(prior.mode==='video'&&newIndex<0)backToSmartMenu(root);
+   else if(prior.mode==='video')prior.currentChannel=newIndex;
+   else {prior.mode='menu';showMaterial(prior,prior.menuTexture);}
+  }
+  // Reattach menu if another renderer replaced the display's material map.
+  if(prior.mode==='menu'&&screenMaterial(prior)?.map!==prior.menuTexture)showMaterial(prior,prior.menuTexture);
+  return true;
+ }
+ disposeSmartScreen(root);
+ const s={root,screen,audioListener,channels:list,options:cfg,signature,mode:'menu',currentChannel:-1,hls:null,video:null,sound:null,videoTexture:null,frameCanvas:null,menuTexture:null,buttons:[]};states.set(root,s);
  s.menuTexture=drawMenu(s);showMaterial(s,s.menuTexture);
  s.backButton=buttonPlane(s,'back');renderButton(s.backButton,s,'back');s.backButton.mesh.visible=false;
  s.audioButton=buttonPlane(s,'audio');updateButton(s);s.audioButton.mesh.visible=false;
  if(cfg.smartAutoPlay&&cfg.smartStartChannel>=0&&cfg.smartStartChannel<list.length)void openSmartChannel(root,cfg.smartStartChannel,true);
  return true;
 }
+export function smartScreenChannelCount(root){return states.get(root)?.channels?.length??0;}
 function createVideoTexture(s,v){if(!s.options.smartPreserveAspect){const tex=new THREE.VideoTexture(v);tex.colorSpace=THREE.SRGBColorSpace;return tex;}
  const canvas=document.createElement('canvas');canvas.width=768;canvas.height=Math.round(768/drawingRatio(s));const ctx=canvas.getContext('2d');
  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;s.frameCanvas=canvas;

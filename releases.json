@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.159",
+  "currentVersion": "0.2.160",
   "releases": [
+    {
+      "version": "0.2.160",
+      "publishedAt": "2026-11-03T00:14:28Z",
+      "changes": [
+        "Keep procedural smart TV/monitor media menus in sync with the exact saved inspector channel array, including after edits, preset load and remote scene updates; refresh menu textures without breaking current video/audio when the same channel remains.",
+        "Redesign the preset gallery as image-first cards: thumbnail click directly inserts and closes, remove redundant permanent plus/Add control, and use a compact SVG delete icon over the thumbnail.",
+        "Use projected camera-space bounds to center and tightly frame procedural thumbnails in a brighter isolated render, and regenerate gallery previews for saved furniture using current geometry.",
+        "Add functional regression checks and preserve source-controlled assets; no watcher changes required."
+      ]
+    },
     {
       "version": "0.2.159",
       "publishedAt": "2026-11-02T23:13:51Z",
@@ -323,17 +333,6 @@
         "Make the controlSwitcher draggable from unused surface space rather than a visible handle; retain interactive portraits/buttons and add compact minus/plus controls for portrait size.",
         "Keep Rate and Pitch labels on one line in the robot voice panel.",
         "Correct positive-yaw robot camera orientation to match panorama left-to-right stitching; verify six 60-degree views, seam blending and 360-degree wrap using synthetic source images."
-      ]
-    },
-    {
-      "version": "0.2.129",
-      "publishedAt": "2026-11-01T02:27:05Z",
-      "changes": [
-        "Prevent automatic Pushing animation against props whose height is at most half the normalized avatar height; scale the threshold with each avatar and exclude objects on other floors or above the avatar.",
-        "Require the avatar to face the obstacle within 35 degrees and move forward into it; sideways motion and side-on robot-on-robot pushing cannot trigger automatic Push.",
-        "Measure proximity to the nearest world-space object surface, then require the Rapier character controller to report a collision against that precise Dynamic collider, rather than guessing from a broad bounding box or stalled movement.",
-        "Clear stale automatic object Pushing immediately when contact or direction becomes invalid; leave actual physics impulses, explicit combat moves, walking and collision geometry unchanged.",
-        "Add ten executable regression tests covering small bricks, height thresholds, frontal angles, sideways motion, wrong/no collision, far objects, scaled robots, and automatic contact cancellation."
       ]
     }
   ]

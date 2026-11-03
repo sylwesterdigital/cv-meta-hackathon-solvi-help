@@ -1,3 +1,32 @@
+# SOLVI.help — Master LLM Handover v0.2.160
+
+**Release:** v0.2.160 — Smart TV channel menu synchronisation and image-first procedural Presets gallery.
+
+## User-visible changes
+
+- **In-world TV/monitor channel menus:** One saved `channels` array is used by the inspector, in-world canvas menu, initial channel configuration and playback. After a channel is added, removed, or loaded through scene/preset/remote changes, `syncEquipmentMedia()` synchronises the display on every update. `syncSmartScreen()` now redraws the menu texture on the same screen mesh when channels/options change, keeping the playing source and its positional audio if the same URL still exists. Removing a playing channel returns to the menu. If an external material change replaces the screen map, the menu is reattached.
+- **Presets gallery:** One large image-first tile per preset; clicking the thumbnail creates a new scene instance and immediately closes Presets. No large Add button, no permanent plus icon, and no separate Delete row. A compact SVG trash button overlays the top-right corner of the image. The searchable categories, existing preset storage, object identities and scene-centred placement remain unchanged.
+- **Better thumbnails:** The transient offscreen renderer uses actual projected bounding-box corners to compute the orthographic frustum, centres the object for unusual geometry, and fits with approximately 10% safe margin. It uses brighter fixed studio lights on a neutral background, a 384 × 256 thumbnail, and restores the scene's renderer target, viewport, scissor and XR state. Saved procedural furniture previews are regenerated locally from saved object settings, including previously poorly framed images. If WebGL capture fails, an existing saved thumbnail can still be shown.
+
+## Technical implementation
+- `js/smart-media-playlist.js`: `syncSmartScreen()` compares sanitised config and updates an existing canvas menu texture in place rather than always destroying the HLS/video/audio graph. `smartScreenChannelCount()` exposes the current in-world channel count for diagnostic tests. Existing per-channel click targeting, WebXR ray routing and Rantlist CORS requirements are unchanged.
+- `js/equipment-media.js`: `syncEquipmentMedia()` invokes live menu sync before checking its existing change cache; it continues supporting uploaded-media sources when no smart channel list is available.
+- `js/editor.js`: dispose active equipment media before rebuilding procedural furniture geometry from inspector input, so old screen/audio handles do not outlive their mesh.
+- `js/object-presets.js`: `presetProjectedFrustum()` implements camera-space corner fitting; `capturePresetThumbnail()` handles isolated offscreen capture. Gallery card template now consists of clickable picture, compact caption, and absolute-positioned Delete icon.
+- `styles.css`: image-forward gallery cards; responsive gallery grid, overlay Delete, thumbnail hover/focus styling.
+- New regression tests in `tests/release-160-display-presets.test.mjs`. Two legacy thumbnail tests now verify the projected-bounds algorithm instead of the superseded radius calculation. Metadata consistently identifies v0.2.160, including backend and browser import cache.
+
+## Validation
+- **721/721 JavaScript tests passed** with `npm test` in the extracted release worktree.
+- Node syntax, Python backend AST, `backend/test_nginx.py`, and `bash -n backend/install-ubuntu.sh` passed.
+- Release contains SHA-256 manifest verifying all 384 application files. No generated Python caches or compiled bytecode in the release; original GLBs match v0.2.159 byte-for-byte.
+- **Not verified:** live browser WebGL thumbnail images, 3D on-screen menu click, Rantlist HLS playback or cross-client scene rendering. These must be tested after watcher deployment. Do not interpret source checks as live rendering proof.
+
+## Deployment
+Place only the release ZIP in the existing `updates/` directory. The existing watcher will verify, test and deploy through GitHub/Ubuntu. No Rantlist/Nginx modification or watcher replacement needed for this update.
+
+---
+
 # SOLVI.help — Master LLM Handover v0.2.159
 
 **Release:** v0.2.159 — spatial 3D audio for TVs, monitors and smart video frames.
