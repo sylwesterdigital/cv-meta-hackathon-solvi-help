@@ -18,19 +18,19 @@ class Vector3{
 }
 class Quaternion{setFromUnitVectors(){return this;}setFromAxisAngle(){return this;}}
 class Matrix4{compose(pos,q,s){this.value=[...pos.toArray(),s.x,s.y,s.z];return this;}}
-class Geometry{constructor(...args){this.args=args;}dispose(){}}
-class Material{constructor(config={}){this.config=config;}dispose(){}}
+class Geometry{constructor(...args){this.args=args;}dispose(){}translate(){return this;}setAttribute(){return this;}computeVertexNormals(){return this;}}
+class Material{constructor(config={}){this.config=config;this.userData={};}dispose(){}}
 class Mesh{
  constructor(geometry,material){this.geometry=geometry;this.material=material;this.position={set(x,y,z){this.x=x;this.y=y;this.z=z;}};this.rotation={};this.quaternion=new Quaternion();this.userData={};}
 }
 class InstancedMesh extends Mesh{constructor(geometry,material,count){super(geometry,material);this.count=count;this.matrices=[];this.instanceMatrix={needsUpdate:false};}setMatrixAt(i,matrix){this.matrices[i]=[...matrix.value];}}
 const THREE={Vector3,Quaternion,Matrix4,Mesh,InstancedMesh,MeshStandardMaterial:Material,ShaderMaterial:Material,Color:class{constructor(s){this.value=s;}},Shape:class{constructor(pts){this.points=pts;}},Vector2:class{constructor(x,z){this.x=x;this.y=z;}},DoubleSide:2};
-for(const type of ['CylinderGeometry','ConeGeometry','IcosahedronGeometry','ShapeGeometry'])THREE[type]=class extends Geometry{};
+for(const type of ['CylinderGeometry','ConeGeometry','IcosahedronGeometry','ShapeGeometry','PlaneGeometry','BufferGeometry'])THREE[type]=class extends Geometry{};
 const v=load(THREE);
 test('vegetation geometry is deterministic, low poly and bounded for many trees',()=>{
  const p=v.cleanVegetation({variant:'tree',treeHeight:5,treeSeed:18,branchCount:6,leafClusters:8,fruitType:'apple'});
  const a=v.vegetationParts(p),b=v.vegetationParts(p);
- assert.ok(a.length<=10);assert.ok(a.some(m=>m instanceof InstancedMesh));
+ assert.ok(a.length<=40);assert.ok(a.some(m=>m instanceof InstancedMesh));
  assert.deepEqual(a.filter(m=>m instanceof InstancedMesh).map(m=>m.matrices),b.filter(m=>m instanceof InstancedMesh).map(m=>m.matrices));
  assert.ok(a.some(part=>part.userData.furniturePart),'tree trunks and branches retain colliders');
 });
@@ -50,7 +50,7 @@ test('huge or malformed soil geometry inputs cannot generate unbounded scene obj
  assert.ok(params.plotPoints.length>=3&&params.plotPoints.length<=80);
  const parts=v.vegetationParts({...params,plotPoints:[[-6,-6],[6,-6],[6,6],[-6,6]]});
  const grass=parts.find(p=>p instanceof InstancedMesh);
- assert.ok(grass.count<=450);assert.ok(parts[0].material instanceof Material);
+ assert.ok(grass.count<=2200);assert.ok(parts[0].material instanceof Material);
 });
 test('crop beds use bounded instance counts and saved growth, rows and crops',()=>{
  const params=v.cleanVegetation({variant:'cropBed',cropRows:3,growthPercent:40,cropType:'lettuce'});
@@ -61,8 +61,8 @@ test('the add menu, inspector and renderer share the same persisted vegetation v
  const editor=read('js/editor.js'),furniture=read('js/primitive-properties.js'),html=read('index.html');
  for(const kind of v.VEGETATION_TYPES){assert.ok(editor.includes(kind));assert.ok(furniture.includes('VEGETATION_TYPES'));}
  assert.match(editor,/startVegetationPlot/);assert.match(html,/id="vegetationDrawPanel"/);
- assert.match(html,/procedural-vegetation\.js\?v=0\.2\.164/);
- assert.match(html,/vegetation-drawing\.js\?v=0\.2\.164/);
+ assert.match(html,/procedural-vegetation\.js\?v=0\.2\.165/);
+ assert.match(html,/vegetation-drawing\.js\?v=0\.2\.165/);
 });
 test('backend validates new bounded plant settings and stores nature presets',()=>{
  const server=read('backend/server.py'),preset=read('js/object-preset-data.js'),gallery=read('js/object-presets.js');

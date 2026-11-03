@@ -1241,10 +1241,26 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    if(safeIPTVPlaylistURL(content)){event.preventDefault();this.smartChannelAction('iptv-import',root,'furniture',content);return;}
    if(parseChannel(content)){event.preventDefault();this.smartChannelAction('pasteAdd',root,'furniture',content);}
   },true);
+  // Numeric edits are previewed while typing/sliding rather than waiting for blur.
+  // Keep the pre-edit snapshot so Undo still represents one committed edit.
+  const drafts=new WeakMap();let previewTimer=null;
+  root.addEventListener('input',event=>{
+   const target=event.target,key=target?.dataset?.furnitureParam,obj=this.selected;
+   if(target?.type!=='number'||!key||obj?.userData.editorKind!=='furniture'||!this.canEdit(obj))return;
+   if(!Number.isFinite(Number(target.value))||target.value==='')return;
+   if(!drafts.has(target))drafts.set(target,{id:obj.userData.editorId,before:this.snapshot(obj)});
+   clearTimeout(previewTimer);
+   previewTimer=setTimeout(()=>{
+    if(this.selected!==obj||!target.isConnected)return;
+    disposeEquipmentMedia(obj);rebuildFurniture(obj,{...obj.userData.furniture,[key]:target.value});
+    this.physics.sync(obj);syncEquipmentMedia(obj,this);
+   },90);
+  });
   root.addEventListener('change',event=>{
    const obj=this.selected;if(obj?.userData.editorKind!=='furniture'||!this.canEdit(obj))return;
    const target=event.target,key=target?.dataset?.furnitureParam;if(!key)return;
-   const old=this.snapshot(obj);
+   clearTimeout(previewTimer);
+   const draft=drafts.get(target);const old=draft?.id===obj.userData.editorId?draft.before:this.snapshot(obj);drafts.delete(target);
    const value=target.type==='checkbox'?target.checked:target.value;
    disposeEquipmentMedia(obj);
    rebuildFurniture(obj,key==='variant'?{variant:value,color:obj.userData.furniture.color,fabricColor:obj.userData.furniture.fabricColor,texture:obj.userData.furniture.texture}:{...obj.userData.furniture,[key]:value});
@@ -1306,16 +1322,18 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   }
   if(VEGETATION_TYPES.includes(p.variant)){
    if(p.variant==='tree'){
-    for(const [k,label] of [['treeHeight','Tree height (m)'],['trunkRadius','Trunk radius'],['canopyRadius','Canopy radius'],['branchCount','Branches'],['leafClusters','Foliage clusters'],['treeSeed','Seed']])add(k,label,'number');
-    add('treeStyle','Style','select',[['deciduous','Broadleaf'],['conifer','Conifer'],['orchard','Orchard']]);
-    add('fruitType','Fruit','select',[['none','None'],['apple','Apples'],['orange','Oranges'],['plum','Plums']]);
+    for(const [k,label] of [['treeHeight','Tree height (m)'],['trunkRadius','Trunk radius'],['canopyRadius','Canopy radius'],['branchCount','Branches'],['leafClusters','Foliage clusters'],['leafSize','Leaf size'],['trunkWobble','Trunk irregularity'],['treeSeed','Seed']])add(k,label,'number');
+    add('treeStyle','Style','select',[['deciduous','Broadleaf'],['conifer','Conifer'],['orchard','Orchard'],['blossom','Blossom'],['palm','Palm / coconut']]);
+    add('fruitType','Fruit','select',[['none','None'],['apple','Apples'],['orange','Oranges'],['plum','Plums'],['coconut','Coconuts']]);
+    if(p.treeStyle==='blossom'){add('blossomColor','Blossom colour','color');add('blossomDensity','Blossom density','number');}
+    if(p.treeStyle==='palm')add('palmFronds','Palm fronds','number');
     add('leafColor','Leaf colour','color');add('color','Trunk colour','color');
    }else{
     add('groundCover','Cover','select',[['soil','Soil'],['grass','Grass'],['mixed','Mixed grass / soil']]);
     add('soilPreset','Soil preset','select',[['loam','Loam'],['sand','Sandy'],['clay','Clay'],['compost','Compost']]);
     add('soilColor','Soil colour','color');add('leafColor','Plant colour','color');
     add('plotSmooth','Smooth boundary','checkbox');add('soilRoughness','Soil variation','number');
-    add('grassDensity','Grass density','number');add('grassHeight','Grass height','number');add('plotSeed','Seed','number');
+    add('grassDensity','Grass density','number');add('grassHeight','Grass height','number');add('grassWidth','Blade width','number');add('windStrength','Wind strength','number');add('windSpeed','Wind speed','number');add('plotSeed','Seed','number');
     if(p.variant==='cropBed'){
      add('cropType','Crop','select',[['carrot','Carrots'],['tomato','Tomatoes'],['lettuce','Lettuce'],['strawberry','Strawberries']]);
      add('cropSpacing','Plant spacing','number');add('cropRows','Rows','number');add('growthPercent','Growth %','number');
@@ -1353,7 +1371,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    add('legStyle','Base / legs','select',[['four','4 legs'],['three','3 legs'],['single','Pedestal'],['casters','Casters'],['none','No legs / floor']]);
    if(p.legStyle!=='none')add('legRadius','Leg width','number');
   }
-  if(!VEGETATION_TYPES.includes(p.variant))add('texture','Texture','select',[['none','Plain'],['plaster','Plaster'],['concrete','Concrete'],['bricks','Bricks'],['metal','Metal'],['wood','Wood'],['marble','Marble'],['granite','Granite']]);
+  if(!VEGETATION_TYPES.includes(p.variant)||p.variant==='tree')add('texture',p.variant==='tree'?'Trunk texture':'Texture','select',[['none','Plain'],['plaster','Plaster'],['concrete','Concrete'],['bricks','Bricks'],['metal','Metal'],['wood','Wood'],['marble','Marble'],['granite','Granite']]);
   if(['wood','marble','granite'].includes(p.texture)){add('textureScale','Pattern scale','number');add('textureDistortion','Distortion','number');add('textureContrast','Contrast','number');}
   if(!VEGETATION_TYPES.includes(p.variant))add('color',isProp?'Colour':'Frame colour','color');
   if(['chair','officeChair','stool','armchair','sofa','bed','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant))add('fabricColor',p.variant==='beachUmbrella'?'Canopy colour':'Fabric colour','color');

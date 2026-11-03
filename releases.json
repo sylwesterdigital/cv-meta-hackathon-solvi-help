@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.164",
+  "currentVersion": "0.2.165",
   "releases": [
+    {
+      "version": "0.2.165",
+      "publishedAt": "2026-11-03T14:49:31Z",
+      "changes": [
+        "Replace dark checkerboard soil with continuous multi-scale value noise, tone mapping and sRGB output; preview vegetation edits while numeric controls change.",
+        "Replace static grass cones with a single instanced mesh of thin blades, vertex-shader wind displacement, adjustable width/strength/speed and a bounded per-plot draw budget.",
+        "Extend the tree builder with blossom trees, palm fronds and coconuts; reduce default leaf sizes and make seeded foliage clusters denser without per-leaf draw calls.",
+        "Add procedural wood bark selection, trunk noise irregularity and editable blossom colour/density, keeping earlier Nature scenes and presets readable.",
+        "Extend backend validation and add regression tests for new vegetation settings, deterministic tree generation and bounded scene geometry."
+      ]
+    },
     {
       "version": "0.2.164",
       "publishedAt": "2026-11-03T13:43:53Z",
@@ -327,16 +338,6 @@
         "Align the climbing avatar visual with the ladder world-space inclination, including rotated objects and both faces, while leaving the upright Rapier capsule unchanged.",
         "Straighten the avatar when it releases or dismounts; preserve Climbing Up Wall priority, climbing speed and existing ladder traversal.",
         "Validate and persist the adhesion setting, accept older saved ladders, and include attachment, visual tilt and backend regression tests."
-      ]
-    },
-    {
-      "version": "0.2.135",
-      "publishedAt": "2026-11-01T04:26:23Z",
-      "changes": [
-        "Prevent a render-loop crash after ladder or climbable-surface dismount: reject non-finite stair path positions and never read an undefined transport tread .top.",
-        "Add a per-avatar Climb speed (0.20\u20134.00 m/s) to the existing compact Robot speed dropdown and shared slider; apply it to ascending, descending, and the authored climbing animation rate.",
-        "Persist Climb speed in scene creation, duplication, patches and multiplayer; enforce finite range validation in both backend scene endpoints.",
-        "Add executable regression coverage for invalid conveyor marker/path coordinates, missing stair segments, controlled climbing rates and persistence; preserve all existing stair and fall behaviours."
       ]
     }
   ]

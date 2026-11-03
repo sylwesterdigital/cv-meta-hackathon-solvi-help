@@ -98,7 +98,7 @@ export function sanitiseFurniture(raw={}){
  result.color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#9b8068';
  result.fabricColor=typeof raw.fabricColor==='string'&&/^#[0-9a-f]{6}$/i.test(raw.fabricColor)?raw.fabricColor:'#64798e';
  if(VEGETATION_TYPES.includes(variant))Object.assign(result,cleanVegetation({...raw,variant}));
- result.texture=['none','plaster','concrete','bricks','metal','wood','marble','granite'].includes(raw.texture)?raw.texture:'none';
+ result.texture=['none','plaster','concrete','bricks','metal','wood','marble','granite'].includes(raw.texture)?raw.texture:(variant==='tree'?'wood':'none');
  return result;
 }
 export function rebuildFurniture(group,raw={}){
@@ -123,7 +123,7 @@ export function rebuildFurniture(group,raw={}){
    if(style==='casters')cylinder(p.legRadius*1.3,.08,x,.04,z,fabric,12);
   }
  };
- if(VEGETATION_TYPES.includes(p.variant))for(const part of vegetationParts(p))parts.push(part);
+ if(VEGETATION_TYPES.includes(p.variant))for(const part of vegetationParts(p,p.variant==='tree'?wood:null))parts.push(part);
  if(p.variant==='table'||p.variant==='stool'){
   const topY=p.height-p.topThickness/2;
   if(p.topShape!=='rectangle'){const sides=p.topShape==='round'?48:p.corners;add(new THREE.CylinderGeometry(p.topRadius,p.topRadius,p.topThickness,sides),0,topY,0);}

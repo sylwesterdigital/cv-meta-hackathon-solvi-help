@@ -193,7 +193,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.164',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.165',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3191,8 +3191,8 @@ def valid_basic_furniture(value):
              'legRadius':(.025,.3),'topRadius':(.15,4),'corners':(3,8),'seatHeight':(.25,.9),
              'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35),
              'wallThickness':(.005,.15),'neckRadius':(.01,.5),'neckHeight':(.02,.6),'bottleOpacity':(0,1),'fluidOpacity':(0,1),'fluidLevel':(0,100),
-             'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'reclineDeg':(0,85),'canopyRadius':(.4,4),'canopySegments':(3,16),'lampIntensity':(0,20),'lampRange':(.5,80),'shadeOpacity':(.05,1),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3),'treeHeight':(.4,18),'trunkRadius':(.025,1.4),'canopyRadius':(.15,7),'branchCount':(0,28),'leafClusters':(0,60),'treeSeed':(0,999999),'grassDensity':(0,1),'grassHeight':(.02,.7),'soilRoughness':(0,1),'cropRows':(1,12),'cropSpacing':(.15,2),'growthPercent':(0,100),'plotSeed':(0,999999)}
-    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','armrests','ergonomicBack','color','fabricColor','texture','handle','cap','soil','openTop','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle','fluidColor','treeStyle','fruitType','groundCover','soilPreset','cropType','plotSmooth','plotPoints','leafColor','soilColor'}|set(numeric)
+             'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'reclineDeg':(0,85),'canopyRadius':(.4,4),'canopySegments':(3,16),'lampIntensity':(0,20),'lampRange':(.5,80),'shadeOpacity':(.05,1),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3),'treeHeight':(.4,18),'trunkRadius':(.025,1.4),'canopyRadius':(.15,7),'branchCount':(0,28),'leafClusters':(0,80),'leafSize':(.05,.8),'trunkWobble':(0,.7),'blossomDensity':(0,1),'palmFronds':(4,16),'treeSeed':(0,999999),'grassDensity':(0,1),'grassHeight':(.02,.7),'grassWidth':(.005,.1),'windStrength':(0,1.5),'windSpeed':(0,6),'soilRoughness':(0,1),'cropRows':(1,12),'cropSpacing':(.15,2),'growthPercent':(0,100),'plotSeed':(0,999999)}
+    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','armrests','ergonomicBack','color','fabricColor','texture','handle','cap','soil','openTop','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle','fluidColor','treeStyle','fruitType','groundCover','soilPreset','cropType','plotSmooth','plotPoints','leafColor','soilColor','blossomColor'}|set(numeric)
     if any(key not in allowed for key in value):return False
     if 'channels' in value and not valid_smart_channels(value['channels']):return False
     if not valid_smart_options(value):return False
@@ -3200,7 +3200,7 @@ def valid_basic_furniture(value):
         if key not in value:continue
         n=value[key]
         if isinstance(n,bool) or not isinstance(n,(int,float)) or not math.isfinite(n) or not lo<=n<=hi:return False
-        if key in ('corners','shelves','seats','canopySegments','branchCount','leafClusters','treeSeed','cropRows','plotSeed') and int(n)!=n:return False
+        if key in ('corners','shelves','seats','canopySegments','branchCount','leafClusters','palmFronds','treeSeed','cropRows','plotSeed') and int(n)!=n:return False
     if value.get('topShape','rectangle') not in ('rectangle','round','polygon'):return False
     if value.get('legStyle','four') not in ('four','three','single','casters','none'):return False
     if value.get('texture','none') not in ('none','plaster','concrete','bricks','metal','wood','marble','granite'):return False
@@ -3212,13 +3212,13 @@ def valid_basic_furniture(value):
     for field in ('mediaId','pairedDisplayId'):
         if field in value and (not isinstance(value[field],str) or re.fullmatch(r'[A-Za-z0-9_-]{0,100}',value[field]) is None):return False
     if 'plotSmooth' in value and type(value['plotSmooth']) is not bool:return False
-    for key,options in (('treeStyle',('deciduous','conifer','orchard')),('fruitType',('none','apple','orange','plum')),('groundCover',('soil','grass','mixed')),('soilPreset',('loam','sand','clay','compost')),('cropType',('carrot','tomato','lettuce','strawberry'))):
+    for key,options in (('treeStyle',('deciduous','conifer','orchard','blossom','palm')),('fruitType',('none','apple','orange','plum','coconut')),('groundCover',('soil','grass','mixed')),('soilPreset',('loam','sand','clay','compost')),('cropType',('carrot','tomato','lettuce','strawberry'))):
         if key in value and value[key] not in options:return False
     if 'plotPoints' in value:
         pts=value['plotPoints']
         if not isinstance(pts,list) or not 3<=len(pts)<=80:return False
         if any(not isinstance(pt,list) or len(pt)!=2 or any(type(n) not in (int,float) or not math.isfinite(n) or abs(n)>80 for n in pt) for pt in pts):return False
-    for k in ('color','fabricColor','fluidColor','leafColor','soilColor'):
+    for k in ('color','fabricColor','fluidColor','leafColor','soilColor','blossomColor'):
         if k in value and (not isinstance(value[k],str) or re.fullmatch(r'#[0-9a-fA-F]{6}',value[k]) is None):return False
     return True
 
