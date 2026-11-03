@@ -48,6 +48,8 @@ import {cleanText} from './text-parameters.js';
 import {cleanOpenings,cutCubeGeometry,surfaceAxis,rectangleFromSurface} from './cube-openings.js';
 import {setupSpatialTools,renderCurveControls,startCurveDrawing,startFaceDrawing,spatialPointer,cancelSpatialDrawing,openChatMediaPicker,updateMountedMedia} from './spatial-editor.js';
 import {setupObjectPresets} from './object-presets.js';
+import {startVegetationPlot,vegetationPointer,finishVegetationPlot,cancelVegetationPlot} from './vegetation-drawing.js';
+import {VEGETATION_TYPES} from './procedural-vegetation.js';
 import {canPreset,presetEntry} from './object-preset-data.js';
 import {centreGroundFromCamera,positionNewOnGround} from './scene-placement.js';
 
@@ -136,7 +138,7 @@ export class SceneEditor{
   this.transform.addEventListener('mouseUp',()=>{this.broadcastEdit(false);world.editorDragging=false;this.physics.sync(this.selected);this.recordEdit(this.transformBefore,this.snapshot(this.selected));this.transformBefore=null;});
   this.transform.addEventListener('objectChange',()=>{if(!this.canTransform(this.selected))return;if(this.transform.mode==='scale'&&this.selected?.userData.editorKind!=='robot'&&performance.now()-(this.lastScaleColliderSync||0)>180){this.physics.sync(this.selected);this.lastScaleColliderSync=performance.now();}this.updateInspector();this.queueSave(this.selected);});
   window.addEventListener('solvi:robot-model-ready',e=>{if(this.selected?.userData.editorId===e.detail.id)this.updateInspector();});
-  this.curveDrawing=null;this.curvePreview=null;this.faceDrawing=null;this.facePreview=null;this.mediaPickerURLs=[];
+  this.vegetationDrawing=null;this.vegetationPreview=null;this.curveDrawing=null;this.curvePreview=null;this.faceDrawing=null;this.facePreview=null;this.mediaPickerURLs=[];
   this.wallDrawing=null;this.wallPreview=null;this.wallEditTarget=null;this.wallEditOriginal=null;this.wallTextureMediaId="";this.wallSessionHistory=new EditHistory(120);this.wallStateLast=null;this.wallRestoring=false;this.wallPreviewCustom=null;this.wallPreviewTextureId='';this.wallPreviewTextureReq=0;
   this.inventory.bind();this.robotShortcuts=bindRobotShortcutHelp(()=>this.controlledRobot?.()||this.robot?.());this.bulkChecked=new Set();this.editMarkers=new Map();this.lastEditPing=0;this.lightHelper=null;this.setupUI();this.events();
   window.addEventListener('solvi:edit-mode-changed',e=>{
@@ -152,14 +154,16 @@ export class SceneEditor{
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','officeChair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Equipment',['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','officeChair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Equipment',['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']],['Nature & cultivation',['tree','groundPlot','cropBed','draw grass / soil plot','draw vegetable bed']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';const head=document.createElement('div');head.className='add-fixed-head';head.append(bar);const content=document.createElement('div');content.className='add-scroll-content';menu.append(head,content);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';head.append(search);
   const openPresets=document.createElement('button');openPresets.type='button';openPresets.className='add-presets-shortcut';openPresets.textContent='Presets · saved objects';openPresets.onclick=()=>{menu.hidden=true;this.objectPresets?.open();};head.append(openPresets);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
   search.addEventListener('input',()=>{for(const button of menu.querySelectorAll('.add-group button'))button.hidden=!button.textContent.toLowerCase().includes(search.value.trim().toLowerCase());});
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
-   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else if(k==='media frame'){this.add('media');}else if(k==='walls'){this.startWallDrawing('wall');}else if(k==='closed room'){this.startWallDrawing('wall',true);}else if(k==='stairs'){this.startWallDrawing('stairs');}else if(k==='stairs advanced'){this.startWallDrawing('stairs',false,'advanced');}else if(k==='escalator'){this.startWallDrawing('stairs',false,'escalator');}else if(k==='moving walkway'){this.startWallDrawing('stairs',false,'walkway');}else if(k==='lift'){this.addLift();}else if(FURNITURE_TYPES.includes(k)){this.add('furniture',true,undefined,true,k);}else if(k==='paired portal'){this.addPortalPair();}else if(k==='draw curve in 3d'){this.startCurveDrawing();}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}content.append(group);}
-  this.setupFurnitureControls();this.setupLadderControls();this.setupWallControls();this.setupSpatialTools();this.setupTextGeometryControls();this.setupPortalControls();
+   for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else if(k==='media frame'){this.add('media');}else if(k==='walls'){this.startWallDrawing('wall');}else if(k==='closed room'){this.startWallDrawing('wall',true);}else if(k==='stairs'){this.startWallDrawing('stairs');}else if(k==='stairs advanced'){this.startWallDrawing('stairs',false,'advanced');}else if(k==='escalator'){this.startWallDrawing('stairs',false,'escalator');}else if(k==='moving walkway'){this.startWallDrawing('stairs',false,'walkway');}else if(k==='lift'){this.addLift();}else if(FURNITURE_TYPES.includes(k)){this.add('furniture',true,undefined,true,k);}else if(k==='paired portal'){this.addPortalPair();}else if(k==='draw curve in 3d'){this.startCurveDrawing();}else if(k==='draw grass / soil plot'){startVegetationPlot(this,'groundPlot');}else if(k==='draw vegetable bed'){startVegetationPlot(this,'cropBed');}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}content.append(group);}
+  this.setupFurnitureControls();this.setupLadderControls();this.setupWallControls();this.setupSpatialTools();
+  for(const [id,handler] of [['vegetationDrawCancel',()=>cancelVegetationPlot(this)],['vegetationDrawUndo',()=>{this.vegetationDrawing?.points.pop();this.vegetationDrawing&&this.vegetationDrawing.redraw();}],['vegetationDrawSave',()=>finishVegetationPlot(this)]]){const button=byId(id);if(button)button.onclick=handler;}
+  window.addEventListener('keydown',e=>{if(!this.vegetationDrawing||e.target?.closest?.('input,textarea,select,[contenteditable]'))return;if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();cancelVegetationPlot(this);}else if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();finishVegetationPlot(this);}},true);this.setupTextGeometryControls();this.setupPortalControls();
   const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton','assetsButton'])toolbox.append(byId(id));toolbox.append(byId('presetsButton'));
   byId('presetsButton').onclick=()=>{byId('addMenu').hidden=true;this.objectPresets?.open();};
   byId('importModelButton').onclick=()=>byId('modelImportFile').click();byId('quickModelImport').onclick=()=>byId('modelImportFile').click();
@@ -777,7 +781,7 @@ export class SceneEditor{
    if(original.object.userData.editorKind==='stairs')rebuildOfficeStairs(original.object,original.stairs);else rebuildOfficeWall(original.object,original.wall,this.liftObjects());
    original.object.userData.physics=original.physics;this.physics.sync(original.object);
   }
-  this.curveDrawing=null;this.curvePreview=null;this.faceDrawing=null;this.facePreview=null;this.mediaPickerURLs=[];
+  this.vegetationDrawing=null;this.vegetationPreview=null;this.curveDrawing=null;this.curvePreview=null;this.faceDrawing=null;this.facePreview=null;this.mediaPickerURLs=[];
   this.wallDrawing=null;this.wallEditTarget=null;this.wallEditOriginal=null;this.wallTextureMediaId='';this.wallStateLast=null;this.wallSessionHistory.clear();++this.wallPreviewTextureReq;this.wallPreviewCustom?.dispose();this.wallPreviewCustom=null;this.wallPreviewTextureId='';
   if(this.wallPreview){this.world.scene.remove(this.wallPreview);this.disposeObject(this.wallPreview);this.wallPreview=null;}
   if(byId('wallPanel'))byId('wallPanel').hidden=true;
@@ -987,14 +991,14 @@ export class SceneEditor{
  events(){
   const canvas=this.world.renderer.domElement;let startX,startY;
   window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]'))return;if(!byId('wallPanel')||byId('wallPanel').hidden)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.code==='KeyZ'){e.preventDefault();e.stopImmediatePropagation();e.shiftKey?this.redoWall():this.undoWall();return;}if(cmd&&e.code==='KeyY'){e.preventDefault();e.stopImmediatePropagation();this.redoWall();return;}if(!this.wallDrawing)return;if(e.key==='Escape'){e.preventDefault();this.endWallDrawing();}else if(e.key==='Enter'&&!e.target?.closest?.('input,select,textarea')){e.preventDefault();this.finishWallStroke();}},true);
-  for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])document.addEventListener(type,e=>{if(this.spatialPointer(e)){e.preventDefault();e.stopImmediatePropagation();return;}if(this.wallPointer(e)){e.preventDefault();e.stopPropagation();}},true);
-  canvas.addEventListener('dblclick',e=>{if(this.wallDrawing){e.preventDefault();e.stopPropagation();this.finishWallStroke();}},true);
+  for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])document.addEventListener(type,e=>{if(this.vegetationDrawing&&vegetationPointer(this,e)){e.preventDefault();e.stopImmediatePropagation();return;}if(this.spatialPointer(e)){e.preventDefault();e.stopImmediatePropagation();return;}if(this.wallPointer(e)){e.preventDefault();e.stopPropagation();}},true);
+  canvas.addEventListener('dblclick',e=>{if(this.vegetationDrawing){e.preventDefault();e.stopPropagation();finishVegetationPlot(this);}else if(this.wallDrawing){e.preventDefault();e.stopPropagation();this.finishWallStroke();}},true);
   const orbitGesture=new OrbitGesture();
   this.lastPointer={x:innerWidth/2,y:innerHeight/2};window.addEventListener('pointermove',e=>{if(!document.pointerLockElement)this.lastPointer={x:e.clientX,y:e.clientY};},{passive:true});
   // In-world lift buttons must capture a click before orbit or object selection.
   let liftPress=null;
   canvas.addEventListener('pointerdown',e=>{
-   if(e.button!==0||this.wallDrawing||this.faceDrawing||this.curveDrawing)return;
+   if(e.button!==0||this.vegetationDrawing||this.wallDrawing||this.faceDrawing||this.curveDrawing)return;
    this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
    this.raycaster.setFromCamera(this.pointer,this.world.camera);
    const button=this.hitLiftButton(this.raycaster)||this.hitTransportButton(this.raycaster)||this.hitPortalButton(this.raycaster)||this.hitWindowButton(this.raycaster);
@@ -1173,7 +1177,7 @@ export class SceneEditor{
  }
  // compatibility marker: addSceneMedia(media,{backing='white',width=null,height=null}={})
 addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistance=4,maxDistance=18,autoplayDistance=0,constantVolume=false,group='',shape='speaker',mount=null}={}){const object=objectFor('media');const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.cameraDropPosition(3.2);object.position.copy(point);object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;object.userData.media={id:media.id,mime:media.mime,name:media.name,backing,stream:'direct',width:width??media.width??null,height:height??media.height??null,loop,muted:false,refDistance,maxDistance,autoplayDistance,constantVolume,group,shape,volume:1,color:'#3c9bd2',author:media.author||window.solviAPI?.auth()?.profile?.name||'User',created:media.created||new Date().toISOString(),caption:''};if(mount)object.userData.media.mount=structuredClone(mount);const kind=sceneMediaKind(media.mime);object.name=(kind==='video'?'Video screen · ':kind==='audio'?'Audio speaker · ':'Picture frame · ')+(media.name||'media');this.items.push(object);this.world.scene.add(object);this.physics.sync(object);hydrateSceneMedia(object,this.world);if(mount){object.userData.physics={mode:'off'};this.updateMountedMedia();this.physics.sync(object);}this.select(object);this.refreshList();this.recordEdit(null,this.snapshot(object));this.queueSave(object);return object;}
- add(kind,showGallery=true,lightType=undefined,persist=true,furnitureVariant='table'){const object=objectFor(kind);if(kind==='furniture'){rebuildFurniture(object,{variant:furnitureVariant});if(furnitureVariant==='backpack'){object.userData.pickable=true;object.userData.inventory={category:'backpack',size:'bag',consumable:false};}object.name=furnitureVariant[0].toUpperCase()+furnitureVariant.slice(1);}if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
+ add(kind,showGallery=true,lightType=undefined,persist=true,furnitureVariant='table'){const object=objectFor(kind);if(kind==='furniture'){rebuildFurniture(object,{variant:furnitureVariant});if(['groundPlot','cropBed'].includes(furnitureVariant))object.userData.physics={mode:'off'};if(furnitureVariant==='backpack'){object.userData.pickable=true;object.userData.inventory={category:'backpack',size:'bag',consumable:false};}object.name=furnitureVariant[0].toUpperCase()+furnitureVariant.slice(1);}if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
  const point=centreGroundFromCamera(this.world.camera,this.world.controls?.target);
  if(!['robot','model','media','light'].includes(kind))positionNewOnGround(object,point);
  else {const near=this.cameraDropPosition(3.2);object.position.x=near.x;object.position.z=near.z;if(kind!=='robot')object.position.y=Math.max(.8,near.y);}
@@ -1270,7 +1274,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    holder.append(caption,control);root.append(holder);
   };
   add('variant','Type','select',FURNITURE_TYPES.map(kind=>[kind,kind==='miniComputer'?'Mini computer':kind==='officeChair'?'Office chair':kind[0].toUpperCase()+kind.slice(1)]));
-  const equipment=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant);
+  const equipment=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant)||VEGETATION_TYPES.includes(p.variant);
   if(['tv','monitor'].includes(p.variant)){
    add('diagonalInches','Diagonal (in)','number');add('aspect','Aspect','select',[['16:9','16:9'],['21:9','21:9'],['4:3','4:3']]);
    add('bezel','Bezel (m)','number');add('mount','Mount','select',[['feet','Two feet'],['center','Centre stand'],['wall','VESA / wall'],['none','None']]);
@@ -1299,6 +1303,25 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   }else if(p.variant==='backpack'){
    for(const [k,label] of [['width','Width'],['depth','Depth'],['height','Height'],['strapWidth','Strap width']])add(k,label,'number');
    add('backpackStyle','Style','select',[['box','Cuboid'],['bag','Soft bag']]);add('straps','Shoulder straps','checkbox');add('frontPocket','Front pocket','checkbox');
+  }
+  if(VEGETATION_TYPES.includes(p.variant)){
+   if(p.variant==='tree'){
+    for(const [k,label] of [['treeHeight','Tree height (m)'],['trunkRadius','Trunk radius'],['canopyRadius','Canopy radius'],['branchCount','Branches'],['leafClusters','Foliage clusters'],['treeSeed','Seed']])add(k,label,'number');
+    add('treeStyle','Style','select',[['deciduous','Broadleaf'],['conifer','Conifer'],['orchard','Orchard']]);
+    add('fruitType','Fruit','select',[['none','None'],['apple','Apples'],['orange','Oranges'],['plum','Plums']]);
+    add('leafColor','Leaf colour','color');add('color','Trunk colour','color');
+   }else{
+    add('groundCover','Cover','select',[['soil','Soil'],['grass','Grass'],['mixed','Mixed grass / soil']]);
+    add('soilPreset','Soil preset','select',[['loam','Loam'],['sand','Sandy'],['clay','Clay'],['compost','Compost']]);
+    add('soilColor','Soil colour','color');add('leafColor','Plant colour','color');
+    add('plotSmooth','Smooth boundary','checkbox');add('soilRoughness','Soil variation','number');
+    add('grassDensity','Grass density','number');add('grassHeight','Grass height','number');add('plotSeed','Seed','number');
+    if(p.variant==='cropBed'){
+     add('cropType','Crop','select',[['carrot','Carrots'],['tomato','Tomatoes'],['lettuce','Lettuce'],['strawberry','Strawberries']]);
+     add('cropSpacing','Plant spacing','number');add('cropRows','Rows','number');add('growthPercent','Growth %','number');
+    }
+    const edit=document.createElement('button');edit.type='button';edit.textContent='Redraw on ground';edit.className='furniture-field-full';edit.onclick=()=>startVegetationPlot(this,p.variant);root.append(edit);
+   }
   }
   const isProp=BASIC_PROP_TYPES.includes(p.variant);
   if(!equipment)for(const [key,title] of [['width',isProp?'Diameter / width (m)':'Width (m)'],['depth','Depth (m)'],['height','Height (m)']])if(!isProp||key!=='depth'||p.variant==='box')add(key,title,'number');
@@ -1330,9 +1353,9 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    add('legStyle','Base / legs','select',[['four','4 legs'],['three','3 legs'],['single','Pedestal'],['casters','Casters'],['none','No legs / floor']]);
    if(p.legStyle!=='none')add('legRadius','Leg width','number');
   }
-  add('texture','Texture','select',[['none','Plain'],['plaster','Plaster'],['concrete','Concrete'],['bricks','Bricks'],['metal','Metal'],['wood','Wood'],['marble','Marble'],['granite','Granite']]);
+  if(!VEGETATION_TYPES.includes(p.variant))add('texture','Texture','select',[['none','Plain'],['plaster','Plaster'],['concrete','Concrete'],['bricks','Bricks'],['metal','Metal'],['wood','Wood'],['marble','Marble'],['granite','Granite']]);
   if(['wood','marble','granite'].includes(p.texture)){add('textureScale','Pattern scale','number');add('textureDistortion','Distortion','number');add('textureContrast','Contrast','number');}
-  add('color',isProp?'Colour':'Frame colour','color');
+  if(!VEGETATION_TYPES.includes(p.variant))add('color',isProp?'Colour':'Frame colour','color');
   if(['chair','officeChair','stool','armchair','sofa','bed','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant))add('fabricColor',p.variant==='beachUmbrella'?'Canopy colour':'Fabric colour','color');
   if(['tv','monitor','speaker'].includes(p.variant))this.renderSmartChannelControls(root,obj,'furniture');
  }

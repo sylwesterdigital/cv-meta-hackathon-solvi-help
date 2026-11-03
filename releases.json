@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.163",
+  "currentVersion": "0.2.164",
   "releases": [
+    {
+      "version": "0.2.164",
+      "publishedAt": "2026-11-03T13:43:53Z",
+      "changes": [
+        "Create bounded, seed-reproducible procedural broadleaf, conifer, and orchard trees with adjustable height, trunk/leaf geometry, fruit and colours; foliage/fruit are instanced for WebXR draw-call efficiency.",
+        "Add soil/grass plots and simple crop beds using a lightweight procedural ground shader, instanced grass and vegetable rows with manual growth percentage, soil type, colours and fixed complexity budgets.",
+        "Draw ground polygons from the Add > Nature menu; auto-close the boundary on Save/Enter or click near start, with optional outline smoothing and editable saved points.",
+        "Enable tree, soil and crop configurations as account-saved presets in a new Nature gallery tab; preserve existing scene IDs and cross-client furniture updates.",
+        "Validate all new settings, numeric ranges, plot coordinates and bounded polygon sizes on the backend; no new asset dependency, watcher changes or third-party runtime library."
+      ]
+    },
     {
       "version": "0.2.163",
       "publishedAt": "2026-11-03T13:13:34Z",
@@ -326,16 +337,6 @@
         "Add a per-avatar Climb speed (0.20\u20134.00 m/s) to the existing compact Robot speed dropdown and shared slider; apply it to ascending, descending, and the authored climbing animation rate.",
         "Persist Climb speed in scene creation, duplication, patches and multiplayer; enforce finite range validation in both backend scene endpoints.",
         "Add executable regression coverage for invalid conveyor marker/path coordinates, missing stair segments, controlled climbing rates and persistence; preserve all existing stair and fall behaviours."
-      ]
-    },
-    {
-      "version": "0.2.134",
-      "publishedAt": "2026-11-01T04:14:02Z",
-      "changes": [
-        "Prefer the authored Climbing Up Wall animation for every avatar climbing a ladder; keep Climbing Ladder and Climb as fallbacks when missing.",
-        "Add a compact opt-in Climbable checkbox on walls, models (including trees), and supported procedural objects, saved in scenes and preserved on duplication.",
-        "Manual Up/Down climbing now attaches to the actual nearby front-facing vertical surface mesh; Space detaches into Rapier gravity and top dismount requires physical support.",
-        "Include multi-client climb state, strict backend bool validation, browser cache mapping, and six executable surface-climb regression tests."
       ]
     }
   ]

@@ -84,7 +84,7 @@ export function setupObjectPresets(editor){
 
  const note=value=>{status.textContent=value;};
  const close=()=>{backdrop.hidden=true;};
- const categories=['All','Furniture','Props','Geometry','Architecture'];
+ const categories=['All','Furniture','Nature','Props','Geometry','Architecture'];
  function render(){
   tabs.replaceChildren();for(const c of categories){const button=document.createElement('button');button.type='button';button.textContent=c;button.setAttribute('aria-selected',String(category===c));button.onclick=()=>{category=c;render();};tabs.append(button);}
   const q=search.value.trim().toLocaleLowerCase();const shown=records.filter(p=>(category==='All'||p.category===category)&&p.name.toLocaleLowerCase().includes(q));

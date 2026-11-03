@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {wallPresetTexture} from './office-walls.js';
 import {EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment} from './procedural-equipment.js';
+import {VEGETATION_TYPES,VEGETATION_NUMERIC,cleanVegetation,vegetationParts} from './procedural-vegetation.js';
 
 // Parameter bounds prevent generating enormous meshes through a shared scene payload.
 export const PRIMITIVE_FIELDS={
@@ -33,14 +34,14 @@ export function buildPrimitive(kind,values){
 // Basic furniture is built from individually collidable, editable primitive parts.
 // Keeping it here avoids a new module and preserves the deployment watcher's file budget.
 export const BASIC_PROP_TYPES=['plate','mug','glass','bowl','bottle','can','flowerpot','box'];
-export const FURNITURE_TYPES=['table','chair','officeChair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...EQUIPMENT_TYPES];
+export const FURNITURE_TYPES=['table','chair','officeChair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...EQUIPMENT_TYPES,...VEGETATION_TYPES];
 export const FURNITURE_NUMERIC={
  width:[1.2,.06,8],depth:[.75,.06,4],height:[.76,.025,4],
  topThickness:[.07,.025,.3],topRadius:[.55,.15,4],legRadius:[.04,.025,.3],
  corners:[4,3,8],seatHeight:[.46,.25,.9],backHeight:[.5,.2,1.3],
  shelves:[3,0,16],seats:[2,1,4],cushionThickness:[.14,.05,.35],
  wallThickness:[.025,.005,.15],fluidOpacity:[.52,0,1],neckRadius:[.065,.01,.5],neckHeight:[.12,.02,.6],bottleOpacity:[.7,0,1],fluidLevel:[50,0,100],
- rimHeight:[.018,.005,.1],...EQUIPMENT_NUMERIC,textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
+ rimHeight:[.018,.005,.1],...EQUIPMENT_NUMERIC,...VEGETATION_NUMERIC,textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
 };
 const furniturePreset={
  table:{width:1.4,depth:.8,height:.75,legStyle:'four'},
@@ -63,7 +64,10 @@ const furniturePreset={
  miniComputer:{width:.2,depth:.2,height:.08,legStyle:'none'},bin:{width:.35,depth:.35,height:.5,legStyle:'none'},backpack:{width:.35,depth:.2,height:.45,legStyle:'none'},
  sunbed:{width:.8,depth:1.95,height:.31,legStyle:'none'},deckChair:{width:.64,depth:1.72,height:.42,legStyle:'none'},
  beachUmbrella:{width:2.4,depth:2.4,height:2.15,legStyle:'none'},
- lamp:{width:.45,depth:.45,height:1.6,legStyle:'none'},speaker:{width:.33,depth:.27,height:.65,legStyle:'none'}
+ lamp:{width:.45,depth:.45,height:1.6,legStyle:'none'},speaker:{width:.33,depth:.27,height:.65,legStyle:'none'},
+ tree:{width:2.8,depth:2.8,height:5,legStyle:'none',color:'#79513a',fabricColor:'#4a9254'},
+ groundPlot:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
+ cropBed:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'}
 };
 export function sanitiseFurniture(raw={}){
  const variant=FURNITURE_TYPES.includes(raw.variant)?raw.variant:'table';
@@ -93,6 +97,7 @@ export function sanitiseFurniture(raw={}){
  result.headboard=raw.headboard!==false;
  result.color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#9b8068';
  result.fabricColor=typeof raw.fabricColor==='string'&&/^#[0-9a-f]{6}$/i.test(raw.fabricColor)?raw.fabricColor:'#64798e';
+ if(VEGETATION_TYPES.includes(variant))Object.assign(result,cleanVegetation({...raw,variant}));
  result.texture=['none','plaster','concrete','bricks','metal','wood','marble','granite'].includes(raw.texture)?raw.texture:'none';
  return result;
 }
@@ -118,6 +123,7 @@ export function rebuildFurniture(group,raw={}){
    if(style==='casters')cylinder(p.legRadius*1.3,.08,x,.04,z,fabric,12);
   }
  };
+ if(VEGETATION_TYPES.includes(p.variant))for(const part of vegetationParts(p))parts.push(part);
  if(p.variant==='table'||p.variant==='stool'){
   const topY=p.height-p.topThickness/2;
   if(p.topShape!=='rectangle'){const sides=p.topShape==='round'?48:p.corners;add(new THREE.CylinderGeometry(p.topRadius,p.topRadius,p.topThickness,sides),0,topY,0);}
