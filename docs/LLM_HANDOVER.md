@@ -1,3 +1,15 @@
+# SOLVI.help Master LLM Handover — v0.2.175
+
+## Release v0.2.175 — LIVE 3D INFRASTRUCTURE CONSTRUCTION PREVIEW
+
+**Requested UX correction:** The prior outdoor drawing tool displayed only a thin outline floating on the ground while users attempted to construct a wall or fence. From now on a path of two or more committed vertices builds the actual THREE.js geometry with the same generator used by saved furniture. The preview is displayed in world space and replaces the detached line-only guide. The existing draggable Properties inspector controls dimensions, materials, lane layout, fence and hedge type while constructing. Any change to the selected object regenerates the preview, including user input and the shared slider. The preview never attaches itself to the pointer, and UI clicks are never interpreted as placing points. One-line mode permits inspection and adjustment before Finish rather than immediately saving at the second point. Freehand rebuilds are throttled (~70 ms), and every old renderable/texture is disposed to avoid leaks. Temporary render groups are not collider objects, saved scene objects or multiplayer objects. Finishing a path persists it with normal Undo and static collider setup. Cancel discards a new draft or restores all pre-redraw settings to the original object. Existing presets and infrastructures remain compatible.
+
+**Files:** `js/infrastructure-drawing.js`, `js/editor.js`, new `tests/release-175-live-construction-preview.test.mjs`, synchronized frontend/backend/release metadata. No new runtime dependencies. Continue using the original watcher with ZIP containing root `manifest.json` and all application files under `app/` with full SHA-256 map.
+
+**Testing:** Full JavaScript suite and independent extracted ZIP verification; check backend Python syntax, Nginx, shell install, and GLB identity. No browser-based 3D/WebXR performance test is available in the container.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.174
 
 ## Release v0.2.174 — No-popup drawing & connected roads

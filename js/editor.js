@@ -1311,6 +1311,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    previewTimer=setTimeout(()=>{
     if(this.selected!==obj||!target.isConnected)return;
     disposeEquipmentMedia(obj);rebuildFurniture(obj,{...obj.userData.furniture,[key]:target.value});
+    if(this.infrastructureDrawing?.editTarget===obj){this.infrastructureDrawing.redraw?.();return;}
     this.physics.sync(obj);syncEquipmentMedia(obj,this);
    },90);
   });
@@ -1323,10 +1324,10 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    if(key==='infraType'&&this.infrastructureDrawing?.editTarget===obj)this.infrastructureDrawing.type=value;
    disposeEquipmentMedia(obj);
    rebuildFurniture(obj,key==='variant'?{variant:value,color:obj.userData.furniture.color,fabricColor:obj.userData.furniture.fabricColor,texture:obj.userData.furniture.texture}:{...obj.userData.furniture,[key]:value});
-   this.physics.sync(obj);syncEquipmentMedia(obj,this);
-   if(key==='infraLanes')target.value=String(obj.userData.furniture.infraLanes);
    const activeInfrastructureDraw=this.infrastructureDrawing?.editTarget===obj?this.infrastructureDrawing:null;
-   if(activeInfrastructureDraw?.isNew){
+   if(!activeInfrastructureDraw){this.physics.sync(obj);syncEquipmentMedia(obj,this);}
+   if(key==='infraLanes')target.value=String(obj.userData.furniture.infraLanes);
+   if(activeInfrastructureDraw){
     // This provisional inspector object must not reach room save or undo until
     // the user finishes a valid ground path.
     if(key==='infraType'){
