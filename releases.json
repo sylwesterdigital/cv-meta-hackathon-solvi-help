@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.167",
+  "currentVersion": "0.2.169",
   "releases": [
+    {
+      "version": "0.2.169",
+      "publishedAt": "2026-11-03T17:47:33Z",
+      "changes": [
+        "Centre all single-seat robots on the cushion rather than the armrest, and give each sofa occupant a unique slot.",
+        "Add a persisted seatMoveMode for furniture: stand on movement or follow the furniture, including translation, rotation and physics pushes.",
+        "Keep multiple seated robots bound to their own furniture-local anchors without making the robots children of the furniture mesh.",
+        "Automatically stand occupied robots when non-stickable furniture is moved or removed, clearing sitting pose and restoring idle and physics.",
+        "Persist and validate robot seat anchors across multiplayer scene updates and remap references through realm archives.",
+        "Expand seating regressions and preserve original avatars, physics and inventory code."
+      ]
+    },
     {
       "version": "0.2.167",
       "publishedAt": "2026-11-03T16:33:33Z",
@@ -328,17 +340,6 @@
         "Add optional flat ceilings/soffits above multi-point wall outlines, independent colour, texture and thickness; punch rotated lift-shaft apertures automatically and refresh ceiling geometry and colliders when lifts move.",
         "Collide against real split wall pieces and ceiling mesh, not invisible boxes across glass openings or lift shafts; XR teleportation continues to respect the first solid wall/ceiling hit and walkable floor/ceiling top faces.",
         "Add six focused regression tests including actual procedural wall construction using a Three.js-compatible runtime test harness; preserve saved older walls and room objects."
-      ]
-    },
-    {
-      "version": "0.2.138",
-      "publishedAt": "2026-11-01T05:43:48Z",
-      "changes": [
-        "Fix browser stalls when changing realms: remove forced WebGL rerender and synchronous preview readback from realm chooser.",
-        "Pause outgoing-realm robot simulation and cleanly restart destination physics only after its scene is loaded; rebuild large Rapier collider sets in interruptible batches.",
-        "Cancel stale scene and physics rebuilds during rapid realm switches; use browser task yields during scene object replacement.",
-        "Fix enabling/disabling room Physics when it returns no Promise, and bind delayed object saves to their original realm.",
-        "Add executable runtime tests for large collider reconstruction, realm cancellation and old-realm save isolation."
       ]
     }
   ]

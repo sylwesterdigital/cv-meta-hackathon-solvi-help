@@ -166,7 +166,7 @@ test('top dismount detects a supporting platform on the opposite face from the e
 
 test('multiplayer position corrections cannot pull an attached avatar off a ladder',()=>{
  const editor=readFileSync(new URL('../js/editor.js',import.meta.url),'utf8');
- assert.match(editor,/if\(obj\.userData\.robotLadderRide\)\{this\.remoteCorrections\.delete\(id\);continue;\}/);
+ assert.match(editor,/if\(obj\.userData\.robotLadderRide\|\|obj\.userData\.robotSeated\)\{this\.remoteCorrections\.delete\(id\);continue;\}/);
 });
 
 test('climbing speed changes actual ascent and descent rate with safe bounds',()=>{

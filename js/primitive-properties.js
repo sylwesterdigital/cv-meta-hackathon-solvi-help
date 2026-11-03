@@ -96,6 +96,7 @@ export function sanitiseFurniture(raw={}){
  result.smartAudio=raw.smartAudio!==false;result.smartMuted=raw.smartMuted===true;result.smartLoop=raw.smartLoop===true;result.smartAutoPlay=raw.smartAutoPlay===true;result.smartPreserveAspect=raw.smartPreserveAspect!==false;result.smartStartChannel=Number.isInteger(raw.smartStartChannel)&&raw.smartStartChannel>=-1&&raw.smartStartChannel<12?raw.smartStartChannel:-1;
  result.mediaId=typeof raw.mediaId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.mediaId)?raw.mediaId:'';
  result.pairedDisplayId=typeof raw.pairedDisplayId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.pairedDisplayId)?raw.pairedDisplayId:'';
+ result.seatMoveMode=raw.seatMoveMode==='follow'?'follow':'stand';
  result.headrest=raw.headrest===true;result.armrests=raw.armrests!==undefined?raw.armrests===true:variant==='officeChair';result.ergonomicBack=raw.ergonomicBack!==false;
  result.headboard=raw.headboard!==false;
  result.color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#9b8068';

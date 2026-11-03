@@ -1,22 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sanitiseFurniture,rebuildFurniture} from '../js/primitive-properties.js';
-import {cleanVegetation,vegetationParts,plotArea} from '../js/procedural-vegetation.js';
-import * as THREE from 'three';
+import {readFileSync} from 'node:fs';
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+const source=read('js/procedural-vegetation.js');
+// These checks deliberately run against the shipped source without requiring
+// npm-installed Three.js; the browser imports the Three.js versioned vendor.
+const noImports=source.replace(/^import .*;\s*$/gm,'').replace(/export (const|function|class) /g,'$1 ');
+const v=new Function('THREE',noImports+'\nreturn {cleanVegetation,plotPointsForConfig,boundsFromPoints,terrainHeightAt,plotArea};')({});
 
-test('water patches sanitise and build',()=>{
- const p=sanitiseFurniture({variant:'waterPatch',plotShape:'circle',width:6,waterDepth:1.2,waterLevel:.7,terrainRelief:.5});
- assert.equal(p.variant,'waterPatch');
+test('water patches sanitise shape, depth, colour and boundary',()=>{
+ const p=v.cleanVegetation({variant:'waterPatch',plotShape:'circle',width:6,waterDepth:1.2,waterLevel:.7,terrainRelief:.5,waterColor:'#44aacc'});
  assert.equal(p.plotShape,'circle');
- const group=new THREE.Group();
- rebuildFurniture(group,p);
- assert.ok(group.children.some(c=>c.userData.terrainCollider));
- assert.ok(group.children.some(c=>c.material && c.material.transparent));
+ assert.equal(p.waterDepth,1.2);
+ assert.equal(p.waterColor,'#44aacc');
+ assert.equal(v.plotPointsForConfig({...p,width:6}).length,32);
+ assert.match(source,/terrainCollider=true/);
+ assert.match(source,/MeshPhysicalMaterial/);
 });
-
-test('ground plots keep usable polygon area',()=>{
- const cfg=cleanVegetation({variant:'groundPlot',plotShape:'square',width:4,depth:3});
- const parts=vegetationParts({...cfg,width:4,depth:3});
- assert.ok(parts.length>=1);
- assert.ok(plotArea([[-2,-1.5],[2,-1.5],[2,1.5],[-2,1.5]])>1);
+test('ground plots retain polygon area, shape parameters and raised terrain',()=>{
+ const p=v.cleanVegetation({variant:'groundPlot',plotShape:'square',width:4,depth:3,terrainRelief:1});
+ const points=v.plotPointsForConfig({...p,width:4,depth:3});
+ assert.equal(v.plotArea(points),12);
+ const bounds=v.boundsFromPoints(points);
+ assert.ok(v.terrainHeightAt(p,bounds,0,0,false)>.1);
+ assert.match(source,/const subdivision=/);
 });

@@ -193,7 +193,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.167',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.169',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3183,6 +3183,13 @@ def valid_smart_options(value):
     if 'smartStartChannel' in value and (type(value['smartStartChannel']) is not int or not -1<=value['smartStartChannel']<12):return False
     return True
 
+def valid_robot_seating(value):
+    if not isinstance(value,dict) or set(value)!={'targetId','local','yawRelative','slot'}:return False
+    if not isinstance(value['targetId'],str) or re.fullmatch(r'[A-Za-z0-9_-]{8,80}',value['targetId']) is None:return False
+    if not isinstance(value['local'],list) or len(value['local'])!=3 or any(type(n) not in (float,int) or not math.isfinite(n) or abs(n)>100 for n in value['local']):return False
+    if type(value['yawRelative']) not in (int,float) or not math.isfinite(value['yawRelative']) or abs(value['yawRelative'])>100:return False
+    return type(value['slot']) is int and 0<=value['slot']<=3
+
 def valid_basic_furniture(value):
     if not isinstance(value,dict) or len(value)>120:return False
     variant=value.get('variant')
@@ -3192,7 +3199,7 @@ def valid_basic_furniture(value):
              'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35),
              'wallThickness':(.005,.15),'neckRadius':(.01,.5),'neckHeight':(.02,.6),'bottleOpacity':(0,1),'fluidOpacity':(0,1),'fluidLevel':(0,100),
              'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'reclineDeg':(0,85),'canopyRadius':(.4,4),'canopySegments':(3,16),'lampIntensity':(0,20),'lampRange':(.5,80),'shadeOpacity':(.05,1),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3),'treeHeight':(.4,18),'trunkRadius':(.025,1.4),'canopyRadius':(.15,7),'branchCount':(0,28),'leafClusters':(0,80),'leafSize':(.05,.8),'trunkWobble':(0,.7),'blossomDensity':(0,1),'palmFronds':(4,16),'treeSeed':(0,999999),'grassDensity':(0,1),'grassHeight':(.02,.7),'grassWidth':(.005,.1),'windStrength':(0,1.5),'windSpeed':(0,6),'soilRoughness':(0,1),'cropRows':(1,12),'cropSpacing':(.15,2),'growthPercent':(0,100),'plotSeed':(0,999999),'scatterCount':(1,160),'scatterSpacing':(.3,12),'scatterJitter':(0,1),'scatterCluster':(0,1),'scatterScale':(0,.85),'shrubHeight':(.12,3.5),'shrubRadius':(.12,2.5),'shrubLeaves':(3,48),'shrubBranches':(0,16),'terrainRelief':(0,3),'terrainFrequency':(.2,6),'waterDepth':(.05,4),'waterLevel':(0,1),'shoreSlope':(.1,3)}
-    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','armrests','ergonomicBack','color','fabricColor','texture','handle','cap','soil','openTop','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle','fluidColor','treeStyle','fruitType','groundCover','soilPreset','cropType','plotSmooth','plotPoints','scatterMode','scatterSpecies','shrubShape','leafColor','soilColor','blossomColor','plotShape','waterColor'}|set(numeric)
+    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','armrests','ergonomicBack','color','fabricColor','texture','handle','cap','soil','openTop','seatMoveMode','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle','fluidColor','treeStyle','fruitType','groundCover','soilPreset','cropType','plotSmooth','plotPoints','scatterMode','scatterSpecies','shrubShape','leafColor','soilColor','blossomColor','plotShape','waterColor'}|set(numeric)
     if any(key not in allowed for key in value):return False
     if 'channels' in value and not valid_smart_channels(value['channels']):return False
     if not valid_smart_options(value):return False
@@ -3201,6 +3208,7 @@ def valid_basic_furniture(value):
         n=value[key]
         if isinstance(n,bool) or not isinstance(n,(int,float)) or not math.isfinite(n) or not lo<=n<=hi:return False
         if key in ('corners','shelves','seats','canopySegments','branchCount','leafClusters','palmFronds','treeSeed','cropRows','plotSeed','scatterCount','shrubLeaves','shrubBranches') and int(n)!=n:return False
+    if value.get('seatMoveMode','stand') not in ('stand','follow'):return False
     if value.get('topShape','rectangle') not in ('rectangle','round','polygon'):return False
     if value.get('legStyle','four') not in ('four','three','single','casters','none'):return False
     if value.get('texture','none') not in ('none','plaster','concrete','bricks','metal','wood','marble','granite'):return False
@@ -3378,6 +3386,7 @@ def set_scene():
             if 'channels' in media and not valid_smart_channels(media['channels']):return json_error('Invalid media channels')
             if not valid_smart_options(media):return json_error('Invalid smart media options')
             if 'mount' in media and not valid_surface_mount(media['mount']):return json_error('Invalid media surface mount')
+        if 'seating' in o and (o['kind']!='robot' or not valid_robot_seating(o['seating'])):return json_error('Invalid seating anchor')
         if o['kind']=='robot':
             if 'combat' in o and not valid_robot_combat(o['combat']):return json_error('Invalid robot combat controls')
             if 'animationSpeed' in o and not valid_robot_animation_speed(o['animationSpeed']):return json_error('Invalid robot animation speed')
@@ -3451,7 +3460,8 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','throwSettings','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','followHandRotation','inventory','storage','transformLocked') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','throwSettings','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','followHandRotation','inventory','storage','transformLocked','seating') if key in obj}
+        if 'seating' in obj and (obj['kind']!='robot' or not valid_robot_seating(obj['seating'])):return json_error('Invalid seating anchor')
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')

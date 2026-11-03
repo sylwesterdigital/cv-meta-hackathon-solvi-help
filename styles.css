@@ -2424,3 +2424,18 @@ button[data-ui-icon="record"]::before{
 #objectPresetsBackdrop .object-preset-delete::before,#objectPresetsBackdrop .object-preset-delete::after{content:none!important;display:none!important}
 #objectPresetsBackdrop .object-preset-delete svg{display:block!important;width:19px!important;height:19px!important;position:absolute!important;inset:50% auto auto 50%!important;transform:translate(-50%,-50%)!important;margin:0!important;fill:none!important}
 #objectPresetsBackdrop .object-preset-delete .ui-button-label{display:none!important}
+
+/* v0.2.168 — contextual range floats BELOW the active inspector row. Its
+   position never participates in the three-column grid's layout. */
+body>#inspectorValueSlider.inspector-value-slider{
+ position:fixed!important;z-index:25!important;display:block!important;
+ margin:0!important;padding:7px 12px!important;box-sizing:border-box!important;
+ max-width:calc(100vw - 16px)!important;
+ border:1px solid color-mix(in srgb,var(--ui-fg) 33%,transparent)!important;
+ border-radius:9px!important;background:var(--ui-panel,#1c2532)!important;
+ box-shadow:0 9px 24px rgba(0,0,0,.48)!important;
+ pointer-events:auto!important;
+}
+body>#inspectorValueSlider[hidden]{display:none!important}
+body>#inspectorValueSlider .inspector-slider-head{display:flex;gap:8px;justify-content:space-between;align-items:center;font-size:11px;margin:0!important}
+body>#inspectorValueSlider #inspectorActiveRange{display:block;width:100%!important;height:27px!important;min-height:27px!important;margin:0!important;accent-color:var(--solvi-accent)}

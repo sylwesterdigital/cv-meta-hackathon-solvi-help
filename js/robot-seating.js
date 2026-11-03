@@ -4,7 +4,7 @@ import * as THREE from 'three';
 function sittingClip(names=[]){const name=names.find(n=>/^(?:sit|sitting|sitting idle|sit idle|sit down)(?:__\d+)?$/i.test(String(n).trim()));return name?'clip:'+name:null;}
 
 const SURFACES=new Set(['furniture','cube','cylinder','plane','surface','model']);
-export function seatPlan(target,robotPosition){
+export function seatPlan(target,robotPosition,occupiedSlots=[]){
  if(!target||!SURFACES.has(target.userData?.editorKind)||!robotPosition||target.userData?.storage)return null;
  target.updateWorldMatrix?.(true,true);
  const bounds=new THREE.Box3().setFromObject(target);if(bounds.isEmpty())return null;
@@ -35,14 +35,27 @@ export function seatPlan(target,robotPosition){
   const top=['sunbed','deckChair'].includes(furniture.variant)?(Number(furniture.height)||.4)+.07:Number.isFinite(seatY)?seatY:
     furniture.variant==='bed'?Number(furniture.height)||.50:Number(furniture.height)||.5;
   // Furniture geometry typically has a back at +Z, so sit towards its -Z edge.
-  localX=Math.max(localBounds.min.x+.22,Math.min(localBounds.max.x-.22,local.x));
-  localZ=furniture.variant==='table'?zMid:['sunbed','deckChair'].includes(furniture.variant)?zMid:localBounds.min.z+Math.min(.35,depth*.48);
+  // A chair's armrest and wheels belong to its outer bounds, not the sitting surface.
+  // Place one-seat furniture at the exact centre of the cushion regardless of approach angle.
+  localX=0;
+  localZ=['sunbed','deckChair','bed','table'].includes(furniture.variant)?zMid:-(Number(furniture.depth)||depth)*.06;
+  let seatSlot=0;
+  if(furniture.variant==='sofa'){
+   const count=Math.max(1,Math.min(4,Math.round(Number(furniture.seats)||2)));
+   const cushionWidth=Number(furniture.width)||width;
+   const slots=Array.from({length:count},(_,i)=>({index:i,x:-cushionWidth*.5+cushionWidth*(i+.5)/count}));
+   const available=slots.filter(s=>!occupiedSlots.includes(s.index));
+   if(!available.length)return null;
+   available.sort((a,b)=>Math.abs(a.x-local.x)-Math.abs(b.x-local.x));
+   seatSlot=available[0].index;localX=available[0].x;
+  }else if(occupiedSlots.length)return null;
+
   angle=Math.PI;
   const spot=target.localToWorld(new THREE.Vector3(localX,top,localZ));
   const forward=new THREE.Vector3(0,0,-1).applyQuaternion(face);
   const yaw=Math.atan2(forward.x,forward.z);
   const distance=Math.hypot(spot.x-robotPosition.x,spot.z-robotPosition.z);
-  return Number.isFinite(spot.y)&&distance<2.1&&spot.y-robotPosition.y>.20&&spot.y-robotPosition.y<1.35?{spot,yaw,height:spot.y,targetId:target.userData.editorId,reclined:['sunbed','deckChair'].includes(furniture.variant),reclineDeg:Number(furniture.reclineDeg)||0}:null;
+  return Number.isFinite(spot.y)&&distance<2.1&&spot.y-robotPosition.y>.20&&spot.y-robotPosition.y<1.35?{spot,yaw,height:spot.y,targetId:target.userData.editorId,seatSlot,reclined:['sunbed','deckChair'].includes(furniture.variant),reclineDeg:Number(furniture.reclineDeg)||0}:null;
  }
  // General flat shapes: choose the edge nearest to the avatar, not always +Z.
  const edges=[{d:Math.abs(local.x-localBounds.min.x),x:localBounds.min.x+.23,z:zMid,yaw:-Math.PI/2},
@@ -67,7 +80,9 @@ export function seatPlan(target,robotPosition){
 }
 export function takeSeat(robot,target,editor){
  if(!robot||!target||!editor?.canEdit?.(robot))return false;
- const plan=seatPlan(target,robot.position);if(!plan)return false;
+ const occupying=(editor.items||[]).filter(other=>other!==robot&&other.userData?.robotSeated&&other.userData.robotSeatedTarget===target.userData.editorId);
+ const slots=occupying.map(other=>Number.isInteger(other.userData.robotSeatState?.slot)?other.userData.robotSeatState.slot:other.userData.robotSeatSlot??0);
+ const plan=seatPlan(target,robot.position,slots);if(!plan)return false;
  // Anchor the avatar in front of the visible seat, not in empty space.
  robot.position.x=plan.spot.x;robot.position.z=plan.spot.z;
  robot.rotation.y=plan.yaw;robot.userData.robotSeated=true;
@@ -77,9 +92,42 @@ export function takeSeat(robot,target,editor){
  robot.userData.robotReclineAngle=recline?THREE.MathUtils.degToRad(Math.max(0,85-plan.reclineDeg)):0;
  robot.userData.robotMode=recline?(lying?'clip:'+lying:'idle'):(clip||'idle');robot.userData.robotPlaying=null;
  robot.userData.robotSeatedTarget=plan.targetId;
+ target.updateWorldMatrix?.(true,false);
+ robot.userData.robotSeatSlot=plan.seatSlot??0;
+ robot.userData.robotSeatState={targetId:plan.targetId,local:target.worldToLocal(robot.position.clone()).toArray(),yawRelative:robot.rotation.y-new THREE.Euler().setFromQuaternion(target.getWorldQuaternion(new THREE.Quaternion()),'YXZ').y,slot:plan.seatSlot??0};
+ robot.userData.robotSeatTargetPose=[target.position.x,target.position.y,target.position.z,target.quaternion.x,target.quaternion.y,target.quaternion.z,target.quaternion.w,target.scale.x,target.scale.y,target.scale.z];
  editor.physics?.applyEditedPose?.(robot);
  editor.queueSave?.(robot);
  return true;
+}
+// Stable seat anchors in furniture-local coordinates. The editor applies these
+// after Rapier each frame so translated/rotated/dynamically pushed furniture and
+// its occupants are visually and physically synchronised without parent reparenting.
+export function followFurnitureSeats(editor){
+ if(!editor?.items)return 0;
+ let updated=0;
+ for(const bot of editor.items){
+  if(bot.userData?.editorKind!=='robot'||!bot.userData.robotSeated)continue;
+  const seat=bot.userData.robotSeatState;
+  const target=editor.items.find(item=>item.userData?.editorId===bot.userData.robotSeatedTarget);
+  if(!target){standUp(bot,editor);continue;}
+  if(!seat||seat.targetId!==target.userData.editorId||!Array.isArray(seat.local)||seat.local.length!==3)continue;
+  target.updateWorldMatrix?.(true,false);
+  const pose=[target.position.x,target.position.y,target.position.z,target.quaternion.x,target.quaternion.y,target.quaternion.z,target.quaternion.w,target.scale.x,target.scale.y,target.scale.z];
+  const previous=bot.userData.robotSeatTargetPose;
+  bot.userData.robotSeatTargetPose=pose;
+  const furnitureMoved=Array.isArray(previous)&&pose.some((n,i)=>Math.abs(n-previous[i])>1e-5);
+  const worldPosition=target.localToWorld(new THREE.Vector3(...seat.local));
+  const yaw=new THREE.Euler().setFromQuaternion(target.getWorldQuaternion(new THREE.Quaternion()),'YXZ').y+seat.yawRelative;
+  const moved=bot.position.distanceToSquared(worldPosition)>0.000001||Math.abs(Math.atan2(Math.sin(bot.rotation.y-yaw),Math.cos(bot.rotation.y-yaw)))>.0001;
+  if(target.userData.furniture?.seatMoveMode!=='follow'&&furnitureMoved){standUp(bot,editor);continue;}
+  if(!moved)continue;
+  bot.position.copy(worldPosition);bot.rotation.y=yaw;
+  if(editor.physics?.owns?.(bot)!==false)editor.physics?.applyEditedPose?.(bot);
+  if(furnitureMoved&&editor.canEdit?.(bot))editor.queueSave?.(bot);
+  updated++;
+ }
+ return updated;
 }
 // Convert the robot's facing into a ray through the seat's local footprint.
 // The exit distance accounts for rotation/scale and adds capsule clearance.
@@ -116,11 +164,14 @@ export function standUp(robot,editor){
  if(!robot?.userData?.robotSeated)return false;
  const target=editor?.items?.find(o=>o.userData.editorId===robot.userData.robotSeatedTarget);
  const clearPosition=standClearancePosition(robot,target);
- if(clearPosition){robot.position.x=clearPosition.x;robot.position.z=clearPosition.z;
-  // Update the actual rigid body before the next physics frame snaps it back.
-  editor?.physics?.applyEditedPose?.(robot);
+ if(clearPosition){robot.position.x=clearPosition.x;robot.position.z=clearPosition.z;}
+ else if(editor?.world?.floor&&!editor?.physics?.enabled){
+  const y=Number(editor.world.floor.position?.y)||0;
+  robot.position.y=y;
  }
- robot.userData.robotSeated=false;robot.userData.robotSitPose=null;robot.userData.robotReclineAngle=0;
+ // Correct the simulated capsule as soon as the robot leaves the seat.
+ if(clearPosition||editor?.physics?.enabled||editor?.world?.floor)editor?.physics?.applyEditedPose?.(robot);
+ robot.userData.robotSeated=false;robot.userData.robotSitPose=null;robot.userData.robotReclineAngle=0;robot.userData.robotSeatState=null;robot.userData.robotSeatSlot=null;robot.userData.robotSeatTargetPose=null;
  robot.userData.robotSeatedTarget=null;robot.userData.robotMode='idle';
  robot.userData.robotPlaying=null;
  // The aligned yaw is intentionally retained when standing up.

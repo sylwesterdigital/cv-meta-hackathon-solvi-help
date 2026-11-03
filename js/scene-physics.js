@@ -162,6 +162,12 @@ export class ScenePhysics{
   // Collider geometry cannot be measured until the imported GLB/FBX visual is loaded.
   if(kind==='model'&&!object.userData.modelReady){this.remove(id);return;}
   if(kind==='light'){this.remove(id);return;}
+  // Nature surface patches were originally saved with physics off. Upgrade
+  // those legacy surfaces in memory so the same elevations support avatars,
+  // picked-up objects and XR teleportation after scene restoration.
+  if(kind==='furniture'&&['groundPlot','cropBed','vegetationArea','waterPatch'].includes(object.userData.furniture?.variant)&&object.userData.physics?.mode==='off'){
+   object.userData.physics={...object.userData.physics,mode:'static'};
+  }
   const isRobot=kind==='robot',opts=physicsOptions(object.userData.physics);
   if(!isRobot&&opts.mode==='off'){this.remove(id);return;}
   const owner=this.owns(object);

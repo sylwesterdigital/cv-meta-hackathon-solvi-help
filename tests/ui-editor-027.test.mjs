@@ -36,7 +36,7 @@ test('one contextual slider follows selected numeric field; each vector has one 
  assert.match(html,/id="inspectorActiveRange"/);
  assert.equal((html.match(/id="inspectorActiveRange"/g)||[]).length,1);
  assert.match(editor,/activeNumeric\.dispatchEvent\(new Event\('change'/);
- assert.match(editor,/anchor\.insertAdjacentElement\('afterend',context\)/);
+ assert.match(editor,/document\.body\.append\(context\)/);
  assert.match(editor,/field==='scale'\?1:0/);
  assert.ok(existsSync(new URL('../assets/ui-icons/reset.svg',import.meta.url)));
 });

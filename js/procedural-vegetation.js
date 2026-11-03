@@ -69,14 +69,17 @@ function terrainHeightAt(p,bounds,x,z,isWater){
  const nx=(x-bounds.cx)/bounds.hw,nz=(z-bounds.cz)/bounds.hd;
  const radial=Math.min(1,Math.hypot(nx,nz));
  const interior=smooth01(1-radial);
- const noise=.5+.5*Math.sin((x*1.2+z*.85+p.plotSeed*.003)*p.terrainFrequency)*Math.cos((z*1.13-x*.37+p.plotSeed*.005)*p.terrainFrequency*.9);
+ const freq=p.terrainFrequency,seed=p.plotSeed;
+ const large=Math.sin((x*.7+z*.31+seed*.003)*freq)*Math.cos((z*.87-x*.18+seed*.005)*freq);
+ const small=Math.sin((x*1.82-z*.53+seed*.017)*freq)*Math.cos((z*1.74+x*.29+seed*.008)*freq);
+ const noise=Math.max(0,Math.min(1,.55+.3*large+.15*small));
  if(isWater){
   const bowl=Math.pow(interior,Math.max(.75,p.shoreSlope*1.15));
-  const irregular=(noise-.5)*p.terrainRelief*.12;
+  const irregular=(noise-.5)*p.terrainRelief*.12*interior;
   return -p.waterDepth*(.15+.85*bowl)+irregular;
  }
- const base=p.variant==='cropBed'?p.terrainRelief*.45:p.terrainRelief;
- return base*(.18+.82*interior)*(.6+.4*noise);
+ const relief=p.variant==='cropBed'?p.terrainRelief*.45:p.terrainRelief;
+ return relief*(.18+.82*interior)*(.38+.62*noise);
 }
 export function cleanVegetation(p={}){
  const value={...p};
@@ -191,23 +194,66 @@ const soilFragment=`
   #include <colorspace_fragment>
  }`;
 function grassBladeGeometry(width){
- // Three vertically subdivided segments preserve a rooted blade while the tip bends in the vertex shader.
- const geo=new THREE.PlaneGeometry(width,1,1,3);geo.translate(0,.5,0);return geo;
+ // Seven vertices, five triangles: broad rooted base, narrowing midrib, and
+ // ONE pointed tip. The three intervals allow vertex wind/robot displacement.
+ // No rectangular end caps and no additional draw calls per blade.
+ const w=width*.5,vertices=[
+  -w,0,0, w,0,0,
+  -w*.77,.36,0, w*.77,.36,0,
+  -w*.43,.70,0, w*.43,.70,0,
+  0,1,0
+ ];
+ if(!THREE.Float32BufferAttribute)return new THREE.PlaneGeometry(width,1,1,3).translate(0,.5,0);
+ const geo=new THREE.BufferGeometry();
+ geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+ geo.setIndex?.([0,1,2,1,3,2,2,3,4,3,5,4,4,5,6]);
+ geo.computeVertexNormals();return geo;
+}
+const GRASS_ROBOT_LIMIT=4;
+const grassRobotInfluences=Array.from({length:GRASS_ROBOT_LIMIT},()=>typeof THREE.Vector4==='function'?new THREE.Vector4(0,0,0,0):{
+ x:0,y:0,z:0,w:0,set(x,y,z,w){Object.assign(this,{x,y,z,w});return this;},
+ toArray(array=[],offset=0){array[offset]=this.x;array[offset+1]=this.y;array[offset+2]=this.z;array[offset+3]=this.w;return array;}
+});
+const previousRobotLocations=new WeakMap();
+export function updateGrassRobotInfluence(robots=[],dt=1/60){
+ const entries=[];
+ for(const robot of robots){
+  if(!robot||!robot.position||!Number.isFinite(robot.position.x)||!Number.isFinite(robot.position.z))continue;
+  const previous=previousRobotLocations.get(robot),x=robot.position.x,z=robot.position.z;
+  const moved=previous?Math.hypot(x-previous[0],z-previous[1]):0;
+  previousRobotLocations.set(robot,[x,z]);
+  if(!previous||moved<.002||moved>3)continue; // no first-frame pop or teleport wave
+  const strength=Math.min(1.4,moved/Math.max(.008,Number(dt)||1/60))*.62;
+  if(strength>.08)entries.push({x,z,strength});
+ }
+ entries.sort((a,b)=>b.strength-a.strength);
+ for(let i=0;i<GRASS_ROBOT_LIMIT;i++){
+  const v=entries[i];grassRobotInfluences[i].set(v?.x??0,v?.z??0,v?.strength??0,0);
+ }
 }
 function grassBladeMaterial(p){
  const mat=new THREE.MeshStandardMaterial({color:p.leafColor,side:THREE.DoubleSide,roughness:1,metalness:0});
  mat.userData.windShader=null;
  mat.onBeforeCompile=shader=>{
   shader.uniforms.uWindTime={value:0};shader.uniforms.uWindStrength={value:p.windStrength};shader.uniforms.uWindSpeed={value:p.windSpeed};
-  shader.vertexShader=shader.vertexShader.replace('#include <common>',`#include <common>\nuniform float uWindTime;uniform float uWindStrength;uniform float uWindSpeed;`)
+  shader.uniforms.uRobotInfluences={value:grassRobotInfluences};
+  shader.vertexShader=shader.vertexShader.replace('#include <common>',`#include <common>\nuniform float uWindTime;uniform float uWindStrength;uniform float uWindSpeed;uniform vec4 uRobotInfluences[4];`)
     .replace('#include <begin_vertex>',`#include <begin_vertex>
      float windPhase = (position.x*8.0 + instanceMatrix[3].x*1.23 + instanceMatrix[3].z*1.65) + uWindTime*uWindSpeed;
      float bend = sin(windPhase) * .65 + sin(windPhase*.47 + instanceMatrix[3].x*.63)*.35;
-     transformed.x += bend * uWindStrength * pow(max(position.y,0.0),2.0) * .16;
-     transformed.z += cos(windPhase*.78) * uWindStrength * pow(max(position.y,0.0),2.0) * .08;`);
+     float tipWeight = pow(max(position.y,0.0),2.0);
+     transformed.x += bend * uWindStrength * tipWeight * .16;
+     transformed.z += cos(windPhase*.78) * uWindStrength * tipWeight * .08;
+     vec2 bladeWorld = (modelMatrix * instanceMatrix * vec4(0.0,0.0,0.0,1.0)).xz;
+     for(int i=0;i<4;i++){
+      vec2 fromRobot = bladeWorld-uRobotInfluences[i].xy;
+      float dist=length(fromRobot);
+      float proximity=(1.0-smoothstep(0.28,1.55,dist))*uRobotInfluences[i].z;
+      transformed.xz += (fromRobot/max(.15,dist))*proximity*tipWeight*.42;
+     }`);
   mat.userData.windShader=shader;
  };
- mat.customProgramCacheKey=()=>`solvi-grass-wind-166`;
+ mat.customProgramCacheKey=()=>`solvi-grass-wind-168`;
  return mat;
 }
 // Subdivide the existing triangulated polygon instead of using a center fan:
@@ -227,7 +273,8 @@ function terrainSurface(pts,p,isWater=false){
   }
   for(const [x,z] of [a,b,c])vertices.push(x,terrainHeightAt(p,bounds,x,z,isWater)+.006,z);
  };
- for(let i=0;i+2<order.length;i+=3)append(point(order[i]),point(order[i+1]),point(order[i+2]),2);
+ const subdivision=pts.length>48?2:(plotArea(pts)>65||p.terrainFrequency>2.4?4:3);
+ for(let i=0;i+2<order.length;i+=3)append(point(order[i]),point(order[i+1]),point(order[i+2]),subdivision);
  flat.dispose();
  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geo.computeVertexNormals();
  return {geo,bounds};
@@ -360,7 +407,8 @@ function vegetationAreaGeometry(p,trunkMaterial){
   if(!entries.length)return;
   const mesh=instanceMaterialGeometry(geometry,material,entries.length);
   const matrix=new THREE.Matrix4(),v=new THREE.Vector3(),q=new THREE.Quaternion(),s=new THREE.Vector3();
-  entries.forEach((item,i)=>{v.set(...item.pos);q.setFromAxisAngle(new THREE.Vector3(0,1,0),item.angle||0);s.set(...item.scale);matrix.compose(v,q,s);mesh.setMatrixAt(i,matrix);});
+  const pts=p.plotSmooth?smoothClosedPlot(plotPointsForConfig(p)):plotPointsForConfig(p),bounds=boundsFromPoints(pts);
+  entries.forEach((item,i)=>{v.set(item.pos[0],item.pos[1]+terrainHeightAt(p,bounds,item.pos[0],item.pos[2],false),item.pos[2]);q.setFromAxisAngle(new THREE.Vector3(0,1,0),item.angle||0);s.set(...item.scale);matrix.compose(v,q,s);mesh.setMatrixAt(i,matrix);});
   mesh.instanceMatrix.needsUpdate=true;mesh.castShadow=false;mesh.userData.furniturePart=false;out.push(mesh);
  };
  const trunks=[],crowns=[],conifers=[],palms=[],shrubs=[],branches=[],blossoms=[],fruits=[];

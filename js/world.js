@@ -15,6 +15,7 @@ import {nextCameraMode,followAnchor,localOrbitOffset,cameraFromLocalOffset,chase
 import {freeCameraAxes} from './camera-key-movement.js';
 import {createFloorTexture} from './floor-textures.js';
 import {updateSceneMedia,toggleSceneMediaPlayback,setSceneMediaMuted,sceneMediaMuted,showSceneMediaCaptions} from './scene-media.js';
+import {updateGrassRobotInfluence} from './procedural-vegetation.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const random=(a,b)=>a+Math.random()*(b-a);
@@ -902,7 +903,7 @@ export class SolviWorld {
     this.controls.enabled=!sketchLocked&&!this.renderer.xr.isPresenting&&!this.editorDragging&&!this.editorGizmoPointer&&cameraAllowed&&document.pointerLockElement!==this.renderer.domElement;
     if(!sketchLocked)this.navigateCamera(dt);
     if(!this.renderer.xr.isPresenting&&!sketchLocked)this.controls.update();
-    this.updateXR();this.robotEditor?.tick(dt);if(!sketchLocked)this.updateFollowCamera(dt);this.repairCameraPose();this.updateVoiceRings(dt);updateSceneMedia(this,dt);this.robotEditor?.updateMediaHUDPosition?.();
+    this.updateXR();this.robotEditor?.tick(dt);updateGrassRobotInfluence((this.robotEditor?.items||[]).filter(o=>o.userData.editorKind==='robot'),dt);if(!sketchLocked)this.updateFollowCamera(dt);this.repairCameraPose();this.updateVoiceRings(dt);updateSceneMedia(this,dt);this.robotEditor?.updateMediaHUDPosition?.();
     if(this.onPose&&(!this.lastPose||performance.now()-this.lastPose>180)){
       this.lastPose=performance.now();const cam=this.renderer.xr.isPresenting?this.renderer.xr.getCamera():this.camera;
       const position=cam.getWorldPosition(new THREE.Vector3());

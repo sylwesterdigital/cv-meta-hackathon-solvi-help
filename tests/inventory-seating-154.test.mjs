@@ -6,6 +6,7 @@ const read=name=>fs.readFileSync(new URL('../'+name,import.meta.url),'utf8');
 class V{
  constructor(x=0,y=0,z=0){Object.assign(this,{x,y,z});}
  clone(){return new V(this.x,this.y,this.z);}
+ toArray(){return [this.x,this.y,this.z];}
  copy(p){Object.assign(this,{x:p.x,y:p.y,z:p.z});return this;}
  set(x,y,z){Object.assign(this,{x,y,z});return this;}
  add(v){return this.set(this.x+v.x,this.y+v.y,this.z+v.z);}
@@ -14,6 +15,7 @@ class V{
  distanceToSquared(v){return (this.x-v.x)**2+(this.y-v.y)**2+(this.z-v.z)**2;}
  applyQuaternion(q){const c=Math.cos(q.yaw||0),s=Math.sin(q.yaw||0);return this.set(this.x*c+this.z*s,this.y,this.z*c-this.x*s);}
 }
+class E{setFromQuaternion(q){this.y=q.yaw||0;return this;}}
 class Q{constructor(yaw=0){this.yaw=yaw;}
  invert(){this.yaw=-this.yaw;return this;}
  multiply(q){this.yaw+=q.yaw;return this;}
@@ -31,7 +33,7 @@ class B{
 class Matrix4{copy(){return this;}invert(){return this;}multiply(){return this;}}
 class Raycaster{constructor(origin){this.origin=origin;}intersectObject(){return [{face:{normal:new V(0,1,0)},object:{isMesh:true,matrixWorld:{}},point:new V(this.origin.x,.5,this.origin.z)}];}}
 V.prototype.transformDirection=function(){return this;};B.prototype.applyMatrix4=function(){return this;};
-const THREE={Vector3:V,Quaternion:Q,Box3:B,Matrix4,Raycaster};
+const THREE={Vector3:V,Quaternion:Q,Euler:E,Box3:B,Matrix4,Raycaster};
 const seatCode=read('js/robot-seating.js').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'');
 const {seatPlan,takeSeat,standUp}=new Function('THREE',seatCode+'\nreturn {seatPlan,takeSeat,standUp}')(THREE);
 const invCode=read('js/robot-inventory.js').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'');
@@ -85,11 +87,11 @@ test('pocket item can transfer to backpack and back and optional food use remove
 });
 function chair(angle=0){const position=new V(0,0,0);
  const bounds={min:new V(-.5,0,-.5),max:new V(.5,1,.5)};
- return {position,bounds,matrixWorld:{},userData:{editorKind:'furniture',editorId:'chair-12345678',furniture:{variant:'chair',seatHeight:.46}},updateWorldMatrix(){},getWorldQuaternion:()=>new Q(angle),worldToLocal(v){v.sub(position).applyQuaternion(new Q(-angle));return v;},localToWorld(v){return v.applyQuaternion(new Q(angle)).add(position);},traverse(fn){fn({geometry:{boundingBox:new B().setFromObject({bounds})},matrixWorld:{}});}};}
+ return {position,bounds,matrixWorld:{},quaternion:{x:0,y:Math.sin(angle/2),z:0,w:Math.cos(angle/2)},scale:{x:1,y:1,z:1},userData:{editorKind:'furniture',editorId:'chair-12345678',furniture:{variant:'chair',seatHeight:.46}},updateWorldMatrix(){},getWorldQuaternion:()=>new Q(angle),worldToLocal(v){v.sub(position).applyQuaternion(new Q(-angle));return v;},localToWorld(v){return v.applyQuaternion(new Q(angle)).add(position);},traverse(fn){fn({geometry:{boundingBox:new B().setFromObject({bounds})},matrixWorld:{}});}};}
 test('chair seats align to its front edge under rotation and standing retains that rotation',()=>{
  const a=chair(0),robot={position:new V(0,0,-.8),rotation:{y:0},userData:{editorKind:'robot',robotAvailableActions:['Sitting']}};
  const plan=seatPlan(a,robot.position);assert.ok(plan);assert.equal(plan.height,.46);
- assert.ok(Math.abs(plan.yaw-Math.PI)<.001);assert.ok(Math.abs(plan.spot.z+.15)<.001);
+ assert.ok(Math.abs(plan.yaw-Math.PI)<.001);assert.ok(Math.abs(plan.spot.z+.06)<.001,'single seats sit in the cushion centre, not an armrest or edge');
  let pose=0;const editor={canEdit:()=>true,queueSave(){},physics:{applyEditedPose(){pose++;}}};
  assert.equal(takeSeat(robot,a,editor),true);assert.equal(robot.userData.robotSeated,true);assert.equal(robot.userData.robotMode,'clip:Sitting');
  assert.equal(pose,1);assert.equal(standUp(robot,editor),true);assert.equal(robot.rotation.y,Math.PI);
