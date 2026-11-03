@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.172",
+  "currentVersion": "0.2.173",
   "releases": [
+    {
+      "version": "0.2.173",
+      "publishedAt": "2026-11-03T21:48:54Z",
+      "changes": [
+        "Add an Outdoor Infrastructure drawing workflow for walls, fences, hedges, curbs, footpaths, and roads using single-line, multiline, or freehand placement.",
+        "Build deterministic, bounded roads with adjustable tarmac, lanes, one/two-way orientation, road markings, curbs, pavements and streetlights.",
+        "Create plank, mesh and metal-rod fence presets, editable plant hedges and solid perimeter walls with configurable spacing and dimensions.",
+        "Persist each infrastructure path as one scene furniture object with inspector controls, preset compatibility, multiplayer sync, undo and a static collider for structural surfaces.",
+        "Validate all new options and path coordinates in the backend, preserve original avatar assets and run syntax, checksum, version and regression tests before release."
+      ]
+    },
     {
       "version": "0.2.172",
       "publishedAt": "2026-11-03T19:46:30Z",
@@ -326,18 +337,6 @@
         "Add Basic props with eight editable procedural objects: Plate, Mug, Glass, Bowl, Bottle, Can, Flowerpot and Box; hollow/container profiles with optional handles, bottle lids, flowerpot soil and open-top boxes.",
         "Preserve prop edits through the existing furniture scene persistence, duplication, room archives, compound collision and multiplayer object updates; update server validation.",
         "Add procedural texture and prop runtime regressions, retain original avatar assets; requires the updated watcher with a 4096-entry archive safeguard."
-      ]
-    },
-    {
-      "version": "0.2.141",
-      "publishedAt": "2026-11-01T23:03:58Z",
-      "changes": [
-        "Replace clipped robot selection shadow with a visible circular overlay border above the portrait; retain transparent miniature +/\u2212 controls.",
-        "Tighten procedural geometry controls into Transform-like compact rows across walls, stairs, ladders, portals, primitive shapes and new Basic Furniture.",
-        "Add seven Basic furnitures: table, chair, stool, armchair, sofa, bed and cabinet, with bounded human-scale dimensions and optional details.",
-        "Add polygon and round tabletop radius, polygon-corner legs, 3/4 supports, central pedestal, castors, cushions, headrests, headboards and shelving.",
-        "Store and validate furniture as editable real scene objects; preserve geometry in duplication, saved worlds, multiplayer object updates and realm archives.",
-        "Create accurate compound collider parts for furniture when room physics is enabled, and extend runtime geometry and backend regression checks."
       ]
     }
   ]

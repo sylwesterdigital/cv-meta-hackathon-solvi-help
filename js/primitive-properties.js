@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {wallPresetTexture} from './office-walls.js';
 import {EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment} from './procedural-equipment.js';
 import {VEGETATION_TYPES,VEGETATION_NUMERIC,cleanVegetation,vegetationParts} from './procedural-vegetation.js';
+import {INFRASTRUCTURE_NUMERIC,cleanInfrastructure,infrastructureParts} from './procedural-infrastructure.js';
 
 // Parameter bounds prevent generating enormous meshes through a shared scene payload.
 export const PRIMITIVE_FIELDS={
@@ -34,14 +35,14 @@ export function buildPrimitive(kind,values){
 // Basic furniture is built from individually collidable, editable primitive parts.
 // Keeping it here avoids a new module and preserves the deployment watcher's file budget.
 export const BASIC_PROP_TYPES=['plate','mug','glass','bowl','bottle','can','flowerpot','box'];
-export const FURNITURE_TYPES=['table','chair','officeChair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...EQUIPMENT_TYPES,...VEGETATION_TYPES];
+export const FURNITURE_TYPES=['table','chair','officeChair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...EQUIPMENT_TYPES,...VEGETATION_TYPES,'infrastructure'];
 export const FURNITURE_NUMERIC={
  width:[1.2,.06,8],depth:[.75,.06,8],height:[.76,.025,4],
  topThickness:[.07,.025,.3],topRadius:[.55,.15,4],legRadius:[.04,.025,.3],
  corners:[4,3,8],seatHeight:[.46,.25,.9],backHeight:[.5,.2,1.3],
  shelves:[3,0,16],seats:[2,1,4],cushionThickness:[.14,.05,.35],
  wallThickness:[.025,.005,.15],fluidOpacity:[.52,0,1],neckRadius:[.065,.01,.5],neckHeight:[.12,.02,.6],bottleOpacity:[.7,0,1],fluidLevel:[50,0,100],
- rimHeight:[.018,.005,.1],...EQUIPMENT_NUMERIC,...VEGETATION_NUMERIC,textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
+ rimHeight:[.018,.005,.1],...EQUIPMENT_NUMERIC,...VEGETATION_NUMERIC,...INFRASTRUCTURE_NUMERIC,textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
 };
 const furniturePreset={
  table:{width:1.4,depth:.8,height:.75,legStyle:'four'},
@@ -70,7 +71,8 @@ const furniturePreset={
  vegetationArea:{width:8,depth:8,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
  groundPlot:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
  cropBed:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
- waterPatch:{width:4.4,depth:3.2,height:.02,legStyle:'none',color:'#5f513f',fabricColor:'#4aa3d8'}
+ waterPatch:{width:4.4,depth:3.2,height:.02,legStyle:'none',color:'#5f513f',fabricColor:'#4aa3d8'},
+ infrastructure:{width:4,depth:2,height:.02,legStyle:'none',color:'#5f6467',fabricColor:'#728d77'}
 };
 export function sanitiseFurniture(raw={}){
  const variant=FURNITURE_TYPES.includes(raw.variant)?raw.variant:'table';
@@ -102,6 +104,7 @@ export function sanitiseFurniture(raw={}){
  result.color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#9b8068';
  result.fabricColor=typeof raw.fabricColor==='string'&&/^#[0-9a-f]{6}$/i.test(raw.fabricColor)?raw.fabricColor:'#64798e';
  if(VEGETATION_TYPES.includes(variant))Object.assign(result,cleanVegetation({...raw,variant}));
+ if(variant==='infrastructure')Object.assign(result,cleanInfrastructure(raw));
  result.texture=['none','plaster','concrete','bricks','metal','wood','marble','granite'].includes(raw.texture)?raw.texture:(['tree','shrub','vegetationArea'].includes(variant)?'wood':'none');
  return result;
 }
@@ -128,6 +131,7 @@ export function rebuildFurniture(group,raw={}){
   }
  };
  if(VEGETATION_TYPES.includes(p.variant))for(const part of vegetationParts(p,['tree','vegetationArea'].includes(p.variant)?wood:null))parts.push(part);
+ if(p.variant==='infrastructure')for(const part of infrastructureParts(p))parts.push(part);
  if(p.variant==='table'||p.variant==='stool'){
   const topY=p.height-p.topThickness/2;
   if(p.topShape!=='rectangle'){const sides=p.topShape==='round'?48:p.corners;add(new THREE.CylinderGeometry(p.topRadius,p.topRadius,p.topThickness,sides),0,topY,0);}

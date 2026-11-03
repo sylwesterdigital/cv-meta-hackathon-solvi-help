@@ -183,7 +183,7 @@ test('basic furniture builds seven distinct, finite, per-part mesh presets and c
  const THREE={Group:Node,Mesh,BoxGeometry,CylinderGeometry,SphereGeometry,MeshStandardMaterial};
  const equipmentSource=source('js/procedural-equipment.js').replace(/^import .*;\s*$/gm,'').replace(/export (const|function|class) /g,'$1 ');
  const {EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment}=new Function('THREE',equipmentSource+'\nreturn {EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment};')(THREE);
- const {sanitiseFurniture,makeFurniture,rebuildFurniture}=new Function('THREE','wallPresetTexture','EQUIPMENT_TYPES','EQUIPMENT_NUMERIC','buildEquipment','VEGETATION_TYPES','VEGETATION_NUMERIC','cleanVegetation','vegetationParts',section+'\nreturn {sanitiseFurniture,makeFurniture,rebuildFurniture};')(THREE,()=>null,EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment,[],{},v=>v,()=>[]);
+ const {sanitiseFurniture,makeFurniture,rebuildFurniture}=new Function('THREE','wallPresetTexture','EQUIPMENT_TYPES','EQUIPMENT_NUMERIC','buildEquipment','VEGETATION_TYPES','VEGETATION_NUMERIC','cleanVegetation','vegetationParts','INFRASTRUCTURE_NUMERIC','cleanInfrastructure','infrastructureParts',section+'\nreturn {sanitiseFurniture,makeFurniture,rebuildFurniture};')(THREE,()=>null,EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment,[],{},v=>v,()=>[],{},v=>v,()=>[]);
  for(const kind of ['table','chair','officeChair','stool','armchair','sofa','bed','cabinet']){
   const group=makeFurniture({variant:kind});
   assert.equal(group.userData.editorKind,'furniture');assert.equal(group.userData.furniture.variant,kind);

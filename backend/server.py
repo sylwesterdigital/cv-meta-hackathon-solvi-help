@@ -193,7 +193,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.172',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.173',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3191,15 +3191,18 @@ def valid_robot_seating(value):
     return type(value['slot']) is int and 0<=value['slot']<=3
 
 def valid_basic_furniture(value):
-    if not isinstance(value,dict) or len(value)>120:return False
+    if not isinstance(value,dict):return False
+    if value.get('variant')=='infrastructure':
+        if len(value)>165:return False
+    elif len(value)>120:return False
     variant=value.get('variant')
-    if variant not in ('table','chair','officeChair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box','tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker','tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch'):return False
+    if variant not in ('table','chair','officeChair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box','tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker','tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch','infrastructure'):return False
     numeric={'width':(.06,8),'depth':(.06,8),'height':(.025,4),'topThickness':(.025,.3),
              'legRadius':(.025,.3),'topRadius':(.15,4),'corners':(3,8),'seatHeight':(.25,.9),
              'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35),
              'wallThickness':(.005,.15),'neckRadius':(.01,.5),'neckHeight':(.02,.6),'bottleOpacity':(0,1),'fluidOpacity':(0,1),'fluidLevel':(0,100),
-             'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'reclineDeg':(0,85),'canopyRadius':(.4,4),'canopySegments':(3,16),'lampIntensity':(0,20),'lampRange':(.5,80),'shadeOpacity':(.05,1),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3),'treeHeight':(.4,18),'trunkRadius':(.025,1.4),'canopyRadius':(.15,7),'branchCount':(0,28),'leafClusters':(0,80),'leafSize':(.05,.8),'trunkWobble':(0,.7),'blossomDensity':(0,1),'palmFronds':(4,16),'treeSeed':(0,999999),'grassDensity':(0,1),'grassHeight':(.02,.7),'grassWidth':(.005,.1),'windStrength':(0,1.5),'windSpeed':(0,6),'soilRoughness':(0,1),'cropRows':(1,12),'cropSpacing':(.15,2),'growthPercent':(0,100),'plotSeed':(0,999999),'scatterCount':(1,160),'scatterSpacing':(.3,12),'scatterJitter':(0,1),'scatterCluster':(0,1),'scatterScale':(0,.85),'shrubHeight':(.12,3.5),'shrubRadius':(.12,2.5),'shrubLeaves':(3,48),'shrubBranches':(0,16),'terrainRelief':(0,3),'terrainFrequency':(.2,6),'waterDepth':(.05,4),'waterLevel':(0,1),'shoreSlope':(.1,3)}
-    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','armrests','ergonomicBack','color','fabricColor','texture','handle','cap','soil','openTop','seatMoveMode','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle','fluidColor','treeStyle','fruitType','groundCover','soilPreset','cropType','plotSmooth','plotPoints','scatterMode','scatterSpecies','shrubShape','leafColor','soilColor','blossomColor','plotShape','waterColor'}|set(numeric)
+             'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'reclineDeg':(0,85),'canopyRadius':(.4,4),'canopySegments':(3,16),'lampIntensity':(0,20),'lampRange':(.5,80),'shadeOpacity':(.05,1),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3),'treeHeight':(.4,18),'trunkRadius':(.025,1.4),'canopyRadius':(.15,7),'branchCount':(0,28),'leafClusters':(0,80),'leafSize':(.05,.8),'trunkWobble':(0,.7),'blossomDensity':(0,1),'palmFronds':(4,16),'treeSeed':(0,999999),'grassDensity':(0,1),'grassHeight':(.02,.7),'grassWidth':(.005,.1),'windStrength':(0,1.5),'windSpeed':(0,6),'soilRoughness':(0,1),'cropRows':(1,12),'cropSpacing':(.15,2),'growthPercent':(0,100),'plotSeed':(0,999999),'scatterCount':(1,160),'scatterSpacing':(.3,12),'scatterJitter':(0,1),'scatterCluster':(0,1),'scatterScale':(0,.85),'shrubHeight':(.12,3.5),'shrubRadius':(.12,2.5),'shrubLeaves':(3,48),'shrubBranches':(0,16),'terrainRelief':(0,3),'terrainFrequency':(.2,6),'waterDepth':(.05,4),'waterLevel':(0,1),'shoreSlope':(.1,3),'infraWidth':(.15,30),'infraHeight':(.08,8),'infraThickness':(.02,1),'infraLanes':(1,6),'infraPostSpacing':(.4,8),'infraPicketWidth':(.025,.8),'infraGap':(0,.8),'infraLightSpacing':(3,50),'infraLightHeight':(1.8,12),'infraMarkingWidth':(.025,.4),'infraDashLength':(.25,8),'infraDashGap':(.25,14),'infraCurbHeight':(.035,.5),'infraSidewalkWidth':(.35,5),'infraHedgeDensity':(.15,1),'infraSeed':(0,999999)}
+    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','armrests','ergonomicBack','color','fabricColor','texture','handle','cap','soil','openTop','seatMoveMode','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle','fluidColor','treeStyle','fruitType','groundCover','soilPreset','cropType','plotSmooth','plotPoints','scatterMode','scatterSpecies','shrubShape','leafColor','soilColor','blossomColor','plotShape','waterColor','infraType','infraStyle','infraSurface','infraTraffic','infraColour','infraMarkingColour','infraHedgeColour','infraPoints','infraSmooth','infraClose','infraMarkings','infraStreetlights','infraCurbs','infraSidewalks','infraLampsOn'}|set(numeric)
     if any(key not in allowed for key in value):return False
     if 'channels' in value and not valid_smart_channels(value['channels']):return False
     if not valid_smart_options(value):return False
@@ -3207,7 +3210,7 @@ def valid_basic_furniture(value):
         if key not in value:continue
         n=value[key]
         if isinstance(n,bool) or not isinstance(n,(int,float)) or not math.isfinite(n) or not lo<=n<=hi:return False
-        if key in ('corners','shelves','seats','canopySegments','branchCount','leafClusters','palmFronds','treeSeed','cropRows','plotSeed','scatterCount','shrubLeaves','shrubBranches') and int(n)!=n:return False
+        if key in ('corners','shelves','seats','canopySegments','branchCount','leafClusters','palmFronds','treeSeed','cropRows','plotSeed','scatterCount','shrubLeaves','shrubBranches','infraLanes','infraSeed') and int(n)!=n:return False
     if value.get('seatMoveMode','stand') not in ('stand','follow'):return False
     if value.get('topShape','rectangle') not in ('rectangle','round','polygon'):return False
     if value.get('legStyle','four') not in ('four','three','single','casters','none'):return False
@@ -3222,11 +3225,22 @@ def valid_basic_furniture(value):
     if 'plotSmooth' in value and type(value['plotSmooth']) is not bool:return False
     for key,options in (('scatterMode',('orchard','forest','thicket','brushwood')),('scatterSpecies',('mixed','deciduous','conifer','orchard','blossom','palm')),('shrubShape',('wild','round','oval','hedge')),('treeStyle',('deciduous','conifer','orchard','blossom','palm')),('fruitType',('none','apple','orange','plum','coconut')),('groundCover',('soil','grass','mixed')),('soilPreset',('loam','sand','clay','compost')),('cropType',('carrot','tomato','lettuce','strawberry')),('plotShape',('freehand','circle','oval','square'))):
         if key in value and value[key] not in options:return False
+    if variant=='infrastructure':
+        if value.get('infraType') not in ('road','footpath','curb','fence','hedge','pathWall'):return False
+        if value.get('infraStyle') not in ('plank','mesh','rods','solid'):return False
+        if value.get('infraSurface') not in ('asphalt','concrete','gravel','pavers','earth'):return False
+        if value.get('infraTraffic') not in ('oneway','twoway'):return False
+        points=value.get('infraPoints')
+        if not isinstance(points,list) or not 2<=len(points)<=80:return False
+        if any(not isinstance(pt,list) or len(pt)!=2 or any(type(n) not in (int,float) or not math.isfinite(n) or abs(n)>300 for n in pt) for pt in points):return False
+        if sum(math.hypot(b[0]-a[0],b[1]-a[1]) for a,b in zip(points,points[1:]))<.15:return False
+    for key in ('infraSmooth','infraClose','infraMarkings','infraStreetlights','infraCurbs','infraSidewalks','infraLampsOn'):
+        if key in value and type(value[key]) is not bool:return False
     if 'plotPoints' in value:
         pts=value['plotPoints']
         if not isinstance(pts,list) or not 3<=len(pts)<=80:return False
         if any(not isinstance(pt,list) or len(pt)!=2 or any(type(n) not in (int,float) or not math.isfinite(n) or abs(n)>80 for n in pt) for pt in pts):return False
-    for k in ('color','fabricColor','fluidColor','leafColor','soilColor','blossomColor','waterColor'):
+    for k in ('color','fabricColor','fluidColor','leafColor','soilColor','blossomColor','waterColor','infraColour','infraMarkingColour','infraHedgeColour'):
         if k in value and (not isinstance(value[k],str) or re.fullmatch(r'#[0-9a-fA-F]{6}',value[k]) is None):return False
     return True
 

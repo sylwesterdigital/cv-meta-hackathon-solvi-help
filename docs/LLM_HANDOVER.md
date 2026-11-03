@@ -1,4 +1,15 @@
-# SOLVI.help Master LLM Handover — v0.2.168
+# SOLVI.help Master LLM Handover — v0.2.173
+
+## Release v0.2.173 — Outdoor infrastructure drawing, road design and landscaping
+
+**Shipped:** Line, polyline and freehand drawing for roads, motorways, pavements / footpaths, curbs, solid walls, plank / wire-mesh / metal-rod fences and planted hedges. A compact draw panel controls type, mode, path smoothing, closing, undo and commit. Objects persist as one scene furniture entity compatible with account presets, existing multiplayer room saves, edit permissions and Undo. Inspector controls include road width, lane count (1–6), one-way vs two-way, line colour/width/dash spacing, asphalt/gravel/concrete/pavers/earth finishes, optional side curbs, side pavements, streetlights and spacing/height; fence structure, post spacing, plank spacing and material; hedge density and foliage colour. `infraPoints` are deterministic bounded local paths (2–80 points). A redraw edits the selected entity in its existing transform. WebXR optimisations use InstancedMesh batching for repeated noncollidable pieces and at most three live point lights per infrastructure object. Physical walls, road slabs, curbs, footpaths, fence rails and hedge cores use static Rapier box colliders.
+
+**Sources:** `js/procedural-infrastructure.js` (schemas, line geometry, materials, renderer), `js/infrastructure-drawing.js` (draw UI and actions), `js/primitive-properties.js` (furniture integration), `js/editor.js` (tool menus, pointer events, inspector), `backend/server.py` (payload validation), `tests/release-173-infrastructure.test.mjs` (render structure, bounds, save wiring and backend schema validation).
+
+**Validation:** Full JS regression suite, isolated Python validation of a sanitized infrastructure payload, Nginx/realm archive tests and all syntax checks. Run `npm test` against the final extracted archive. Archive must contain root `manifest.json` and *only* `app/<relative-path>` files, every one SHA-256 checked; no Python caches, symlinks or `node_modules`. Original bundled GLBs must stay byte-identical. Full visual inspection in WebGL and WebXR devices remains unverified.
+
+---
+
 
 ## Release v0.2.168 — Stable inspector / pointed reactive grass / walkable terrain hills
 
@@ -913,3 +924,10 @@ Files: `js/editor.js`, `js/inspector-slider-layout.js`, `styles.css`, `tests/rel
 Files: `js/editor.js`, `js/smart-media-playlist.js`, `js/equipment-media.js`, `tests/release-172-media-startup-syntax.test.mjs`, versioned `index.html`, backend release metadata, `releases.json`.
 
 Release requirements: archive root `manifest.json` with exact `sha256` hashes of all and only `app/` files; unchanged original bundled GLBs; `npm test` and `node --check` on every JS/MJS file run against the final extracted archive. Browser playback with a real remote IPTV/HLS URL still requires live validation.
+
+
+## v0.2.173 — Outdoor infrastructure
+- Sources: `js/procedural-infrastructure.js`, `js/infrastructure-drawing.js`. The latter runs its own pointer handling before walls/vegetation and creates a single persistent `furniture` entry after >=2 points. Three modes: single-line, polyline, freehand; optional smoothing / closed path.
+- `variant: infrastructure`: `infraType` road/footpath/curb/fence/hedge/pathWall, `infraStyle` plank/mesh/rods/solid, `infraSurface` asphalt/concrete/gravel/pavers/earth, `infraTraffic` oneway/twoway, `infraPoints` bounded 2D local path, `infraLanes` 1–6, widths/heights/marks/curbs/pavements/lamps. Central sanitation `cleanInfrastructure`, numeric bounds `INFRASTRUCTURE_NUMERIC` and backend `valid_basic_furniture`.
+- Geometry uses segment-aligned boxes for solid collision and shared InstancedMesh batches for repeated pickets, mesh wires, hedges, paint and streetlights. Active PointLight budget is limited to 3 per object for WebXR; other fixtures are emissive. All are generated from one room object; presets and scene save/restore use the existing furniture code path.
+- No external library, CDN assets, or installer modifications; originals assets must remain byte-identical.

@@ -2458,3 +2458,12 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #propertiesPanel #furnitureProperties #furniturePropertiesFields .furniture-param.furniture-field-number{
  min-height:0!important;
 }
+
+/* v0.2.173 line/path drawing. Matches SOLVI compact dark panels. */
+.infra-draw-panel{position:fixed;z-index:10090;top:72px;right:18px;width:min(345px,calc(100vw - 30px));background:#1e252f;color:#edf3fa;border:1px solid #5f819a;border-radius:15px;padding:12px 14px;box-shadow:0 12px 40px #0008;font-family:inherit;font-size:13px;font-weight:500;line-height:1.45}
+.infra-draw-panel[hidden]{display:none!important}
+.infra-draw-title{display:flex;align-items:center;justify-content:space-between;font-weight:750;font-size:14px;margin-bottom:12px}
+.infra-draw-title button{border:1px solid #536679;border-radius:8px;background:#2c3541;color:#f4f7fc;display:grid;place-items:center;min-width:32px;height:32px;font-size:22px;line-height:1}
+.infra-draw-field{display:grid;gap:4px;margin:8px 0}.infra-draw-field select{width:100%;background:#101821;border:1px solid #4f7289;color:#fafafa;border-radius:8px;padding:8px 9px;font:inherit}
+.infra-draw-inline{grid-template-columns:1fr 1fr}.infra-draw-inline label{display:flex;align-items:center;gap:7px}
+.infra-draw-status{font-size:12px;color:#b6c5d7;margin:10px 0}.infra-draw-actions{display:flex;gap:8px}.infra-draw-actions button{background:#2b3542;color:#f5f8fb;padding:8px 11px;border-radius:8px;border:1px solid #4c6277;flex:1;font:inherit}.infra-draw-actions button:disabled{opacity:.4}
