@@ -1,3 +1,7 @@
+# v0.2.167 — Terrain relief and water patches
+
+Includes raised vegetation/crop patches and water patch geometry with corresponding properties. See release manifest.
+
 # SOLVI.help — Master LLM Handover v0.2.160
 
 **Release:** v0.2.160 — Smart TV channel menu synchronisation and image-first procedural Presets gallery.

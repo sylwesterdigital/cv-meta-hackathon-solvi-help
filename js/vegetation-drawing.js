@@ -69,8 +69,8 @@ export function finishVegetationPlot(editor){
  const obj=editor.add('furniture',false,undefined,false,d.variant);if(!obj)return;
  const before=null;
  rebuildFurniture(obj,{...obj.userData.furniture,plotPoints:points,plotSmooth:smooth,scatterMode:d.scatterMode});
- obj.position.set(origin[0],0,origin[1]);obj.name=d.variant==='cropBed'?'Vegetable bed':d.variant==='vegetationArea'?(d.scatterMode==='brushwood'?'Brushwood patch':'Forest / orchard patch'):'Grass & soil plot';
- obj.userData.physics={mode:'off'};
+ obj.position.set(origin[0],0,origin[1]);obj.name=d.variant==='cropBed'?'Vegetable bed':d.variant==='waterPatch'?'Lake / puddle':d.variant==='vegetationArea'?(d.scatterMode==='brushwood'?'Brushwood patch':'Forest / orchard patch'):'Grass & soil plot';
+ obj.userData.physics={mode:['groundPlot','cropBed','waterPatch'].includes(d.variant)?'static':'off'};
  editor.physics.sync(obj);editor.select(obj);editor.refreshList();
  editor.recordEdit(before,editor.snapshot(obj));editor.queueSave(obj);
  editor.toast('Saved '+obj.name+' · '+points.length+' boundary points');

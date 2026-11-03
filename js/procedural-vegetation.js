@@ -1,8 +1,8 @@
-// SOLVI procedural vegetation v0.2.165. WebGL-compatible, deterministic, bounded geometry.
+// SOLVI procedural vegetation v0.2.167. WebGL-compatible, deterministic, bounded geometry.
 // References: Roystan and Alisavakis grass tutorials (concepts adapted from Unity to WebGL).
 import * as THREE from 'three';
 
-export const VEGETATION_TYPES=['tree','shrub','vegetationArea','groundPlot','cropBed'];
+export const VEGETATION_TYPES=['tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch'];
 export const VEGETATION_NUMERIC={
  treeHeight:[4.5,.4,18],trunkRadius:[.18,.025,1.4],canopyRadius:[1.5,.15,7],
  branchCount:[9,0,28],leafClusters:[30,0,80],leafSize:[.23,.05,.8],treeSeed:[42,0,999999],
@@ -11,7 +11,8 @@ export const VEGETATION_NUMERIC={
  windStrength:[.22,0,1.5],windSpeed:[1.1,0,6],soilRoughness:[.55,0,1],
  cropRows:[4,1,12],cropSpacing:[.45,.15,2],growthPercent:[65,0,100],plotSeed:[17,0,999999],
  scatterCount:[36,1,160],scatterSpacing:[2.0,.3,12],scatterJitter:[.24,0,1],scatterCluster:[.58,0,1],
- scatterScale:[.28,0,.85],shrubHeight:[.85,.12,3.5],shrubRadius:[.65,.12,2.5],shrubLeaves:[15,3,48],shrubBranches:[4,0,16]
+ scatterScale:[.28,0,.85],shrubHeight:[.85,.12,3.5],shrubRadius:[.65,.12,2.5],shrubLeaves:[15,3,48],shrubBranches:[4,0,16],
+ terrainRelief:[.32,0,3],terrainFrequency:[1.45,.2,6],waterDepth:[.72,.05,4],waterLevel:[.6,0,1],shoreSlope:[1,0.1,3]
 };
 export const DEFAULT_PLOT=[[-2,-1.25],[2,-1.25],[2,1.25],[-2,1.25]];
 const hex=(value,def)=>typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value)?value:def;
@@ -42,6 +43,41 @@ export function polygonContains(points,x,z){
  }return inside;
 }
 export function plotArea(points){let sum=0;for(let i=0;i<points.length;i++){const a=points[i],b=points[(i+1)%points.length];sum+=a[0]*b[1]-b[0]*a[1];}return Math.abs(sum)*.5;}
+function smooth01(v){return Math.max(0,Math.min(1,v*v*(3-2*v)));}
+function plotPointsForConfig(p){
+ if(p.plotShape&&p.plotShape!=='freehand'){
+  const width=Math.max(.4,Number(p.width)||4),depth=Math.max(.4,p.plotShape==='circle'?width:(Number(p.depth)||width));
+  if(p.plotShape==='square')return [[-width/2,-depth/2],[width/2,-depth/2],[width/2,depth/2],[-width/2,depth/2]];
+  const steps=32,pts=[];
+  for(let i=0;i<steps;i++){
+   const a=i*Math.PI*2/steps;
+   pts.push([Math.cos(a)*width/2,Math.sin(a)*depth/2]);
+  }
+  return pts;
+ }
+ return p.plotPoints;
+}
+function boundsFromPoints(pts){
+ const xs=pts.map(q=>q[0]),zs=pts.map(q=>q[1]);
+ const minx=Math.min(...xs),maxx=Math.max(...xs),minz=Math.min(...zs),maxz=Math.max(...zs);
+ return {minx,maxx,minz,maxz,cx:(minx+maxx)/2,cz:(minz+maxz)/2,hw:Math.max(.001,(maxx-minx)/2),hd:Math.max(.001,(maxz-minz)/2)};
+}
+function fieldNoise(x,z,seed){
+ return .5+.25*Math.sin(x*1.7+seed*.013)+.25*Math.cos(z*1.31+seed*.021)+.18*Math.sin((x+z)*2.3+seed*.007);
+}
+function terrainHeightAt(p,bounds,x,z,isWater){
+ const nx=(x-bounds.cx)/bounds.hw,nz=(z-bounds.cz)/bounds.hd;
+ const radial=Math.min(1,Math.hypot(nx,nz));
+ const interior=smooth01(1-radial);
+ const noise=.5+.5*Math.sin((x*1.2+z*.85+p.plotSeed*.003)*p.terrainFrequency)*Math.cos((z*1.13-x*.37+p.plotSeed*.005)*p.terrainFrequency*.9);
+ if(isWater){
+  const bowl=Math.pow(interior,Math.max(.75,p.shoreSlope*1.15));
+  const irregular=(noise-.5)*p.terrainRelief*.12;
+  return -p.waterDepth*(.15+.85*bowl)+irregular;
+ }
+ const base=p.variant==='cropBed'?p.terrainRelief*.45:p.terrainRelief;
+ return base*(.18+.82*interior)*(.6+.4*noise);
+}
 export function cleanVegetation(p={}){
  const value={...p};
  for(const [key,[def,min,max]] of Object.entries(VEGETATION_NUMERIC)){
@@ -57,8 +93,9 @@ export function cleanVegetation(p={}){
  value.scatterMode=['orchard','forest','thicket','brushwood'].includes(p.scatterMode)?p.scatterMode:'forest';
  value.scatterSpecies=['mixed','deciduous','conifer','orchard','blossom','palm'].includes(p.scatterSpecies)?p.scatterSpecies:'mixed';
  value.shrubShape=['round','oval','wild','hedge'].includes(p.shrubShape)?p.shrubShape:'wild';
+ value.plotShape=['freehand','circle','oval','square'].includes(p.plotShape)?p.plotShape:'freehand';
  value.plotSmooth=p.plotSmooth===true;value.plotPoints=cleanPlotPoints(p.plotPoints??(p.variant==='vegetationArea'?[[-7,-5],[7,-5],[7,5],[-7,5]]:undefined));
- value.leafColor=hex(p.leafColor,'#4a9254');value.soilColor=hex(p.soilColor,'#66503a');value.blossomColor=hex(p.blossomColor,'#eea6c2');
+ value.leafColor=hex(p.leafColor,'#4a9254');value.soilColor=hex(p.soilColor,'#66503a');value.blossomColor=hex(p.blossomColor,'#eea6c2');value.waterColor=hex(p.waterColor,'#4aa3d8');
  return value;
 }
 const leafMaterial=c=>new THREE.MeshStandardMaterial({color:c,roughness:.9,flatShading:true,side:THREE.DoubleSide});
@@ -141,7 +178,7 @@ function treeGeometry(p,trunkMaterial){
  }
  return out;
 }
-const soilVertex=`varying vec2 vGround;void main(){vGround=position.xy;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
+const soilVertex=`varying vec2 vGround;void main(){vGround=position.xz;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
 const soilFragment=`
  uniform vec3 uSoil;uniform vec3 uGrass;uniform float uBlend;uniform float uRough;varying vec2 vGround;
  float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -173,17 +210,40 @@ function grassBladeMaterial(p){
  mat.customProgramCacheKey=()=>`solvi-grass-wind-166`;
  return mat;
 }
-function plotGeometry(p,isCrop){
- const pts=p.plotSmooth?smoothClosedPlot(p.plotPoints):p.plotPoints;
+// Subdivide the existing triangulated polygon instead of using a center fan:
+// concave hand-drawn shores stay clipped to the actual boundary.
+function terrainSurface(pts,p,isWater=false){
+ const shape=new THREE.Shape(pts.map(([x,z])=>new THREE.Vector2(x,-z)));
+ const flat=new THREE.ShapeGeometry(shape),source=flat.getAttribute?.('position');
+ const bounds=boundsFromPoints(pts),vertices=[];
+ // The isolated geometry regression fixtures use a minimal ShapeGeometry mock.
+ if(!source)return {geo:flat,bounds};
+ const index=flat.getIndex();const order=index?index.array:Array.from({length:source.count},(_,i)=>i);
+ const point=i=>[source.getX(i),-source.getY(i)];
+ const append=(a,b,c,depth)=>{
+  if(depth){const mid=(u,v)=>[(u[0]+v[0])/2,(u[1]+v[1])/2];
+   const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a),d=depth-1;
+   append(a,ab,ca,d);append(ab,b,bc,d);append(ca,bc,c,d);append(ab,bc,ca,d);return;
+  }
+  for(const [x,z] of [a,b,c])vertices.push(x,terrainHeightAt(p,bounds,x,z,isWater)+.006,z);
+ };
+ for(let i=0;i+2<order.length;i+=3)append(point(order[i]),point(order[i+1]),point(order[i+2]),2);
+ flat.dispose();
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geo.computeVertexNormals();
+ return {geo,bounds};
+}
+function plotGeometry(p,isCrop,isWater=false){
+ const initial=plotPointsForConfig(p),pts=p.plotSmooth?smoothClosedPlot(initial):initial;
  const out=[],shape=new THREE.Shape(pts.map(([x,z])=>new THREE.Vector2(x,-z)));
  const base=p.soilPreset==='sand'?'#b9a475':p.soilPreset==='clay'?'#875641':p.soilPreset==='compost'?'#555248':p.soilColor;
  const mat=new THREE.ShaderMaterial({
-  uniforms:{uSoil:{value:new THREE.Color(base)},uGrass:{value:new THREE.Color(p.leafColor)},uBlend:{value:isCrop?0:p.groundCover==='soil'?0:p.groundCover==='grass'?1:.48},uRough:{value:p.soilRoughness}},
+  uniforms:{uSoil:{value:new THREE.Color(base)},uGrass:{value:new THREE.Color(p.leafColor)},uBlend:{value:isWater?0:isCrop?0:p.groundCover==='soil'?0:p.groundCover==='grass'?1:.48},uRough:{value:p.soilRoughness}},
   vertexShader:soilVertex,fragmentShader:soilFragment,side:THREE.DoubleSide,depthWrite:true
  });
- const soil=mesh(out,new THREE.ShapeGeometry(shape),mat,0,.006,0,false);soil.rotation.x=-Math.PI/2;soil.castShadow=false;
- const xs=pts.map(q=>q[0]),zs=pts.map(q=>q[1]),minx=Math.min(...xs),maxx=Math.max(...xs),minz=Math.min(...zs),maxz=Math.max(...zs);
- const area=Math.min(3200,plotArea(pts)),rnd=random(p.plotSeed),density=isCrop?0:p.groundCover==='soil'?0:p.grassDensity;
+ const {geo:terrainGeo,bounds}=terrainSurface(pts,p,isWater);
+ const soil=mesh(out,terrainGeo,mat,0,0,0,true);
+ soil.castShadow=false;soil.userData.terrainCollider=true;
+ const area=Math.min(3200,plotArea(pts)),rnd=random(p.plotSeed),density=isCrop||isWater?0:p.groundCover==='soil'?0:p.grassDensity;
  const count=Math.min(2200,Math.floor(area*density*78));
  if(count){
   const material=grassBladeMaterial(p),grass=instanceMaterialGeometry(grassBladeGeometry(p.grassWidth),material,count);
@@ -191,21 +251,39 @@ function plotGeometry(p,isCrop){
   grass.onBeforeRender=()=>{const shader=material.userData.windShader;if(shader){shader.uniforms.uWindTime.value=performance.now()*.001;}};
   const m=new THREE.Matrix4(),q=new THREE.Quaternion(),s=new THREE.Vector3(),pos=new THREE.Vector3();let built=0;
   for(let i=0;i<count*7&&built<count;i++){
-   const x=minx+rnd()*(maxx-minx),z=minz+rnd()*(maxz-minz);if(!polygonContains(pts,x,z))continue;
-   const scale=.65+rnd()*.75;pos.set(x,.015,z);q.setFromAxisAngle(new THREE.Vector3(0,1,0),rnd()*6.283);s.set(.72+rnd()*.6,p.grassHeight*scale,1);m.compose(pos,q,s);grass.setMatrixAt(built++,m);
+   const x=bounds.minx+rnd()*(bounds.maxx-bounds.minx),z=bounds.minz+rnd()*(bounds.maxz-bounds.minz);
+   if(!polygonContains(pts,x,z))continue;
+   const scale=.65+rnd()*.75;
+   pos.set(x,.015+terrainHeightAt(p,bounds,x,z,false),z);
+   q.setFromAxisAngle(new THREE.Vector3(0,1,0),rnd()*6.283);
+   s.set(.72+rnd()*.6,p.grassHeight*scale,1);
+   m.compose(pos,q,s);grass.setMatrixAt(built++,m);
   }
   grass.count=built;grass.instanceMatrix.needsUpdate=true;out.push(grass);
  }
  if(isCrop){
-  const count=Math.min(180,Math.floor(area/Math.max(.08,p.cropSpacing*p.cropSpacing)));
-  const plant=instanceMaterialGeometry(p.cropType==='lettuce'?new THREE.IcosahedronGeometry(.13,0):new THREE.ConeGeometry(.12,.3,5),leafMaterial(p.leafColor),count);
+  const cropCount=Math.min(180,Math.floor(area/Math.max(.08,p.cropSpacing*p.cropSpacing)));
+  const plant=instanceMaterialGeometry(p.cropType==='lettuce'?new THREE.IcosahedronGeometry(.13,0):new THREE.ConeGeometry(.12,.3,5),leafMaterial(p.leafColor),cropCount);
   plant.castShadow=false;
   const m=new THREE.Matrix4(),pos=new THREE.Vector3(),q=new THREE.Quaternion(),scale=new THREE.Vector3(1,1,1);let built=0;
-  const step=Math.max(.15,p.cropSpacing),cols=Math.ceil((maxx-minx)/step),rows=Math.min(p.cropRows,Math.max(1,Math.ceil((maxz-minz)/step))),gap=(maxz-minz)/rows;
-  for(let row=0;row<rows&&built<count;row++)for(let col=0;col<cols&&built<count;col++){
-   const x=minx+(col+.5)*step,z=minz+(row+.5)*gap;if(!polygonContains(pts,x,z))continue;
-   const grow=Math.max(.03,p.growthPercent/100);pos.set(x,.17*grow,z);scale.set(grow,grow,grow);m.compose(pos,q,scale);plant.setMatrixAt(built++,m);
+  const step=Math.max(.15,p.cropSpacing),cols=Math.ceil((bounds.maxx-bounds.minx)/step),rows=Math.min(p.cropRows,Math.max(1,Math.ceil((bounds.maxz-bounds.minz)/step))),gap=(bounds.maxz-bounds.minz)/rows;
+  for(let row=0;row<rows&&built<cropCount;row++)for(let col=0;col<cols&&built<cropCount;col++){
+   const x=bounds.minx+(col+.5)*step,z=bounds.minz+(row+.5)*gap;if(!polygonContains(pts,x,z))continue;
+   const grow=Math.max(.03,p.growthPercent/100);
+   pos.set(x,terrainHeightAt(p,bounds,x,z,false)+.17*grow,z);
+   scale.set(grow,grow,grow);m.compose(pos,q,scale);plant.setMatrixAt(built++,m);
   }plant.count=built;plant.instanceMatrix.needsUpdate=true;out.push(plant);
+ }
+ if(isWater){
+  const flat=new THREE.ShapeGeometry(shape);flat.rotateX(-Math.PI/2);
+  const positions=flat.getAttribute('position');const surfaceY=.012-p.waterDepth*(1-p.waterLevel)*.45;
+  for(let i=0;i<positions.count;i++){
+   const x=positions.getX(i),z=positions.getZ(i);
+   positions.setY(i,surfaceY+Math.sin((x+z+p.plotSeed*.01)*2.1)*.01+Math.cos((x-z)*1.7)*.008);
+  }
+  positions.needsUpdate=true;flat.computeVertexNormals();
+  const waterMat=new THREE.MeshPhysicalMaterial({color:p.waterColor,transparent:true,opacity:.7,roughness:.08,metalness:0,clearcoat:.35,side:THREE.DoubleSide,depthWrite:false});
+  const water=mesh(out,flat,waterMat,0,0,0,false);water.castShadow=false;
  }
  return out;
 }
@@ -340,6 +418,6 @@ export function vegetationParts(config,trunkMaterial=null){
  if(p.variant==='tree')return treeGeometry(p,trunkMaterial);
  if(p.variant==='shrub')return shrubGeometry(p);
  if(p.variant==='vegetationArea')return vegetationAreaGeometry(p,trunkMaterial);
- if(p.variant==='groundPlot'||p.variant==='cropBed')return plotGeometry(p,p.variant==='cropBed');
+ if(p.variant==='groundPlot'||p.variant==='cropBed'||p.variant==='waterPatch')return plotGeometry(p,p.variant==='cropBed',p.variant==='waterPatch');
  return [];
 }

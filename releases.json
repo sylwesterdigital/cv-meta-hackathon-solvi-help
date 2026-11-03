@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.166",
+  "currentVersion": "0.2.167",
   "releases": [
+    {
+      "version": "0.2.167",
+      "publishedAt": "2026-11-03T16:33:33Z",
+      "changes": [
+        "Add terrain-relief support to ground and crop patches so drawn vegetation areas generate bounded height irregularity and act as elevated support surfaces for robots and XR teleport landing.",
+        "Add draw-on-ground water/lake patches with negative bowl terrain, adjustable water depth and level, freehand or parametric patch shapes, and semi-transparent wavy water surfaces.",
+        "Extend nature object editing with patch-shape controls, relief/detail parameters and lake-specific controls while preserving existing preset and saved-scene compatibility.",
+        "Add trimesh collider support for terrain furniture segments so capsules, dropped objects and teleport selection respect patch elevation instead of sinking through flat ground."
+      ]
+    },
     {
       "version": "0.2.166",
       "publishedAt": "2026-11-03T15:37:06Z",
@@ -329,16 +339,6 @@
         "Cancel stale scene and physics rebuilds during rapid realm switches; use browser task yields during scene object replacement.",
         "Fix enabling/disabling room Physics when it returns no Promise, and bind delayed object saves to their original realm.",
         "Add executable runtime tests for large collider reconstruction, realm cancellation and old-realm save isolation."
-      ]
-    },
-    {
-      "version": "0.2.137",
-      "publishedAt": "2026-11-01T05:22:54Z",
-      "changes": [
-        "Correct Rapier 0.21 ray hit timeOfImpact lookup when a robot dismounts from the top of a ladder or a climbable surface.",
-        "Reject missing, infinite, negative or out-of-range hit distances before writing a robot landing position; remain attached if unsupported.",
-        "Recover any non-finite camera pose before Three.js AudioListener render and stop following the invalid robot until stable.",
-        "Add four executable regression tests for successful and invalid Rapier-shaped landing hits and camera recovery."
       ]
     }
   ]

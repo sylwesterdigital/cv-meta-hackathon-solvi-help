@@ -230,7 +230,28 @@ export class ScenePhysics{
     if(!segment.userData.furniturePart&&!segment.userData.portalFrame&&!segment.userData.wallSegment&&!segment.userData.stairTread&&!segment.userData.ladderBar&&!(segment.userData.stairStructure&&segment.geometry?.type==='BoxGeometry'&&kind==='stairs'&&['advanced','escalator','walkway'].includes(object.userData.stairs?.variant)))continue;
     const size=segment.geometry.parameters;
     const scale=object.scale;
-    if(!size||!(kind==='furniture'&&segment.geometry.type==='CylinderGeometry')&&!Number.isFinite(size.width*size.height*size.depth))continue;
+    if(segment.userData.trimeshCollider||segment.userData.terrainCollider){
+     const attr=segment.geometry?.getAttribute?.('position');
+     if(!attr)continue;
+     const index=segment.geometry.getIndex?.();
+     const verts=new Float32Array(attr.array.length);
+     for(let i=0;i<attr.count;i++){
+      verts[3*i]=attr.getX(i)*scale.x*segment.scale.x;
+      verts[3*i+1]=attr.getY(i)*scale.y*segment.scale.y;
+      verts[3*i+2]=attr.getZ(i)*scale.z*segment.scale.z;
+     }
+     const indices=index?new Uint32Array(index.array):Uint32Array.from({length:attr.count},(_,i)=>i);
+     try{
+      const desc=R.ColliderDesc.trimesh(verts,indices)
+        .setTranslation(segment.position.x*scale.x,segment.position.y*scale.y,segment.position.z*scale.z)
+        .setRotation({x:segment.quaternion.x,y:segment.quaternion.y,z:segment.quaternion.z,w:segment.quaternion.w})
+        .setFriction(opts.friction).setRestitution(opts.restitution);
+      const segmentCollider=this.world.createCollider(desc,body);
+      if(!collider)collider=segmentCollider;
+     }catch(error){console.warn('Terrain trimesh collider unavailable:',error);} 
+     continue;
+    }
+    if(!size||(!(kind==='furniture'&&segment.geometry.type==='CylinderGeometry')&&!Number.isFinite(size.width*size.height*size.depth)))continue;
     const isCylinder=kind==='furniture'&&segment.geometry.type==='CylinderGeometry';
     const width=isCylinder?2*Math.max(size.radiusTop||0,size.radiusBottom||0):size.width;
     const depth=isCylinder?width:size.depth;

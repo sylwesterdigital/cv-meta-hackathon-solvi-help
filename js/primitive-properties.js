@@ -36,7 +36,7 @@ export function buildPrimitive(kind,values){
 export const BASIC_PROP_TYPES=['plate','mug','glass','bowl','bottle','can','flowerpot','box'];
 export const FURNITURE_TYPES=['table','chair','officeChair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...EQUIPMENT_TYPES,...VEGETATION_TYPES];
 export const FURNITURE_NUMERIC={
- width:[1.2,.06,8],depth:[.75,.06,4],height:[.76,.025,4],
+ width:[1.2,.06,8],depth:[.75,.06,8],height:[.76,.025,4],
  topThickness:[.07,.025,.3],topRadius:[.55,.15,4],legRadius:[.04,.025,.3],
  corners:[4,3,8],seatHeight:[.46,.25,.9],backHeight:[.5,.2,1.3],
  shelves:[3,0,16],seats:[2,1,4],cushionThickness:[.14,.05,.35],
@@ -69,7 +69,8 @@ const furniturePreset={
  shrub:{width:1.4,depth:1.4,height:.9,legStyle:'none',color:'#79513a',fabricColor:'#4a9254'},
  vegetationArea:{width:8,depth:8,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
  groundPlot:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
- cropBed:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'}
+ cropBed:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
+ waterPatch:{width:4.4,depth:3.2,height:.02,legStyle:'none',color:'#5f513f',fabricColor:'#4aa3d8'}
 };
 export function sanitiseFurniture(raw={}){
  const variant=FURNITURE_TYPES.includes(raw.variant)?raw.variant:'table';
