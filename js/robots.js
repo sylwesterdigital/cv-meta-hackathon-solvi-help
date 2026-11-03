@@ -234,6 +234,9 @@ export async function captureRobotView(world,robot,options={}){
   camera.position.set(0,1.62,0);camera.rotation.order='YXZ';camera.rotation.y=Math.PI-(Number(options.yawOffset)||0); // forward head view plus scan direction
   camera.rotation.x=THREE.MathUtils.degToRad(Math.max(-70,Math.min(70,Number(options.pitchDegrees)||0))); // negative tilt points downward
   const rt=new THREE.WebGLRenderTarget(512,512),renderer=world.renderer,old=renderer.getRenderTarget();
+  // The normal canvas is sRGB, but WebGLRenderTarget defaults to unencoded
+  // linear pixels. Request sRGB *before* rendering, not after JPEG creation.
+  rt.texture.colorSpace=THREE.SRGBColorSpace;
   const previousXR=renderer.xr.enabled,oldVisible=robot.visible;
   const oldSkyPosition=world.skyDome?.position.clone();
   const pixels=new Uint8Array(512*512*4);
@@ -243,7 +246,7 @@ export async function captureRobotView(world,robot,options={}){
     if(world.skyDome?.visible)world.skyDome.position.copy(camera.getWorldPosition(new THREE.Vector3()));
     world.scene.updateMatrixWorld(true);
     if(typeof options.onPose==='function')options.onPose({position:camera.getWorldPosition(new THREE.Vector3()).clone(),quaternion:camera.getWorldQuaternion(new THREE.Quaternion()).clone(),fov:camera.fov,width:512,height:512});
-    renderer.xr.enabled=false;renderer.setRenderTarget(rt);renderer.render(world.scene,camera);
+    renderer.xr.enabled=false;renderer.setRenderTarget(rt);renderer.clear(true,true,true);renderer.render(world.scene,camera);
     renderer.readRenderTargetPixels(rt,0,0,512,512,pixels);
   }finally{if(oldSkyPosition)world.skyDome.position.copy(oldSkyPosition);renderer.setRenderTarget(old);renderer.xr.enabled=previousXR;robot.visible=oldVisible;robot.remove(camera);rt.dispose();}
   const canvas=document.createElement('canvas');canvas.width=canvas.height=512;
@@ -331,6 +334,19 @@ export function animateRobots(items,dt,onImpact=()=>{}){
         if(contact&&now<contact.until)mode=contact.clip||contact.kind;
         else if(contact)data.robotContactAction=null;
       }
+    }
+    // A real movement command outranks long lift/hold animations and a stale
+    // paused one-shot; the carry timer and hand attachment continue separately.
+    const intended=data.robotMode;
+    const permittedMotion=Boolean(data.robotLocalMotion||data.robotRemoteMotion||data.robotGoal||data.robotMission);
+    const physicalSpeed=Math.max(Math.abs(Number(data.robotVelocity)||0),Math.abs(Number(data.robotLateral)||0),Number(data.robotActualSpeed)||0);
+    const protectedPose=data.robotSeated||data.robotLadderRide||data.robotJumpActive||data.physicsAirborne||data.robotFallActive;
+    const clampedOneShot=Boolean(data.robotAnimator?.current?.paused);
+    if(permittedMotion&&physicalSpeed>.12&&!protectedPose&&
+       (data.robotCarry?.stage==='pickup'||data.robotCarry?.stage==='hold'||clampedOneShot||mode==='idle')){
+      mode=['walk','walkBackward','run','strafeLeft','strafeRight'].includes(intended)?intended:
+        (Number(data.robotLateral)||0)>.12?'strafeLeft':(Number(data.robotLateral)||0)<-.12?'strafeRight':
+        (Number(data.robotVelocity)||0)<-.12?'walkBackward':'walk';
     }
     // Only this robot's own local/remote command or mission can start its
     // locomotion. Contact displacement is animated separately above.

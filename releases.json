@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.161",
+  "currentVersion": "0.2.162",
   "releases": [
+    {
+      "version": "0.2.162",
+      "publishedAt": "2026-11-03T12:19:00Z",
+      "changes": [
+        "Interrupt the pickup/lift animation as soon as genuine avatar locomotion begins, while preserving the object carry timer and grip; recover looping gaits from a paused one-shot state.",
+        "Capture robot eye-camera JPEGs with proper sRGB output from the offscreen render target to avoid underexposed linear colour readback.",
+        "Add procedural Office chair with seat, backrest, adjustable optional headrest and single-pedestal/four-leg bases, using existing furniture editor, presets and seat logic.",
+        "Expose independently adjustable translucent bottle liquid opacity, with a visible fill-level surface; preserve old bottle opacity and cap behaviour.",
+        "Use the supplied Delete SVG and ensure the SVG button glyph is centred horizontally and vertically in existing SOLVI icon buttons."
+      ]
+    },
     {
       "version": "0.2.161",
       "publishedAt": "2026-11-03T11:46:01Z",
@@ -324,16 +335,6 @@
         "Add manual Up/Down robot/ avatar climbing and Space release; select authored climbing animation where present and detect a real upper platform before dismount to Idle.",
         "Replace robot portrait resize symbols with the exact supplied +/- SVGs and remove automatic icon decoration; compact Profile Edit Mode to a single label and pill.",
         "Persist, duplicate, validate and archive ladders, add six ladder behaviour tests and advance all runtime/backend/cache version strings."
-      ]
-    },
-    {
-      "version": "0.2.131",
-      "publishedAt": "2026-11-01T03:08:43Z",
-      "changes": [
-        "Route go_to commands for Advanced and Standard stairs around obstacles to the physically accessible low first-step entrance, instead of selecting the high or side face of a stair object.",
-        "Use actual staircase control points and complete world transform, preserve continuous obstacle-checked routes, and report blocked when the low entrance cannot be reached rather than claiming partial success.",
-        "Make robot command planning and arrival feedback distinguish reaching the low entrance from climbing; retain existing navigation and collision physics for unrelated objects.",
-        "Add five executed stair entry tests plus backend parser regression and refresh all browser/module/backend/release versions."
       ]
     }
   ]

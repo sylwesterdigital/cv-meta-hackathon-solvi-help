@@ -11,7 +11,7 @@ export function seatPlan(target,robotPosition){
  const size=bounds.getSize(new THREE.Vector3());
  if(Math.min(size.x,size.z)<.42||!Number.isFinite(size.y))return null;
  const furniture=target.userData.editorKind==='furniture'?target.userData.furniture:null;
- if(furniture&& !['chair','armchair','sofa','stool','bed','table','sunbed','deckChair'].includes(furniture.variant))return null;
+ if(furniture&& !['chair','officeChair','armchair','sofa','stool','bed','table','sunbed','deckChair'].includes(furniture.variant))return null;
  const face=target.getWorldQuaternion(new THREE.Quaternion());
  // No seats on steeply pitched surfaces.
  const vertical=new THREE.Vector3(0,1,0).applyQuaternion(face);

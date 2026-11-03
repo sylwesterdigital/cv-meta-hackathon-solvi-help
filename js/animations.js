@@ -55,6 +55,13 @@ export class MotionController{
       ((kind==='run'||kind.startsWith('strafe'))?this.actions.get('walk'):null)||this.actions.get('idle');
     if(!action)return;
     if(action===this.current){
+      if(action.paused&&['idle','walk','walkBackward','run','strafeLeft','strafeRight'].includes(kind)){
+        this.oneShotStopAt=null;
+        action.reset();action.paused=false;
+        action.setLoop(this.THREE.LoopRepeat,Infinity);
+        action.clampWhenFinished=false;
+        action.setEffectiveWeight(1).play();
+      }
       if(this.currentKind!==kind){
         action.setEffectiveTimeScale((reverseWalk?-1:1)*this.playbackSpeed);
         action.time=reverseWalk?Math.max(0,action.getClip().duration-.001):0;

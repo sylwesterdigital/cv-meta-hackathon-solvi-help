@@ -33,19 +33,20 @@ export function buildPrimitive(kind,values){
 // Basic furniture is built from individually collidable, editable primitive parts.
 // Keeping it here avoids a new module and preserves the deployment watcher's file budget.
 export const BASIC_PROP_TYPES=['plate','mug','glass','bowl','bottle','can','flowerpot','box'];
-export const FURNITURE_TYPES=['table','chair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...EQUIPMENT_TYPES];
+export const FURNITURE_TYPES=['table','chair','officeChair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...EQUIPMENT_TYPES];
 export const FURNITURE_NUMERIC={
  width:[1.2,.06,8],depth:[.75,.06,4],height:[.76,.025,4],
  topThickness:[.07,.025,.3],topRadius:[.55,.15,4],legRadius:[.04,.025,.3],
  corners:[4,3,8],seatHeight:[.46,.25,.9],backHeight:[.5,.2,1.3],
  shelves:[3,0,16],seats:[2,1,4],cushionThickness:[.14,.05,.35],
- wallThickness:[.025,.005,.15],neckRadius:[.065,.01,.5],neckHeight:[.12,.02,.6],bottleOpacity:[.7,0,1],fluidLevel:[50,0,100],
+ wallThickness:[.025,.005,.15],fluidOpacity:[.52,0,1],neckRadius:[.065,.01,.5],neckHeight:[.12,.02,.6],bottleOpacity:[.7,0,1],fluidLevel:[50,0,100],
  rimHeight:[.018,.005,.1],...EQUIPMENT_NUMERIC,textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
 };
 const furniturePreset={
  table:{width:1.4,depth:.8,height:.75,legStyle:'four'},
  stool:{width:.42,depth:.42,height:.48,legStyle:'four'},
  chair:{width:.52,depth:.55,height:.94,seatHeight:.46,backHeight:.46,legStyle:'four'},
+ officeChair:{width:.59,depth:.63,height:1.12,seatHeight:.46,backHeight:.62,cushionThickness:.12,legStyle:'single'},
  armchair:{width:.88,depth:.85,height:1.02,seatHeight:.43,backHeight:.59,legStyle:'four'},
  sofa:{width:1.85,depth:.86,height:1.02,seatHeight:.44,backHeight:.58,legStyle:'four',seats:2},
  bed:{width:1.5,depth:2.05,height:.52,seatHeight:.42,legStyle:'four'},
@@ -54,7 +55,7 @@ const furniturePreset={
  mug:{width:.09,depth:.09,height:.105,legStyle:'none'},
  glass:{width:.075,depth:.075,height:.14,legStyle:'none'},
  bowl:{width:.19,depth:.19,height:.085,legStyle:'none'},
- bottle:{width:.085,depth:.085,height:.27,legStyle:'none',bottleOpacity:.65,fluidLevel:50},
+ bottle:{width:.085,depth:.085,height:.27,legStyle:'none',bottleOpacity:.65,fluidOpacity:.52,fluidLevel:50},
  can:{width:.066,depth:.066,height:.12,legStyle:'none'},
  flowerpot:{width:.22,depth:.22,height:.23,legStyle:'none'},
  box:{width:.35,depth:.3,height:.28,legStyle:'none'},
@@ -122,11 +123,16 @@ export function rebuildFurniture(group,raw={}){
   if(p.topShape!=='rectangle'){const sides=p.topShape==='round'?48:p.corners;add(new THREE.CylinderGeometry(p.topRadius,p.topRadius,p.topThickness,sides),0,topY,0);}
   else box(p.width,p.topThickness,p.depth,0,topY,0);
   legs(p.height-p.topThickness);
- }else if(['chair','armchair','sofa'].includes(p.variant)){
-  const arm=p.variant!=='chair',seatY=p.seatHeight;
+ }else if(['chair','officeChair','armchair','sofa'].includes(p.variant)){
+  const arm=['armchair','sofa'].includes(p.variant),seatY=p.seatHeight;
   box(p.width,.09,p.depth,0,seatY-.055,0);
   box(p.width-(arm?.16:.04),p.cushionThickness,p.depth*.73,0,seatY+p.cushionThickness/2,-p.depth*.06,fabric);
   box(p.width,Math.max(.2,p.backHeight),.13,0,seatY+p.backHeight/2,p.depth*.5-.065,arm?fabric:wood);
+  if(p.variant==='officeChair'){
+   // Slim central lumbar support and a cushioned, slightly raised backrest.
+   box(p.width*.82,Math.max(.2,p.backHeight*.87),.075,0,seatY+p.backHeight*.52,p.depth*.5-.075,fabric);
+   box(p.width*.42,.12,.095,0,seatY+.11,p.depth*.5-.08,wood);
+  }
   if(arm){for(const side of [-1,1])box(.14,.25,p.depth*.85,side*(p.width/2-.07),seatY+.13,0,fabric);}
   if(p.headrest){box(p.width*.78,.19,.18,0,seatY+p.backHeight+.085,p.depth*.5-.09,fabric);}
   if(p.variant==='sofa')for(let i=1;i<p.seats;i++)box(.035,p.cushionThickness*.8,p.depth*.71,-p.width/2+i*p.width/p.seats,seatY+p.cushionThickness/2,-p.depth*.06,wood);
@@ -179,8 +185,11 @@ export function rebuildFurniture(group,raw={}){
    // Leave a real air gap and inner wall; the top liquid plane is visible through the neck.
    const fluidHeight=Math.max(.001,(p.height-Math.min(p.neckHeight,p.height*.43)*1.5)*p.fluidLevel/100);
    const liquidRadius=Math.max(.003,radius-t*.93);
-   const liquid=new THREE.Mesh(new THREE.CylinderGeometry(liquidRadius,liquidRadius*.82,fluidHeight,32,1,false),new THREE.MeshStandardMaterial({color:p.fluidColor,transparent:true,opacity:.82,roughness:.18,metalness:0,depthWrite:false}));
+   const liquid=new THREE.Mesh(new THREE.CylinderGeometry(liquidRadius,liquidRadius*.82,fluidHeight,32,1,false),new THREE.MeshStandardMaterial({color:p.fluidColor,transparent:p.fluidOpacity<1,opacity:p.fluidOpacity,roughness:.12,metalness:0,depthWrite:p.fluidOpacity>=1}));
    liquid.position.y=t+fluidHeight/2;liquid.userData.furniturePart=true;liquid.userData.bottleLiquid=true;parts.push(liquid);
+   // A separate visible, slightly reflective meniscus when looking down.
+   const surface=new THREE.Mesh(new THREE.CylinderGeometry(liquidRadius,liquidRadius,.002,32),new THREE.MeshStandardMaterial({color:p.fluidColor,transparent:true,opacity:Math.min(.85,p.fluidOpacity+.12),roughness:.08,metalness:0,depthWrite:false,side:THREE.DoubleSide}));
+   surface.position.y=t+fluidHeight+.001;surface.userData.furniturePart=true;surface.userData.bottleLiquid=true;parts.push(surface);
   }
   if(['mug','can','flowerpot','glass'].includes(p.variant)){
    const lip=new THREE.Mesh(new THREE.TorusGeometry(radius*.96,Math.max(.003,t*.26),6,32),wood);

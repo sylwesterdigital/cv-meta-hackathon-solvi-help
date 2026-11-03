@@ -152,7 +152,7 @@ export class SceneEditor{
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Equipment',['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','officeChair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Equipment',['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';const head=document.createElement('div');head.className='add-fixed-head';head.append(bar);const content=document.createElement('div');content.className='add-scroll-content';menu.append(head,content);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';head.append(search);
   const openPresets=document.createElement('button');openPresets.type='button';openPresets.className='add-presets-shortcut';openPresets.textContent='Presets · saved objects';openPresets.onclick=()=>{menu.hidden=true;this.objectPresets?.open();};head.append(openPresets);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
@@ -1266,7 +1266,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    if(type==='checkbox')control.checked=p[key];else control.value=p[key];control.disabled=!this.canEdit(obj);
    holder.append(caption,control);root.append(holder);
   };
-  add('variant','Type','select',FURNITURE_TYPES.map(kind=>[kind,kind==='miniComputer'?'Mini computer':kind[0].toUpperCase()+kind.slice(1)]));
+  add('variant','Type','select',FURNITURE_TYPES.map(kind=>[kind,kind==='miniComputer'?'Mini computer':kind==='officeChair'?'Office chair':kind[0].toUpperCase()+kind.slice(1)]));
   const equipment=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant);
   if(['tv','monitor'].includes(p.variant)){
    add('diagonalInches','Diagonal (in)','number');add('aspect','Aspect','select',[['16:9','16:9'],['21:9','21:9'],['4:3','4:3']]);
@@ -1301,7 +1301,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   if(!equipment)for(const [key,title] of [['width',isProp?'Diameter / width (m)':'Width (m)'],['depth','Depth (m)'],['height','Height (m)']])if(!isProp||key!=='depth'||p.variant==='box')add(key,title,'number');
   if(isProp){
    if(p.variant!=='plate')add('wallThickness','Wall thickness','number');
-   if(p.variant==='bottle'){add('neckRadius','Neck radius','number');add('neckHeight','Neck height','number');add('bottleOpacity','Opacity (0–1)','number');add('fluidLevel','Fill level %','number');add('fluidColor','Liquid colour','color');add('cap','Cap / cork','checkbox');}
+   if(p.variant==='bottle'){add('neckRadius','Neck radius','number');add('neckHeight','Neck height','number');add('bottleOpacity','Bottle opacity','number');add('fluidOpacity','Liquid opacity','number');add('fluidLevel','Fill level %','number');add('fluidColor','Liquid colour','color');add('cap','Cap / cork','checkbox');}
    if(p.variant==='mug')add('handle','Handle','checkbox');
    if(p.variant==='flowerpot')add('soil','Soil','checkbox');
    if(p.variant==='can')add('cap','Lid','checkbox');
@@ -1313,7 +1313,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    if(p.topShape==='polygon')add('corners','Corners / legs','number');
    add('topThickness','Top thickness','number');
   }
-  if(['chair','armchair','sofa'].includes(p.variant)){
+  if(['chair','officeChair','armchair','sofa'].includes(p.variant)){
    add('seatHeight','Seat height','number');add('backHeight','Back height','number');add('cushionThickness','Cushion','number');
    if(p.variant==='sofa')add('seats','Seats','number');
    add('headrest','Headrest','checkbox');
@@ -1329,7 +1329,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   add('texture','Texture','select',[['none','Plain'],['plaster','Plaster'],['concrete','Concrete'],['bricks','Bricks'],['metal','Metal'],['wood','Wood'],['marble','Marble'],['granite','Granite']]);
   if(['wood','marble','granite'].includes(p.texture)){add('textureScale','Pattern scale','number');add('textureDistortion','Distortion','number');add('textureContrast','Contrast','number');}
   add('color',isProp?'Colour':'Frame colour','color');
-  if(['chair','stool','armchair','sofa','bed','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant))add('fabricColor',p.variant==='beachUmbrella'?'Canopy colour':'Fabric colour','color');
+  if(['chair','officeChair','stool','armchair','sofa','bed','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant))add('fabricColor',p.variant==='beachUmbrella'?'Canopy colour':'Fabric colour','color');
   if(['tv','monitor','speaker'].includes(p.variant))this.renderSmartChannelControls(root,obj,'furniture');
  }
  renderSmartChannelControls(root,obj,kind){
