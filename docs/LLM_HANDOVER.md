@@ -878,3 +878,14 @@ The latest source uses text-parameters.js and text-geometry.js for local persist
 - Add six regression tests for furniture-follow, non-stickable release, multi-avatar anchors, centre seating, schema validation and persistence.
 
 Implementation points: `js/robot-seating.js` owns seat-local anchors and physics syncing; `js/editor.js` persists robot seating metadata and follows occupied furniture in the tick loop; `js/primitive-properties.js` saves `seatMoveMode`; `backend/server.py` validates robot `seating` and furniture mode; `backend/realm_archives.py` remaps persistent target references. The default behaviour is **Stand occupants up**; choose **Carry seated occupants** in furniture Properties to attach occupants to transformations.
+
+
+## v0.2.170 — Stable per-field number range sliders
+
+- Give every numeric furniture and vegetation inspector parameter its own always-visible compact range slider directly beneath the corresponding number input, including orchard/forest scatter, soil, terrain and water parameters.
+- Keep the three-column inspector grid stable: all companion range controls are present from render time and do not insert, remove, resize or reflow other fields on focus.
+- Synchronise range dragging and typed numeric values in both directions through the existing debounced geometry preview, undo history, physics update and multiplayer save pipeline.
+- Preserve the existing floating contextual slider for transform position/rotation/scale, while avoiding redundant popovers over furniture controls.
+- Add regression checks for slider creation, numeric bounds, change propagation and consistent non-reflow layout.
+
+Modified: `js/editor.js`, `styles.css`, test `tests/release-170-furniture-ranges.test.mjs`; deployed via strict manifest-hashed full-app ZIP. Browser rendering remains unverified.

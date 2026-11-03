@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.169",
+  "currentVersion": "0.2.170",
   "releases": [
+    {
+      "version": "0.2.170",
+      "publishedAt": "2026-11-03T18:30:04Z",
+      "changes": [
+        "Give every numeric furniture and vegetation inspector parameter its own always-visible compact range slider directly beneath the corresponding number input, including orchard/forest scatter, soil, terrain and water parameters.",
+        "Keep the three-column inspector grid stable: all companion range controls are present from render time and do not insert, remove, resize or reflow other fields on focus.",
+        "Synchronise range dragging and typed numeric values in both directions through the existing debounced geometry preview, undo history, physics update and multiplayer save pipeline.",
+        "Preserve the existing floating contextual slider for transform position/rotation/scale, while avoiding redundant popovers over furniture controls.",
+        "Add regression checks for slider creation, numeric bounds, change propagation and consistent non-reflow layout."
+      ]
+    },
     {
       "version": "0.2.169",
       "publishedAt": "2026-11-03T17:47:33Z",
@@ -328,18 +339,6 @@
         "Generate real wall, window, glass, button and ceiling meshes for every array copy in one saved object; preserve separate window open/close states and per-copy compound wall and ceiling physics.",
         "Save, restore and validate array settings server-side, including upgraded open-window identifier bounds, and correct the wall record field limit so current windows-plus-ceiling payloads are accepted.",
         "Add four focused regression tests for array geometry, controls, save schema and independent window states; keep existing rooms unchanged until Array is enabled."
-      ]
-    },
-    {
-      "version": "0.2.139",
-      "publishedAt": "2026-11-01T19:17:38Z",
-      "changes": [
-        "Remove robot control switcher background and square portrait cards; fill circular portraits with zoomed images and place robot names at the upper centre; reduce +/- controls to tiny transparent white icons.",
-        "Add a separate Run movement multiplier immediately after Walk in the robot speed selector, with per-avatar persistence, server validation and multiplayer input replication; preserve Run animation playback settings.",
-        "Add parametric windows to wall segments: threshold by segment length and height, automatically distribute one or more proportional openings, with individually tinted translucent glass panes and open/close controls from both sides.",
-        "Add optional flat ceilings/soffits above multi-point wall outlines, independent colour, texture and thickness; punch rotated lift-shaft apertures automatically and refresh ceiling geometry and colliders when lifts move.",
-        "Collide against real split wall pieces and ceiling mesh, not invisible boxes across glass openings or lift shafts; XR teleportation continues to respect the first solid wall/ceiling hit and walkable floor/ceiling top faces.",
-        "Add six focused regression tests including actual procedural wall construction using a Three.js-compatible runtime test harness; preserve saved older walls and room objects."
       ]
     }
   ]
