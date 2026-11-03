@@ -193,7 +193,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.162',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.163',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3192,7 +3192,7 @@ def valid_basic_furniture(value):
              'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35),
              'wallThickness':(.005,.15),'neckRadius':(.01,.5),'neckHeight':(.02,.6),'bottleOpacity':(0,1),'fluidOpacity':(0,1),'fluidLevel':(0,100),
              'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'reclineDeg':(0,85),'canopyRadius':(.4,4),'canopySegments':(3,16),'lampIntensity':(0,20),'lampRange':(.5,80),'shadeOpacity':(.05,1),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3)}
-    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','color','fabricColor','texture','handle','cap','soil','openTop','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle','fluidColor'}|set(numeric)
+    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','armrests','ergonomicBack','color','fabricColor','texture','handle','cap','soil','openTop','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle','fluidColor'}|set(numeric)
     if any(key not in allowed for key in value):return False
     if 'channels' in value and not valid_smart_channels(value['channels']):return False
     if not valid_smart_options(value):return False
@@ -3204,7 +3204,7 @@ def valid_basic_furniture(value):
     if value.get('topShape','rectangle') not in ('rectangle','round','polygon'):return False
     if value.get('legStyle','four') not in ('four','three','single','casters','none'):return False
     if value.get('texture','none') not in ('none','plaster','concrete','bricks','metal','wood','marble','granite'):return False
-    if any(not isinstance(value.get(k,False),bool) for k in ('headrest','headboard','handle','cap','soil','openTop')):return False
+    if any(not isinstance(value.get(k,False),bool) for k in ('headrest','headboard','armrests','ergonomicBack','handle','cap','soil','openTop')):return False
     for field,options in (('aspect',('16:9','21:9','4:3')),('mount',('wall','center','feet','none')),('binShape',('round','square')),('backpackStyle',('box','bag')),('lampShape',('sphere','cube','pyramid')),('lampType',('point','spot')),('speakerStyle',('single','tower'))):
         if field in value and value[field] not in options:return False
     for field in ('powered','curved','lid','straps','frontPocket','lampOn'):

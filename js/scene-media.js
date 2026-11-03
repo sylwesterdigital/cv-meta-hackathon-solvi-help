@@ -114,6 +114,35 @@ function playbackUrl(media){
   if(mode==='hls'&&document.createElement('video').canPlayType('application/vnd.apple.mpegurl'))return hlsUrl(media.id);
   return mediaUrl(media?.id||'');
 }
+export function audioRecordingLabel(media){
+ const date=new Date(media?.created||Date.now());
+ const stamp=Number.isNaN(date.getTime())?'Recording':new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(date);
+ return {author:String(media?.author||media?.name||'Audio recording').trim().slice(0,40),stamp};
+}
+function paintAudioRecordingLabel(mesh,playing=false){
+ const sprite=mesh.getObjectByName('mediaSourceLabel');
+ if(!sprite?.userData?.audioLabelCanvas)return;
+ if(sprite.userData.audioLabelPlaying===playing)return;
+ sprite.userData.audioLabelPlaying=playing;
+ const canvas=sprite.userData.audioLabelCanvas,ctx=canvas.getContext('2d');
+ const {author,stamp}=audioRecordingLabel(mesh.userData.media);
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ ctx.fillStyle='rgba(11,25,42,.92)';ctx.beginPath();ctx.roundRect(5,5,758,146,23);ctx.fill();
+ ctx.fillStyle='#69c2e0';ctx.fillRect(8,24,5,102);
+ ctx.textAlign='left';ctx.textBaseline='middle';
+ ctx.fillStyle='#f6faff';ctx.font='700 42px system-ui';ctx.fillText(author,42,56,555);
+ ctx.fillStyle='#a9bfd0';ctx.font='400 28px system-ui';ctx.fillText(stamp,42,106,545);
+ ctx.fillStyle='#a9efff';ctx.font='700 24px system-ui';ctx.textAlign='center';ctx.fillText(playing?'PAUSE':'PLAY',676,79,120);
+ sprite.material.map.needsUpdate=true;
+}
+function makeAudioRecordingLabel(mesh){
+ const canvas=document.createElement('canvas');canvas.width=768;canvas.height=160;
+ const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+ const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:true,depthWrite:false}));
+ sprite.name='mediaSourceLabel';sprite.userData.mediaPlaybackLabel=true;sprite.userData.audioLabelCanvas=canvas;
+ sprite.scale.set(1.22,.255,1);sprite.position.set(0,.77,0);
+ mesh.add(sprite);paintAudioRecordingLabel(mesh,false);
+}
 function applyAudioSettings(current,media){
   if(!current?.audioEl)return;
   current.audioEl.loop=media?.loop!==false;
@@ -187,7 +216,7 @@ export function hydrateSceneMedia(mesh,world){
     return;
   }
   if(kind==='audio'){
-    if(media.author&&world?.labelSprite){const tag=world.labelSprite(media.author,'#14374b');tag.position.set(0,.85,0);tag.scale.set(1.5,.25,1);tag.name='mediaSourceLabel';mesh.add(tag);const date=world.labelSprite(new Date(media.created||Date.now()).toLocaleString(),'#14374b');date.position.set(0,.66,0);date.scale.set(1.5,.22,1);date.name='mediaDateLabel';mesh.add(date);}
+    makeAudioRecordingLabel(mesh);
     const decor=ensureSpeakerDecor(mesh,orb);
     if(media.model)hydrateSpeakerModel(mesh,media.model);
     const audio=document.createElement('audio');
@@ -235,8 +264,9 @@ export function setSceneMediaBacking(mesh,backing='white',world){
 }
 export function toggleSceneMediaPlayback(mesh){
   const current=activeMediaObjects.get(mesh);const mediaEl=current?.video||current?.audioEl;if(!mediaEl)return false;
-  if(mediaEl.paused){current.sound?.context?.resume?.().catch(()=>{});mediaEl.play().catch(()=>{});return true;}
-  mediaEl.pause();return false;
+  if(mediaEl.paused){current.sound?.context?.resume?.().catch(()=>{});
+   mediaEl.play().then(()=>paintAudioRecordingLabel(mesh,true)).catch(error=>console.warn('Media play unavailable',error));return true;}
+  mediaEl.pause();paintAudioRecordingLabel(mesh,false);return false;
 }
 export function setSceneMediaMuted(mesh,muted=true){
   const current=activeMediaObjects.get(mesh);const mediaEl=current?.video||current?.audioEl;if(!mediaEl)return;
@@ -275,6 +305,7 @@ export function updateSceneMedia(world,dt=0,time=performance.now()/1000){
     if(!mesh?.parent)return;
     const media=mesh.userData?.media||{};const current=activeMediaObjects.get(mesh);if(!current)return;
     const mediaEl=current.video||current.audioEl;
+    if(current.audioEl&&mediaEl)paintAudioRecordingLabel(mesh,!mediaEl.paused&&!mediaEl.ended);
     if(current.audioEl&&camera){
       const distance=camera.getWorldPosition(new THREE.Vector3()).distanceTo(mesh.getWorldPosition(new THREE.Vector3()));
       const trigger=Math.max(0,Number(media.autoplayDistance)||0);

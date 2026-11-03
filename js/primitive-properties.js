@@ -46,7 +46,7 @@ const furniturePreset={
  table:{width:1.4,depth:.8,height:.75,legStyle:'four'},
  stool:{width:.42,depth:.42,height:.48,legStyle:'four'},
  chair:{width:.52,depth:.55,height:.94,seatHeight:.46,backHeight:.46,legStyle:'four'},
- officeChair:{width:.59,depth:.63,height:1.12,seatHeight:.46,backHeight:.62,cushionThickness:.12,legStyle:'single'},
+ officeChair:{width:.59,depth:.63,height:1.12,seatHeight:.46,backHeight:.62,cushionThickness:.12,legStyle:'single',armrests:true,ergonomicBack:true},
  armchair:{width:.88,depth:.85,height:1.02,seatHeight:.43,backHeight:.59,legStyle:'four'},
  sofa:{width:1.85,depth:.86,height:1.02,seatHeight:.44,backHeight:.58,legStyle:'four',seats:2},
  bed:{width:1.5,depth:2.05,height:.52,seatHeight:.42,legStyle:'four'},
@@ -89,7 +89,7 @@ export function sanitiseFurniture(raw={}){
  result.smartAudio=raw.smartAudio!==false;result.smartMuted=raw.smartMuted===true;result.smartLoop=raw.smartLoop===true;result.smartAutoPlay=raw.smartAutoPlay===true;result.smartPreserveAspect=raw.smartPreserveAspect!==false;result.smartStartChannel=Number.isInteger(raw.smartStartChannel)&&raw.smartStartChannel>=-1&&raw.smartStartChannel<12?raw.smartStartChannel:-1;
  result.mediaId=typeof raw.mediaId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.mediaId)?raw.mediaId:'';
  result.pairedDisplayId=typeof raw.pairedDisplayId==='string'&&/^[a-zA-Z0-9_-]{0,100}$/.test(raw.pairedDisplayId)?raw.pairedDisplayId:'';
- result.headrest=raw.headrest===true;
+ result.headrest=raw.headrest===true;result.armrests=raw.armrests!==undefined?raw.armrests===true:variant==='officeChair';result.ergonomicBack=raw.ergonomicBack!==false;
  result.headboard=raw.headboard!==false;
  result.color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#9b8068';
  result.fabricColor=typeof raw.fabricColor==='string'&&/^#[0-9a-f]{6}$/i.test(raw.fabricColor)?raw.fabricColor:'#64798e';
@@ -127,16 +127,41 @@ export function rebuildFurniture(group,raw={}){
   const arm=['armchair','sofa'].includes(p.variant),seatY=p.seatHeight;
   box(p.width,.09,p.depth,0,seatY-.055,0);
   box(p.width-(arm?.16:.04),p.cushionThickness,p.depth*.73,0,seatY+p.cushionThickness/2,-p.depth*.06,fabric);
-  box(p.width,Math.max(.2,p.backHeight),.13,0,seatY+p.backHeight/2,p.depth*.5-.065,arm?fabric:wood);
+  const backZ=p.depth*.5-.07;
   if(p.variant==='officeChair'){
-   // Slim central lumbar support and a cushioned, slightly raised backrest.
-   box(p.width*.82,Math.max(.2,p.backHeight*.87),.075,0,seatY+p.backHeight*.52,p.depth*.5-.075,fabric);
-   box(p.width*.42,.12,.095,0,seatY+.11,p.depth*.5-.08,wood);
+   const backHeight=Math.max(.2,p.backHeight),frameW=Math.max(.035,p.width*.105);
+   const named=(part,tag)=>{part.userData[tag]=true;return part;};
+   if(p.ergonomicBack){
+    // A real empty lumbar opening, constructed from separate rails rather
+    // than placing a dark decal over an otherwise solid backrest.
+    for(const side of [-1,1])named(box(frameW,backHeight,.09,side*(p.width-frameW)/2,seatY+backHeight/2,backZ,wood),'officeBackFrame');
+    named(box(p.width,.10,.09,0,seatY+backHeight-.05,backZ,wood),'officeBackFrame');
+    named(box(p.width,.13,.10,0,seatY+.065,backZ,wood),'officeBackFrame');
+    named(box(p.width-frameW*2,.12,.06,0,seatY+backHeight-.13,backZ-.022,fabric),'officeBackFrame');
+   }else named(box(p.width,backHeight,.10,0,seatY+backHeight/2,backZ,fabric),'officeBackFrame');
+   if(p.armrests)for(const side of [-1,1]){
+    const x=side*(p.width*.5-.055);
+    named(box(.052,.19,.055,x,seatY+.15,-p.depth*.02,wood),'officeArmrest');
+    named(box(.095,.048,p.depth*.62,x,seatY+.26,-p.depth*.055,fabric),'officeArmrest');
+   }
+   if(['single','casters'].includes(p.legStyle)){
+    const stemH=Math.max(.1,seatY-.15);
+    named(cylinder(.058,stemH,0,stemH/2+.09,0,wood,24),'officeChairPedestal');
+    const hub=named(cylinder(.105,.09,0,.09,0,wood,24),'officeChairPedestal');
+    for(let i=0;i<5;i++){
+     const angle=i*Math.PI*2/5;
+     const spoke=named(box(.068,.052,.39,Math.sin(angle)*.2,.095,Math.cos(angle)*.2,wood),'officeChairSpoke');spoke.rotation.y=angle;
+     const caster=new THREE.Mesh(new THREE.SphereGeometry(.047,12,9),new THREE.MeshStandardMaterial({color:'#161b24',roughness:.45}));
+     caster.position.set(Math.sin(angle)*.4,.047,Math.cos(angle)*.4);caster.userData.furniturePart=true;caster.userData.officeChairWheel=true;parts.push(caster);
+    }
+   }else legs(Math.max(.08,seatY-.1));
+  }else{
+   box(p.width,Math.max(.2,p.backHeight),.13,0,seatY+p.backHeight/2,backZ,arm?fabric:wood);
+   if(arm)for(const side of [-1,1])box(.14,.25,p.depth*.85,side*(p.width/2-.07),seatY+.13,0,fabric);
+   legs(Math.max(.08,seatY-.1));
   }
-  if(arm){for(const side of [-1,1])box(.14,.25,p.depth*.85,side*(p.width/2-.07),seatY+.13,0,fabric);}
-  if(p.headrest){box(p.width*.78,.19,.18,0,seatY+p.backHeight+.085,p.depth*.5-.09,fabric);}
+  if(p.headrest)box(p.width*.78,.19,.18,0,seatY+p.backHeight+.085,backZ,fabric);
   if(p.variant==='sofa')for(let i=1;i<p.seats;i++)box(.035,p.cushionThickness*.8,p.depth*.71,-p.width/2+i*p.width/p.seats,seatY+p.cushionThickness/2,-p.depth*.06,wood);
-  legs(Math.max(.08,seatY-.1));
  }else if(p.variant==='bed'){
   const mattressHeight=p.cushionThickness*1.45,baseY=p.legStyle==='none'?.16:p.height;
   box(p.width,.16,p.depth,0,baseY-.08,0);

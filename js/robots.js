@@ -269,10 +269,15 @@ export async function captureRobotPortrait(world,robot){
   const view=robot.localToWorld(new THREE.Vector3(0,1.53,2.05));
   camera.position.copy(view);camera.lookAt(target);camera.updateMatrixWorld(true);
   const n=256,rt=new THREE.WebGLRenderTarget(n,n),pixels=new Uint8Array(n*n*4);
+  rt.texture.colorSpace=THREE.SRGBColorSpace;
+  const portraitFill=new THREE.HemisphereLight(0xffffff,0x667f9c,1.8);
+  const portraitKey=new THREE.DirectionalLight(0xffffff,2.4);
+  portraitKey.position.copy(camera.position).add(new THREE.Vector3(1.4,1.5,.6));
+  world.scene.add(portraitFill,portraitKey);
   // Hide furniture and other characters for a clean, unoccluded portrait.
   const hidden=world.scene.children.filter(o=>o!==robot&&!o.isLight&&o.visible);
   try{for(const obj of hidden)obj.visible=false;renderer.xr.enabled=false;renderer.setRenderTarget(rt);renderer.render(world.scene,camera);renderer.readRenderTargetPixels(rt,0,0,n,n,pixels);}
-  finally{for(const obj of hidden)obj.visible=true;renderer.setRenderTarget(oldTarget);renderer.xr.enabled=oldXR;rt.dispose();}
+  finally{for(const obj of hidden)obj.visible=true;world.scene.remove(portraitFill,portraitKey);renderer.setRenderTarget(oldTarget);renderer.xr.enabled=oldXR;rt.dispose();}
   const canvas=document.createElement('canvas');canvas.width=canvas.height=n;
   const ctx=canvas.getContext('2d');const out=ctx.createImageData(n,n);
   for(let y=0;y<n;y++)out.data.set(pixels.subarray((n-1-y)*n*4,(n-y)*n*4),y*n*4);

@@ -1066,7 +1066,7 @@ export class SceneEditor{
   this.hitSmartScreen=ray=>{
    const hits=ray.intersectObjects(this.items,true);
    const first=hits[0];if(!first)return null;
-   const screenHit=hits.find(h=>['equipmentScreen','lampSwitch','equipmentSpeaker'].includes(h.object.name)||h.object.userData.smartScreenBack||h.object.userData.smartScreenAudio||h.object.userData.editorKind==='media');
+   const screenHit=hits.find(h=>['equipmentScreen','lampSwitch','equipmentSpeaker'].includes(h.object.name)||h.object.userData.smartScreenBack||h.object.userData.smartScreenAudio||h.object.userData.mediaPlaybackLabel||h.object.userData.editorKind==='media');
    if(!screenHit||screenHit.distance>first.distance+.035)return null;
    let object=screenHit.object;
    while(object.parent&&!this.items.includes(object))object=object.parent;
@@ -1074,6 +1074,9 @@ export class SceneEditor{
   };
   this.activateSmartScreen=selection=>{
     const obj=selection.object,hit=selection.hit;
+    if(obj.userData.editorKind==='media'&&sceneMediaKind(obj.userData.media?.mime)==='audio'){
+      toggleSceneMediaPlayback(obj);this.updateInspector();return true;
+    }
     if(hit.object.name==='equipmentSpeaker')return nextSpeakerChannel(obj,this.world);
     if(hit.object.userData.lampSwitch){const before=this.snapshot(obj);const p={...obj.userData.furniture,lampOn:!obj.userData.furniture.lampOn};rebuildFurniture(obj,p);this.physics.sync(obj);this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.toast(p.lampOn?'Lamp on':'Lamp off');return true;}
     return smartScreenClick(obj,hit);
@@ -1317,6 +1320,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    add('seatHeight','Seat height','number');add('backHeight','Back height','number');add('cushionThickness','Cushion','number');
    if(p.variant==='sofa')add('seats','Seats','number');
    add('headrest','Headrest','checkbox');
+   if(p.variant==='officeChair'){add('ergonomicBack','Open ergonomic back','checkbox');add('armrests','Armrests','checkbox');}
   }
   if(p.variant==='bed'){
    add('cushionThickness','Mattress','number');add('headboard','Headboard','checkbox');

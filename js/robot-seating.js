@@ -81,8 +81,45 @@ export function takeSeat(robot,target,editor){
  editor.queueSave?.(robot);
  return true;
 }
+// Convert the robot's facing into a ray through the seat's local footprint.
+// The exit distance accounts for rotation/scale and adds capsule clearance.
+// Keep world Y and yaw unchanged; Rapier/grounding own the vertical position.
+export function standClearancePosition(robot,target,margin=.52){
+ if(!robot||!target)return null;
+ target.updateWorldMatrix?.(true,true);
+ const footprint=new THREE.Box3();
+ target.traverse?.(part=>{
+  if(!part.geometry?.boundingBox)part.geometry?.computeBoundingBox?.();
+  if(!part.geometry?.boundingBox)return;
+  const fromPart=new THREE.Matrix4().copy(target.matrixWorld).invert().multiply(part.matrixWorld);
+  footprint.union(part.geometry.boundingBox.clone().applyMatrix4(fromPart));
+ });
+ if(footprint.isEmpty())return null;
+ const worldForward=new THREE.Vector3(Math.sin(robot.rotation.y),0,Math.cos(robot.rotation.y));
+ const localStart=target.worldToLocal(robot.position.clone());
+ const localForward=target.worldToLocal(robot.position.clone().add(worldForward)).sub(localStart);
+ const scale=target.getWorldScale(new THREE.Vector3());
+ const padX=margin/Math.max(.01,Math.abs(scale.x)),padZ=margin/Math.max(.01,Math.abs(scale.z));
+ const x0=footprint.min.x-padX,x1=footprint.max.x+padX;
+ const z0=footprint.min.z-padZ,z1=footprint.max.z+padZ;
+ if(localStart.x<x0||localStart.x>x1||localStart.z<z0||localStart.z>z1)return null;
+ const steps=[];
+ if(localForward.x>1e-5)steps.push((x1-localStart.x)/localForward.x);
+ if(localForward.x< -1e-5)steps.push((x0-localStart.x)/localForward.x);
+ if(localForward.z>1e-5)steps.push((z1-localStart.z)/localForward.z);
+ if(localForward.z< -1e-5)steps.push((z0-localStart.z)/localForward.z);
+ const distance=Math.min(...steps.filter(v=>Number.isFinite(v)&&v>=0));
+ if(!Number.isFinite(distance))return null;
+ return robot.position.clone().addScaledVector(worldForward,distance+.06);
+}
 export function standUp(robot,editor){
  if(!robot?.userData?.robotSeated)return false;
+ const target=editor?.items?.find(o=>o.userData.editorId===robot.userData.robotSeatedTarget);
+ const clearPosition=standClearancePosition(robot,target);
+ if(clearPosition){robot.position.x=clearPosition.x;robot.position.z=clearPosition.z;
+  // Update the actual rigid body before the next physics frame snaps it back.
+  editor?.physics?.applyEditedPose?.(robot);
+ }
  robot.userData.robotSeated=false;robot.userData.robotSitPose=null;robot.userData.robotReclineAngle=0;
  robot.userData.robotSeatedTarget=null;robot.userData.robotMode='idle';
  robot.userData.robotPlaying=null;

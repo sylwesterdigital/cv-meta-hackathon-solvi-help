@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.162",
+  "currentVersion": "0.2.163",
   "releases": [
+    {
+      "version": "0.2.163",
+      "publishedAt": "2026-11-03T13:13:34Z",
+      "changes": [
+        "Move avatars beyond the selected seat footprint when standing with J, retaining yaw and synchronising the actual Rapier pose; avoid leaving standing robots inside sofas/chairs.",
+        "Replace oversized stacked audio recording label sprites with a compact, modern single canvas label displaying author/date/time and PLAY/PAUSE; activate playback by clicking the label in desktop and WebXR.",
+        "Upgrade procedural Office chair with an optional ergonomic backrest opening, optional armrests and a five-spoke wheeled pedestal base; retain four-leg variants and existing seat/preset persistence.",
+        "Centre the preset Delete SVG in its button and prevent an automatically decorated duplicate icon from shifting it.",
+        "Brighten Save Chat Portrait independently of the previously corrected robot eye-camera via sRGB offscreen output and temporary neutral portrait lights; restore scene and GPU state after capture."
+      ]
+    },
     {
       "version": "0.2.162",
       "publishedAt": "2026-11-03T12:19:00Z",
@@ -325,16 +336,6 @@
         "Add a compact opt-in Climbable checkbox on walls, models (including trees), and supported procedural objects, saved in scenes and preserved on duplication.",
         "Manual Up/Down climbing now attaches to the actual nearby front-facing vertical surface mesh; Space detaches into Rapier gravity and top dismount requires physical support.",
         "Include multi-client climb state, strict backend bool validation, browser cache mapping, and six executable surface-climb regression tests."
-      ]
-    },
-    {
-      "version": "0.2.132",
-      "publishedAt": "2026-11-01T03:49:48Z",
-      "changes": [
-        "Add procedural Ladder immediately after Stairs advanced, with width, height, count/spacing-based rungs, textures, colour and per-bar static Rapier colliders.",
-        "Add manual Up/Down robot/ avatar climbing and Space release; select authored climbing animation where present and detect a real upper platform before dismount to Idle.",
-        "Replace robot portrait resize symbols with the exact supplied +/- SVGs and remove automatic icon decoration; compact Profile Edit Mode to a single label and pill.",
-        "Persist, duplicate, validate and archive ladders, add six ladder behaviour tests and advance all runtime/backend/cache version strings."
       ]
     }
   ]

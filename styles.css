@@ -2406,7 +2406,7 @@ html:not(.solvi-edit-mode) #assetsButton {display:none!important;}
 #robotInventoryPanel .inventory-item-actions button:disabled{opacity:.48;cursor:default}
 #robotInventoryPanel .small-note{grid-column:1/-1;color:#a7bdd2;font-size:12px}
 
-/* v0.2.162: centre supplied SVG icons inside each icon-only control. */
+/* v0.2.163: centre supplied SVG icons inside each icon-only control. */
 button[data-ui-icon="delete"],button[data-ui-icon="play"],button[data-ui-icon="pause"],
 button[data-ui-icon="stop"],button[data-ui-icon="record"]{
   display:inline-flex!important;align-items:center!important;justify-content:center!important;
@@ -2418,3 +2418,9 @@ button[data-ui-icon="record"]::before{
   margin:0!important;background-position:center!important;background-repeat:no-repeat!important;
   background-size:contain!important;
 }
+
+/* v0.2.163: absolute-centre the existing icon (never display a second delete glyph). */
+#objectPresetsBackdrop .object-preset-delete{position:relative!important;display:grid!important;place-items:center!important;padding:0!important;gap:0!important;text-align:center!important;line-height:1!important}
+#objectPresetsBackdrop .object-preset-delete::before,#objectPresetsBackdrop .object-preset-delete::after{content:none!important;display:none!important}
+#objectPresetsBackdrop .object-preset-delete svg{display:block!important;width:19px!important;height:19px!important;position:absolute!important;inset:50% auto auto 50%!important;transform:translate(-50%,-50%)!important;margin:0!important;fill:none!important}
+#objectPresetsBackdrop .object-preset-delete .ui-button-label{display:none!important}

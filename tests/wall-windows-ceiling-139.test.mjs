@@ -171,15 +171,16 @@ test('basic furniture builds seven distinct, finite, per-part mesh presets and c
  const section=code.slice(code.indexOf('// Basic furniture is built'))
   .replaceAll('export const ','const ').replaceAll('export function ','function ');
  class Node{
-  constructor(){this.children=[];this.userData={};this.position={x:0,y:0,z:0,set(x,y,z){this.x=x;this.y=y;this.z=z;}};this.scale={x:1,y:1,z:1,set(){}};}
+  constructor(){this.children=[];this.userData={};this.position={x:0,y:0,z:0,set(x,y,z){this.x=x;this.y=y;this.z=z;}};this.rotation={x:0,y:0,z:0};this.scale={x:1,y:1,z:1,set(){}};}
   add(child){this.children.push(child);}remove(child){this.children.splice(this.children.indexOf(child),1);}
  }
  class Mesh extends Node{constructor(geometry,material){super();this.geometry=geometry;this.material=material;}}
  class Geometry{constructor(...args){this.args=args;this.type=this.constructor.name;this.parameters={width:args[0],height:args[1],depth:args[2],radiusTop:args[0],radiusBottom:args[1]};}dispose(){}}
  class BoxGeometry extends Geometry{}
  class CylinderGeometry extends Geometry{}
+ class SphereGeometry extends Geometry{}
  class MeshStandardMaterial{constructor(config){Object.assign(this,config);}dispose(){}}
- const THREE={Group:Node,Mesh,BoxGeometry,CylinderGeometry,MeshStandardMaterial};
+ const THREE={Group:Node,Mesh,BoxGeometry,CylinderGeometry,SphereGeometry,MeshStandardMaterial};
  const equipmentSource=source('js/procedural-equipment.js').replace(/^import .*;\s*$/gm,'').replace(/export (const|function|class) /g,'$1 ');
  const {EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment}=new Function('THREE',equipmentSource+'\nreturn {EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment};')(THREE);
  const {sanitiseFurniture,makeFurniture,rebuildFurniture}=new Function('THREE','wallPresetTexture','EQUIPMENT_TYPES','EQUIPMENT_NUMERIC','buildEquipment',section+'\nreturn {sanitiseFurniture,makeFurniture,rebuildFurniture};')(THREE,()=>null,EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment);
