@@ -111,6 +111,8 @@ def init_db():
         CREATE INDEX IF NOT EXISTS robot_memories_lookup ON robot_memories(room_id,robot_id,created);
         CREATE TABLE IF NOT EXISTS robot_work_events (id TEXT PRIMARY KEY,room_id TEXT NOT NULL,robot_id TEXT NOT NULL,user_id TEXT NOT NULL,action TEXT NOT NULL,status TEXT NOT NULL,detail TEXT NOT NULL,created TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS robot_work_events_lookup ON robot_work_events(room_id,robot_id,created);
+        CREATE TABLE IF NOT EXISTS robot_work_orders (room_id TEXT NOT NULL,robot_id TEXT NOT NULL,user_id TEXT NOT NULL,order_json TEXT NOT NULL,state_json TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,updated TEXT NOT NULL,PRIMARY KEY(room_id,robot_id));
+        CREATE INDEX IF NOT EXISTS robot_work_orders_owner ON robot_work_orders(user_id,room_id);
         CREATE TABLE IF NOT EXISTS scene (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, payload TEXT NOT NULL);
         INSERT OR IGNORE INTO scene VALUES(1,0,'[]');
         CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, title TEXT NOT NULL, created TEXT NOT NULL);
@@ -195,7 +197,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.184',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.186',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1524,12 +1526,12 @@ def ai_vision():
                                'output_types':[item.get('type') for item in response.get('output',[]) if isinstance(item,dict)]},
                        usage=usage,note='SAM returns matching object geometry, not a scene description. Bounding boxes are shown; pixel masks are not yet rendered.')
     except Exception as exc:return json_error(str(exc),502)
-# v0.2.184 — Meta camera-grounded, server-scoped autonomy proposals. This
+# v0.2.186 — Meta camera-grounded, server-scoped autonomy proposals. This
 # endpoint NEVER edits scenes; the browser must use authorised scene tools.
 ROBOT_AUTONOMY_LAST = {}
 ROBOT_AUTONOMY_DAILY = {}
 AUTONOMY_ACTIONS = {'visit','deliver','build','build_house','use_preset','remove','rest','ask','inspect','idle'}
-AUTONOMY_BUILD_VARIANTS = {'chair','officeChair','bed','sofa','stool','table','cabinet'}
+AUTONOMY_BUILD_VARIANTS = {'chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can'}
 
 def validate_autonomy_decision(value,objects,robot_id,allow_changes=False,presets=None):
     if not isinstance(value,dict) or value.get('action') not in AUTONOMY_ACTIONS:return None
@@ -1625,7 +1627,7 @@ def robot_autonomy_plan():
     # Public, versioned tool vocabulary, not a UI-driving instruction. The
     # model can only propose a single action; the editor verifies every tool.
     tools={'visit':'travel to scene target_id', 'deliver':'pickup target_id, deliver to destination_id',
-           'build':'create a small chair/bed/table/sofa/officeChair/stool/cabinet near robot',
+           'build':'create a small chair/bed/table/sofa/officeChair/stool/cabinet/bottle/can near robot',
            'build_house':'create a 3–8m house shell, floor, door, windows, roof and optional furnishings',
            'use_preset':'place an account-owned Furniture/Architecture preset by preset_id',
            'remove':'remove only robot-created objects from this session',
@@ -1653,11 +1655,15 @@ def robot_autonomy_plan():
             'memory':[row['event'][:210] for row in memory],
             'last_result':str(request.form.get('last_result',''))[:600], 'verified_public_background':str(request.form.get('research_notes',''))[:900], 'objects':index},ensure_ascii=False)[:14500]
     )
+    stage='prepare'
     try:
-        # Try the requested 360° images first. Provider failures are visible,
-        # never disguised as success. Text-only fallback is limited to HTTP
-        # 400/413 (provider rejected multimodal image shape), not outages.
+        # The provider may refuse a six-frame request while accepting one real
+        # frame; degrade in stages, never claim to have seen rejected images.
+        # TypeError is not proof of an HTTP transport failure, so isolate the
+        # failing stage and include it in *sanitized* diagnostics.
         vision_fallback=False
+        used_images=len(image_parts)
+        stage='meta-six-images' if image_parts else 'meta-text'
         try:
             answer=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,
                 'input':[{'role':'user','content':[{'type':'input_text','text':instruction}]+image_parts}]})
@@ -1665,31 +1671,118 @@ def robot_autonomy_plan():
             if not image_parts or not (re.search(r'Meta API HTTP (400|413):',str(image_error)) or isinstance(image_error,TypeError)):
                 raise
             vision_fallback=True
-            answer=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,
-                'input':[{'role':'user','content':[{'type':'input_text','text':instruction+'\nThe image request was rejected. No camera frames are supplied in this retry. Ground every claim in scene-index data, not in vision.'}]}]})
-        usage=record_usage(user['id'],'muse-spark-1.3','robot-autonomy-plan',answer,images=0 if vision_fallback else len(image_parts))
+            used_images=1
+            stage='meta-one-image'
+            try:
+                answer=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,
+                    'input':[{'role':'user','content':[{'type':'input_text','text':instruction+'\nOnly one real head-camera frame is available. Do not describe other directions.'},image_parts[0]]}]})
+            except Exception as one_error:
+                if not (re.search(r'Meta API HTTP (400|413):',str(one_error)) or isinstance(one_error,TypeError)):
+                    raise
+                used_images=0
+                stage='meta-text-retry'
+                answer=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,
+                    'input':[{'role':'user','content':[{'type':'input_text','text':instruction+'\nThe image requests were rejected. This retry has no frames; use the scene index only, not claimed vision.'}]}]})
+        stage='usage-record'
+        usage=record_usage(user['id'],'muse-spark-1.3','robot-autonomy-plan',answer,images=used_images)
+        stage='parse-decision'
         plan=parse_autonomy_decision(meta_output_text(answer),objects,rid,allow_changes,{p['id'] for p in preset_index})
         if not plan:
             audit_event('robot-autonomy-invalid-model-plan',room=room_id,robot_id=rid)
             return jsonify(decision={'action':'idle','target_id':'','destination_id':'','variant':'chair','message':'',
                 'reason':'Meta returned no valid tool call. The editor will not execute model prose.'},usage=usage,validated=False,
-                failure_code='invalid-model-plan',vision_fallback=vision_fallback)
-        audit_event('robot-autonomy-proposed',room=room_id,robot_id=rid,action=plan['action'],images=0 if vision_fallback else len(image_parts))
-        return jsonify(decision=plan,usage=usage,validated=True,views=0 if vision_fallback else len(image_parts),model='muse-spark-1.3',vision_fallback=vision_fallback)
+                failure_code='invalid-model-plan',vision_fallback=vision_fallback,views=used_images)
+        audit_event('robot-autonomy-proposed',room=room_id,robot_id=rid,action=plan['action'],images=used_images)
+        return jsonify(decision=plan,usage=usage,validated=True,views=used_images,model='muse-spark-1.3',vision_fallback=vision_fallback)
     except Exception as exc:
-        # An unsuccessful request may be retried without a needless 3-minute
-        # cooldown; the account's daily attempts still count toward its cap.
+        # Do not expose exception text, raw provider response, payload, API key
+        # or camera bytes. The stage distinguishes network, provider schema,
+        # usage persistence and JSON parsing in the next debug report.
         with robot_task_lock:
             if ROBOT_AUTONOMY_LAST.get((room_id,rid))==stamp:ROBOT_AUTONOMY_LAST.pop((room_id,rid),None)
         detail=str(exc)
-        hint='Check provider and payload support in server logs. An explicit text-only retry may recover image-shape failures; no scene operation was executed by the failed model call.'
-        code='meta-http' if 'Meta API HTTP' in detail else 'meta-transport'
-        audit_event('robot-autonomy-unavailable',room=room_id,robot_id=rid,error=type(exc).__name__,code=code)
+        http=re.search(r'Meta API HTTP (\d+)',detail)
+        code='meta-http' if http else 'meta-internal' if stage in ('parse-decision','usage-record') else 'meta-transport'
+        audit_event('robot-autonomy-unavailable',room=room_id,robot_id=rid,error=type(exc).__name__,code=code,stage=stage)
         return jsonify(error='Meta autonomous planning failed; no tool action was performed',
-            failure_code=code,detail=('Meta API '+re.search(r'HTTP (\d+)',detail).group(0) if re.search(r'HTTP (\d+)',detail) else type(exc).__name__),
-            remedy=hint),502
+            failure_code=code,failure_stage=stage,
+            detail=('Meta API HTTP '+http.group(1)) if http else type(exc).__name__,
+            remedy='Provider/model request requires server diagnosis; a visible browser can continue with the authorised local construction plan.'),502
 
 
+
+# Durable operator work orders live in SQLite; the renderer still performs all
+# actual WebGL/Rapier actions in an authenticated, visible browser tab. Server
+# records are NOT executable jobs, claims of real-world completion or permissions.
+def robot_work_order_robot(user,room_id,rid):
+    with db() as con:
+        row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+    try:objects=json.loads(row['payload']) if row else []
+    except (ValueError,TypeError):objects=[]
+    bot=next((o for o in objects if isinstance(o,dict) and o.get('id')==rid and o.get('kind')=='robot'),None)
+    return bot if bot and may_edit(user['id'],bot,room_policy(room_id)) else None
+
+def valid_robot_work_order(order,state):
+    if not isinstance(order,dict) or not isinstance(state,dict):return None
+    if order.get('mode') not in ('agent','deliver','build','house','preset','assist','rest'):return None
+    goal=order.get('goal','')
+    if not isinstance(goal,str) or len(goal)>1800:return None
+    try:interval=int(order.get('interval',300))
+    except (ValueError,TypeError):return None
+    if not 180<=interval<=3600:return None
+    cleaned={k:order.get(k,'') for k in ('mode','robotId','sourceId','destinationId','goal','variant','room','presetId')}
+    cleaned.update(interval=interval,vision=order.get('vision') is True,allowChanges=order.get('allowChanges') is True)
+    if any(not isinstance(v,str) or len(v)>1900 for k,v in cleaned.items() if k not in ('interval','vision','allowChanges')):return None
+    if len(str(cleaned.get('robotId','')))>100 or any(len(str(cleaned.get(k,'')))>100 for k in ('sourceId','destinationId','room','presetId')):return None
+    # Only data, no arbitrary objects; capped at 12 KB and 12 nested levels.
+    try:raw=json.dumps(state,allow_nan=False,ensure_ascii=False)
+    except (TypeError,ValueError,OverflowError):return None
+    if len(raw)>12000:return None
+    # Never store HTML/script, API keys, input frames or giant model outputs.
+    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','placedSupplies','researchNotes','pendingAction'}
+    stored={k:state[k] for k in safe_keys if k in state}
+    if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
+    if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
+    if not isinstance(stored.get('invitations',[]),list) or len(stored.get('invitations',[]))>20:return None
+    return cleaned,stored
+
+@app.get('/api/robots/autonomy/orders')
+def robot_work_orders_list():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    room_id=selected_room(request.args.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    with db() as con:
+        rows=con.execute('SELECT robot_id,order_json,state_json,enabled,updated FROM robot_work_orders WHERE room_id=? AND user_id=? ORDER BY updated DESC LIMIT 30',(room_id,user['id'])).fetchall()
+    result=[]
+    for row in rows:
+        if not robot_work_order_robot(user,room_id,row['robot_id']):continue
+        try:
+            result.append({'robot_id':row['robot_id'],'order':json.loads(row['order_json']),
+                'state':json.loads(row['state_json']),'enabled':bool(row['enabled']),'updated':row['updated']})
+        except (TypeError,ValueError):continue
+    return jsonify(orders=result,execution='browser-only; resumes automatically only when an authenticated 3D scene is ready')
+
+@app.put('/api/robots/autonomy/order')
+def robot_work_order_save():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    rid=str(data.get('robot_id',''))[:100]
+    if not robot_work_order_robot(user,room_id,rid):return json_error('Robot operator permission required',403)
+    normalized=valid_robot_work_order(data.get('order'),data.get('state'))
+    if not normalized:return json_error('Invalid bounded work-order state',400)
+    order,state=normalized
+    if order.get('robotId')!=rid or order.get('room')!=room_id:return json_error('Work-order robot/room mismatch',400)
+    enabled=data.get('enabled') is True
+    with db() as con:
+        old=con.execute('SELECT user_id FROM robot_work_orders WHERE room_id=? AND robot_id=?',(room_id,rid)).fetchone()
+        if old and old['user_id']!=user['id']:return json_error('Work order belongs to another robot operator',403)
+        con.execute('INSERT INTO robot_work_orders(room_id,robot_id,user_id,order_json,state_json,enabled,updated) VALUES(?,?,?,?,?,?,?) ON CONFLICT(room_id,robot_id) DO UPDATE SET order_json=excluded.order_json,state_json=excluded.state_json,enabled=excluded.enabled,updated=excluded.updated',
+            (room_id,rid,user['id'],json.dumps(order,ensure_ascii=False),json.dumps(state,ensure_ascii=False),int(enabled),now()))
+    return jsonify(ok=True,enabled=enabled,persistence='SQLite; a browser client is required for physical execution')
 
 # Autonomous work receipts are explicit client reports, not new commands. They
 # let robot discussions reference concrete recent project work without fabricating success.
@@ -1749,7 +1842,7 @@ def robot_autonomy_research():
     sources=[]
     try:
         search=urllib.parse.urlencode({'action':'query','list':'search','srsearch':query,'srnamespace':'0','srlimit':'4','format':'json'})
-        req=Request('https://en.wikipedia.org/w/api.php?'+search,headers={'User-Agent':'SOLVI-help-robot-study/0.2.184','Accept':'application/json'})
+        req=Request('https://en.wikipedia.org/w/api.php?'+search,headers={'User-Agent':'SOLVI-help-robot-study/0.2.186','Accept':'application/json'})
         with urlopen(req,timeout=4) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Oversized research response')
             result=json.loads(response.read(180001))

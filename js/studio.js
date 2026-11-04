@@ -136,7 +136,7 @@ const api={
   if(!res.ok){if((res.status===401||(res.status===409&&/active (?:in another|session|tab)|session.*(?:expired|conflict)|signed in elsewhere/i.test(data.error||'')))&&auth)needSignIn(data.error||'Session expired or active in another window.');
     if(res.status===403&&url.includes('/api/admin/stats')){clearAdminSession();$('adminStats').textContent='Admin session expired. Unlock from Profile again.';}
     const planError=url.split('?')[0]==='/api/robots/autonomy/plan';
-    const message=planError?[data.error,data.detail,data.failure_code,data.remedy,data.retry_after_seconds?`Retry after ${data.retry_after_seconds}s`:null].filter(Boolean).join(' · '):data.error;
+    const message=planError?[data.error,data.detail,data.failure_code,data.failure_stage?`stage: ${data.failure_stage}`:null,data.remedy,data.retry_after_seconds?`Retry after ${data.retry_after_seconds}s`:null].filter(Boolean).join(' · '):data.error;
     throw Error(message||`${res.status} ${res.statusText}`);}
   return data;
  },
@@ -1466,7 +1466,7 @@ function bindUI(world){
   };follow();
  });
  installRobotComicBubbles(world);
- const editor=new SceneEditor(world,toast);setupChatMentions();robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
+ const editor=new SceneEditor(world,toast);setupChatMentions();robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load().then(()=>window.dispatchEvent(new CustomEvent('solvi:autonomy-ready'))));
  initCameraBookmarks({world,api,room:()=>activeRoom,getRooms:()=>[...$('roomSelect').options].filter(o=>o.value).map(o=>({id:o.value,title:o.textContent})),uploadFile,toast,post:async body=>{const out=await api.req('/api/message',{method:'POST',body:JSON.stringify(body)});await bubble(out.message);return out;},switchRoom:async target=>{const select=$('roomSelect');if(![...select.options].some(o=>o.value===target))throw Error('Realm is not accessible');select.value=target;select.dispatchEvent(new Event('change'));}});
  initRobotRoutines({editor,room:()=>activeRoom,toast,
   captureObservation:async(robot,target)=>{const frame=await captureRobotView(world,robot);if(frame?.size)rememberRobotObservationFrame(robot.userData.editorId,frame,`Routine observation of ${target.name} · local frame, no model analysis`);},
@@ -1489,6 +1489,7 @@ function bindUI(world){
    await Promise.all([loadWorldSettings(),editor.load()]);
    if(current!==realmSwitchVersion||room!==activeRoom)return;
    editor.endRealmTransition(room);
+   window.dispatchEvent(new CustomEvent('solvi:autonomy-ready'));
    await loadMessages();
   }catch(error){
    if(current===realmSwitchVersion&&room===activeRoom){

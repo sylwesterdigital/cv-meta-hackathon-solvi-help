@@ -13,13 +13,13 @@ test('house recovery is a sequence: build once, resume, check site, research, he
  const goal='Jess, construct a small house';
  assert.equal(workRecoveryPlan({goal,allowChanges:true}).action,'build_house');
  assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:1},house:{missing:['bed'],inspectionFailed:''}}).action,'build_house');
- assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:3},house:{missing:['bed'],inspectionFailed:'blocked'}}).action,'site_check');
- assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:3,site_check:2},house:{missing:[],inspectionFailed:'blocked'}}).action,'research');
- assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:3,site_check:2,research:1},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2'}).action,'ask');
+ assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:4},house:{missing:['bed'],inspectionFailed:'blocked'}}).action,'site_check');
+ assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:4,site_check:2},house:{missing:[],inspectionFailed:'blocked'}}).action,'rest');
+ assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:4,site_check:2,research:1},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2'}).action,'ask');
  assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:3,site_check:2,research:1,ask:1},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2',hasSeat:true}).action,'rest');
  assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:3,site_check:2,research:1,ask:1},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2',hasSeat:false}).action,'rest');
  assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:3,site_check:2,research:1,ask:1,rest:1},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2',hasSeat:true}).action,'idle');
- assert.equal(workRecoveryPlan({goal,allowChanges:true,existingHouse:true}).action,'research');
+ assert.equal(workRecoveryPlan({goal,allowChanges:true,existingHouse:true}).action,'build_house');
 });
 test('hospital project never claims medication, patient care or blocked site inspection completed',()=>{
  assert.equal(projectOutcome({house:{missing:[],inspectionFailed:''},goal:'Build a little house'}).done,true);

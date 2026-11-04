@@ -1,10 +1,10 @@
-// v0.2.184 · Documented, bounded, deterministic robot construction interface.
+// v0.2.186 · Documented, bounded, deterministic robot construction interface.
 // The Meta model proposes data; the editor remains the sole privileged executor.
 export const ROBOT_TOOL_API_VERSION='1';
 export const ROBOT_TOOL_DESCRIPTIONS=Object.freeze({
  visit:'Navigate to an existing scene ID using the current A* robot movement system.',
  deliver:'Pick up an existing Pickable scene ID, navigate to a destination ID and drop it.',
- build:'Create one furniture item from a supported built-in variant near the robot.',
+ build:'Create one supported furniture or basic prop item (including can and bottle) using the human editor generator.',
  build_house:'Build one bounded 3–8m room shell with an actual door opening, windows and roof; optionally furnish it.',
  use_preset:'Place one existing, account-owned Furniture or Architecture preset; preset_id must be in available_presets.',
  remove:'Remove a robot-created item from this browser work session, subject to ownership/permission checks.',
@@ -32,7 +32,7 @@ export function houseWallSettings(input={}){
 }
 export function houseGoal(goal=''){
  // No autonomous construction based on an unrelated casual conversational phrase.
- return /\b(build|construct|make|prepare|create)\b/i.test(goal)&&/\b(house|home|cabin|small room)\b/i.test(goal);
+ return /\b(build|construct|make|prepare|create|set up|furnish)\b/i.test(goal)&&/\b(house|home|cabin|small room|hospital|clinic)\b/i.test(goal);
 }
 export function operatorFailure(error){
  const reason=String(error?.message||error||'Unknown error');

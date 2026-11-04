@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.184",
+  "currentVersion": "0.2.186",
   "releases": [
+    {
+      "version": "0.2.186",
+      "publishedAt": "2026-11-04T18:20:30Z",
+      "changes": [
+        "Simplify autonomous Work orders to context-sensitive settings: hide unrelated object, destination, preset, variant, goal, cadence and vision inputs by selected work mode; direct building is one-shot and does not repeat spawning furniture in loops.",
+        "Give robots a geometry-based reachable worksite discovery planner that scans several nearby candidate spaces, checks complete object/room footprints against current scene obstacles, and validates A* routes to an exterior staging point without asking the human to relocate the robot.",
+        "Before any direct furniture or house creation, animate the robot walking to its reserved staging point via the existing route controller and verify its actual client position and arrived event; show a brief construction gesture before authorizing scene Add, never teleport geometry to the actor.",
+        "Recheck the selected building footprint at commit time; reject occupied sites rather than placing through another object; retain normal ownership, physics colliders, Undo and persistence. No automatic destruction or edits to original avatar files.",
+        "Add unit and integration-source tests for workspace search, entire rectangular clearance, unreachable site, contextual work modes, and move-before-build sequencing; preserve existing watcher packaging and version metadata."
+      ]
+    },
     {
       "version": "0.2.184",
       "publishedAt": "2026-11-04T17:15:59Z",
@@ -325,19 +336,6 @@
         "Attach wearable backpacks, jetpacks and parachutes to upper spine/chest bones in independent front/back slots; dropped backpacks retain their contents.",
         "Compact inventory panel with Pockets, Wearable, Backpack tabs; validated per-object state persists through scene/room saves and realm archives.",
         "Regression tests for geometry seating, dropped object collider state, backpack contents, storage transitions, server/archive persistence and safe release packaging."
-      ]
-    },
-    {
-      "version": "0.2.153",
-      "publishedAt": "2026-11-02T16:40:55Z",
-      "changes": [
-        "Compact Basic Furniture properties into responsive three-across labelled numeric fields matching the dark Transform controls, with the existing contextual slider retained.",
-        "Prevent keyboard input, arrow-key stepping, robot shortcuts and camera movement from interfering with active form controls; clear held robot keys on edit focus.",
-        "Move webcam, virtual camera and recorded video into one fixed preview stage directly below the My camera header, with minimal overlay tracking and capture controls; keep recorded sharing actions in one compact row.",
-        "Use the supplied SVG Play, Pause, Stop and Record controls, replacing ambiguous text glyphs in the custom media player.",
-        "Fix blank chat video by retrieving the authenticated video blob, decoding a local preview-frame poster, and playing the direct recording instead of relying on HLS negotiation; expose codec and decode errors.",
-        "Report pose/hand landmark detection exceptions to the console and camera status without treating routine TensorFlow Lite or MediaPipe acceleration warnings as fatal.",
-        "Automated tests cover inspector layout, keyboard isolation, unified camera stage, video preview/direct playback, pending attachment thumbnails, SVG transport icons and diagnostics. Real webcam, playback and MediaPipe require browser smoke testing."
       ]
     }
   ]

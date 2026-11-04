@@ -26,6 +26,7 @@ import {makePortal,rebuildPortal} from './portal-geometry.js';
 import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
+import {findRobotWorksite,footprintClear} from './robot-worksite.js';
 import {planRobotLowStairApproach} from './robot-stair-approach.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
 import {robotPathVisible} from './robot-debug.js';
@@ -1272,9 +1273,36 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  // Autonomous agents use the same furniture generator, scene ownership,
  // history, collider and persistence path as human Add — without selecting the
  // object or moving the operator's camera/inspector.
+ // A robot can scout an outdoor workspace without the user placing it there.
+ planRobotBuildSite(robot,kind='furniture',settings={}){
+  if(!robot||!this.items.includes(robot)||!this.canEdit(robot)||Math.abs(robot.position.y)>.85)return null;
+  let width,depth;
+  if(kind==='house'){const spec=houseBlueprint(settings);width=spec.width;depth=spec.depth;}
+  else{
+   const candidate=objectFor('furniture');rebuildFurniture(candidate,{variant:settings.variant||'chair'});
+   const dims=new THREE.Box3().setFromObject(candidate).getSize(new THREE.Vector3());
+   this.disposeObject(candidate);width=dims.x;depth=dims.z;
+  }
+  if(!Number.isFinite(width)||!Number.isFinite(depth)||width<.1||depth<.1)return null;
+  const start={x:robot.position.x,z:robot.position.z};
+  return findRobotWorksite(start,this.navigationObstacles(robot),{width,depth},{yaw:robot.rotation.y});
+ }
+ // Shares the movement controller, A* route and authoritative arrival event with
+ // user-issued walk commands. It never teleports a robot or a construction item.
+ routeRobotToWorksite(robot,point,taskId,label='construction site'){
+  if(!robot||!this.canEdit(robot)||!this.items.includes(robot)||!point||
+    !Number.isFinite(point.x)||!Number.isFinite(point.z))return false;
+  const distance=Math.hypot(robot.position.x-point.x,robot.position.z-point.z);
+  if(distance>90||Math.abs(robot.position.y)>.85)return false;
+  interruptRobotMission(robot);
+  robot.userData.robotMission={kind:'walk_forward',taskId,targetName:label,repeat:1,
+   returnToStart:false,leg:0,origin:{x:robot.position.x,z:robot.position.z},endpoint:{x:point.x,z:point.z}};
+  if(this.routeRobot(robot,point))return true;
+  interruptRobotMission(robot);return false;
+ }
  createRobotFurniture(robot,variant='chair',options={}){
   if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot)||
-     !['chair','officeChair','stool','bed','armchair','sofa','table','cabinet'].includes(variant))return null;
+     !['chair','officeChair','stool','bed','armchair','sofa','table','cabinet','bottle','can'].includes(variant))return null;
   const obj=objectFor('furniture');rebuildFurniture(obj,{variant});obj.userData.physics={mode:'static'};
   const bb=new THREE.Box3().setFromObject(obj),size=bb.getSize(new THREE.Vector3());
   const margin=Math.max(1.05,size.x*.6,size.z*.6);
@@ -1282,7 +1310,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   // inside another scene object. The robot's own capsule is excluded here.
   const obstacles=this.navigationObstacles(robot);
   let position=null;
-  for(const radius of [3.2,4.5,5.8])for(const angle of [0,Math.PI/2,-Math.PI/2,Math.PI,Math.PI/4,-Math.PI/4]){
+  if(!options.at)for(const radius of [3.2,4.5,5.8])for(const angle of [0,Math.PI/2,-Math.PI/2,Math.PI,Math.PI/4,-Math.PI/4]){
    const heading=robot.rotation.y+angle;
    const x=robot.position.x+Math.sin(heading)*radius,z=robot.position.z+Math.cos(heading)*radius;
    if(!pathBlocked(x,z,obstacles,margin)&&Math.hypot(x-robot.position.x,z-robot.position.z)>margin+1){position={x,z};break;}
@@ -1310,12 +1338,16 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   const spec=houseBlueprint(input),obstacles=this.navigationObstacles(robot);
   const clearance=Math.hypot(spec.width,spec.depth)/2+.6;
   let site=null;
-  for(const radius of [10,14,18,24,30]){
+  if(input.at){
+   if(!footprintClear(input.at,{width:spec.width,depth:spec.depth},obstacles,.65))return null;
+   site={x:input.at.x,z:input.at.z};
+  }
+  if(!input.at)for(const radius of [10,14,18,24,30]){
    for(let i=0;i<12;i++){
     const heading=robot.rotation.y+i*Math.PI/6;
     const x=robot.position.x+Math.sin(heading)*radius,z=robot.position.z+Math.cos(heading)*radius;
     // The entire rectangular footprint, plus a 60cm working margin, must be free.
-    if(!pathBlocked(x,z,obstacles,clearance)){site={x,z};break;}
+    if(footprintClear({x,z},{width:spec.width,depth:spec.depth},obstacles,.65)){site={x,z};break;}
    }
    if(site)break;
   }

@@ -1,4 +1,4 @@
-"""v0.2.184 server-side agent-action tests, without Flask/Meta network calls."""
+"""v0.2.186 server-side agent-action tests, without Flask/Meta network calls."""
 import ast
 import json
 import re
@@ -8,7 +8,7 @@ source=ast.parse((Path(__file__).resolve().parent/'server.py').read_text())
 functions=[node for node in source.body if isinstance(node,ast.FunctionDef) and node.name in ('validate_autonomy_decision','parse_autonomy_decision')]
 assert len(functions)==2
 allowed=ast.Assign(targets=[ast.Name(id='AUTONOMY_ACTIONS',ctx=ast.Store())],value=ast.Set(elts=[ast.Constant(x) for x in ('visit','deliver','build','build_house','use_preset','remove','rest','ask','inspect','idle')]))
-variants=ast.Assign(targets=[ast.Name(id='AUTONOMY_BUILD_VARIANTS',ctx=ast.Store())],value=ast.Set(elts=[ast.Constant(x) for x in ('chair','officeChair','bed','sofa','stool','table','cabinet')]))
+variants=ast.Assign(targets=[ast.Name(id='AUTONOMY_BUILD_VARIANTS',ctx=ast.Store())],value=ast.Set(elts=[ast.Constant(x) for x in ('chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can')]))
 module=ast.Module(body=[allowed,variants]+functions,type_ignores=[])
 ns={'json':json,'re':re,'math':math};exec(compile(ast.fix_missing_locations(module),'autonomy validator','exec'),ns)
 validate=ns['validate_autonomy_decision'];parse=ns['parse_autonomy_decision']
