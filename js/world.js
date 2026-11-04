@@ -692,13 +692,18 @@ export class SolviWorld {
   }
   refreshFollowButton(){
     const button=document.getElementById('cameraFollowButton');if(!button)return;
-    const labels={free:'Camera: Free',chase:'Camera: Chase','chase-smart':'Camera: Chase Smart',orbit:'Camera: Orbit follow'};
+    const labels={free:'Free',chase:'Chase','chase-smart':'Smart',orbit:'Orbit'};
+    const icons={free:'camera-free',chase:'chase','chase-smart':'smart',orbit:'orbit-follow'};
     const hasRobot=Boolean(this.robotEditor?.cameraTargetRobot?.());
-    const label=labels[this.cameraFollowMode]+(this.cameraFollowMode!=='free'&&!hasRobot?' · select robot':'');
-    if(label!==this.lastFollowLabel){button.textContent=label;this.lastFollowLabel=label;}
+    const label=labels[this.cameraFollowMode];
+    if(label!==this.lastFollowLabel||!button.querySelector('.solvi-switcher-icon')){
+      const icon=document.createElement('img');icon.className='solvi-switcher-icon';icon.src=`./assets/ui-icons/switch-${icons[this.cameraFollowMode]}.svg`;icon.alt='';
+      const name=document.createElement('span');name.className='solvi-switcher-label';name.textContent=label;
+      button.replaceChildren(icon,name);this.lastFollowLabel=label;
+    }
     button.dataset.mode=this.cameraFollowMode;
-    button.setAttribute('aria-label',label+'. Click to switch camera mode.');
-    button.title='Cycle: Free → Chase → Chase Smart → Orbit follow (V). Adjust follow distance via slider or wheel/trackpad.';
+    button.setAttribute('aria-label',`Camera: ${label}${this.cameraFollowMode!=='free'&&!hasRobot?' (select a robot)':''}. Click to cycle camera mode.`);
+    button.title=`Camera: ${label}. Click to cycle Free → Chase → Smart → Orbit (V).${this.cameraFollowMode!=='free'&&!hasRobot?' Select a robot to follow.':''}`;
     const control=document.getElementById('chaseDistanceControl');
     if(control)control.hidden=!['chase','chase-smart','orbit'].includes(this.cameraFollowMode);const smart=document.getElementById('smartChaseAngleControl');if(smart)smart.hidden=this.cameraFollowMode!=='chase-smart'||!this.robotEditor?.cameraTargetRobot?.();
     this.updateChaseDistanceUI();
@@ -879,36 +884,69 @@ export class SolviWorld {
    }catch{return false;}
   }
   restoreCameraStart(){
-   const mode=localStorage.getItem(this.cameraStartKey('mode'))||'entry';
-   const select=document.getElementById('cameraStartMode');if(select)select.value=mode;
+   const stored=localStorage.getItem(this.cameraStartKey('mode'));
+   const mode=['entry','last','saved'].includes(stored)?stored:'entry';
+   for(const option of document.querySelectorAll('#cameraStartChoices [data-start-mode]')){
+    option.setAttribute('aria-pressed',String(option.dataset.startMode===mode));
+   }
    if(mode==='last'||mode==='saved')this.loadCameraSnapshot(mode);
   }
   setupCameraStartControls(){
    const holder=document.getElementById('controlSwitcher'),follow=document.getElementById('cameraFollowButton'),distance=document.getElementById('chaseDistanceControl');
-   if(!holder||!follow||!distance)return;
-   const row=document.createElement('div');row.className='camera-position-controls';row.setAttribute('aria-label','Scene camera position controls');
-   const mode=document.createElement('select');mode.id='cameraStartMode';mode.title='Where to start next time';mode.setAttribute('aria-label','Start position on next visit');
-   for(const [key,label] of [['entry','Start: entry'],['last','Start: last position'],['saved','Start: saved point']])mode.append(new Option(label,key));
-   mode.onchange=()=>localStorage.setItem(this.cameraStartKey('mode'),mode.value);
-   const button=document.createElement('button');button.id='saveCameraPosition';button.type='button';button.title='Save camera start point · Shift+P';button.setAttribute('aria-label','Save camera start point · Shift+P');
-   const icon=document.createElement('img');icon.src='./assets/ui-icons/drawing-save.svg';icon.alt='';button.append(icon,document.createTextNode(' Save'));
-   button.onclick=async()=>{
-    const approved=await confirmAction('This saves only your camera position, not the game or scene. Start from this location next time?',{title:'Save your starting position',confirmLabel:'Save position',cancelLabel:'Cancel'});
-    if(!approved)return;
-    localStorage.setItem(this.cameraStartKey('saved'),JSON.stringify(this.cameraStartSnapshot()));
-    mode.value='saved';mode.onchange();
-   };
-   const view=document.createElement('div');view.className='camera-follow-inline';view.append(follow,distance);
-   row.append(view,mode,button);holder.append(row);
+   const actions=holder?.querySelector('.control-switcher-action-row');
+   if(!holder||!follow||!distance||!actions)return;
+   // All actions stay in the original draggable switcher's compact horizontal row.
+   // The start-location chooser only exists as a transient menu after Save is pressed.
+   const button=document.createElement('button');button.id='saveCameraPosition';button.type='button';
+   button.title='Choose where to start next visit · Shift+P';button.setAttribute('aria-label','Choose camera starting position · Shift+P');
+   button.setAttribute('aria-haspopup','true');button.setAttribute('aria-expanded','false');
+   const icon=document.createElement('img');icon.src='./assets/ui-icons/drawing-save.svg';icon.className='solvi-save-position-icon';icon.alt='';
+   button.append(icon);
+   const menu=document.createElement('div');menu.id='cameraStartChoices';menu.className='camera-start-choices';
+   menu.hidden=true;menu.setAttribute('role','group');menu.setAttribute('aria-label','Start location on next visit');
+   for(const [value,label,iconName,description] of [
+    ['entry','Entry','scene','Start at the original room entrance'],
+    ['last','Last','orbit-follow','Start at the most recently visited camera position'],
+    ['saved','Here','camera-free','Save the current camera position as the starting point']
+   ]){
+    const choice=document.createElement('button');choice.type='button';choice.dataset.startMode=value;
+    choice.title=description;choice.setAttribute('aria-label',description);choice.setAttribute('aria-pressed','false');
+    const image=document.createElement('img');image.src=`./assets/ui-icons/switch-${iconName}.svg`;image.alt='';
+    const caption=document.createElement('span');caption.textContent=label;
+    choice.append(image,caption);
+    choice.onclick=async()=>{
+     if(value==='saved'){
+      const approved=await confirmAction('This saves only your camera position, not the game or scene. Start from this location next time?',{title:'Save your starting position',confirmLabel:'Save position',cancelLabel:'Cancel'});
+      if(!approved)return;
+      localStorage.setItem(this.cameraStartKey('saved'),JSON.stringify(this.cameraStartSnapshot()));
+     }
+     localStorage.setItem(this.cameraStartKey('mode'),value);
+     this.restoreCameraStartSelection();close();
+    };
+    menu.append(choice);
+   }
+   const close=()=>{menu.hidden=true;button.setAttribute('aria-expanded','false');};
+   const toggle=()=>{const showing=menu.hidden;menu.hidden=!showing;button.setAttribute('aria-expanded',String(showing));if(showing)this.restoreCameraStartSelection();};
+   button.onclick=toggle;
+   // Keep camera and distance together without forming a second row.
+   actions.append(follow,distance,button,actions.querySelector('.robot-face-size-actions'));
+   holder.append(menu);
    this.restoreCameraStart();
+   document.addEventListener('pointerdown',event=>{if(!menu.hidden&&!menu.contains(event.target)&&!button.contains(event.target))close();});
    window.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&!menu.hidden){event.preventDefault();close();button.focus();return;}
     if(event.code!=='KeyP'||!event.shiftKey||event.ctrlKey||event.altKey||event.metaKey||event.repeat)return;
     if(event.target?.closest?.('input,textarea,select,[contenteditable]'))return;
     event.preventDefault();button.click();
    });
-   // Remember the last viewed point without altering the user's chosen entry mode.
    window.addEventListener('pagehide',()=>this.persistCameraLastPoint());
-   window.addEventListener('solvi:room-changed',()=>{this.restoreCameraStart();});
+   window.addEventListener('solvi:room-changed',()=>{close();this.restoreCameraStart();});
+  }
+  restoreCameraStartSelection(){
+   const stored=localStorage.getItem(this.cameraStartKey('mode'))||'entry';
+   for(const option of document.querySelectorAll('#cameraStartChoices [data-start-mode]')){
+    option.setAttribute('aria-pressed',String(option.dataset.startMode===stored));
+   }
   }
   persistCameraLastPoint(){
    if(!this.renderer.xr?.isPresenting&&['free','orbit'].includes(this.cameraFollowMode)&&[...this.camera.position.toArray(),...this.controls.target.toArray()].every(Number.isFinite)){

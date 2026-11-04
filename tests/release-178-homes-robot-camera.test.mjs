@@ -60,9 +60,9 @@ test('seated robots restore only after room objects are ready and stand outside 
 test('saved camera position is per room, offers entry last and saved, warns about not saving scene',()=>{
  const src=read('js/world.js'),css=read('styles.css');
  assert.match(src,/solvi-camera-\$\{type\}-\$\{window\.solviRoom\|\|'main'\}/);
- assert.match(src,/\['entry','Start: entry'\]/);
- assert.match(src,/\['last','Start: last position'\]/);
- assert.match(src,/\['saved','Start: saved point'\]/);
+ assert.match(src,/\['entry','Entry','scene'/);
+ assert.match(src,/\['last','Last','orbit-follow'/);
+ assert.match(src,/\['saved','Here','camera-free'/);
  assert.match(src,/This saves only your camera position, not the game or scene/);
  assert.match(css,/#controlSwitcher \.camera-position-controls/);
  assert.match(src,/drawing-save\.svg/);

@@ -426,9 +426,17 @@ export class SceneEditor{
    robotSelect.hidden=true;
    robotFaces.hidden=robots.length===0;
    for(const btn of robotFaces.children){const active=btn.dataset.robotId===id&&this.controlMode==='robot';btn.setAttribute('aria-pressed',String(active));btn.classList.toggle('active',active);}
-   modeButton.textContent=this.controlMode==='robot'?'Robot control · '+(this.controlledRobot()?.name||''):'Scene control';
-   modeButton.setAttribute('aria-pressed',String(this.controlMode==='robot'));
-   modeButton.title=this.controlMode==='robot'?'Return arrow keys to camera navigation':'Use arrow keys to control the selected robot portrait';
+   const robotMode=this.controlMode==='robot';
+   const modeName=robotMode?(this.controlledRobot()?.name||'Robot'):'Scene';
+   const modeIcon=robotMode?'control':'scene';
+   if(modeButton.dataset.switcherMode!==modeIcon||modeButton.dataset.switcherName!==modeName){
+    const icon=document.createElement('img');icon.className='solvi-switcher-icon';icon.src=`./assets/ui-icons/switch-${modeIcon}.svg`;icon.alt='';
+    const label=document.createElement('span');label.className='solvi-switcher-label';label.textContent=modeName;
+    modeButton.replaceChildren(icon,label);modeButton.dataset.switcherMode=modeIcon;modeButton.dataset.switcherName=modeName;
+   }
+   modeButton.setAttribute('aria-label',robotMode?`Control ${modeName}; click to control scene`:'Scene control; click to control robot');
+   modeButton.setAttribute('aria-pressed',String(robotMode));
+   modeButton.title=robotMode?'Return arrow keys to scene navigation':'Control selected robot with arrow keys';
   };
   modeButton.onclick=()=>{
    if(this.controlMode==='robot'){

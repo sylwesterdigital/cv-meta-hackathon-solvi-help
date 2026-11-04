@@ -1,3 +1,21 @@
+# SOLVI.help Master LLM Handover — v0.2.179
+
+## Release 0.2.179: one-row Control Switcher, explicit GitHub diagnostics
+
+- Unify Control Switcher actions into one compact draggable row: scene/robot name, local control icon, camera mode icon and short label, contextual follow-distance slider, and small consistent white floppy Save icon.
+- Remove persistent Start entry/last/saved dropdown. Show three compact start-location actions only when Save is opened; keep per-room choice, signed-off saved position, Shift+P, keyboard Escape and accessible labels.
+- Use seven user-provided vector UI icons locally with forced consistent monochrome icon treatment; preserve the existing robot portrait strip and camera mode cycling.
+- Add precise GitHub push diagnostics and explicit remote/pending/HTTP error classification to the optional installed deployment-watcher patch, without treating HTTPS authentication as successful publication.
+- Add focused UI/regression tests, version all browser assets, retain avatar bytes and watcher-safe hashed release ZIP.
+
+**UI contract:** `#controlSwitcher` retains draggable ownership of robot portraits and a single `.control-switcher-action-row`. The row includes scene/robot control, camera mode, contextual distance slider, Save floppy and portrait size actions. `#cameraStartMode` does not exist. `#cameraStartChoices` appears only on Save; Entry and Last set the preference for the *next* visit; Here confirms and saves pose to the same per-room localStorage keys (`solvi-camera-*`), not the scene. All SVG icons are local and forced to the same readable foreground, including the floppy. Orbit/Chase/Smart/Free cycling remains V and camera start menu is Shift+P. No changes to scene saving or robot ownership.
+
+**Deployment watcher:** separate optional installer updates an existing `SOLVI_GITHUB_TRANSIENT_PUSH_V3` watcher to retain verbose GitHub 5xx diagnostics (request ID, UTC, remote, branch and SHA, return code). Confirmed GitHub-only `--sync-github` is distinct from Ubuntu deployment. Do not put installer packages into the application `updates/` watcher directory. Application ZIP alone does not rewrite the locally configured watcher.
+
+**Sources:** `index.html`, `js/world.js`, `js/editor.js`, `styles.css`, `assets/ui-icons/switch-*.svg`, `tests/release-179-control-switcher.test.mjs`, version metadata. Original avatar GLBs unchanged.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.176
 
 ## v0.2.176 — Compact, consistent infrastructure Properties and real material finishes

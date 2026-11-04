@@ -2579,3 +2579,27 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #robotComicConfig .wall-compact-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
 #robotComicConfig .wall-compact-fields label{min-width:0;display:grid;gap:4px;}
 #robotComicConfig .wall-compact-fields select{max-width:100%;min-width:0;}
+
+
+/* v0.2.179: native single-line Control Switcher. No permanent Start dropdown. */
+#controlSwitcher.control-switcher{width:max-content!important;max-width:calc(100vw - 18px)!important;overflow:visible!important;bottom:calc(76px + env(safe-area-inset-bottom))!important;}
+#controlSwitcher .control-switcher-action-row{display:flex!important;flex-flow:row nowrap!important;align-items:center!important;gap:4px!important;width:max-content!important;max-width:calc(100vw - 24px)!important;min-width:0!important;padding:4px!important;background:rgba(14,27,40,.94)!important;border:1px solid var(--ui-border,#71809b)!important;border-radius:10px!important;box-shadow:0 3px 12px #0006!important;}
+#controlSwitcher #controlModeButton,#controlSwitcher #cameraFollowButton.bottom-camera-mode,#controlSwitcher #saveCameraPosition{position:static!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:0 0 auto!important;min-width:0!important;max-width:132px!important;width:auto!important;height:30px!important;min-height:30px!important;max-height:30px!important;padding:3px 7px!important;margin:0!important;gap:5px!important;white-space:nowrap!important;overflow:hidden!important;color:var(--ui-fg,#fff)!important;background:var(--ui-panel,#172235)!important;border:1px solid var(--ui-border,#71809b)!important;border-radius:7px!important;box-shadow:none!important;font:650 12px/1.15 system-ui,sans-serif!important;}
+#controlSwitcher #controlModeButton{max-width:116px!important;}
+#controlSwitcher #cameraFollowButton{max-width:92px!important;}
+#controlSwitcher .solvi-switcher-label{display:block!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+#controlSwitcher .solvi-switcher-icon,#controlSwitcher #saveCameraPosition .solvi-save-position-icon{display:block!important;flex:0 0 18px!important;width:18px!important;height:18px!important;min-width:18px!important;max-width:18px!important;object-fit:contain!important;filter:brightness(0) invert(1)!important;pointer-events:none!important;}
+#controlSwitcher :is(#controlModeButton,#cameraFollowButton,#saveCameraPosition)[data-ui-icon]::before{display:none!important;content:none!important;}
+#controlSwitcher #saveCameraPosition{width:32px!important;min-width:32px!important;max-width:32px!important;padding:5px!important;}
+#controlSwitcher #chaseDistanceControl.chase-distance-control{position:static!important;left:auto!important;bottom:auto!important;display:flex!important;flex:0 0 auto!important;width:126px!important;min-width:0!important;max-width:126px!important;height:30px!important;min-height:30px!important;gap:4px!important;margin:0!important;padding:2px 5px!important;box-shadow:none!important;font-size:10px!important;}
+#controlSwitcher #chaseDistanceControl[hidden]{display:none!important;}
+#controlSwitcher #chaseDistanceControl>span{display:none!important;}
+#controlSwitcher #chaseDistanceSlider{width:76px!important;min-width:20px!important;flex:1 1 auto!important;}
+#controlSwitcher #chaseDistanceOutput{white-space:nowrap!important;flex:0 0 auto!important;font-size:10px!important;}
+#controlSwitcher .robot-face-size-actions{display:inline-flex!important;flex:0 0 auto!important;}
+#controlSwitcher #cameraStartChoices.camera-start-choices{position:absolute!important;top:calc(100% + 5px)!important;right:0!important;z-index:99!important;display:flex!important;align-items:center!important;gap:4px!important;padding:5px!important;border:1px solid var(--ui-border,#71809b)!important;border-radius:9px!important;background:rgba(14,27,40,.98)!important;box-shadow:0 4px 18px #0008!important;cursor:default!important;}
+#controlSwitcher #cameraStartChoices[hidden]{display:none!important;}
+#controlSwitcher #cameraStartChoices button{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:4px!important;min-height:31px!important;padding:4px 7px!important;white-space:nowrap!important;border-radius:6px!important;font-size:11px!important;color:var(--ui-fg,#fff)!important;background:var(--ui-panel,#172235)!important;border:1px solid var(--ui-border,#71809b)!important;}
+#controlSwitcher #cameraStartChoices button[aria-pressed=true]{border-color:var(--solvi-accent,#c875e8)!important;}
+#controlSwitcher #cameraStartChoices button img{display:block!important;width:17px!important;height:17px!important;filter:brightness(0) invert(1)!important;}
+@media(max-width:600px){#controlSwitcher.control-switcher{left:8px!important;bottom:calc(80px + env(safe-area-inset-bottom))!important;max-width:calc(100vw - 16px)!important;}#controlSwitcher .control-switcher-action-row{max-width:calc(100vw - 22px)!important;}#controlSwitcher #controlModeButton{max-width:80px!important;}#controlSwitcher #cameraFollowButton{max-width:67px!important;}#controlSwitcher #chaseDistanceControl.chase-distance-control{width:97px!important;max-width:97px!important;}#controlSwitcher #chaseDistanceOutput{font-size:9px!important;}}

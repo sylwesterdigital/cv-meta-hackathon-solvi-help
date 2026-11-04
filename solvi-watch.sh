@@ -331,6 +331,24 @@ def github_pending_clear():
     try:GITHUB_PENDING_FILE.unlink()
     except FileNotFoundError:pass
 
+# SOLVI_GITHUB_DETAILED_PUSH_LOG_V4
+# Distinguish HTTPS read permission from GitHub write outcomes, with request IDs
+# and exact next actions. Never expose credentials or URLs containing tokens.
+def github_write_diagnostics(output,returncode,attempt,expected):
+    status_match=re.search(r'(?i)(?:internal server error|(?:http(?:/\d(?:\.\d)?)?|http code|error:)\s*[:=]?\s*(500|502|503|504)\b)',output)
+    status=status_match.group(1) if status_match and status_match.lastindex else ('500' if 'internal server error' in output.lower() else 'unknown')
+    request=re.search(r'(?im)^remote:\s*Request ID\s*:?\s*([A-Za-z0-9:_-]+)',output)
+    when=re.search(r'(?im)^remote:\s*Time\s*:?\s*([^\r\n]+)',output)
+    display(f'GitHub push {attempt}: FAILED, exit {returncode}; HTTP {status}; remote {GITHUB}; branch main; local HEAD {expected[:12]}','WARN')
+    display(f'GitHub server request ID: {request.group(1) if request else "not provided"}; server time: {when.group(1).strip() if when else "not provided"}','WARN')
+    for line in output.splitlines():
+        text=line.strip()
+        if re.match(r'(?i)^(?:remote: internal server error|\s*! \[remote rejected\]|error: failed to push)',text):
+            display('GitHub reply: '+text[:240],'WARN')
+    if _log:
+        with _log.open('a',encoding='utf-8') as log:
+            log.write(f'GITHUB_PUSH_DIAGNOSTIC: attempt={attempt} exit={returncode} http={status} request_id={request.group(1) if request else "none"} utc={when.group(1).strip() if when else "not-provided"} local_head={expected} remote={GITHUB}\n')
+
 def github_push_resilient(version,attempts=3):
     """Return True after remote commit verification, False only for GitHub 5xx.
 
@@ -345,7 +363,7 @@ def github_push_resilient(version,attempts=3):
     for attempt in range(1,attempts+1):
         args=['git','-c','credential.interactive=never','-c','http.version=HTTP/1.1',
               'push','-u','origin','main']
-        display(f'GitHub HTTPS push attempt {attempt}/{attempts}','EVENT')
+        display(f'GitHub WRITE attempt {attempt}/{attempts}: origin/main via HTTPS; local commit {expected[:12]}; this is separate from successful GitHub read preflight','EVENT')
         env={**os.environ,'GIT_TERMINAL_PROMPT':'0'}
         try:
             proc=subprocess.run(args,cwd=ROOT,stdout=subprocess.PIPE,
@@ -370,14 +388,16 @@ def github_push_resilient(version,attempts=3):
             github_pending_clear()
             display('GitHub accepted local HEAD despite failed push response','EVENT')
             return True
+        github_write_diagnostics(output,proc.returncode,attempt,expected)
         if not github_is_transient_5xx(output):
             if output:print('\n'.join(output.splitlines()[-6:]),flush=True)
             raise ReleaseError('GitHub push rejected for a non-5xx reason; Ubuntu deployment blocked')
-        display(f'GitHub returned a transient 5xx on push {attempt}/{attempts}','WARN')
+        display(f'GitHub HTTP 5xx: write FAILED on attempt {attempt}/{attempts}. Authentication/preflight alone cannot confirm publication.','WARN')
         if attempt<attempts:
             time.sleep(min(2*attempt,5))
     github_pending_save(version,expected)
-    display('GitHub still returning 5xx: local commit retained; GitHub sync PENDING','WARN')
+    display(f'GitHub: NOT UPDATED — all {attempts} writes returned server 5xx. Local commit {expected[:12]} retained.','WARN')
+    display('Ubuntu deployment may proceed with GitHub pending; later retry from SOLVI repo: ./solvi-watch.sh --sync-github','WARN')
     return False
 
 def git_preflight(stage):
@@ -582,7 +602,7 @@ def process(archive,dry):
         display('[2/5] TESTS PASSED','EVENT')
         announce('preflight','[3/5] Checking GitHub and Ubuntu access…')
         git_preflight(stage)
-        display('[3/5] CONNECTIONS OK','EVENT')
+        display('[3/5] GitHub HTTPS READ and push dry-run OK; Ubuntu SSH OK. GitHub WRITE not yet performed.','EVENT')
         if dry:
             display(f'DRY RUN PASSED — v{manifest["version"]}; NOT deployed or pushed','PASS')
             return
@@ -592,7 +612,7 @@ def process(archive,dry):
         if github_pushed:
             display('[4/5] GITHUB UPDATED — main','EVENT')
         else:
-            display('[4/5] GITHUB PENDING — transient server 5xx; local commit retained','WARN')
+            display('[4/5] GITHUB NOT UPDATED (HTTP 5xx) — commit retained locally; Ubuntu deployment continues','WARN')
         announce('server','[5/5] Deploying Ubuntu files and checking public HTTPS…')
         try:publish(stage,manifest['version'])
         except Exception:

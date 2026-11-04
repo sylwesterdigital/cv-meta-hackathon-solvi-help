@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.178",
+  "currentVersion": "0.2.179",
   "releases": [
+    {
+      "version": "0.2.179",
+      "publishedAt": "2026-11-04T12:06:20Z",
+      "changes": [
+        "Unify Control Switcher actions into one compact draggable row: scene/robot name, local control icon, camera mode icon and short label, contextual follow-distance slider, and small consistent white floppy Save icon.",
+        "Remove persistent Start entry/last/saved dropdown. Show three compact start-location actions only when Save is opened; keep per-room choice, signed-off saved position, Shift+P, keyboard Escape and accessible labels.",
+        "Use seven user-provided vector UI icons locally with forced consistent monochrome icon treatment; preserve the existing robot portrait strip and camera mode cycling.",
+        "Add precise GitHub push diagnostics and explicit remote/pending/HTTP error classification to the optional installed deployment-watcher patch, without treating HTTPS authentication as successful publication.",
+        "Add focused UI/regression tests, version all browser assets, retain avatar bytes and watcher-safe hashed release ZIP."
+      ]
+    },
     {
       "version": "0.2.178",
       "publishedAt": "2026-11-04T11:05:46Z",
@@ -331,17 +342,6 @@
         "Clamp out-of-range completed release/pickup delays to the valid 5\u201395% interval; preserve the last saved value for empty/invalid inputs.",
         "Apply reliable editing to all eight per-avatar Pickup & Throw numeric controls, keeping undo history and ordinary scene persistence.",
         "Retain v0.2.147 throw force, animation speeds, trajectory guide, procedural models and original GLB assets unchanged; five new regression tests; 647/647 JavaScript tests passed."
-      ]
-    },
-    {
-      "version": "0.2.147",
-      "publishedAt": "2026-11-02T01:42:26Z",
-      "changes": [
-        "Adjust per-avatar Lifting and Throw animation speeds independently (0.5\u20133\u00d7), with pickup and release percentages remaining aligned to the resulting clip timelines.",
-        "Add a per-avatar Throw force setting (1.2\u201310 m/s target launch speed), applying mass-scaled forward/upward Rapier impulse after hand-height release.",
-        "Add an opt-in temporary trajectory guide with a line and landing marker calculated from the actual throw aim and launch force; truncate the prediction at Rapier geometry raycast hits or floor.",
-        "Retain Test sphere and per-avatar throw settings, preserve old saved values, and keep the preview out of scene persistence and multiplayer.",
-        "Add five regression tests for animation timing, throw impulse, ballistic path, collision checks and transient guide cleanup; 642 JavaScript tests passed."
       ]
     }
   ]
