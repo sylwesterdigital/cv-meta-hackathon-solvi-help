@@ -1,7 +1,18 @@
+import {initRoomDiagnostics} from './room-diagnostics.js';
 import {SEEN_RELEASE_KEY,shouldDisplayDevLog,markDevLogRead} from './devlog-visibility.js';
 const byId = id => document.getElementById(id);
 export async function initDevLog(){
   const backdrop=byId('devBackdrop'); let autoClose=0;let viewedVersion='';
+  initRoomDiagnostics();
+  function selectTab(diagnostics){
+    byId('logEntries').hidden=diagnostics;byId('devDiagnostics').hidden=!diagnostics;
+    byId('devReleasesTab').classList.toggle('selected',!diagnostics);
+    byId('devDiagnosticsTab').classList.toggle('selected',diagnostics);
+    byId('devReleasesTab').setAttribute('aria-pressed',String(!diagnostics));
+    byId('devDiagnosticsTab').setAttribute('aria-pressed',String(diagnostics));
+  }
+  byId('devReleasesTab').addEventListener('click',()=>selectTab(false));
+  byId('devDiagnosticsTab').addEventListener('click',()=>selectTab(true));
   function open(){clearTimeout(autoClose);backdrop.hidden=false;backdrop.classList.add('open');}
   function close(){clearTimeout(autoClose);backdrop.hidden=true;backdrop.classList.remove('open');markDevLogRead(viewedVersion,localStorage);}
   byId('devLogButton').addEventListener('click',open);byId('devLogNavButton').addEventListener('click',open);backdrop.hidden=true;backdrop.classList.remove('open');

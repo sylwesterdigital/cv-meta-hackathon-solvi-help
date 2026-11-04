@@ -193,7 +193,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.180',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.181',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3665,10 +3665,16 @@ def websocket(ws):
         supplied=first.get('admin','')
         ws_admin_token=supplied if isinstance(supplied,str) and 16<=len(supplied)<=200 else ''
         with room_lock:
-            if uid in room or len(room)>100:return
-            peers=[{'id':key,'name':val['name'],'state':val['state']} for key,val in room.items() if val['room']==room_id]
+            if len(room)>100 and uid not in room:return
+            # An old socket can linger after a refresh/reconnect. Replace it
+            # atomically instead of rejecting the fresh authenticated client.
+            previous=room.get(uid)
+            peers=[{'id':key,'name':val['name'],'state':val['state']} for key,val in room.items() if val['room']==room_id and key!=uid]
             room[uid]={'ws':ws,'room':room_id,'name':name,'state':{}}
-            ws.send(json.dumps({'type':'snapshot','room':room_id,'peers':peers}))
+        ws.send(json.dumps({'type':'snapshot','room':room_id,'peers':peers}))
+        if previous and previous['ws'] is not ws:
+            try:previous['ws'].close()
+            except (ConnectionError,OSError):pass
         publish({'type':'presence','event':'joined','id':uid,'name':name,'state':{}},uid,room_id)
         last=0
         last_physics=0
@@ -3679,6 +3685,16 @@ def websocket(ws):
             if raw is None:break
             if len(raw)>32768:break
             msg=json.loads(raw)
+            with room_lock:
+                active=room.get(uid)
+                if not active or active['ws'] is not ws:break
+            if msg.get('type')=='presence-sync':
+                # Authoritative room membership refresh for out-of-order joins,
+                # missed notifications and browsers restored from page cache.
+                with room_lock:
+                    peers=[{'id':key,'name':val['name'],'state':val['state']} for key,val in room.items() if val['room']==room_id and key!=uid]
+                ws.send(json.dumps({'type':'snapshot','room':room_id,'peers':peers}))
+                continue
             if msg.get('type')=='admin-auth':
                 # Token is accepted only after authenticating the regular user and
                 # checked against SQLite on each privileged WS operation.
@@ -3896,8 +3912,12 @@ def websocket(ws):
     except (ValueError,TypeError,ConnectionError,OSError):pass
     finally:
         if uid:
-            with room_lock:room.pop(uid,None)
-            publish({'type':'presence','event':'left','id':uid},room_id=room_id)
+            with room_lock:
+                current=room.get(uid)
+                removed=current is not None and current['ws'] is ws
+                if removed:room.pop(uid,None)
+            # A superseded connection must not evict its replacement.
+            if removed:publish({'type':'presence','event':'left','id':uid},room_id=room_id)
 
 
 # Realm portability. The archive contains only assets referenced by the exported scene,

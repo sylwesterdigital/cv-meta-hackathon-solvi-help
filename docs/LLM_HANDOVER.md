@@ -1,3 +1,24 @@
+# SOLVI.help Master LLM Handover — v0.2.181
+
+## Release 0.2.181 — authoritative multiplayer room presence and diagnostics for everyone
+
+- Fix Brave/Safari inconsistent room counts by resolving the signed-in profile’s saved realm before starting its authenticated WebSocket connection.
+- Treat the server room snapshot as join confirmation, refresh authoritative presence every 15 seconds, and reconcile late movement packets when a presence notification was missed.
+- Reconnect sockets with bounded backoff rather than permanently stopping after two failures; replace lingering same-user WebSocket sessions safely without removing the active replacement.
+- Make per-browser room and application debugging visible to regular users in the existing Dev log via a Live diagnostics tab, including room, participant count, socket/JS errors and robot event summaries, with Copy/Clear and credential filtering.
+- Add multi-client and disconnect regression tests and preserve all existing browser/scene, avatar, GitHub HTTPS and watcher deployment contracts.
+
+
+**Server protocol:** `/ws` authenticates a user and room, sends `{type:"snapshot",room,peers}` as explicit join acknowledgement. While connected, clients can request `{type:"presence-sync"}` to receive an authoritative snapshot excluding themselves. Superseding a previous socket for the same authenticated user does not permit the old socket to evict or mutate the new connection. The number of room participants is the snapshot count + local participant, not merely an open TCP/WebSocket socket. Authentication still enforces the profile’s active tab session; different profiles are independent clients.
+
+**Browser:** In `studio.js`, `configureRooms()` completes before `solvi:authenticated`, so the socket always joins the remembered per-user realm. `LiveRoom` no longer claims shared connection until it receives a snapshot; it retries indefinitely with at most 30-second backoff, refreshes presence every 15 seconds, detects missing joins from movement packets and reports status. `pagehide` / BFCache restoration remain supported.
+
+**Visibility:** Every user can open **Dev log → Live diagnostics**. Local events include join, member counts, socket errors/retries, browser exceptions and short robot trace metadata; records are bounded, locally held, copyable and cleared on demand. Does not require admin access and excludes raw WebSocket frames, credentials, model prompts or responses. Existing release notes and opt-in detailed robot traces remain available.
+
+**Tests:** `tests/release-181-room-presence.test.mjs` covers two browsers, missed joins, presence resync, reconnection, safe diagnostics and remembered realm ordering. The app ZIP is the only artifact for `updates/`; it does not modify the existing GitHub HTTPS recovery watcher.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.180
 
 ## Release 0.2.180 — top-floor roof ownership and XR Sprite safety

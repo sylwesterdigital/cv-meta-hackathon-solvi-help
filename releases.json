@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.180",
+  "currentVersion": "0.2.181",
   "releases": [
+    {
+      "version": "0.2.181",
+      "publishedAt": "2026-11-04T14:33:32Z",
+      "changes": [
+        "Fix Brave/Safari inconsistent room counts by resolving the signed-in profile\u2019s saved realm before starting its authenticated WebSocket connection.",
+        "Treat the server room snapshot as join confirmation, refresh authoritative presence every 15 seconds, and reconcile late movement packets when a presence notification was missed.",
+        "Reconnect sockets with bounded backoff rather than permanently stopping after two failures; replace lingering same-user WebSocket sessions safely without removing the active replacement.",
+        "Make per-browser room and application debugging visible to regular users in the existing Dev log via a Live diagnostics tab, including room, participant count, socket/JS errors and robot event summaries, with Copy/Clear and credential filtering.",
+        "Add multi-client and disconnect regression tests and preserve all existing browser/scene, avatar, GitHub HTTPS and watcher deployment contracts."
+      ]
+    },
     {
       "version": "0.2.180",
       "publishedAt": "2026-11-04T13:40:07Z",
@@ -330,19 +341,6 @@
         "Render brief, bounded and disposable spark lines at contact points. The ImpactEffects emitter registry is extensible for future particles; sparks are never saved or broadcast as scene objects.",
         "Mirror eligible hit reactions and sparks with permission-checked recent projectile events, per-target deduplication and physics event expiry. No modifications to user-owned avatar GLBs.",
         "Add focused runtime coverage for bone-rotation opt-out, contact-based hit and head classification, and network/effect integration."
-      ]
-    },
-    {
-      "version": "0.2.149",
-      "publishedAt": "2026-11-02T02:43:00Z",
-      "changes": [
-        "Remove arbitrary numeric min/max limits from all eight Pickup & Throw inspector inputs, including Throw force >10 m/s, angles, height, delays and animation speed multipliers.",
-        "Persist finite user-entered throw values through inspector, scene serialization and backend validation; retain each field on editing and do not silently substitute 55%.",
-        "Apply throw force and aiming without old 10 m/s, 65\u00b0 or 90\u00b0 caps; make trajectory guidance cover longer flights and protect Rapier from unrepresentable f32 impulses.",
-        "Synchronize Lifting and Throw animation playback/timing with unrestricted positive speed multipliers; preserve ordinary avatar rate limits outside carry animations.",
-        "Percent delays remain editable without input range caps: negative values act at the beginning, values above 100% act at the clip end; reject invalid/nonfinite numbers, negative force and nonpositive speed.",
-        "655/655 JavaScript tests passed, including eight new unbounded-control regression tests; original GLB assets are unchanged.",
-        "Release archive corrected: generated Python __pycache__ / .pyc artifacts excluded; application source code and version unchanged."
       ]
     }
   ]

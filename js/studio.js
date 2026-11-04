@@ -168,14 +168,18 @@ function identity(){const text=me?.name||'Guest';$('profilePanelTitle').textCont
  if(me?.avatar&&online&&auth){api.mediaBlob(me.avatar).then(url=>{if(!me||!document.getElementById('profilePhotoBadge'))return;for(const id of ['profilePhotoBadge','profileButton']){const el=$(id);el.replaceChildren();const img=document.createElement('img');img.src=url;img.alt='';img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';el.append(img);}}).catch(()=>{});}
  if(me?.intro&&online&&auth){api.mediaBlob(me.intro).then(url=>{if(me?.intro){$('introPreview').src=url;$('introPreview').hidden=false;const badge=$('profilePhotoBadge');badge.replaceChildren();const photo=document.createElement('img');photo.src=url;photo.alt='Profile animated GIF';badge.append(photo);}}).catch(()=>{});}
  $('profileLogout').hidden=!me;$('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;refreshProfileAdminUI();}
-async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);window.dispatchEvent(new CustomEvent('solvi:authenticated'));
+async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);
  try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();select.hidden=true;
   select.add(new Option('World chat · people',''));
   for(const id of modelIds)select.add(new Option('AI · '+id,id));
   select.value='' // Default to human world chat so @robot mentions can trigger character replies;select.disabled=false;
   if(!modelIds.length)$('chatStatus').textContent=data.note||'Human chat available. AI key not configured.';}catch(e){$('modelSelect').replaceChildren(new Option('Model catalog unavailable',''));$('modelSelect').hidden=true;toast(e.message);}
  const remembered=localStorage.getItem('solvi-last-realm-'+me.id);if(remembered)activeRoom=remembered;
- await configureRooms();await loadWorldSettings();
+ await configureRooms();
+ // Authentication must be announced AFTER the per-profile remembered realm is
+ // resolved. Otherwise the socket joins a stale room (Brave: 1, Safari: 2).
+ window.dispatchEvent(new CustomEvent('solvi:authenticated'));
+ await loadWorldSettings();
  // Draw the world without waiting for all chat portrait/media fetches.
  window.dispatchEvent(new CustomEvent('solvi:scene-ready'));void loadMessages();
 }

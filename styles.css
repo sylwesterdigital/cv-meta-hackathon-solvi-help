@@ -2603,3 +2603,16 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #controlSwitcher #cameraStartChoices button[aria-pressed=true]{border-color:var(--solvi-accent,#c875e8)!important;}
 #controlSwitcher #cameraStartChoices button img{display:block!important;width:17px!important;height:17px!important;filter:brightness(0) invert(1)!important;}
 @media(max-width:600px){#controlSwitcher.control-switcher{left:8px!important;bottom:calc(80px + env(safe-area-inset-bottom))!important;max-width:calc(100vw - 16px)!important;}#controlSwitcher .control-switcher-action-row{max-width:calc(100vw - 22px)!important;}#controlSwitcher #controlModeButton{max-width:80px!important;}#controlSwitcher #cameraFollowButton{max-width:67px!important;}#controlSwitcher #chaseDistanceControl.chase-distance-control{width:97px!important;max-width:97px!important;}#controlSwitcher #chaseDistanceOutput{font-size:9px!important;}}
+
+/* v0.2.181 — release notes and transparent diagnostics for every user. */
+.dev-log-tabs{display:flex;gap:6px;flex-wrap:nowrap;margin:-8px 0 10px}
+.dev-log-tabs button{flex:1;min-width:0;padding:7px 9px;font-size:12px}
+.dev-log-tabs button.selected{background:#324a66;border-color:#83adcf}
+.dev-diagnostics{min-height:180px;max-height:48svh;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.dev-diagnostics[hidden],.dev-diagnostics button[hidden]{display:none!important}
+.dev-diagnostic-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:#c5d9e9}
+.dev-diagnostic-heading>div{display:flex;gap:5px;flex-shrink:0}
+.dev-diagnostic-heading button{padding:6px 8px;font-size:11px}
+.dev-diagnostics p{font-size:11px;color:#9fb1c6;margin:2px 0;line-height:1.4}
+.dev-diagnostic-entries{flex:1;min-height:120px;margin:0;overflow:auto;border:1px solid #3c5065;border-radius:8px;padding:10px;background:#0b1420;color:#d9e9fa;font-size:11px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
+@media(max-width:500px){.dev-diagnostic-heading{align-items:flex-start;flex-direction:column}.dev-diagnostics{max-height:55svh}}

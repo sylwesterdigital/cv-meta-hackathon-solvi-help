@@ -34,6 +34,6 @@ test('human timeline inserts date and hour separators without inventing chat mes
  assert.equal(entries.filter(e=>e.type==='presence').length,1);
  assert.equal(entries.filter(e=>e.type==='day').length,2);
  assert.equal(entries.filter(e=>e.type==='hour').length,3);
- assert.match(read('js/live.js'),/name,room:window.solviRoom/);
+ assert.match(read('js/live.js'),/name,room:targetRoom/);
  assert.match(read('js/studio.js'),/joined the room/);
 });

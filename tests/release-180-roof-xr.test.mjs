@@ -59,5 +59,5 @@ test('multiplayer connection reconnects after Back-Forward Cache restoration',()
  const main=read('js/main.js'),live=read('js/live.js');
  assert.match(main,/window\.addEventListener\('pageshow',event=>\{if\(event\.persisted/);
  assert.match(main,/room\.stopped=false;room\.attempts=0;room\.ws=null;room\.connect\(\)/);
- assert.match(live,/close\(\)\{this\.stopped=true;clearTimeout\(this\.timer\);const previous=this\.ws;this\.ws=null;previous\?\.close\(\)/);
+ assert.match(live,/close\(\)\{this\.stopped=true;this\.joined=false;clearTimeout\(this\.timer\);clearInterval\(this\.syncTimer\)/);
 });
