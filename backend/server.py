@@ -197,7 +197,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.188',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.189',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1451,13 +1451,18 @@ def ai_analyze_logs():
         return jsonify(analysis=text[:9000],usage=usage)
     except Exception as exc:return json_error(str(exc),502)
 def meta_output_text(response):
-    """Responses may put text in output[].content[], not top-level output_text."""
+    """Read only well-formed Responses text parts; malformed provider shapes are not exceptions."""
+    if not isinstance(response,dict):return ''
     text=response.get('output_text')
     if isinstance(text,str) and text:return text
     chunks=[]
-    for item in response.get('output',[]):
+    output=response.get('output')
+    if not isinstance(output,list):return ''
+    for item in output:
         if not isinstance(item,dict):continue
-        for part in item.get('content',[]):
+        parts=item.get('content')
+        if not isinstance(parts,list):continue
+        for part in parts:
             if isinstance(part,dict) and part.get('type') in ('output_text','text') and isinstance(part.get('text'),str):
                 chunks.append(part['text'])
     return ''.join(chunks)
@@ -1526,7 +1531,7 @@ def ai_vision():
                                'output_types':[item.get('type') for item in response.get('output',[]) if isinstance(item,dict)]},
                        usage=usage,note='SAM returns matching object geometry, not a scene description. Bounding boxes are shown; pixel masks are not yet rendered.')
     except Exception as exc:return json_error(str(exc),502)
-# v0.2.188 — Meta camera-grounded, server-scoped autonomy proposals. This
+# v0.2.189 — Meta camera-grounded, server-scoped autonomy proposals. This
 # endpoint NEVER edits scenes; the browser must use authorised scene tools.
 ROBOT_AUTONOMY_LAST = {}
 ROBOT_AUTONOMY_DAILY = {}
@@ -1534,7 +1539,7 @@ AUTONOMY_ACTIONS = {'visit','deliver','build','build_house','use_preset','remove
 AUTONOMY_BUILD_VARIANTS = {'chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can'}
 
 def validate_autonomy_decision(value,objects,robot_id,allow_changes=False,presets=None):
-    if not isinstance(value,dict) or value.get('action') not in AUTONOMY_ACTIONS:return None
+    if not isinstance(value,dict) or not isinstance(value.get('action'),str) or value['action'] not in AUTONOMY_ACTIONS:return None
     action=value['action'];by_id={str(o.get('id')):o for o in objects if isinstance(o,dict)}
     target=str(value.get('target_id') or '')[:100];destination=str(value.get('destination_id') or '')[:100]
     if action in ('visit','deliver','remove','ask','inspect') and (not target or target==robot_id or target not in by_id):return None
@@ -1551,11 +1556,11 @@ def validate_autonomy_decision(value,objects,robot_id,allow_changes=False,preset
         return round(max(minimum,min(maximum,n)),2) if math.isfinite(n) else default
     house={'width':house_dimension('width',5,3,8),'depth':house_dimension('depth',4,3,8),
            'height':house_dimension('height',2.8,2.3,4),
-           'roof':raw_house.get('roof') if raw_house.get('roof') in ('flat','shed','pyramid') else 'pyramid',
+           'roof':raw_house.get('roof') if isinstance(raw_house.get('roof'),str) and raw_house['roof'] in ('flat','shed','pyramid') else 'pyramid',
            'furnish':raw_house.get('furnish') is not False}
     if action=='rest' and target and (target not in by_id or target==robot_id):return None
     return {'action':action,'target_id':target,'destination_id':destination,
-        'preset_id':preset_id,'house':house,'variant':value.get('variant') if value.get('variant') in AUTONOMY_BUILD_VARIANTS else 'chair',
+        'preset_id':preset_id,'house':house,'variant':value.get('variant') if isinstance(value.get('variant'),str) and value['variant'] in AUTONOMY_BUILD_VARIANTS else 'chair',
         'message':str(value.get('message') or '')[:240],
         'reason':str(value.get('reason') or '')[:240]}
 
@@ -1739,11 +1744,12 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','placedSupplies','researchNotes','pendingAction'}
+    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
     if not isinstance(stored.get('invitations',[]),list) or len(stored.get('invitations',[]))>20:return None
+    if not isinstance(stored.get('contacted',[]),list) or len(stored.get('contacted',[]))>20:return None
     return cleaned,stored
 
 @app.get('/api/robots/autonomy/orders')
@@ -1842,7 +1848,7 @@ def robot_autonomy_research():
     sources=[]
     try:
         search=urllib.parse.urlencode({'action':'query','list':'search','srsearch':query,'srnamespace':'0','srlimit':'4','format':'json'})
-        req=Request('https://en.wikipedia.org/w/api.php?'+search,headers={'User-Agent':'SOLVI-help-robot-study/0.2.188','Accept':'application/json'})
+        req=Request('https://en.wikipedia.org/w/api.php?'+search,headers={'User-Agent':'SOLVI-help-robot-study/0.2.189','Accept':'application/json'})
         with urlopen(req,timeout=4) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Oversized research response')
             result=json.loads(response.read(180001))
@@ -2054,7 +2060,20 @@ def robot_recipient_queue(text,robots,from_robot=False,speaker_id=None):
     keep the existing natural-language and trigger fallback for human messages.
     """
     recipients=[]
-    matches=list(re.finditer(r'(?<![\w@])@([\w-]+)',str(text),re.I))
+    raw=str(text)
+    matches=list(re.finditer(r'(?<![\w@])@([\w-]+)',raw,re.I))
+    # At the start of an imperative, a consecutive block of handles addresses
+    # operators. Later handles in 'find @Elox', 'tell @Elox', 'invite @Elox'
+    # identify targets, not additional recipients of the human's command.
+    prefix=re.match(r'^\s*(?:CC\s*:\s*)?(?:@[\w-]+(?:\s*,?\s*(?:and\s+)?)?)+',raw,re.I)
+    if prefix and len(matches)>1 and any(m.start()<prefix.end() for m in matches):
+        last=prefix.end()
+        head=[m for m in matches if m.start()<last]
+        # A malformed handle immediately followed by a word must not consume
+        # subsequent command words (e.g. '@Jess can you find @Elox').
+        if head:matches=head
+    elif len(matches)>1:
+        matches=[m for m in matches if not re.search(r'\b(?:find|meet|tell|ask|visit|follow|approach|invite|locate|go to)\s*$',raw[max(0,m.start()-32):m.start()],re.I)]
     for match in matches:
         token=match.group(1).casefold()
         if token=='all':
@@ -2992,7 +3011,18 @@ def robot_react():
         publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
         return jsonify(triggered=True,responded=True,answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'robot-settings','text':reply,'media':'[]','created':ts},trace=[{'step':'identity','result':label+' = '+value,'source':'explicit authorized user request'}])
     command_text=robot_command_clause(text,robot,robots) if tagged and not from_robot else text
+    if tagged and not from_robot and len(addressed_list)>1:
+        # Shared imperative: all named operators get the SAME instruction;
+        # mentioned targets later in the sentence remain intact.
+        command_text=re.sub(r'^\s*(?:CC\s*:\s*)?(?:@[\w-]+\s*[,;]?\s*(?:and\s+)?)+','',text,flags=re.I).strip() or command_text
     command,ack=plan_robot_command(command_text,robot,objects) if tagged and not from_robot else (None,None)
+    if command and command.get('kind')=='go_to' and not from_robot:
+        # The first independently verifiable action is to meet the target.
+        # A later 'tell him ...' is delivered only AFTER verified arrival.
+        tell=re.search(r'\b(?:and\s+)?tell\s+(?:him|her|them|@[\w-]+)\s+(?:to\s+)?(.+)',command_text,re.I)
+        if tell and len(tell.group(1).strip())>=8:
+            command['message_after_arrival']=tell.group(1).strip()[:220]
+            ack+=' I will pass on the requested next step only after reaching them; this does not automatically authorise their construction.'
     # Perception is part of conversation. A missing/stale visual memory means
     # ordinary chat can request one real frame without a magic command phrase.
     last_visual=latest_robot_visual_memory(room_id,robot['id'])
@@ -3008,7 +3038,14 @@ def robot_react():
     # Keep one-to-one conversation natural: visual context can refresh when stale.
     # For multi-recipient/@All turns, do not divert the whole ordered conversation
     # into a separate camera request (the background perception cycle remains active).
-    individual_vision_turn=(not from_robot and len(addressed_list)==1 and not re.search(r'(?<![\w@])@all(?![\w-])',text,re.I))
+    # A message with two explicit robot handles is an interpersonal instruction,
+    # even when only the initial handle is an operator. The later handle may be
+    # its destination (e.g. '@Jessica talk to @Elox'). Do not divert that
+    # ordinary social reply into an implicit camera capture solely because the
+    # per-robot recipient parser now correctly excludes the destination.
+    explicit_robot_handles=len(list(re.finditer(r'(?<![\w@])@([\w-]+)',text,re.I)))
+    individual_vision_turn=(not from_robot and len(addressed_list)==1 and explicit_robot_handles<=1
+                            and not re.search(r'(?<![\w@])@all(?![\w-])',text,re.I))
     natural_vision=(individual_vision_turn and visual_enabled and active_model_key()
                     and may_edit(user['id'],robot,room_policy(room_id))
                     and (not last_visual or last_visual['age_seconds']>180))
@@ -3039,7 +3076,7 @@ def robot_react():
         if command and not may_edit(user['id'],robot,room_policy(room_id)):
             return json_error('Room policy does not allow you to command this robot',403)
         plan_usage=None;plan_inference=None
-        if command and active_model_key() and command['kind'] not in ('turn','turn_walk','walk_forward','jump'):
+        if command and active_model_key() and command['kind'] not in ('turn','turn_walk','walk_forward','jump','go_to'):
             # Muse drafts a user-facing plan in the robot's voice. It is never executable;
             # the allowlisted command from plan_robot_command is the only motion authority.
             try:
@@ -3084,7 +3121,9 @@ def robot_react():
                 ROBOT_TASKS[command['id']]={'user_id':user['id'],'robot_id':robot['id'],'robot_name':robot['name'][:100],
                     'room':room_id,'kind':command['kind'],'target':command.get('target_name',command.get('target_phrase',''))[:100],
                     'destination_part':'low stair entrance' if is_low_stair_destination else '',
-                    'created':time.time(),'done':False}
+                    'created':time.time(),'done':False,
+                    'message_after_arrival':command.get('message_after_arrival',''),
+                    'source_message_id':message_id,'target_robot_id':command.get('target_id','')}
                 for tid,info in list(ROBOT_TASKS.items()):
                     if time.time()-info['created']>900:ROBOT_TASKS.pop(tid,None)
             audit_event('robot-command',room=room_id,robot_id=robot['id'],kind=command['kind'])
@@ -3213,6 +3252,19 @@ def robot_task_result():
         replies['arrived']=f'I reached the accessible bottom entrance of {target}, beside the first low step. I have not climbed the stairs.'
         replies['blocked']=f'I could not reach the bottom entrance of {target} without a collision. I did not approach the high end or climb from the side.'
     answer=replies[state]
+    forwarded_message=None
+    if state=='arrived' and task.get('message_after_arrival') and task.get('target_robot_id'):
+        # Verified proximity is required; this is a *message*, not an automatic
+        # command performed by the target robot. It cannot bypass Work orders.
+        forwarded='@'+str(target).split()[0]+' '+name+' came to find you. The requested next step is: '+task['message_after_arrival']
+        forward_id=str(uuid.uuid4());forward_at=now();forwarded=forwarded[:480]
+        with db() as con:
+            con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override,relay_source,relay_depth) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                (forward_id,user['id'],'assistant','robot-autonomy',forwarded,'[]',forward_at,task['room'],name,task['source_message_id'],1))
+        forwarded_message={'id':forward_id,'role':'assistant','speaker':name,'model':'robot-autonomy',
+                           'text':forwarded,'media':'[]','created':forward_at}
+        publish({'type':'chat-created','id':forward_id,'room':task['room']},room_id=task['room'])
+        answer+=' I passed on the requested next step; the other robot must have an authorised work order to build.'
     if state=='arrived' and task['kind']=='random_action':
         answer='I completed my random movement sequence without pushing objects. I can idle or continue when assigned a new objective.'
     aid=str(uuid.uuid4());ts=now()
@@ -3223,7 +3275,8 @@ def robot_task_result():
                    (str(uuid.uuid4()),task['room'],task['robot_id'],f'Task {task["kind"]}: {state} — {target}'[:290],ts))
     publish({'type':'chat-created','id':aid,'room':task['room']},room_id=task['room'])
     audit_event('robot-task-result',room=task['room'],robot_id=task['robot_id'],status=state)
-    return jsonify(ok=True,status=state,answer={'id':aid,'role':'assistant','speaker':name,'model':'robot-task',
+    return jsonify(ok=True,status=state,forwarded_message=forwarded_message,
+       answer={'id':aid,'role':'assistant','speaker':name,'model':'robot-task',
              'text':answer,'media':'[]','created':ts,'avatar':''})
 
 @app.get('/api/models')

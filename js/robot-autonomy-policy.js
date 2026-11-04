@@ -1,4 +1,4 @@
-// v0.2.188: bounded, deterministic recovery strategy. A model can propose
+// v0.2.189: bounded, deterministic recovery strategy. A model can propose
 // tools, but the runtime owns actual state, retries and completion evidence.
 import {houseGoal} from './robot-construction-api.js';
 export const META_RECOVERY_MIN_MS=180000;
@@ -6,12 +6,19 @@ export const META_RECOVERY_MAX_MS=1800000;
 export function metaRetryDelay(failures=1){
  return Math.min(META_RECOVERY_MAX_MS,META_RECOVERY_MIN_MS*2**Math.min(4,Math.max(0,Math.floor(failures)-1)));
 }
-export function workRecoveryPlan({goal='',allowChanges=false,house=null,existingHouse=false,peerId='',attempts={},hasSeat=false,invitationTargets=[],placedSupplies=0}={}){
+export function workRecoveryPlan({goal='',allowChanges=false,house=null,existingHouse=false,peerId='',attempts={},hasSeat=false,invitationTargets=[],contactTargets=[],placedSupplies=0}={}){
  const construction=houseGoal(goal);
  const hospital=/\b(hospital|clinic)\b/i.test(goal);
  const party=/\b(invite|invitation|opening party|celebrat)\b/i.test(goal);
  const supplies=/\b(bottles?|cans?|drinks?|refreshments?)\b/i.test(goal);
  const count=action=>Math.max(0,Number(attempts[action])||0);
+ // Multi-stage instructions like 'find @Elox and build with him' require
+ // a verified visit/contact BEFORE the construction stage. Party invitations
+ // are different: they happen after the building exists.
+ if(contactTargets.length&&count('ask')<Math.max(3,contactTargets.length+1))
+  return {action:'ask',target_id:contactTargets[0].id,
+   message:'I was asked to meet you about a shared project. Here is the goal: '+goal.slice(0,150)+'. Can you take a concrete next step in your own authorised work order?',
+   reason:'Meet the named colleague and communicate the assigned project before building'};
  // Reuse an existing house first; run the same tool to rehydrate its scene IDs.
  if(construction&&allowChanges&&!house&&count('build_house')===0)
   return {action:'build_house',reason:existingHouse?'Resume the existing building before doing more work':'Construct the explicitly requested building before optional research or chat'};
@@ -33,12 +40,14 @@ export function workRecoveryPlan({goal='',allowChanges=false,house=null,existing
   return {action:'rest',reason:'Take a bounded rest while a blocked operation waits for a new capability'};
  return {action:'idle',reason:'No safe useful step available; preserve blockers and wait for change instead of looping on research'};
 }
-export function projectOutcome({house=null,goal='',invitations=[],invitationsRequired=[],placedSupplies=0,suppliesRequired=0}={}){
+export function projectOutcome({house=null,goal='',invitations=[],invitationsRequired=[],contacts=[],contactsRequired=[],placedSupplies=0,suppliesRequired=0}={}){
  if(!house)return {done:false,blockers:['No verified project has been created']};
  const blockers=[];
  if(house.missing?.length)blockers.push('missing: '+house.missing.join(', '));
  if(house.inspectionFailed)blockers.push('site inspection: '+house.inspectionFailed);
  if(suppliesRequired>placedSupplies)blockers.push('party supplies: '+(suppliesRequired-placedSupplies)+' drink props not placed');
+ const missingContacts=contactsRequired.filter(id=>!contacts.includes(id));
+ if(missingContacts.length)blockers.push('project collaboration: '+missingContacts.length+' named colleagues not contacted');
  const pending=invitationsRequired.filter(id=>!invitations.includes(id));
  if(pending.length)blockers.push('invitations: '+pending.length+' colleagues not contacted');
  if(/\b(hospital|clinic|medicine|medication|sick)\b/i.test(goal))

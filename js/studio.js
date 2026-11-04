@@ -361,6 +361,12 @@ async function reportRobotTask(command,status){
  if(!command?.id||status==='cancelled')return;
  try{const result=await api.req('/api/robots/task-result',{method:'POST',body:JSON.stringify({room:command.room,task_id:command.id,status})});
   if(result.answer)await bubble(result.answer);
+  if(result.forwarded_message){
+   await bubble(result.forwarded_message);
+   // The target is now invited into the normal depth-bounded dialogue flow.
+   // Speech does not grant the recipient edit rights or start construction.
+   await reactToRobotMessage(result.forwarded_message,1);
+  }
  }catch(e){emitBrainTrace(command.robot_id,'Robot','TASK REPORT FAILED',e.message);$('chatStatus').textContent='Task report error: '+e.message;}
 }
 // Captures and uploads each actual camera direction. Images are attached to the

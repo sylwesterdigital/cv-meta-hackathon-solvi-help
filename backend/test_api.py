@@ -988,11 +988,16 @@ print('PASS: ordered multi-mentions, @All, per-recipient deduplication, pass-on-
 # Each generated reply may relay once to a different robot; two hops maximum.
 chat_attempts[data['user']['id']]=[]
 source=c.post('/api/message',headers=headers,json={'room':'lab','text':'@Jessica talk to @Elox about the scene'}).get_json()['message']
+# Only Jessica is being addressed, but Elox is an explicit conversation target.
+# That two-handle instruction must remain text conversation, not get hijacked
+# by the implicit stale-visual camera router.
+assert [r['name'] for r in robot_recipient_queue(source['text'],[robot,elox])]==['Jessica']
 from unittest.mock import patch as _patch
 fake={'id':'relay-1','output_text':'@Elox, shall we review the scene?','usage':{'input_tokens':5,'output_tokens':10}}
 with _patch('server.active_model_key',return_value='test-key'),_patch('server.meta_request',return_value=fake):
     initial=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':source['text'],'message_id':source['id']})
 assert initial.status_code==200,(initial.status_code,initial.data)
+assert initial.get_json().get('needs_vision') is not True,initial.data
 first=initial.get_json()['answer'];assert first['speaker']=='Jessica'
 chat_attempts[data['user']['id']]=[]
 with _patch('server.active_model_key',return_value='test-key'),_patch('server.meta_request',return_value={'id':'relay-2','output_text':'@Jessica, yes.','usage':{'input_tokens':5,'output_tokens':5}}):

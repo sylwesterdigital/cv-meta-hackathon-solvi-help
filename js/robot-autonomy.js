@@ -1,4 +1,4 @@
-// v0.2.188: server-durable work orders with browser-controlled scene execution. Never simulates keyboard events:
+// v0.2.189: server-durable work orders with browser-controlled scene execution. Never simulates keyboard events:
 // the same checked editor/physics tools used by human keys are invoked directly.
 import * as THREE from 'three';
 import {captureRobotView,interruptRobotMission,robotAction} from './robots.js';
@@ -73,7 +73,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    bedsPlaced:run.house.bedsPlaced,travelChecked:run.house.travelChecked,
    inspectionFailed:run.house.inspectionFailed||''}:null;
   return {house,step:run.step,completed:run.completed,last:run.last,metaFailures:run.metaFailures,
-   nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,
+   nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,contacted:run.contacted,
    placedSupplies:run.placedSupplies,researchNotes:run.researchNotes,pendingAction:run.pendingAction};
  }
  function restoreHouse(state){
@@ -96,7 +96,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    cancelled:false,timer:null,metaFailures:Number(state.metaFailures)||0,
    nextMetaAt:Number(state.nextMetaAt)||0,recoveryAttempts:state.recoveryAttempts||{},
    researchNotes:String(state.researchNotes||'').slice(0,900),pendingAction:'task',house:restoreHouse(state.house),
-   invitations:Array.isArray(state.invitations)?state.invitations.slice(0,20):[],placedSupplies:Number(state.placedSupplies)||0};
+   invitations:Array.isArray(state.invitations)?state.invitations.slice(0,20):[],
+   contacted:Array.isArray(state.contacted)?state.contacted.slice(0,20):[],placedSupplies:Number(state.placedSupplies)||0};
   return run;
  }
  function presentSaved(order){
@@ -138,8 +139,24 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
  const robotFor=id=>editor.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===id);
  const objectFor=id=>editor.items.find(o=>o.userData.editorId===id);
  const colleague=run=>editor.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId!==run.id&&o.visible);
- const existingRobotHouse=run=>editor.items.find(o=>o.userData.editorKind==='wall'&&editor.canEdit(o)&&(
-  (o.userData.autonomyCreatedBy===run.id&&o.name?.includes('small house'))||o.name===run.name+' · small house'));
+ const robotHouseSpan=wall=>{
+  const vertices=wall.userData.wall?.points;
+  if(!Array.isArray(vertices)||vertices.length<3)return {width:0,depth:0};
+  const xs=vertices.map(v=>Number(v?.[0])),zs=vertices.map(v=>Number(v?.[1]));
+  if(!xs.every(Number.isFinite)||!zs.every(Number.isFinite))return {width:0,depth:0};
+  return {width:Math.max(...xs)-Math.min(...xs),depth:Math.max(...zs)-Math.min(...zs)};
+ };
+ const existingRobotHouse=run=>{
+  const hospital=/\b(hospital|clinic)\b/i.test(run.order.goal);
+  const candidates=editor.items.filter(o=>o.userData.editorKind==='wall'&&editor.canEdit(o)&&
+   ((o.userData.autonomyCreatedBy===run.id&&o.name?.includes('small house'))||o.name===run.name+' · small house'));
+  // A former 5×4 house is NOT an acceptable 8×8 hospital. Reuse only a
+  // compatible footprint, rather than repeatedly claiming an old shed meets
+  // a new construction order.
+  const suitable=candidates.filter(o=>{const span=robotHouseSpan(o);
+   return !hospital||(span.width>=5.8&&span.depth>=5.8);});
+  return suitable[0]||null;
+ };
  // Name checks are a non-destructive continuation hint after a scene reload;
  // they never grant edit rights or prove who physically built the object.
  function recovery(run,bot,source='Meta unavailable'){
@@ -147,9 +164,12 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   const hasSeat=editor.items.some(o=>o.userData.editorKind==='furniture'&&['chair','officeChair','bed','sofa','stool'].includes(o.userData.furniture?.variant)&&Math.hypot(o.position.x-bot.position.x,o.position.z-bot.position.z)<10);
   const invitations=(run.order.goal.match(/@[\p{L}\p{N}_-]+/gu)||[]).map(n=>n.slice(1));
   const remaining=editor.items.filter(o=>o.userData.editorKind==='robot'&&o.userData.editorId!==run.id&&invitations.some(name=>name.toLowerCase()===o.name.toLowerCase())&&!run.invitations.includes(o.userData.editorId));
+  const requiresContact=/\b(find|meet|locate|visit|talk to|tell|approach)\b/i.test(run.order.goal);
+  const contacts=requiresContact?editor.items.filter(o=>o.userData.editorKind==='robot'&&o.userData.editorId!==run.id&&invitations.some(name=>name.toLowerCase()===o.name.toLowerCase())&&!run.contacted.includes(o.userData.editorId)):[];
   const plan=workRecoveryPlan({goal:run.order.goal,allowChanges:run.order.allowChanges,house:run.house,
     existingHouse:!!existingRobotHouse(run),peerId:peer?.userData.editorId||'',attempts:run.recoveryAttempts,hasSeat,
-    invitationTargets:remaining.map(o=>({id:o.userData.editorId,name:o.name})),placedSupplies:run.placedSupplies});
+    invitationTargets:remaining.map(o=>({id:o.userData.editorId,name:o.name})),
+    contactTargets:contacts.map(o=>({id:o.userData.editorId,name:o.name})),placedSupplies:run.placedSupplies});
   const chosen={...plan,recovery:true};
   if(chosen.action==='build_house')chosen.house=houseBlueprint(/\b(hospital|clinic)\b/i.test(run.order.goal)?{width:8,depth:8}:{})
   trace(bot,'RECOVERY CHOICE',`${source} · ${plan.action} · ${plan.reason}`);
@@ -283,8 +303,9 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   // This is an audit/continuation, not a claim that it is furnished or inspected.
   if(!run.house&&run.order.mode==='agent'&&existingRobotHouse(run)){
    const wall=existingRobotHouse(run);
-   const floor=editor.items.find(o=>o.userData.editorKind==='cube'&&editor.canEdit(o)&&
+   const floors=editor.items.filter(o=>o.userData.editorKind==='cube'&&editor.canEdit(o)&&
      (o.userData.autonomyCreatedBy===run.id&&o.userData.autonomyFloor||o.name===run.name+' · house floor'));
+   const floor=floors.sort((a,b)=>Math.hypot(a.position.x-wall.position.x,a.position.z-wall.position.z)-Math.hypot(b.position.x-wall.position.x,b.position.z-wall.position.z))[0];
    const existing=editor.items.filter(o=>o.userData.editorKind==='furniture'&&editor.canEdit(o)&&
      (o.userData.autonomyCreatedBy===run.id||o.name?.startsWith(run.name+' · '))&&
      (floor?Math.hypot(o.position.x-floor.position.x,o.position.z-floor.position.z)<10:true));
@@ -298,7 +319,9 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
     missing,placed:existing.map(o=>o.name),bedsPlaced:foundBeds,
     travelChecked:false,inspectionFailed:'Existing building not yet checked from this robot session'};
    trace(bot,'PROJECT REUSED','Found a prior robot-built house; no duplicate shell created. Inspect it before declaring the new goal fulfilled.');
-   return 'Found earlier robot-built house and furnishings; new project inspection is still unfinished';
+   // Continue into the same cycle: inspect and furnish the existing house.
+   // Previously this returned immediately, stranding Run once at PARTIAL.
+
   }
   const spec=houseBlueprint(input);
   if(!run.house){
@@ -461,6 +484,9 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    if(!obj||obj.userData.editorKind!=='robot')throw Error('Only another robot can answer');
    await moveTo(run,bot,obj);
    await postDiscussion(bot,obj,plan.message||`Do you need any help with ${run.order.goal||'your task'}? Ask a question and suggest the next practical action.`);
+   // Speaking is proof of contact, not proof that the other robot accepted a
+   // work order or performed any construction.
+   if(/\b(find|meet|locate|visit|talk to|tell|approach)\b/i.test(run.order.goal)&&!run.contacted.includes(obj.userData.editorId))run.contacted.push(obj.userData.editorId);
    if(/\b(invite|opening party|celebrat)\b/i.test(run.order.goal)&&!run.invitations.includes(obj.userData.editorId))run.invitations.push(obj.userData.editorId);
    trace(bot,'COLLEAGUE',`Question to ${obj.name} delivered via the existing robot discussion/response channel`);
    return `Asked ${obj.name} about their needs`;
@@ -493,8 +519,11 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    const detail=await execute(run,bot,plan);
    const invitedNames=(run.order.goal.match(/@[\p{L}\p{N}_-]+/gu)||[]).map(v=>v.slice(1).toLowerCase());
    const wanted=editor.items.filter(o=>o.userData.editorKind==='robot'&&invitedNames.includes(o.name.toLowerCase())).map(o=>o.userData.editorId);
+   const contactNeeded=/\b(find|meet|locate|visit|talk to|tell|approach)\b/i.test(run.order.goal)?wanted:[];
+   const invitationNeeded=/\b(invite|opening party|celebrat)\b/i.test(run.order.goal)?wanted:[];
    const evidence=projectOutcome({house:run.house,goal:run.order.goal,invitations:run.invitations,
-    invitationsRequired:wanted,placedSupplies:run.placedSupplies,suppliesRequired:/\b(bottles?|cans?|drinks?|refreshments?)\b/i.test(run.order.goal)?4:0});
+    invitationsRequired:invitationNeeded,contacts:run.contacted,contactsRequired:contactNeeded,
+    placedSupplies:run.placedSupplies,suppliesRequired:/\b(bottles?|cans?|drinks?|refreshments?)\b/i.test(run.order.goal)?4:0});
    if(plan.action!=='idle')run.completed++;
    run.last=autonomyResult(plan.action,plan.action!=='idle',detail);
    if(plan.action==='idle')run.last.status='blocked';

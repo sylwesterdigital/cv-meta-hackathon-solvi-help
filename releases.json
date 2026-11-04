@@ -1,6 +1,20 @@
 {
-  "currentVersion": "0.2.188",
+  "currentVersion": "0.2.189",
   "releases": [
+    {
+      "version": "0.2.189",
+      "publishedAt": "2026-11-04T19:58:09Z",
+      "changes": [
+        "Correct addressed-vs-target robot parsing: @Jess @Suck find @Elox routes only Jess and Suck; Elox is the physical destination and not an unintended third command recipient.",
+        "A verified chat movement to a colleague can relay the requested next step after arrival; that message does not bypass the colleague\u2019s autonomous work-order permissions or claim to execute construction.",
+        "Harden Meta Responses extraction and schema validation against malformed model output, including null content and non-string action, roof and furniture fields; rejected payloads cannot throw TypeError in parse-decision.",
+        "Prioritise named collaboration before hospital construction in recurring autonomous work orders; persist verified contact IDs and report missing colleague contacts separately from hospital/furnishing objectives.",
+        "Continue inspecting and furnishing an existing compatible robot-built house within the same autonomy cycle instead of always returning a partial result; avoid reusing an old small house as a larger hospital.",
+        "Add targeted regression tests for chat operator roles, destination targeting, malformed Meta output, hospital task ordering and persistent contacts; preserve existing avatar, ownership, navigation and watcher contracts.",
+        "Deployment correction: multi-handle conversation messages (for example @Jessica talk to @Elox) no longer invoke implicit camera capture when the secondary handle is a conversation target. Explicit visual questions and ordinary one-to-one spontaneous camera refresh remain available.",
+        "Flask integration regression for two-hop robot dialogue now verifies single addressed recipient and excludes false needs_vision routing; package replaces the original v0.2.189 release rejected before GitHub/Ubuntu publication."
+      ]
+    },
     {
       "version": "0.2.188",
       "publishedAt": "2026-11-04T19:25:16Z",
@@ -323,18 +337,6 @@
         "Add procedural lamps with sphere/cuboid/pyramid shades, point/spot lights, adjustable intensity/range/opacity and a physical power switch.",
         "Add procedural speakers with named saved HTTPS media channels, spatial audio, playback by clicking in-world or selecting a channel in Properties.",
         "Synchronise stair root and tread surface color during editing, retain collision and persistence, preserve existing avatar GLBs and scene compatibility."
-      ]
-    },
-    {
-      "version": "0.2.156",
-      "publishedAt": "2026-11-02T20:27:14Z",
-      "changes": [
-        "Add TV, monitor and media-frame smart-channel galleries for up to 12 HTTPS HLS/MP4/WebM sources, with explicit in-world selection and return-to-menu controls.",
-        "Allow clipboard paste of validated media URLs in Properties; playback uses native HLS or bundled Hls.js when supported, without arbitrary server-side URL fetching.",
-        "Reframe new procedural preset thumbnails using geometry-bound orthographic projection; regenerate existing furniture thumbnails locally when browsing Presets.",
-        "Expose wearable attachment skeleton bone, follow-rotation choice and XYZ position/rotation offsets in object Properties; lower default backpack position and rotate back slot by 90 degrees.",
-        "Add procedural sunbed, deck chair and beach umbrella variants with compact parameters and safe compound collision; sunbed and deck chair support reclined sitting and authored lying-clip fallback.",
-        "Retain versioned browser modules, existing scene/preset structures and uploaded avatar files; validate new fields in backend and import/export paths."
       ]
     }
   ]
