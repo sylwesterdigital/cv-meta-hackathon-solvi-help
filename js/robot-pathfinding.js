@@ -72,11 +72,24 @@ export function planRobotPath(start,end,obstacles=[],options={}){
  // A* operates on grid centres. Snapping the final centre directly to an exact
  // target without checking the intervening segment can cut an obstacle corner.
  const tail=result.at(-1)||start;
- const segmentClear=(a,b)=>{
+ // The physical capsule may start beside a wall *inside the planner's
+ // inflation band* without actually intersecting the wall. Permit only a
+ // short motion away from those specific footprints. This never crosses the
+ // real solid geometry or permits another blocked obstacle on the route.
+ const rectDistance=(p,o)=>Math.hypot(Math.max(o.minX-p.x,0,p.x-o.maxX),Math.max(o.minZ-p.z,0,p.z-o.maxZ));
+ const startBlockers=obstacles.filter(o=>pathBlocked(start.x,start.z,[o],clearance));
+ const allowStartEscape=startBlockers.length>0&&!pathBlocked(start.x,start.z,obstacles,0);
+ const segmentClear=(a,b,initial=false)=>{
    const distance=Math.hypot(b.x-a.x,b.z-a.z);
    for(let i=1,n=Math.max(1,Math.ceil(distance/(cell*.17)));i<=n;i++){
-     const f=i/n;
-     if(pathBlocked(a.x+(b.x-a.x)*f,a.z+(b.z-a.z)*f,obstacles,clearance))return false;
+     const f=i/n,p={x:a.x+(b.x-a.x)*f,z:a.z+(b.z-a.z)*f};
+     if(!pathBlocked(p.x,p.z,obstacles,clearance))continue;
+     if(!initial||!allowStartEscape||Math.hypot(p.x-start.x,p.z-start.z)>.95||
+        pathBlocked(p.x,p.z,obstacles,0))return false;
+     // Escape must move monotonically away from initial walls, not sneak
+     // around or travel parallel inside their collision safety padding.
+     if(obstacles.some(o=>pathBlocked(p.x,p.z,[o],clearance)&&
+         (!startBlockers.includes(o)||rectDistance(p,o)+.015<rectDistance(start,o))))return false;
    }
    return true;
  };
@@ -84,7 +97,7 @@ export function planRobotPath(start,end,obstacles=[],options={}){
  // Verify all compressed line segments against the true (non-grid) footprints.
  // A path that grazes geometry is a failed plan, not evidence of arrival.
  let previous=start;
- for(const waypoint of result){if(!segmentClear(previous,waypoint))return null;previous=waypoint;}
+ for(const waypoint of result){if(!segmentClear(previous,waypoint,previous===start))return null;previous=waypoint;}
  return result;
 }
 

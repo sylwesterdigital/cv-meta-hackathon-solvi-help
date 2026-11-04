@@ -2661,7 +2661,7 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #robotBrainsPanel [data-brain-page="memory"] #brainsMemory{max-height:65vh}
 @media(max-width:650px){#robotRoutinePanel.robot-routine-panel{resize:none;min-width:0;max-height:calc(100vh - 85px);height:75vh;left:8px;top:70px;width:calc(100vw - 16px)}#robotBrainsPanel .brains-tabs{padding:6px 8px}#robotBrainsPanel .brains-tabs button{padding:6px 8px}#robotRoutinePanel #autonomyGoal{min-height:140px!important}}
 
-/* v0.2.187: expose only inputs used by the selected autonomous work tool. */
+/* v0.2.188: expose only inputs used by the selected autonomous work tool. */
 #robotRoutinePanel [data-autonomy-field][hidden],#robotRoutinePanel #autonomyStart[hidden]{display:none!important}
 #robotRoutinePanel #autonomyModeHelp{display:block;margin:0 0 5px;font-size:12px;line-height:1.5;opacity:.9}
 #robotRoutinePanel .autonomy-help{font-size:12px;line-height:1.5;opacity:.85}

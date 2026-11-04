@@ -26,6 +26,7 @@ import {makePortal,rebuildPortal} from './portal-geometry.js';
 import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
+import {planRobotMeeting,canMeetRobot,remainingRouteBlocked} from './robot-social-navigation.js';
 import {findRobotWorksite,footprintClear} from './robot-worksite.js';
 import {planRobotLowStairApproach} from './robot-stair-approach.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
@@ -2333,7 +2334,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       if(arrived||o.userData.robotMission&&now-(o.userData.lastMissionSave||0)>900){
         o.userData.lastMissionSave=now;this.queueSave(o);
       }
-    },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot),seat:(robot,id)=>{const target=this.items.find(o=>o.userData.editorId===id);return target?takeSeat(robot,target,this):false;}}));
+    },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),refreshRoute:robot=>this.refreshRobotRoute(robot),avoidRobot:(robot,other)=>this.avoidMovingRobot(robot,other),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot),seat:(robot,id)=>{const target=this.items.find(o=>o.userData.editorId===id);return target?takeSeat(robot,target,this):false;}}));
     // Move kinematic transport platforms and cabin riders before evaluating
     // character gravity, on both the lift operator and the robot owner's tab.
     tickStairTransport(this,dt);
@@ -2443,7 +2444,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     // allowed to depart. Runtime collision still prevents moving further into
     // that robot; all geometry and non-overlapping robots remain obstacles.
     const start={x:robot.position.x,z:robot.position.z};
-    const obstacles=allObstacles.filter(o=>o.kind!=='robot'||!pathBlocked(start.x,start.z,[o],.30));
+    const obstacles=allObstacles.filter(o=>o.kind!=='robot');
     const distance=Math.hypot(point.x-start.x,point.z-start.z);
     if(distance>600){this.toast('Robot route exceeds 600 m safety limit');return false;}
     // Use reachable, obstacle-aware intermediate waypoints. The previous fixed
@@ -2487,6 +2488,80 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   }
   // Commands are issued by the authenticated chat endpoint and resolved against
   // the same room scene. The client still checks editable state and targets.
+  avoidMovingRobot(robot,other){
+    const mission=robot?.userData?.robotMission;
+    if(!mission||!other||!this.canEdit(robot))return false;
+    // Other robots are transient local occupancy, NOT static navmesh. Ask a
+    // colleague to yield with body language rather than pushing or repeatedly
+    // claiming that the whole scene is impossible.
+    const staticObstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
+    const start={x:robot.position.x,z:robot.position.z};
+    if(mission.kind==='go_to'&&mission.targetId===other.userData.editorId&&
+      canMeetRobot(start,{x:other.position.x,z:other.position.z},staticObstacles,{minimum:.53})){
+      robot.userData.robotWaypoints=[];setRobotDestination(robot,start);return true;
+    }
+    const count=Number(mission.dynamicDetours||0);
+    if(count>=3)return false;
+    const destination=robot.userData.robotRouteDestination;
+    if(!destination)return false;
+    const dx=start.x-other.position.x,dz=start.z-other.position.z;
+    const length=Math.hypot(dx,dz)||1;
+    const blocker={minX:other.position.x-.39,maxX:other.position.x+.39,
+      minZ:other.position.z-.39,maxZ:other.position.z+.39,kind:'temporary-robot'};
+    const sideX=-dz/length,sideZ=dx/length;
+    for(const [back,lateral] of [[.75,.95],[.75,-.95],[1.25,1.45],[1.25,-1.45]]){
+      const via={x:start.x+dx/length*back+sideX*lateral,
+        z:start.z+dz/length*back+sideZ*lateral};
+      if(pathBlocked(via.x,via.z,staticObstacles,.3))continue;
+      const first=planRobotTravelRoute(start,via,staticObstacles);
+      const second=planRobotTravelRoute(via,destination,[...staticObstacles,blocker]);
+      if(!first?.length||!second?.length||
+        Math.hypot(first.at(-1).x-via.x,first.at(-1).z-via.z)>.14||
+        Math.hypot(second.at(-1).x-destination.x,second.at(-1).z-destination.z)>.14)continue;
+      mission.dynamicDetours=count+1;
+      robot.userData.robotWaypoints=[...first.slice(1),...second];
+      robot.userData.robotPathObstacles=staticObstacles;
+      setRobotDestination(robot,first[0]);
+      window.dispatchEvent(new CustomEvent('solvi:robot-recovery',{detail:{robotId:robot.userData.editorId,
+        name:robot.name,kind:'moving-colleague',reason:'walking around moving colleague',attempt:mission.dynamicDetours}}));
+      return true;
+    }
+    return false;
+  }
+  refreshRobotRoute(robot){
+    const mission=robot?.userData?.robotMission;
+    if(!mission||!robot.userData.robotGoal||!this.canEdit(robot))return false;
+    const now=performance.now();
+    if(now-(mission.lastTargetCheck||0)<1000)return false;
+    mission.lastTargetCheck=now;
+    const target=mission.targetId&&this.items.find(o=>o.userData.editorId===mission.targetId);
+    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
+    if(target?.userData.editorKind==='robot'&&mission.kind==='go_to'){
+      const original=mission.targetPlanPosition||target.position;
+      if(Math.hypot(target.position.x-original.x,target.position.z-original.z)>.90){
+        mission.retargets=Number(mission.retargets||0)+1;
+        if(mission.retargets>12)return false; // the ordinary route/recovery remains authoritative
+        const approach=planRobotMeeting({x:robot.position.x,z:robot.position.z},
+          {x:target.position.x,z:target.position.z},obstacles);
+        if(approach?.alreadyNear){
+          robot.userData.robotWaypoints=[];
+          setRobotDestination(robot,{x:robot.position.x,z:robot.position.z});return true;
+        }
+        if(approach&&this.routeRobot(robot,approach.point,{preserveMission:true,quiet:true})){
+          mission.targetPlanPosition={x:target.position.x,z:target.position.z};return true;
+        }
+      }
+    }
+    // A newly moved wall, closed door or furniture item can invalidate the
+    // old corridor. The next route is based on live scene geometry, not the
+    // obstacle snapshot captured when the mission started.
+    const from={x:robot.position.x,z:robot.position.z};
+    const goal=robot.userData.robotGoal;
+    if(!remainingRouteBlocked(from,goal,robot.userData.robotWaypoints||[],obstacles))return false;
+    const destination=robot.userData.robotRouteDestination;
+    if(!destination)return false;
+    return this.routeRobot(robot,destination,{preserveMission:true,quiet:true});
+  }
   retargetRobot(robot){
     const mission=robot.userData.robotMission;
     if(!mission||mission.kind!=='go_to'||!this.canEdit(robot))return false;
@@ -2494,7 +2569,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     if(!target)return false;
     const dx=robot.position.x-target.position.x,dz=robot.position.z-target.position.z;
     const distance=Math.hypot(dx,dz);
-    if(distance<=1.85)return false;
+    const staticObstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
+    if(canMeetRobot({x:robot.position.x,z:robot.position.z},{x:target.position.x,z:target.position.z},staticObstacles))return false;
     const reroutes=Number(mission.retargets||0);
     if(reroutes>=4){
       robot.userData.robotMission=null;robot.userData.robotGoal=null;robot.userData.robotMode='idle';
@@ -2502,13 +2578,12 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     }
     mission.retargets=reroutes+1;
     const start={x:robot.position.x,z:robot.position.z};
-    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot'||!pathBlocked(start.x,start.z,[o],.30));
-    // Target robots use a stable feet-centred capsule, not a changing animated
-    // glTF bounding box. Try different sides before declaring the chase blocked.
-    const bounds={minX:target.position.x-.38,maxX:target.position.x+.38,
-      minZ:target.position.z-.38,maxZ:target.position.z+.38};
-    const approach=planRobotApproach(start,bounds,obstacles);
-    if(approach&&this.routeRobot(robot,approach.point,{preserveMission:true}))return true;
+    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
+    const approach=planRobotMeeting(start,{x:target.position.x,z:target.position.z},obstacles);
+    if(approach?.alreadyNear)return false;
+    if(approach&&this.routeRobot(robot,approach.point,{preserveMission:true})){
+      mission.targetPlanPosition={x:target.position.x,z:target.position.z};return true;
+    }
     robot.userData.robotMission=null;robot.userData.robotGoal=null;robot.userData.robotMode='idle';
     window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked'}}));return true;
   }
@@ -2524,7 +2599,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     if(this.routeRobot(robot,destination,{preserveMission:true,quiet:true}))return true;
     // A blocked narrow passage may require a short reverse step first. Both legs
     // must be verified by A* before movement starts; never back into obstacles.
-    const obstacles=this.navigationObstacles(robot);
+    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
     const current={x:robot.position.x,z:robot.position.z};
     const dx=destination.x-current.x,dz=destination.z-current.z;
     const length=Math.hypot(dx,dz)||1;
@@ -2592,7 +2667,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     const bounds2d=target.userData.editorKind==='robot'?
       {minX:target.position.x-.38,maxX:target.position.x+.38,minZ:target.position.z-.38,maxZ:target.position.z+.38}:
       {minX:center.x-size.x/2,maxX:center.x+size.x/2,minZ:center.z-size.z/2,maxZ:center.z+size.z/2};
-    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot'||!pathBlocked(start.x,start.z,[o],.30));
+    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
     // Ordinary targets can be approached from any navigable side. Stairs are
     // directional: their first path point is the low, physically accessible
     // landing. Do not use the upper/side edge as a successful destination.
@@ -2604,12 +2679,23 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     };
     const approach=isStairEntrance?
       planRobotLowStairApproach(start,target.userData.stairs,obstacles,projectStairPoint):
-      planRobotApproach(start,bounds2d,obstacles);
-    // A partial route to the *wrong* side of a staircase is misleading.
-    const partial=!approach&&!isStairEntrance?planRobotPartialApproach(start,bounds2d,obstacles):null;
+      target.userData.editorKind==='robot'?
+        planRobotMeeting(start,{x:target.position.x,z:target.position.z},obstacles):
+        planRobotApproach(start,bounds2d,obstacles);
+    // An intermediate stop outside the wall must never count as meeting a
+    // robot inside. For social tasks, a blocked door is a genuine blocked route.
+    const partial=!approach&&!isStairEntrance&&target.userData.editorKind!=='robot'?
+       planRobotPartialApproach(start,bounds2d,obstacles):null;
     robot.userData.robotMission={kind:command.kind,taskId:command.id,targetName:target.name,targetId:target.userData.editorId,
       origin:{x:robot.position.x,z:robot.position.z},leg:0,lastTargetCheck:0,
+      ...(target.userData.editorKind==='robot'?{targetPlanPosition:{x:target.position.x,z:target.position.z}}:{}),
       ...(isStairEntrance?{destinationPart:'low stair entrance'}:{})};
+    if(target.userData.editorKind==='robot'&&approach?.alreadyNear){
+      // Already near AND no wall between them. Use the ordinary measured
+      // arrival path, rather than claiming an arrival from a planner guess.
+      robot.userData.robotWaypoints=[];setRobotDestination(robot,start);
+      return true;
+    }
     if(!approach&&!partial){
       const nearby=obstacles.map(o=>({name:o.name||'Unknown object',kind:o.kind||'object',distance:+Math.hypot((o.minX+o.maxX)/2-start.x,(o.minZ+o.maxZ)/2-start.z).toFixed(2)})).sort((a,b)=>a.distance-b.distance).slice(0,8);
       robot.userData.robotDebugRoute={start,waypoints:[],obstacles,destination:{x:center.x,z:center.z},blocked:true};

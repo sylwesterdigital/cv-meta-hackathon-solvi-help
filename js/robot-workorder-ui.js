@@ -1,4 +1,4 @@
-// v0.2.187: one work mode determines the relevant operator controls.
+// v0.2.188: one work mode determines the relevant operator controls.
 const FIELDS=Object.freeze({
  agent:['goal','allow','vision','interval'],deliver:['source','destination'],build:['variant','allow'],
  house:['goal','allow'],preset:['preset','allow'],assist:['destination','goal'],rest:['destination','allow']

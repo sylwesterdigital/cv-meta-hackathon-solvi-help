@@ -1,4 +1,4 @@
-"""v0.2.187: no Flask needed; functional review routing and step planning."""
+"""v0.2.188: no Flask needed; functional review routing and step planning."""
 import ast,re
 from pathlib import Path
 source=ast.parse((Path(__file__).resolve().parent/'server.py').read_text())

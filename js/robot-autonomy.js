@@ -1,4 +1,4 @@
-// v0.2.187: server-durable work orders with browser-controlled scene execution. Never simulates keyboard events:
+// v0.2.188: server-durable work orders with browser-controlled scene execution. Never simulates keyboard events:
 // the same checked editor/physics tools used by human keys are invoked directly.
 import * as THREE from 'three';
 import {captureRobotView,interruptRobotMission,robotAction} from './robots.js';

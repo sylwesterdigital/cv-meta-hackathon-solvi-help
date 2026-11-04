@@ -191,19 +191,32 @@ export function tickRobots(items,dt,onMove=()=>{}){
         const travel=Math.min(distance,speed*Math.max(0,Number(robot.userData.robotSpeed??1.8))*dt);const nx=robot.position.x+delta.x*travel,nz=robot.position.z+delta.z*travel;
         const staticBlock=robot.userData.robotPathObstacles&&pathBlocked(nx,nz,robot.userData.robotPathObstacles.filter(o=>o.kind!=='robot'),.25);
         // Occupied robot footprints are dynamic. Replan with a refreshed scene index.
-        const neighbour=items.some(other=>{
+        const neighbour=items.find(other=>{
           if(other===robot||other.userData.editorKind!=='robot')return false;
           const before=Math.hypot(other.position.x-robot.position.x,other.position.z-robot.position.z);
           const after=Math.hypot(other.position.x-nx,other.position.z-nz);
           // If already overlapping, moving AWAY is a safe way to resolve it.
-          if(after<.66&&after<before+0.0001&&onMove.push?.(robot,other,{x:nx,z:nz},dt))return false;
-          return after<.66&&after<before+0.0001;
+          // Physical collision is local and transient, not a permanent A* wall.
+          // Do not shove a colleague merely because we want to talk to them.
+          return after<.67&&after<before+0.0001;
         });
         if(staticBlock||neighbour){
-          if(onMove.recover?.(robot,staticBlock?'scene obstacle':'occupied by robot')){onMove(robot,false);continue;}
+          if(neighbour&&!staticBlock){
+            // Yield to the moving avatar briefly. If it remains in the way,
+            // plan a walking detour around its *current* capsule, not a fixed
+            // wall in the global navigation mesh.
+            const now=performance.now();
+            robot.userData.robotYieldSince??=now;
+            if(now-robot.userData.robotYieldSince<1100){onMove(robot,false);continue;}
+            robot.userData.robotYieldSince=null;
+            if(onMove.avoidRobot?.(robot,neighbour)){onMove(robot,false);continue;}
+          }
+          if(onMove.recover?.(robot,staticBlock?'scene obstacle':'temporary robot occupancy')){onMove(robot,false);continue;}
           const mission=robot.userData.robotMission;robot.userData.robotGoal=null;robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;robot.userData.robotMission=null;robot.userData.robotMode='idle';mode='idle';
           window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission?.taskId,target:mission?.targetName,status:'blocked'}}));continue;
         }
+        robot.userData.robotYieldSince=null;
+        if(onMove.refreshRoute?.(robot)){onMove(robot,false);continue;}
         robot.position.addScaledVector(delta,travel);
         const angle=Math.atan2(delta.x,delta.z);robot.rotation.y+=Math.atan2(Math.sin(angle-robot.rotation.y),Math.cos(angle-robot.rotation.y))*clamp(dt*6,0,1);
       }

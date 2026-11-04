@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.187",
+  "currentVersion": "0.2.188",
   "releases": [
+    {
+      "version": "0.2.188",
+      "publishedAt": "2026-11-04T19:25:16Z",
+      "changes": [
+        "Robot encounters are now wall-aware: candidate meeting points must have an unobstructed physical line to the other avatar, preventing apparent arrivals through a window or solid wall.",
+        "When a robot is inside an Office Wall house, the navigator searches viable paths through actual doorway gaps; sealed rooms remain inaccessible. Near-wall starts can safely move away without clipping masonry.",
+        "Robot avatars no longer act as fixed global navigation obstacles. Runtime collision checks yield temporarily and attempt a bounded detour around moving neighbours without pushing them.",
+        "Active routes recheck real scene geometry for moved furniture or changed doors and retarget moving robots without teleports or false completion.",
+        "Character dialogue is shorter and more conversational, with at most one optional grounded aside; it now receives saved work orders and recent client-reported work results rather than only generic camera summaries.",
+        "New route/door/scene-change regression tests and fully versioned browser import map; existing GitHub/Ubuntu watcher and original avatar binaries unchanged."
+      ]
+    },
     {
       "version": "0.2.187",
       "publishedAt": "2026-11-04T18:49:14Z",
@@ -323,18 +335,6 @@
         "Expose wearable attachment skeleton bone, follow-rotation choice and XYZ position/rotation offsets in object Properties; lower default backpack position and rotate back slot by 90 degrees.",
         "Add procedural sunbed, deck chair and beach umbrella variants with compact parameters and safe compound collision; sunbed and deck chair support reclined sitting and authored lying-clip fallback.",
         "Retain versioned browser modules, existing scene/preset structures and uploaded avatar files; validate new fields in backend and import/export paths."
-      ]
-    },
-    {
-      "version": "0.2.155",
-      "publishedAt": "2026-11-02T19:44:32Z",
-      "changes": [
-        "Fix incoming remote procedural furniture updates by rebuilding changed geometry under the existing object ID and refreshing colliders.",
-        "Introduce five editable procedural equipment types: TV, monitor, mini computer, bin and wearable backpack; existing furniture/preset scene kinds are reused.",
-        "Use compact three-across interaction checkboxes with the consumable option next to Pickable and Follow hand rotation; clarify inventory category and size choices.",
-        "Allow TVs and monitors to select existing scene image/video sources by media ID; use account-authenticated blob loading, muted playback and offline state when unavailable.",
-        "Generate basic backpack mesh and straps with the existing wearable inventory category and front/back slots; preserve original avatar and imported model bytes.",
-        "Open bins use side-part compound colliders rather than an invisible solid spanning the opening; procedural objects remain configurable and eligible for presets."
       ]
     }
   ]

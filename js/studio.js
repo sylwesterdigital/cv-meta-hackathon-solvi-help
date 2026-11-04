@@ -1501,8 +1501,13 @@ function bindUI(world){
  window.addEventListener('solvi:robot-route',event=>{const d=event.detail||{};if(robotDebugAllowed(d.robotId))emitBrainTrace(d.robotId,d.name||'Robot',d.status==='planned'?'ROUTE ACCEPTED':'ROUTE BLOCKED',`${d.waypoints||0} computed A* waypoints · ${d.obstacles||0} obstacle footprints · planned length ${Number(d.plannedMeters||0).toFixed(2)} m · start ${JSON.stringify(d.start)} · destination ${d.target||'unknown'} ${JSON.stringify(d.destination)} · task ${d.taskId||'?'}. ${d.reason||''} Green is the planner route; cyan is observed movement.`);if(robotDebugAllowed(d.robotId)&&d.plan)emitBrainTrace(d.robotId,d.name||'Robot','PLANNER ACTUAL GEOMETRY',d.plan);if(robotDebugAllowed(d.robotId)&&d.nearby_obstacles?.length)emitBrainTrace(d.robotId,d.name||'Robot','NEARBY OBSTACLE FOOTPRINTS (NOT PROVEN BLOCKERS)',d.nearby_obstacles);});
  window.addEventListener('solvi:robot-recovery',event=>{
    const d=event.detail||{};const bot=editor.items.find(o=>o.userData.editorId===d.robotId);
-   emitBrainTrace(d.robotId,d.name,'AUTONOMOUS REPLAN',`Attempt ${d.attempt}/3: ${d.reason}. Refreshing physical scene footprints and routing around obstacles.`);
-   if(!bot?.userData.robotBrain?.initiativeVision||world.renderer.xr.isPresenting)return;
+   const localYield=d.kind==='moving-colleague';
+   emitBrainTrace(d.robotId,d.name,localYield?'LOCAL AVATAR DETOUR':'AUTONOMOUS REPLAN',
+     localYield?`Yielded, then walking around moving colleague (${d.attempt}/3).`:
+     `Attempt ${d.attempt}/3: ${d.reason}. Refreshing physical scene footprints and routing around obstacles.`);
+   // A nearby colleague is not a cause for a billable camera scan or a new
+   // chat speech bubble. Only genuine route recovery may request vision.
+   if(localYield||!bot?.userData.robotBrain?.initiativeVision||world.renderer.xr.isPresenting)return;
    captureRobotView(world,bot).then(blob=>{if(blob?.size)rememberRobotObservationFrame(d.robotId,blob,`Recovery visual reckoning ${d.attempt}/3 · local`);}).catch(()=>{});
  });
  window.addEventListener('solvi:robot-task-update',e=>{

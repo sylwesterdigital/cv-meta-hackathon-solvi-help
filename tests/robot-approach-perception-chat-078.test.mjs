@@ -20,7 +20,8 @@ test('partial stopping is a distinct mission result, never sitting or arrived',(
  const robot=read('js/robots.js'),editor=read('js/editor.js'),server=read('backend/server.py');
  assert.match(robot,/if\(mission\.partialStop\)/);
  assert.match(robot,/status:'partial'/);
- assert.match(editor,/const partial=!approach&&!isStairEntrance\?planRobotPartialApproach/);
+ assert.match(editor,/const partial=!approach&&!isStairEntrance&&target\.userData\.editorKind!=='robot'\?/);
+ assert.match(editor,/planRobotPartialApproach\(start,bounds2d,obstacles\)/);
  assert.match(server,/'partial':f'I approached/);
  assert.match(server,/allowed=\{[^\n]*'partial'/);
 });
