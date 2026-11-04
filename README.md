@@ -1,3 +1,5 @@
+https://github.com/user-attachments/assets/ca58b86b-1574-43a0-9b75-46cda9fb6aee
+
 # SOLVI.help — AI That Can See, Move, and Build
 
 **A shared 3D world where humans and AI agents collaborate through actions, not just conversation.**
