@@ -1154,7 +1154,8 @@ export class SceneEditor{
   // screen surface must be the closest real object; do not click through walls.
   this.hitSmartScreen=ray=>{
    const hits=ray.intersectObjects(this.items,true);
-   const first=hits[0];if(!first)return null;
+   // 2D labels are not surfaces and must never occlude a smart display.
+   const first=hits.find(h=>!h.object.isSprite);if(!first)return null;
    const screenHit=hits.find(h=>['equipmentScreen','lampSwitch','equipmentSpeaker'].includes(h.object.name)||h.object.userData.smartScreenBack||h.object.userData.smartScreenAudio||h.object.userData.mediaPlaybackLabel||h.object.userData.editorKind==='media');
    if(!screenHit||screenHit.distance>first.distance+.035)return null;
    let object=screenHit.object;

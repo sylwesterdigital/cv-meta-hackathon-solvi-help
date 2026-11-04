@@ -53,6 +53,15 @@ export function wallArrayTransforms(settings){
    scale:s.array.scale.map(v=>Math.max(.2,Math.min(5,1+v*index))),pivot:[(minX+maxX)/2,0,(minZ+maxZ)/2]};
  });
 }
+// A house array has one roof. For vertical arrays it belongs to the physically
+// highest floor (including -Y arrays); lateral arrays retain a roof per room.
+export function wallRoofCopyIndices(settings){
+ const s=sanitiseWall(settings),transforms=wallArrayTransforms(s);
+ if(!s.roof.enabled||!s.closed||s.points.length<3)return [];
+ if(s.array.axis!=='y'||transforms.length<=1)return transforms.map(copy=>copy.index);
+ const highest=transforms.reduce((best,copy)=>copy.offset[1]>best.offset[1]?copy:best,transforms[0]);
+ return [highest.index];
+}
 export function simplifyWallPoints(points,tolerance=.13){
  if(points.length<3)return points.slice();const sqTol=tolerance*tolerance;
  const distanceSq=(p,a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],l=dx*dx+dy*dy;if(l<1e-8)return (p[0]-a[0])**2+(p[1]-a[1])**2;const t=clamp(((p[0]-a[0])*dx+(p[1]-a[1])*dy)/l,0,1);return (p[0]-a[0]-t*dx)**2+(p[1]-a[1]-t*dy)**2;};

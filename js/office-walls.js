@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {naturalTexture,NATURAL_MATERIALS} from './procedural-natural-textures.js';
-import {sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon,wallArrayTransforms} from './office-wall-math.js';
-export {sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallSegments,wallWorldToLocal} from './office-wall-math.js';
+import {sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon,wallArrayTransforms,wallRoofCopyIndices} from './office-wall-math.js';
+export {sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallSegments,wallWorldToLocal,wallRoofCopyIndices} from './office-wall-math.js';
 
 export function wallPresetTexture(name,options={}){
  if(['wood','marble','granite'].includes(name))return naturalTexture(name,options);
@@ -151,12 +151,17 @@ export function rebuildOfficeWall(group,settings,lifts=[]){
     const up=(x,z)=>r.direction==='north'?(z1-z)/(z1-z0):r.direction==='south'?(z-z0)/(z1-z0):r.direction==='east'?(x-x0)/(x1-x0):(x1-x)/(x1-x0);
     addRoof([[x0,y+r.rise*up(x0,z0),z0],[x1,y+r.rise*up(x1,z0),z0],[x1,y+r.rise*up(x1,z1),z1],[x0,y+r.rise*up(x0,z1),z1]],[0,1,2,0,2,3]);
    }
-   if(r.chimney){const chimney=new THREE.Mesh(new THREE.BoxGeometry(.43,1.0,.43),new THREE.MeshStandardMaterial({color:'#82746e',roughness:.85}));chimney.position.set(x0+.8,y+r.rise*.7+.45,z0+.8);chimney.userData.wallSegment=true;chimney.castShadow=true;group.add(chimney);}
+   if(r.chimney){const chimney=new THREE.Mesh(new THREE.BoxGeometry(.43,1.0,.43),new THREE.MeshStandardMaterial({color:'#82746e',roughness:.85}));chimney.position.set(x0+.8,y+r.rise*.7+.45,z0+.8);chimney.userData.wallSegment=true;chimney.userData.wallRoofAccessory=true;chimney.castShadow=true;group.add(chimney);}
    if(r.solarPanels){const panelMaterial=new THREE.MeshStandardMaterial({color:'#183c5b',metalness:.38,roughness:.35});
     for(let i=0;i<3;i++){const panel=new THREE.Mesh(new THREE.BoxGeometry(.72,.035,1.25),panelMaterial);
      panel.position.set(cx+(i-1)*.82,y+r.rise+.055,cz);panel.userData.wallRoofPanel=true;panel.rotation.x=r.style==='shed'?.17:0;group.add(panel);}}
    if(r.skylight&&r.style!=='flat'){const glass=new THREE.Mesh(new THREE.PlaneGeometry(.9,.8),new THREE.MeshPhysicalMaterial({color:'#97c8dd',transparent:true,opacity:.5,side:THREE.DoubleSide,roughness:.08}));glass.rotation.x=-Math.PI/2;glass.position.set(cx,y+r.rise+.02,cz);glass.userData.wallRoofPanel=true;group.add(glass);}
   }
+ // Roofs and their accessories must follow the topmost vertical floor only.
+ // The authored base roof is used as a cloning source when a higher floor wins.
+ // Intermediate ceilings are kept on every level and are never filtered here.
+ const roofCopies=new Set(wallRoofCopyIndices(s));
+ const isRoofPart=child=>Boolean(child.userData.wallRoof||child.userData.wallRoofPanel||child.userData.wallRoofAccessory);
  // Arrays are one saved, editable room object. Flatten generated meshes into direct
  // children so existing Rapier compound-collider traversal includes every copy.
  if(s.array.enabled&&s.closed&&s.points.length>=3){
@@ -169,6 +174,7 @@ export function rebuildOfficeWall(group,settings,lifts=[]){
     .multiply(new THREE.Matrix4().compose(new THREE.Vector3(),quaternion,new THREE.Vector3(...copy.scale)))
     .multiply(new THREE.Matrix4().makeTranslation(-pivot.x,-pivot.y,-pivot.z));
    for(const original of originals){
+    if(isRoofPart(original)&&!roofCopies.has(copy.index))continue;
     const clone=original.clone(false);
     clone.geometry=original.geometry.clone();clone.material=original.material.clone();
     clone.userData={...original.userData};
@@ -188,6 +194,12 @@ export function rebuildOfficeWall(group,settings,lifts=[]){
     const transform=matrix.clone().multiply(clone.matrix);
     transform.decompose(clone.position,clone.quaternion,clone.scale);
     group.add(clone);
+   }
+  }
+  if(!roofCopies.has(0))for(const original of originals){
+   if(isRoofPart(original)){
+    group.remove(original);
+    original.geometry?.dispose();original.material?.dispose?.();
    }
   }
  }

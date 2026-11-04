@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon,wallArrayTransforms} from '../js/office-wall-math.js';
+import {sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon,wallArrayTransforms,wallRoofCopyIndices} from '../js/office-wall-math.js';
 import {stepRobotMotion,packetFor} from '../js/robot-net.js';
 const source=name=>fs.readFileSync(new URL('../'+name,import.meta.url),'utf8');
 
@@ -78,9 +78,9 @@ test('wall geometry runs with real wall settings, splits masonry and adds climba
  const ctx={fillRect(){},beginPath(){},moveTo(){},lineTo(){},stroke(){}};
  const document={createElement:()=>({width:256,height:256,getContext:()=>ctx})};
  const geometrySource=source('js/office-walls.js').replace(/^import .*;\s*$/gm,'').replace(/^export \{.*;\s*$/gm,'').replaceAll('export function ','function ');
- const render=new Function('THREE','sanitiseWall','wallSegments','wallWindowLayout','pointWithinPolygon','document','window',geometrySource+'\nreturn rebuildOfficeWall;')(THREE,sanitiseWall,
+ const render=new Function('THREE','sanitiseWall','wallSegments','wallWindowLayout','pointWithinPolygon','wallRoofCopyIndices','document','window',geometrySource+'\nreturn rebuildOfficeWall;')(THREE,sanitiseWall,
   // Single, 6m long segment: 2 windows expected.
-  ()=>[{x:3,z:0,yaw:0,length:6}],wallWindowLayout,pointWithinPolygon,document,{});
+  ()=>[{x:3,z:0,yaw:0,length:6}],wallWindowLayout,pointWithinPolygon,wallRoofCopyIndices,document,{});
  const group=new Obj();const settings={points:[[0,0],[6,0],[6,5],[0,5]],closed:true,height:3,
   windows:{enabled:true,minWidth:2.5,minHeight:2.2,openIds:[1]},ceiling:{enabled:true}};
  render(group,settings);
@@ -151,8 +151,8 @@ test('Room Array actually duplicates closed room walls, windows and ceilings; co
   CanvasTexture:class{constructor(){this.repeat={set(){}};}dispose(){}},SRGBColorSpace:'sRGB',RepeatWrapping:1};
  const ctx={fillRect(){},beginPath(){},moveTo(){},lineTo(){},stroke(){}};const document={createElement:()=>({getContext:()=>ctx})};
  const code=source('js/office-walls.js').replace(/^import .*;\s*$/gm,'').replace(/^export \{.*;\s*$/gm,'').replaceAll('export function ','function ');
- const rebuild=new Function('THREE','sanitiseWall','wallSegments','wallWindowLayout','pointWithinPolygon','wallArrayTransforms','document','window',code+'\nreturn rebuildOfficeWall;')
-  (THREE,sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon,wallArrayTransforms,document,{});
+ const rebuild=new Function('THREE','sanitiseWall','wallSegments','wallWindowLayout','pointWithinPolygon','wallArrayTransforms','wallRoofCopyIndices','document','window',code+'\nreturn rebuildOfficeWall;')
+  (THREE,sanitiseWall,wallSegments,wallWindowLayout,pointWithinPolygon,wallArrayTransforms,wallRoofCopyIndices,document,{});
  const group=new Obj();
  rebuild(group,{...base,array:{enabled:true,count:3,axis:'y',direction:1,gap:.2},windows:{...base.windows,openIds:[1024]}});
  const rooms=group.children.filter(c=>c.userData.wallCeiling);
@@ -164,6 +164,21 @@ test('Room Array actually duplicates closed room walls, windows and ceilings; co
  assert.equal(glass.filter(c=>c.userData.windowId===0)[0].userData.wallSegment,true);
  const before=group.children.length;
  rebuild(group,{...base,array:{enabled:false}});assert.equal(group.children.length,before/3);
+ // A vertical room array has exactly one real roof and one set of roof-only
+ // accessories, even though each storey still retains a separate ceiling.
+ const roofed={...base,array:{enabled:true,count:3,axis:'y',gap:.2},roof:{enabled:true,style:'flat',chimney:true,solarPanels:true}};
+ rebuild(group,roofed);
+ assert.equal(group.children.filter(c=>c.userData.wallRoof).length,1);
+ assert.equal(group.children.filter(c=>c.userData.wallRoofAccessory).length,1);
+ assert.equal(group.children.filter(c=>c.userData.wallRoofPanel).length,3);
+ assert.equal(group.children.filter(c=>c.userData.wallCeiling&&!c.userData.wallRoof).length,3);
+ assert.ok(group.children.find(c=>c.userData.wallRoof).position.y>6);
+ rebuild(group,{...roofed,array:{...roofed.array,direction:-1}});
+ assert.equal(group.children.filter(c=>c.userData.wallRoof).length,1);
+ assert.equal(group.children.find(c=>c.userData.wallRoof).position.y,3.025);
+ rebuild(group,{...roofed,array:{...roofed.array,axis:'x'}});
+ assert.equal(group.children.filter(c=>c.userData.wallRoof).length,3);
+
 });
 
 test('basic furniture builds seven distinct, finite, per-part mesh presets and configurable polygon table',()=>{

@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.179",
+  "currentVersion": "0.2.180",
   "releases": [
+    {
+      "version": "0.2.180",
+      "publishedAt": "2026-11-04T13:40:07Z",
+      "changes": [
+        "Keep a single house roof on the highest floor of vertically stacked Office Space wall arrays (including reversed -Y arrays), with attached chimney, solar panels and skylight only on that level; preserve all independent intermediate ceiling/soffit meshes.",
+        "Preserve lateral room-array roofs for side-by-side buildings and support live geometry regeneration, saved wall settings and existing rooms without changing the backend wall schema.",
+        "Prevent WebXR darkness from THREE.Sprite.raycast by setting the XR raycaster camera before traversing scenes with sprite labels, and avoid expensive full-room smart-screen raycasts on every headset frame.",
+        "Prevent WebGLRenderer.setSize while XR is presenting, ignore billboard labels as smart-screen occluders, and reconnect multiplayer after Back-Forward Cache restoration.",
+        "Add six focused regression tests covering vertical and lateral roof ownership, roof accessories, correct XR camera setup, XR-safe resizing and BFCache reconnect; retain all nine original avatar assets."
+      ]
+    },
     {
       "version": "0.2.179",
       "publishedAt": "2026-11-04T12:06:20Z",
@@ -332,16 +343,6 @@
         "Percent delays remain editable without input range caps: negative values act at the beginning, values above 100% act at the clip end; reject invalid/nonfinite numbers, negative force and nonpositive speed.",
         "655/655 JavaScript tests passed, including eight new unbounded-control regression tests; original GLB assets are unchanged.",
         "Release archive corrected: generated Python __pycache__ / .pyc artifacts excluded; application source code and version unchanged."
-      ]
-    },
-    {
-      "version": "0.2.148",
-      "publishedAt": "2026-11-02T02:10:48Z",
-      "changes": [
-        "Fix Release delay settings snapping to the 55% default while editing by committing valid numeric input immediately and protecting focused fields from inspector refresh.",
-        "Clamp out-of-range completed release/pickup delays to the valid 5\u201395% interval; preserve the last saved value for empty/invalid inputs.",
-        "Apply reliable editing to all eight per-avatar Pickup & Throw numeric controls, keeping undo history and ordinary scene persistence.",
-        "Retain v0.2.147 throw force, animation speeds, trajectory guide, procedural models and original GLB assets unchanged; five new regression tests; 647/647 JavaScript tests passed."
       ]
     }
   ]

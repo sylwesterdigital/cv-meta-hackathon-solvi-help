@@ -1,3 +1,17 @@
+# SOLVI.help Master LLM Handover — v0.2.180
+
+## Release 0.2.180 — top-floor roof ownership and XR Sprite safety
+
+- **Office walls / room arrays:** In `js/office-wall-math.js`, `wallRoofCopyIndices(settings)` selects the highest Y array instance (including direction -1) as sole owner of the roof for vertical arrays. A horizontal (X/Z) room array is a row of separate rooms and retains one roof on each, rather than stripping roofing from adjacent buildings. Existing single-level room roof behaviour stays unchanged. No new persistence schema; previous scenes automatically regenerate with the correction.
+- **Geometry:** `js/office-walls.js` tags all roof-only meshes and accessories (flat/pitched/pyramid, chimney, solar and skylight). The array cloner only clones these onto the selected upper level and removes any source roof that would otherwise remain on a lower level. Ceiling/soffit meshes are independent (`wallCeiling`) and remain at each generated storey, including lift openings. Rebuild and presets reuse the same rules.
+- **WebXR crash:** `THREE.Raycaster.setFromXRController()` sets the ray but does not populate `Raycaster.camera`. `Sprite.raycast()` requires that camera for billboards (media captions, names, status sprites). `js/world.js` now sets `.camera` to the XR headset camera or main camera before XR intersections. Full-room smart-screen raycasts happen only when selecting, not on every controller-movement frame. `js/editor.js` ignores Sprite label intersections when deciding closest physical smart-screen occluder. XR device rendering avoids `renderer.setSize()` on resize while `renderer.xr.isPresenting`.
+- **BFCache:** `main.js` reconnects the `LiveRoom` after persisted Back-Forward Cache page return; `live.js` drops the old socket handle upon closing so a stale CONNECTING/OPEN socket does not prevent reconnection.
+- **Validation:** `tests/release-180-roof-xr.test.mjs` adds six tests; full suite, all JS syntax, backend Nginx/realm checks, original avatar hashes and extracted watcher ZIP must all pass. No live headset testing has been carried out. 
+
+**Files:** `js/office-wall-math.js`, `js/office-walls.js`, `js/world.js`, `js/editor.js`, `js/main.js`, `js/live.js`, `index.html`, `tests/release-180-roof-xr.test.mjs`, metadata, docs.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.179
 
 ## Release 0.2.179: one-row Control Switcher, explicit GitHub diagnostics

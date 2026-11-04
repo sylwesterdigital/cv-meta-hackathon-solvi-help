@@ -231,7 +231,7 @@ export class SolviWorld {
     }finally{draco.dispose();}
   }
   setupEvents(){
-    window.addEventListener('resize',()=>{this.camera.aspect=innerWidth/innerHeight;this.camera.updateProjectionMatrix();this.renderer.setSize(innerWidth,innerHeight);});
+    window.addEventListener('resize',()=>{this.camera.aspect=innerWidth/innerHeight;this.camera.updateProjectionMatrix();if(!this.renderer.xr.isPresenting)this.renderer.setSize(innerWidth,innerHeight);});
     // Camera locomotion is arrow-only while no owned robot is selected.
     // W/A/S/D/G/R are reserved for editor shortcuts (Blender-like).
     window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable]')||e.ctrlKey||e.metaKey||e.altKey)return;
@@ -523,7 +523,7 @@ export class SolviWorld {
       beam.name='Teleport ray';controller.add(beam);controller.userData.teleportRay=beam;
       controller.addEventListener('selectstart',async()=>{
         if(!this.renderer.xr.isPresenting)return;
-        const selection=this.xrRaycast(controller);
+        const selection=this.xrRaycast(controller,{checkSmartScreen:true});
         if(selection.smartScreen){this.robotEditor?.activateSmartScreen?.(selection.smartScreen);return;}
         if(selection.liftButton){if(selection.liftButton.userData.transportButton)this.robotEditor?.activateTransportButton(selection.liftButton);else if(selection.liftButton.userData.portalButton)this.robotEditor?.activatePortalButton(selection.liftButton);else if(selection.liftButton.userData.wallWindowButton)this.robotEditor?.activateWindowButton(selection.liftButton);else this.robotEditor?.activateLiftButton(selection.liftButton);return;}
         if(selection.menu){const action=selection.menu.userData.action;if(action==='room'){const select=document.getElementById('roomSelect');if(select&&select.options.length>1){select.selectedIndex=(select.selectedIndex+1)%select.options.length;select.dispatchEvent(new Event('change'));}}else window.solviEditor?.add(action);return;}
@@ -617,13 +617,17 @@ export class SolviWorld {
         worldLimit:Math.max(16,this.environment.floorSize/2-1)});
     }finally{raycaster.far=oldFar;for(const [mat,side] of changed)mat.side=side;}
   }
-  xrRaycast(controller){
+  xrRaycast(controller,{checkSmartScreen=false}={}){
     controller.updateWorldMatrix(true,false);
     this.raycaster.setFromXRController(controller);
+    // THREE.Raycaster.setFromXRController() does not set .camera, while
+    // Sprite.raycast() requires camera.matrixWorld. Labels and media captions
+    // may occur beneath *any* editable object in a populated room.
+    this.raycaster.camera=this.renderer.xr.getCamera()||this.camera;
     const liftButton=this.robotEditor?.hitLiftButton?.(this.raycaster)||this.robotEditor?.hitTransportButton?.(this.raycaster)||this.robotEditor?.hitPortalButton?.(this.raycaster)||this.robotEditor?.hitWindowButton?.(this.raycaster)||null;
     const menu=this.raycaster.intersectObjects(this.xrButtons,false)[0]?.object;
     const mediaButton=this.xrMediaControls?.visible?this.raycaster.intersectObjects(this.xrMediaButtons,false)[0]?.object:null;
-    const smartScreen=this.robotEditor?.hitSmartScreen?.(this.raycaster)||null;
+    const smartScreen=checkSmartScreen?this.robotEditor?.hitSmartScreen?.(this.raycaster)||null:null;
     const landing=this.xrLanding(this.raycaster);
     const media=this.robotEditor?.items?.filter(o=>o.userData.editorKind==='media')||[];
     const mediaHit=this.raycaster.intersectObjects(media,true)[0];

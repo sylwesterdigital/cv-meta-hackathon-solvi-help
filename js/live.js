@@ -56,5 +56,5 @@ export class LiveRoom{
   state(pose){const now=performance.now();if(now-this.lastSent<120)return;this.lastSent=now;this.send({type:'state',state:pose});}
   switchRoom(){this.stopped=true;clearTimeout(this.timer);const old=this.ws;this.ws=null;old?.close();this.peers.clear();this.onPresence(this.peers);this.stopped=false;this.attempts=0;this.timer=setTimeout(()=>this.connect(),800);}
   signal(to,payload){this.send({type:'signal',to,payload});}
-  close(){this.stopped=true;clearTimeout(this.timer);this.ws?.close();}
+  close(){this.stopped=true;clearTimeout(this.timer);const previous=this.ws;this.ws=null;previous?.close();}
 }

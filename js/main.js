@@ -33,6 +33,9 @@ for(const btn of buttons){btn.addEventListener('click',()=>{
   buttons.forEach(b=>b.classList.toggle('selected',b===btn));
 });}
 window.addEventListener('pagehide',()=>room.close());
+// Back-Forward Cache restores the old JavaScript realm, including a stopped
+// socket. Reconnect explicitly; do not keep a stale socket after page restore.
+window.addEventListener('pageshow',event=>{if(event.persisted&&window.solviAPI?.online){room.stopped=false;room.attempts=0;room.ws=null;room.connect();}});
 
 window.addEventListener('solvi:peer-message',event=>world.showPeerMessage(event.detail.userId,event.detail.text));
 
