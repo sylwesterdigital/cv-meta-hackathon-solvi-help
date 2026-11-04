@@ -25,7 +25,7 @@ import {stairGeometryKey} from './stair-extensions.js';
 import {makePortal,rebuildPortal} from './portal-geometry.js';
 import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
-import {planRobotPath,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
+import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
 import {findRobotWorksite,footprintClear} from './robot-worksite.js';
 import {planRobotLowStairApproach} from './robot-stair-approach.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
@@ -2424,7 +2424,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   navigationObstacles(robot){
     this.world.scene.updateMatrixWorld(true);
     return this.items.filter(o=>o!==robot&&o.visible&&!o.userData.carriedBy&&!o.userData.storage&&!(o.userData.editorKind==='cube'&&o.name?.endsWith(' · house floor'))&&!['light','plane','points','curve'].includes(o.userData.editorKind)).flatMap(o=>{
-      if(['wall','stairs'].includes(o.userData.editorKind))return o.children.filter(child=>child.userData.wallSegment||child.userData.stairTread).map((child,i)=>{const b=new THREE.Box3().setFromObject(child);return {minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z,name:(o.name||'Office wall')+' section '+(i+1),kind:'wall',id:o.userData.editorId};});
+      if(['wall','stairs'].includes(o.userData.editorKind))return o.children.filter(child=>child.userData.wallSegment||child.userData.stairTread).map((child,i)=>{const b=new THREE.Box3().setFromObject(child);if(b.isEmpty()||b.max.y<robot.position.y+.10||b.min.y>robot.position.y+1.7)return null;return {minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z,name:(o.name||'Office wall')+' section '+(i+1),kind:'wall',id:o.userData.editorId};}).filter(Boolean);
       // Human-like glTF bounds can swell with animation and accessories. Use a
       // stable feet-centred capsule footprint for other robots instead.
       if(o.userData.editorKind==='robot')return {minX:o.position.x-.38,maxX:o.position.x+.38,minZ:o.position.z-.38,maxZ:o.position.z+.38,name:o.name||'Robot',kind:'robot',id:o.userData.editorId};
@@ -2446,14 +2446,9 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     const obstacles=allObstacles.filter(o=>o.kind!=='robot'||!pathBlocked(start.x,start.z,[o],.30));
     const distance=Math.hypot(point.x-start.x,point.z-start.z);
     if(distance>600){this.toast('Robot route exceeds 600 m safety limit');return false;}
-    const steps=wholePath?1:Math.max(1,Math.ceil(distance/18));
-    const waypoints=[];let previous=start;
-    for(let i=1;i<=steps;i++){
-      const target={x:start.x+(point.x-start.x)*i/steps,z:start.z+(point.z-start.z)*i/steps};
-      const part=planRobotPath(previous,target,obstacles);
-      if(!part?.length||Math.hypot(part.at(-1).x-target.x,part.at(-1).z-target.z)>.12){waypoints.length=0;break;}
-      waypoints.push(...part);previous=target;
-    }
+    // Use reachable, obstacle-aware intermediate waypoints. The previous fixed
+    // straight-line midpoints could lie inside a house and reject a valid detour.
+    const waypoints=planRobotTravelRoute(start,{x:point.x,z:point.z},obstacles)||[];
     if(!waypoints.length){
       robot.userData.robotDebugRoute={start,waypoints:[],obstacles,destination:{x:point.x,z:point.z},blocked:true};
       if(typeof this.robotPathDebugVisible==='function'&&this.robotPathDebugVisible(robot))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
@@ -2506,8 +2501,14 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked'}}));return true;
     }
     mission.retargets=reroutes+1;
-    const next={x:target.position.x+dx/distance*1.5,z:target.position.z+dz/distance*1.5};
-    if(this.routeRobot(robot,next,{preserveMission:true}))return true;
+    const start={x:robot.position.x,z:robot.position.z};
+    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot'||!pathBlocked(start.x,start.z,[o],.30));
+    // Target robots use a stable feet-centred capsule, not a changing animated
+    // glTF bounding box. Try different sides before declaring the chase blocked.
+    const bounds={minX:target.position.x-.38,maxX:target.position.x+.38,
+      minZ:target.position.z-.38,maxZ:target.position.z+.38};
+    const approach=planRobotApproach(start,bounds,obstacles);
+    if(approach&&this.routeRobot(robot,approach.point,{preserveMission:true}))return true;
     robot.userData.robotMission=null;robot.userData.robotGoal=null;robot.userData.robotMode='idle';
     window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked'}}));return true;
   }
@@ -2588,7 +2589,9 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     // Probe real A* paths to several stand-off points around the target. An
     // occupied near side is not evidence that all other sides are blocked.
     const start={x:robot.position.x,z:robot.position.z};
-    const bounds2d={minX:center.x-size.x/2,maxX:center.x+size.x/2,minZ:center.z-size.z/2,maxZ:center.z+size.z/2};
+    const bounds2d=target.userData.editorKind==='robot'?
+      {minX:target.position.x-.38,maxX:target.position.x+.38,minZ:target.position.z-.38,maxZ:target.position.z+.38}:
+      {minX:center.x-size.x/2,maxX:center.x+size.x/2,minZ:center.z-size.z/2,maxZ:center.z+size.z/2};
     const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot'||!pathBlocked(start.x,start.z,[o],.30));
     // Ordinary targets can be approached from any navigable side. Stairs are
     // directional: their first path point is the low, physically accessible

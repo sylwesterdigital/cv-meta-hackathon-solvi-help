@@ -88,6 +88,49 @@ export function planRobotPath(start,end,obstacles=[],options={}){
  return result;
 }
 
+
+// A long journey cannot safely be split at arbitrary points on the direct line:
+// one of those points may be INSIDE a house. Join short, checked A* legs using
+// candidate *free* staging points on either side of the direct corridor.
+// Never substitute a near-enough destination: every leg must reach its exact
+// candidate, and every final step remains subject to the ordinary collision test.
+export function planRobotTravelRoute(start,end,obstacles=[],options={}){
+ if(![start?.x,start?.z,end?.x,end?.z].every(Number.isFinite))return null;
+ const distance=Math.hypot(end.x-start.x,end.z-start.z);
+ if(distance>600)return null;
+ const maxLeg=clamp(Number(options.maxLeg)||18,8,25);
+ const clearance=clamp(Number(options.clearance)||.30,.15,.9);
+ const exact=(path,point)=>Array.isArray(path)&&path.length>0&&Math.hypot(path.at(-1).x-point.x,path.at(-1).z-point.z)<.12;
+ // Prefer a single direct A* search for ordinary approaches. This allows A*
+ // itself to choose the correct side of a medium-size building.
+ if(distance<=30){const path=planRobotPath(start,end,obstacles,options);if(exact(path,end))return path;}
+ const maxDepth=Math.max(3,Math.ceil(Math.log2(Math.max(1,distance/maxLeg)))+3);
+ let searches=0;
+ const budget=Number(options.searchBudget)||95;
+ const split=(a,b,depth)=>{
+  if(++searches>budget||depth>maxDepth)return null;
+  const length=Math.hypot(b.x-a.x,b.z-a.z);
+  if(length<=maxLeg){const local=planRobotPath(a,b,obstacles,options);if(exact(local,b))return local;}
+  if(depth>=maxDepth||length<1.2)return null;
+  const ux=(b.x-a.x)/length,uz=(b.z-a.z)/length;
+  const mid={x:(a.x+b.x)/2,z:(a.z+b.z)/2};
+  // A side offset is attempted only when the central intermediate fails.
+  // For long routes these bounded offsets also work around buildings placed
+  // exactly on the direct-line midpoint.
+  const offsets=[0,1.5,-1.5,3,-3,5,-5,8,-8,12,-12];
+  for(const offset of offsets){
+   const via={x:mid.x-uz*offset,z:mid.z+ux*offset};
+   if(pathBlocked(via.x,via.z,obstacles,clearance))continue;
+   const first=split(a,via,depth+1);
+   if(!first)continue;
+   const second=split(via,b,depth+1);
+   if(second)return [...first,...second];
+  }
+  return null;
+ };
+ return split(start,end,0);
+}
+
 // Compare planned stair approaches by the REAL routed distance, not straight-line
 // distance to the inaccessible high end or side.
 export function plannedPathLength(start,waypoints=[]){
@@ -115,7 +158,7 @@ export function planRobotApproach(start,bounds,obstacles=[],options={}){
    attempted++;
    if(pathBlocked(point.x,point.z,obstacles,clearance))continue;
    free++;
-   const path=planRobotPath(start,point,obstacles);
+   const path=planRobotTravelRoute(start,point,obstacles);
    if(!path?.length||Math.hypot(path.at(-1).x-point.x,path.at(-1).z-point.z)>.14)continue;
    // Choose shortest actual A* path, not the closest straight-line destination.
    let length=0,previous=start;
@@ -145,7 +188,7 @@ export function planRobotPartialApproach(start,bounds,obstacles=[],options={}){
   for(const offset of [0,.40,-.40,.8,-.8,1.3,-1.3]){
    const point={x:start.x+dx*fraction-uz*offset,z:start.z+dz*fraction+ux*offset};
    if(pathBlocked(point.x,point.z,obstacles,clearance))continue;
-   const path=planRobotPath(start,point,obstacles,options);
+   const path=planRobotTravelRoute(start,point,obstacles,options);
    if(!path?.length||Math.hypot(path.at(-1).x-point.x,path.at(-1).z-point.z)>.14)continue;
    const remaining=Math.hypot(cx-point.x,cz-point.z);
    const candidate={point,waypoints:path,progress:fraction,remainingMeters:remaining};

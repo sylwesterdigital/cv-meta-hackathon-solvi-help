@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.186",
+  "currentVersion": "0.2.187",
   "releases": [
+    {
+      "version": "0.2.187",
+      "publishedAt": "2026-11-04T18:49:14Z",
+      "changes": [
+        "Repair robot routes across houses: replace unsafe straight-line 18 m midpoint chunking with route planning through free staging points, so robots can walk around a building to another robot without requiring the straight line to be clear.",
+        "Improve robot follow/retarget behaviour: use collision-checked approaches on several sides of the target robot with stable feet-centred capsule bounds rather than an animated model bounding box or a single target-side offset.",
+        "Exclude out-of-height office wall sections, roof accessories and elevated stair treads from ground-level navigation obstacles, without removing actual wall collisions at the robot height.",
+        "Add geometry-level regression tests for 5\u00d74 m house detours, long/diagonal routes, robot stand-off approach, and impossible barrier rejection; preserve route debug, real walking and strict arrival proof.",
+        "No changes to deployment watcher, server persistence or original model assets; unchanged authenticated mission and scene permissions."
+      ]
+    },
     {
       "version": "0.2.186",
       "publishedAt": "2026-11-04T18:20:30Z",
@@ -324,18 +335,6 @@
         "Allow TVs and monitors to select existing scene image/video sources by media ID; use account-authenticated blob loading, muted playback and offline state when unavailable.",
         "Generate basic backpack mesh and straps with the existing wearable inventory category and front/back slots; preserve original avatar and imported model bytes.",
         "Open bins use side-part compound colliders rather than an invisible solid spanning the opening; procedural objects remain configurable and eligible for presets."
-      ]
-    },
-    {
-      "version": "0.2.154",
-      "publishedAt": "2026-11-02T17:06:33Z",
-      "changes": [
-        "Seat avatars on nearby compatible flat surfaces with authored Sitting clips or procedural fallback, edge-aware position and facing, and orientation retained on standing (J).",
-        "Press I while carrying a Pickable object to place it on the floor without throwing; retain O for animated projectile throws and sync drops over multiplayer.",
-        "Scene-backed inventory supports pocket tools, keys, money, phone, notepad and food, with separate consumable Eat/Use and bag-size requirements.",
-        "Attach wearable backpacks, jetpacks and parachutes to upper spine/chest bones in independent front/back slots; dropped backpacks retain their contents.",
-        "Compact inventory panel with Pockets, Wearable, Backpack tabs; validated per-object state persists through scene/room saves and realm archives.",
-        "Regression tests for geometry seating, dropped object collider state, backpack contents, storage transitions, server/archive persistence and safe release packaging."
       ]
     }
   ]
