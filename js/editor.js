@@ -1268,6 +1268,49 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  if(!['robot','model','media','light'].includes(kind))positionNewOnGround(object,point);
  else {const near=this.cameraDropPosition(3.2);object.position.x=near.x;object.position.z=near.z;if(kind!=='robot')object.position.y=Math.max(.8,near.y);}
  object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;if(PRIMITIVE_FIELDS[kind])object.userData.primitive=sanitisePrimitive(kind);this.items.push(object);this.world.scene.add(object);if(kind==='furniture')syncEquipmentMedia(object,this);this.physics.sync(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}if(kind==='model'&&object.userData.modelUrl)hydrateSceneModel(object);if(kind!=='model'&&persist){this.recordEdit(null,this.snapshot(object));this.queueSave(object);}return object;}
+ // Autonomous agents use the same furniture generator, scene ownership,
+ // history, collider and persistence path as human Add — without selecting the
+ // object or moving the operator's camera/inspector.
+ createRobotFurniture(robot,variant='chair'){
+  if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot)||
+     !['chair','officeChair','stool','bed','armchair','sofa','table','cabinet'].includes(variant))return null;
+  const obj=objectFor('furniture');rebuildFurniture(obj,{variant});obj.userData.physics={mode:'static'};
+  const bb=new THREE.Box3().setFromObject(obj),size=bb.getSize(new THREE.Vector3());
+  const margin=Math.max(1.05,size.x*.6,size.z*.6);
+  // Respect all nearby footprints; never build furniture across a doorway or
+  // inside another scene object. The robot's own capsule is excluded here.
+  const obstacles=this.navigationObstacles(robot);
+  let position=null;
+  for(const radius of [3.2,4.5,5.8])for(const angle of [0,Math.PI/2,-Math.PI/2,Math.PI,Math.PI/4,-Math.PI/4]){
+   const heading=robot.rotation.y+angle;
+   const x=robot.position.x+Math.sin(heading)*radius,z=robot.position.z+Math.cos(heading)*radius;
+   if(!pathBlocked(x,z,obstacles,margin)&&Math.hypot(x-robot.position.x,z-robot.position.z)>margin+1){position={x,z};break;}
+  }
+  if(!position){this.disposeObject(obj);return null;}
+  positionNewOnGround(obj,{x:position.x,y:0,z:position.z});
+  obj.name=robot.name+' · '+variant;
+  obj.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
+  obj.userData.autonomyCreatedBy=robot.userData.editorId;
+  obj.userData.autonomyCreatedRoom=window.solviRoom||'main';
+  this.items.push(obj);this.world.scene.add(obj);this.physics.sync(obj);
+  this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);this.refreshList();
+  return obj;
+ }
+ // Removal is intentionally narrower than human Delete. Only a robot-owned
+ // object created in THIS browser session and room can be removed automatically.
+ removeRobotFurniture(robot,obj){
+  if(!robot||!obj||!this.items.includes(obj)||obj.userData.editorKind!=='furniture'||
+     obj.userData.autonomyCreatedBy!==robot.userData.editorId||
+     obj.userData.autonomyCreatedRoom!==(window.solviRoom||'main')||
+     !this.canEdit(robot)||!this.canEdit(obj)||isTransformLocked(obj))return false;
+  const previous=this.snapshot(obj);
+  for(const bot of this.items)if(bot.userData.robotSeatedTarget===obj.userData.editorId)standUp(bot,this);
+  if(this.selected===obj){this.transform.detach();this.selected=null;this.updateInspector();}
+  this.items=this.items.filter(o=>o!==obj);this.world.scene.remove(obj);
+  this.physics.remove(obj.userData.editorId);this.disposeObject(obj);
+  this.recordEdit(previous,null);this.persistRemoval(obj.userData.editorId);this.refreshList();
+  return true;
+ }
  addFromPreset(saved){
   const data=presetEntry(saved);
   if(!data)return null;
@@ -2254,7 +2297,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   syncRobotPathDebug(){for(const robot of this.items.filter(o=>o.userData.editorKind==='robot')){const route=robot.userData.robotDebugRoute;if(this.robotPathDebugVisible(robot)&&route&&!route.finished)updateRobotPathDebug(this.world,robot,route);else if(!this.robotPathDebugVisible(robot))clearRobotPathDebug(this.world,robot.userData.editorId);}this.updateRobotDebugStatus();}
   navigationObstacles(robot){
     this.world.scene.updateMatrixWorld(true);
-    return this.items.filter(o=>o!==robot&&o.visible&&!['light','plane','points','curve'].includes(o.userData.editorKind)).flatMap(o=>{
+    return this.items.filter(o=>o!==robot&&o.visible&&!o.userData.carriedBy&&!o.userData.storage&&!['light','plane','points','curve'].includes(o.userData.editorKind)).flatMap(o=>{
       if(['wall','stairs'].includes(o.userData.editorKind))return o.children.filter(child=>child.userData.wallSegment||child.userData.stairTread).map((child,i)=>{const b=new THREE.Box3().setFromObject(child);return {minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z,name:(o.name||'Office wall')+' section '+(i+1),kind:'wall',id:o.userData.editorId};});
       // Human-like glTF bounds can swell with animation and accessories. Use a
       // stable feet-centred capsule footprint for other robots instead.

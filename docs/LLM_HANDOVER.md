@@ -1,3 +1,21 @@
+# SOLVI.help v0.2.182 — Autonomous Robot Operators, Meta 360° perception and service work orders
+
+**Status:** Release candidate for the unchanged `updates/` deployment watcher; **not yet deployed or browser-verified**.
+
+### Operator workflow
+
+Open **Robot routines → Autonomous robot operator · work orders**. Choose an editable robot and work mode, then **Run once** or **Start loop**. Modes: **Meta agent** (select a new scene-grounded action after each outcome); **Deliver** (walk, lift a Pickable object, move and drop); **Build furniture** (chair, bed, sofa, stool, office chair, table or cabinet); **Assist** (visit a colleague and address a question through the existing robot-to-robot reply engine); or **Rest** (walk to and sit on a seat, create a chair first only when authorised, then stand up). Stop individual robots or all robot work orders directly in the panel. Loops require an open, signed-in foreground browser tab; they are not background Ubuntu services.
+
+**Existing-tool integration:** Navigation uses the existing `receiveRobotCommand(go_to)` route and task-update completion, A* avoidance, live movement animation and scene persistence. Carrying uses the I-key pickup/drop implementation, physics and edit permissions. Rest uses J-key seating/standing animations. Construction uses the procedural Basic Furniture mesh generator, clearance check, Rapier static collider, scene save and Undo. Automatic deletion is limited to furniture created by that robot in the current autonomy session, never unrelated objects.
+
+**Meta vision:** With the camera checkbox enabled, each Meta agent decision receives six genuine 512×512 JPEG robot-head renders at 0/60/120/180/240/300 degrees, processed by configured Meta Muse Spark 1.3 via the authenticated server endpoint. Scene inventory/object IDs are provided separately and must not be conflated with visual confirmation. The existing SAM 3.1 robot visual search is available for focused object inspection. Meta chooses only one validated action from `visit`, `deliver`, `build`, `remove`, `rest`, `ask`, `inspect`, `idle`. Model text is never executed as code, and completion is only recorded after real tool results. Limits: at least 180 seconds between agent decisions, 36 decisions per user/day in the server process, a 60-second per-robot speech cooldown, plus an explicit confirmation before billable requests. The Meta service, model capabilities and billable amounts depend on its configured API key.
+
+**Safety / current scope:** Robot and object ownership, active realm and tab session are checked. Physics must be on and the selected object must be Pickable for delivery. Large/obstructed scenes may make safe routes impossible; the task reports failure and a later loop can choose a different action. Robot control is one browser-tab local scheduler; do not assume distributed job-locking between two simultaneously enabled tabs, persistent offline autonomy, general autonomous tool use outside the action allowlist, real sleeping animations for every avatar rig, unrestricted deletion or live VR/browser verification. Physical objects remain ordinary scene entities and saved room data is not intentionally reset.
+
+**Files:** `js/robot-autonomy.js`, `js/robot-autonomy-core.js`, `js/editor.js`, `js/studio.js`, `index.html`, `styles.css`, `backend/server.py`, `backend/test_autonomy.py`, `tests/release-182-autonomous-operators.test.mjs`, legacy regression expectation updates, release/version metadata and handover. **Deployment:** Place only the complete, hash-manifested application ZIP in `updates/`; do not modify the existing watcher, GitHub HTTPS workflow, Ubuntu provisioning, original avatar GLBs or users' saved scenes.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.181
 
 ## Release 0.2.181 — authoritative multiplayer room presence and diagnostics for everyone

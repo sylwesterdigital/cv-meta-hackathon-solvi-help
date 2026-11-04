@@ -2616,3 +2616,14 @@ body>#inspectorValueSlider #inspectorActiveRange{
 .dev-diagnostics p{font-size:11px;color:#9fb1c6;margin:2px 0;line-height:1.4}
 .dev-diagnostic-entries{flex:1;min-height:120px;margin:0;overflow:auto;border:1px solid #3c5065;border-radius:8px;padding:10px;background:#0b1420;color:#d9e9fa;font-size:11px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
 @media(max-width:500px){.dev-diagnostic-heading{align-items:flex-start;flex-direction:column}.dev-diagnostics{max-height:55svh}}
+/* v0.2.182 — opt-in agent work orders in the existing draggable robot panel. */
+.autonomy-work-order{margin-top:12px;border-top:1px solid rgba(160,190,215,.25);padding-top:11px;min-width:0}
+.autonomy-work-order summary{cursor:pointer;font-weight:650;padding:5px 0;line-height:1.5}
+.autonomy-work-order .robot-routine-controls{max-height:min(60vh,650px);overflow:auto;padding:4px 2px 9px}
+.autonomy-work-order .robot-routine-controls label{min-width:0;max-width:100%}
+.autonomy-work-order select,.autonomy-work-order textarea,.autonomy-work-order input[type=number]{width:100%;min-width:0;box-sizing:border-box}
+.autonomy-work-order .autonomy-check{display:flex;align-items:flex-start;gap:8px;line-height:1.35}
+.autonomy-work-order .autonomy-check input[type=checkbox]{width:16px;min-width:16px;height:16px;margin:2px 0 0;flex:none}
+.autonomy-work-order small{display:block;line-height:1.45;overflow-wrap:anywhere}
+.autonomy-work-order .bookmark-actions{display:flex;flex-wrap:wrap;gap:6px}
+.autonomy-work-order .bookmark-actions button{flex:1 0 auto;min-width:max-content}

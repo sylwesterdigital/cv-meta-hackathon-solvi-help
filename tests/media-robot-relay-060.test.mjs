@@ -29,7 +29,7 @@ test('authenticated attachment controls and safe viewer are wired',()=>{
 test('robot-to-robot @handoff retains 2-hop bound and deduplicates per recipient',()=>{
  assert.match(api,/def robot_handle_mentions\(text,robots\):/);
  assert.match(api,/def robot_recipient_queue\(text,robots,from_robot=False,speaker_id=None\):/);
- assert.match(api,/if from_robot and \(not speaker or m\['model'\]!='muse-spark-1\.3' or int\(m\['relay_depth'\]\)>=2\)/);
+ assert.match(api,/if from_robot and \(not speaker or m\['model'\] not in \('muse-spark-1\.3','robot-autonomy'\) or int\(m\['relay_depth'\]\)>=2\)/);
  assert.match(api,/robot_reactions/);
  assert.match(api,/PRIMARY KEY\(message_id,robot_id\)/);
  assert.match(api,/relay_source,relay_depth/);

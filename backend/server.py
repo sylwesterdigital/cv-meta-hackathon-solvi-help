@@ -193,7 +193,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.181',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.182',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1522,6 +1522,163 @@ def ai_vision():
                                'output_types':[item.get('type') for item in response.get('output',[]) if isinstance(item,dict)]},
                        usage=usage,note='SAM returns matching object geometry, not a scene description. Bounding boxes are shown; pixel masks are not yet rendered.')
     except Exception as exc:return json_error(str(exc),502)
+# v0.2.182 — Meta camera-grounded, server-scoped autonomy proposals. This
+# endpoint NEVER edits scenes; the browser must use authorised scene tools.
+ROBOT_AUTONOMY_LAST = {}
+ROBOT_AUTONOMY_DAILY = {}
+AUTONOMY_ACTIONS = {'visit','deliver','build','remove','rest','ask','inspect','idle'}
+AUTONOMY_BUILD_VARIANTS = {'chair','officeChair','bed','sofa','stool','table','cabinet'}
+
+def validate_autonomy_decision(value,objects,robot_id,allow_changes=False):
+    if not isinstance(value,dict) or value.get('action') not in AUTONOMY_ACTIONS:return None
+    action=value['action'];by_id={str(o.get('id')):o for o in objects if isinstance(o,dict)}
+    target=str(value.get('target_id') or '')[:100];destination=str(value.get('destination_id') or '')[:100]
+    if action in ('visit','deliver','remove','ask','inspect') and (not target or target==robot_id or target not in by_id):return None
+    if action=='deliver' and (not destination or destination not in by_id or destination in (robot_id,target) or by_id[target].get('kind')=='robot'):return None
+    if action=='ask' and by_id[target].get('kind')!='robot':return None
+    if action=='remove' and by_id[target].get('kind') in ('robot','light'):return None
+    if action in ('build','remove') and not allow_changes:return None
+    if action=='rest' and target and (target not in by_id or target==robot_id):return None
+    return {'action':action,'target_id':target,'destination_id':destination,
+        'variant':value.get('variant') if value.get('variant') in AUTONOMY_BUILD_VARIANTS else 'chair',
+        'message':str(value.get('message') or '')[:240],
+        'reason':str(value.get('reason') or '')[:240]}
+
+def parse_autonomy_decision(text,objects,robot_id,allow_changes=False):
+    if not isinstance(text,str) or len(text)>9000:return None
+    # Reject prose or fabricated executable instructions. Only the first JSON
+    # object is considered and is revalidated against real room object IDs.
+    body=text.strip()
+    if body.startswith('```'):
+        body=re.sub(r'^```(?:json)?\s*|\s*```$', '',body,flags=re.I).strip()
+    try:data=json.loads(body)
+    except (ValueError,TypeError):return None
+    return validate_autonomy_decision(data,objects,robot_id,allow_changes)
+
+@app.post('/api/robots/autonomy/plan')
+def robot_autonomy_plan():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    room_id=selected_room(request.form.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    rid=str(request.form.get('robot_id',''))[:100]
+    goal=str(request.form.get('objective','')).strip()[:600]
+    if not goal:return json_error('Objective required',400)
+    if not active_model_key():return json_error('Configure a Meta model API key for autonomous decisions',503)
+    with db() as con:
+        scene=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+        memory=con.execute('SELECT event FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 5',(room_id,rid)).fetchall()
+    objects=json.loads(scene['payload']) if scene else []
+    if not isinstance(objects,list):return json_error('Scene is not available',404)
+    robot=next((o for o in objects if isinstance(o,dict) and o.get('kind')=='robot' and o.get('id')==rid),None)
+    if not robot:return json_error('Robot not found in room',404)
+    if not may_edit(user['id'],robot,room_policy(room_id)):return json_error('Robot operator permission required',403)
+    brain=robot.get('brain') if isinstance(robot.get('brain'),dict) else {}
+    images=request.files.getlist('views')
+    if len(images) not in (0,6):return json_error('Use six actual 360-degree JPEG views, or explicitly disable vision',400)
+    if images and brain.get('initiativeVision') is False:return json_error('Robot camera autonomy is disabled',403)
+    image_parts=[]
+    for index,photo in enumerate(images):
+        if photo.mimetype.split(';')[0]!='image/jpeg' or not re.fullmatch(r'eye-'+str(index*60)+r'\.jpg',photo.filename or ''):
+            return json_error('Expected six ordered 60-degree head-camera JPEG files',400)
+        jpeg=photo.read(1_000_001)
+        if not 512<=len(jpeg)<=1_000_000 or not jpeg.startswith(b'\xff\xd8'):
+            return json_error('Malformed or oversized JPEG camera frame',400)
+        image_parts.append({'type':'input_image','image_url':'data:image/jpeg;base64,'+base64.b64encode(jpeg).decode('ascii')})
+    stamp=time.time();day=dt.datetime.now(dt.timezone.utc).date().isoformat()
+    with robot_task_lock:
+        last=ROBOT_AUTONOMY_LAST.get((room_id,rid),0)
+        if stamp-last<175:return json_error('Autonomy decision cooldown: wait at least three minutes',429)
+        used=ROBOT_AUTONOMY_DAILY.get((user['id'],day),0)
+        if used>=36:return json_error('Daily autonomous decision budget reached',429)
+        ROBOT_AUTONOMY_LAST[(room_id,rid)]=stamp
+        ROBOT_AUTONOMY_DAILY[(user['id'],day)]=used+1
+        for key in list(ROBOT_AUTONOMY_LAST):
+            if stamp-ROBOT_AUTONOMY_LAST[key]>86400:ROBOT_AUTONOMY_LAST.pop(key,None)
+    allow_changes=request.form.get('allow_changes')=='true'
+    index=[{'id':str(o.get('id',''))[:100],'name':str(o.get('name',''))[:90],
+        'kind':str(o.get('kind',''))[:30],
+        'position':o.get('position') if isinstance(o.get('position'),list) else None,
+        'pickable':o.get('pickable') is True,'furniture':str((o.get('furniture') or {}).get('variant',''))[:35] if isinstance(o.get('furniture'),dict) else ''}
+        for o in objects if isinstance(o,dict) and o.get('id')][:65]
+    instruction=(
+        'You are planning ONE concrete action for an opt-in 3D-world robot operator. The attached ordered 0,60,120,180,240,300-degree images are real snapshots from the avatar head camera, NOT a video. '
+        'Distinguish visible evidence from this JSON scene index. The index provides exact object IDs and positions, but does NOT prove an object is visible. '
+        'Select ONLY one of visit, deliver, build, remove, rest, ask, inspect, idle. '
+        'Return ONLY valid JSON: {"action":"...","target_id":"scene-id or empty", "destination_id":"scene-id or empty", "variant":"chair or bed or sofa or stool or officeChair or table or cabinet", "message":"short question for colleague", "reason":"short fact grounded in perception and objective"}. '
+        'For visit/inspect choose existing target_id. For deliver choose a Pickable target_id and a distinct destination_id. '
+        'For ask choose another robot target_id, and write a helpful short question. '
+        'For rest choose an existing seat target_id or empty if building a new chair is allowed. '
+        'Never invent an object ID or assert a completed action. Never request moving or deleting other users or avatars. '
+        'For idle return action idle and empty IDs. '
+        'Only propose build/remove when allow_changes is true; deletion is additionally restricted by the client to objects this agent built in the current session. '
+        'If there is no feasible action, choose rest or idle; do not fill in fictitious world facts. '
+        'Remember recent success/failure and try another feasible action when blocked. '
+        'Context: '+json.dumps({'objective':goal,'robot':{'id':rid,'name':robot.get('name'), 'position':robot.get('position')},
+            'allow_changes':allow_changes,'memory':[row['event'][:210] for row in memory],
+            'last_result':str(request.form.get('last_result',''))[:350], 'objects':index},ensure_ascii=False)[:12500]
+    )
+    try:
+        answer=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,
+            'input':[{'role':'user','content':[{'type':'input_text','text':instruction}]+image_parts}]})
+        usage=record_usage(user['id'],'muse-spark-1.3','robot-autonomy-plan',answer,images=len(image_parts))
+        plan=parse_autonomy_decision(meta_output_text(answer),objects,rid,allow_changes)
+        if not plan:
+            return jsonify(decision={'action':'idle','target_id':'','destination_id':'','variant':'chair','message':'',
+                'reason':'Meta response was not a valid, authorised scene operation'},usage=usage,validated=False)
+        audit_event('robot-autonomy-proposed',room=room_id,robot_id=rid,action=plan['action'],images=len(image_parts))
+        return jsonify(decision=plan,usage=usage,validated=True,views=len(image_parts),model='muse-spark-1.3')
+    except Exception as exc:
+        audit_event('robot-autonomy-unavailable',room=room_id,robot_id=rid,error=type(exc).__name__)
+        return json_error('Meta autonomous planning failed; no tool action was performed',502)
+
+
+# Robot-to-robot speech is authored by the explicitly enabled agent,
+# not falsely attributed to the human account's chat name. Its recipient can
+# answer through the existing, depth-bounded Meta robot conversation router.
+ROBOT_AUTONOMY_SPEAK_LAST = {}
+@app.post('/api/robots/autonomy/speak')
+def robot_autonomy_speak():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    rid=str(data.get('robot_id',''))[:100]
+    tid=str(data.get('target_id',''))[:100]
+    prompt=str(data.get('text','')).strip()[:240]
+    if not prompt:return json_error('A question or short support request is required',400)
+    with db() as con:
+        scene=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+    objects=json.loads(scene['payload']) if scene else []
+    bots=[o for o in objects if isinstance(o,dict) and o.get('kind')=='robot']
+    bot=next((o for o in bots if o.get('id')==rid),None)
+    other=next((o for o in bots if o.get('id')==tid),None)
+    if not bot or not other or rid==tid:return json_error('Two distinct robots required in the same room',400)
+    if not may_edit(user['id'],bot,room_policy(room_id)):return json_error('Robot operator permission required',403)
+    # Allow a single, short initiative per robot every minute, even when the
+    # same operator has multiple tabs. No hidden server-side dialogue loop.
+    stamp=time.time()
+    with robot_task_lock:
+        if stamp-ROBOT_AUTONOMY_SPEAK_LAST.get((room_id,rid),0)<60:
+            return json_error('Robot autonomous speech cooldown',429)
+        ROBOT_AUTONOMY_SPEAK_LAST[(room_id,rid)]=stamp
+    # Mention only the intended colleague; the initiating robot must never
+    # be queued to answer its own question.
+    name=str(other.get('name','')).strip()[:80]
+    if not name or not re.fullmatch(r'[\w -]{1,80}',name):return json_error('Colleague has no valid addressable name',400)
+    text='@'+name+' '+prompt
+    ident=str(uuid.uuid4());ts=now()
+    with db() as con:
+        con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override,relay_source,relay_depth) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+            (ident,user['id'],'assistant','robot-autonomy',text,'[]',ts,room_id,str(bot.get('name','Robot'))[:100],'',0))
+        con.execute('INSERT INTO robot_memories VALUES (?,?,?,?,?)',
+            (str(uuid.uuid4()),room_id,rid,'Asked '+name+': '+prompt[:180],ts))
+    publish({'type':'chat-created','id':ident,'room':room_id},room_id=room_id)
+    audit_event('robot-autonomy-spoke',room=room_id,robot_id=rid,target_robot_id=tid)
+    return jsonify(message={'id':ident,'role':'assistant','speaker':str(bot.get('name','Robot'))[:100],
+        'model':'robot-autonomy','text':text,'media':'[]','created':ts})
+
 @app.get('/api/robots/memory')
 def robot_memory():
     user,msg,status=actor()
@@ -2535,7 +2692,7 @@ def robot_reaction_queue():
     robots=[o for o in json.loads(scene['payload']) if o.get('kind')=='robot' and str(o.get('name','')).strip()]
     from_robot=m['role']=='assistant'
     speaker=next((o for o in robots if o.get('name')==m['speaker_override']),None) if from_robot else None
-    if from_robot and (not speaker or m['model']!='muse-spark-1.3' or int(m['relay_depth'])>=2):
+    if from_robot and (not speaker or m['model'] not in ('muse-spark-1.3','robot-autonomy') or int(m['relay_depth'])>=2):
         return jsonify(targets=[],note='Robot handoff not eligible')
     if not from_robot and m['role']!='user':return json_error('Unsupported message author',403)
     targets=robot_recipient_queue(m['text'],robots,from_robot,speaker['id'] if speaker else None)
@@ -2559,7 +2716,7 @@ def robot_react():
     robots=[o for o in objects if o.get('kind')=='robot' and str(o.get('name','')).strip()]
     from_robot=m['role']=='assistant'
     speaker=next((o for o in robots if o.get('name')==m['speaker_override']),None) if from_robot else None
-    if from_robot and (not speaker or m['model']!='muse-spark-1.3' or int(m['relay_depth'])>=2):
+    if from_robot and (not speaker or m['model'] not in ('muse-spark-1.3','robot-autonomy') or int(m['relay_depth'])>=2):
         return jsonify(triggered=False,note='Robot relay not eligible or already processed')
     if not from_robot and m['role']!='user':return json_error('Unsupported message author',403)
     addressed_list=robot_recipient_queue(text,robots,from_robot,speaker['id'] if speaker else None)

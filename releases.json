@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.181",
+  "currentVersion": "0.2.182",
   "releases": [
+    {
+      "version": "0.2.182",
+      "publishedAt": "2026-11-04T15:52:05Z",
+      "changes": [
+        "Add opt-in autonomous robot work orders with multi-step delivery, furniture construction, colleague assistance, resting, and model-directed decision loops.",
+        "Reuse existing robot A* routing, physical pickup/drop, authored/procedural seating, editable scene creation/removal and owner permissions; report only verified action outcomes.",
+        "Capture six real 60\u00b0 robot-eye JPEG views for optional Meta Muse Spark 1.3 decision proposals, with existing SAM 3.1 visual search for object detection.",
+        "Restrict AI decisions to a validated action vocabulary and real scene identifiers; bound decisions to three-minute robot cooldowns and daily account quotas; never let models call arbitrary tools.",
+        "Preserve prior multiplayer, GitHub HTTPS watcher, original avatar GLBs, and existing manually configured routines; autonomous loops stop with the tab, room or session."
+      ]
+    },
     {
       "version": "0.2.181",
       "publishedAt": "2026-11-04T14:33:32Z",
@@ -328,19 +339,6 @@
         "Save named procedural settings (variants, dimensions, materials/colours, scale/rotation, physics and interaction flags) for furniture, Basic props, standard geometry, curves/text, ladder and non-lift stairs. New instances are independent objects with new ownership and scene IDs.",
         "Secure Flask/SQLite /api/object-presets with per-user CRUD, bounded finite configurations, safe image previews and exclusion of unrelated uploaded assets. Exclude custom-uploaded texture presets and non-single-object lifts.",
         "Add focused frontend regression tests for preset categories, deep-copy/no scene identity, camera-centre ground ray, scoped checkbox CSS and authenticated gallery wiring. Live browser visual/UI behaviour remains unverified."
-      ]
-    },
-    {
-      "version": "0.2.150",
-      "publishedAt": "2026-11-02T03:04:20Z",
-      "changes": [
-        "Add per-Pickable-object Follow right-hand bone rotation checkbox. Animated metacarpal/palm orientation drives carried model rotation when enabled; opt-out preserves original orientation (useful for javelins).",
-        "Preserve hand orientation through release, with a validated optional quaternion in authoritative object-carry throw packets; save the new field through full/atomic scene, duplication and realm archives.",
-        "Subscribe to Rapier collision-start events for released objects with CCD, use world-space contact points and incoming speed to trigger head/body impact classification.",
-        "Play authored Head Hit or Hit to Body reactions on robot avatars, and one-shot matching clips on imported GLB/FBX scene models when available. No invented fallback animations.",
-        "Render brief, bounded and disposable spark lines at contact points. The ImpactEffects emitter registry is extensible for future particles; sparks are never saved or broadcast as scene objects.",
-        "Mirror eligible hit reactions and sparks with permission-checked recent projectile events, per-target deduplication and physics event expiry. No modifications to user-owned avatar GLBs.",
-        "Add focused runtime coverage for bone-rotation opt-out, contact-based hit and head classification, and network/effect integration."
       ]
     }
   ]

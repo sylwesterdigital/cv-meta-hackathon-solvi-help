@@ -23,6 +23,7 @@ import {createRoomAutosave} from './room-settings-autosave.js';
 import {initCameraBookmarks} from './camera-bookmarks.js';
 import {initExtendedSettings} from './settings-extended.js';
 import {initRobotRoutines} from './robot-routines.js';
+import {initRobotAutonomy} from './robot-autonomy.js';
 import {ROBOT_PATH_ALL_KEY,robotPathVisible,setRobotPath,readPathSelection} from './robot-debug.js';
 
 const $=id=>document.getElementById(id);
@@ -127,7 +128,7 @@ const api={
   const sessionAdmin=activeAdminToken();
   if(sessionAdmin&&url.startsWith('/api/'))headers['X-Solvi-Admin']=sessionAdmin;
   headers['X-Solvi-Tab']=tab;
-  if(['/api/models','/api/chat','/api/robots/react','/api/robots/discussion/step','/api/robots/discussion/start','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
+  if(['/api/models','/api/chat','/api/robots/react','/api/robots/discussion/step','/api/robots/discussion/start','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/robots/autonomy/plan','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
     const key=sessionStorage.getItem('solvi-meta-session-key');if(key)headers['X-Solvi-Model-Key']=key;
   }
   const res=await fetch(url,{...options,headers,cache:'no-store'});
@@ -1467,6 +1468,12 @@ function bindUI(world){
  initRobotRoutines({editor,room:()=>activeRoom,toast,
   captureObservation:async(robot,target)=>{const frame=await captureRobotView(world,robot);if(frame?.size)rememberRobotObservationFrame(robot.userData.editorId,frame,`Routine observation of ${target.name} · local frame, no model analysis`);},
   postDiscussion:async(robot,target,subject)=>{if(target.userData.editorKind!=='robot')return;const message=`@${robot.name} @${target.name} discuss ${subject}; compare evidence, pros and cons and respond to each other.`;const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:message,media:[]})});await bubble(response.message);await reactToRobotMessage(response.message);}});
+ initRobotAutonomy({editor,api,room:()=>activeRoom,toast,
+  postDiscussion:async(robot,target,subject)=>{
+   if(target.userData.editorKind!=='robot')throw Error('Colleague is not a robot');
+   const response=await api.req('/api/robots/autonomy/speak',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:robot.userData.editorId,target_id:target.userData.editorId,text:subject.slice(0,240)})});
+   await bubble(response.message);await reactToRobotMessage(response.message);
+  }});
 
  let realmSwitchVersion=0;
  window.addEventListener('solvi:room-changed',async event=>{
