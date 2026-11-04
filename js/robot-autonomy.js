@@ -1,4 +1,4 @@
-// v0.2.183: opt-in, in-tab robot operator. Never simulates keyboard events:
+// v0.2.184: opt-in, in-tab robot operator. Never simulates keyboard events:
 // the same checked editor/physics tools used by human keys are invoked directly.
 import * as THREE from 'three';
 import {captureRobotView,interruptRobotMission} from './robots.js';
@@ -7,6 +7,7 @@ import {emitBrainTrace,rememberRobotObservationFrame,runRobotVisualSearch} from 
 import {cleanAutonomyOrder,cleanAutonomyDecision,autonomyProximity,autonomyResult,AUTONOMY_FURNITURE} from './robot-autonomy-core.js';
 import {confirmAction} from './app-dialogs.js';
 import {houseBlueprint,houseGoal,operatorFailure,publicPresetIndex,ROBOT_TOOL_DESCRIPTIONS} from './robot-construction-api.js';
+import {metaRetryDelay,workRecoveryPlan,projectOutcome} from './robot-autonomy-policy.js';
 const $=id=>document.getElementById(id);
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const MAX_TRAVEL=90;
@@ -52,6 +53,27 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
 
  const robotFor=id=>editor.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===id);
  const objectFor=id=>editor.items.find(o=>o.userData.editorId===id);
+ const colleague=run=>editor.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId!==run.id&&o.visible);
+ const existingRobotHouse=run=>editor.items.find(o=>o.userData.editorKind==='wall'&&editor.canEdit(o)&&(
+  (o.userData.autonomyCreatedBy===run.id&&o.name?.includes('small house'))||o.name===run.name+' · small house'));
+ // Name checks are a non-destructive continuation hint after a scene reload;
+ // they never grant edit rights or prove who physically built the object.
+ function recovery(run,bot,source='Meta unavailable'){
+  const peer=colleague(run);
+  const hasSeat=editor.items.some(o=>o.userData.editorKind==='furniture'&&['chair','officeChair','bed','sofa','stool'].includes(o.userData.furniture?.variant)&&Math.hypot(o.position.x-bot.position.x,o.position.z-bot.position.z)<10);
+  const plan=workRecoveryPlan({goal:run.order.goal,allowChanges:run.order.allowChanges,house:run.house,
+    existingHouse:!!existingRobotHouse(run),peerId:peer?.userData.editorId||'',attempts:run.recoveryAttempts,hasSeat});
+  const chosen={...plan,recovery:true};
+  if(chosen.action==='build_house')chosen.house=houseBlueprint(/\b(hospital|clinic)\b/i.test(run.order.goal)?{width:8,depth:8}:{})
+  trace(bot,'RECOVERY CHOICE',`${source} · ${plan.action} · ${plan.reason}`);
+  return chosen;
+ }
+ function report(run,bot,plan,status,detail){
+  const payload={room:run.room,robot_id:run.id,action:plan?.action==='site_check'?'visit':plan?.action||'task',status,detail:String(detail).slice(0,440)};
+  if(payload.action==='idle')payload.status='blocked';
+  // Reporting is best-effort and never changes the result of the physical tool.
+  void api.req('/api/robots/autonomy/report',{method:'POST',body:JSON.stringify(payload)}).catch(e=>emitLog(bot,'WORK RECEIPT UNAVAILABLE',e.message));
+ }
  const usable=run=>!run.cancelled&&run.room===room()&&api.online&&api.auth()&&document.visibilityState==='visible'&&!editor.world.renderer.xr.isPresenting;
  function update(){
   const entries=[...runs.values()].map(r=>`${r.name}: ${r.order.mode} · ${r.busy?'working':r.last?.status||'ready'} · ${r.completed} cycle(s)`);
@@ -137,11 +159,28 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
  async function constructHouse(run,bot,input={}){
   if(!run.order.allowChanges)throw Error('House construction requires Allow scene changes');
   requireActive(run,bot);
+  // A new agent session must not reproduce a prior house with the same robot.
+  // This is an audit/continuation, not a claim that it is furnished or inspected.
+  if(!run.house&&run.order.mode==='agent'&&existingRobotHouse(run)){
+   const wall=existingRobotHouse(run);
+   const floor=editor.items.find(o=>o.userData.editorKind==='cube'&&editor.canEdit(o)&&
+     (o.userData.autonomyCreatedBy===run.id&&o.userData.autonomyFloor||o.name===run.name+' · house floor'));
+   const existing=editor.items.filter(o=>o.userData.editorKind==='furniture'&&editor.canEdit(o)&&
+     (o.userData.autonomyCreatedBy===run.id||o.name?.startsWith(run.name+' · '))&&
+     (floor?Math.hypot(o.position.x-floor.position.x,o.position.z-floor.position.z)<10:true));
+   const spec=houseBlueprint(input);
+   run.house={wall,floor,center:{x:floor?.position.x??wall.position.x+spec.width/2,z:floor?.position.z??wall.position.z+spec.depth/2},spec,
+    missing:[],placed:existing.map(o=>o.name),bedsPlaced:existing.filter(o=>o.userData.furniture?.variant==='bed').length,
+    travelChecked:true,inspectionFailed:'Existing structure has not been re-inspected in this new work order'};
+   trace(bot,'PROJECT REUSED','Found a prior robot-built house; no duplicate shell created. Inspect it before declaring the new goal fulfilled.');
+   return 'Found earlier robot-built house and furnishings; new project inspection is still unfinished';
+  }
   const spec=houseBlueprint(input);
   if(!run.house){
    const project=editor.createRobotHouse?.(bot,spec);
    if(!project)throw Error('No clear site for a house; move the robot to an open area and retry');
-   run.house={...project,missing:spec.furnish?['bed','table','chair']:[],placed:[]};
+   const hospital=/\b(hospital|clinic)\b/i.test(run.order.goal);
+   run.house={...project,missing:spec.furnish?(hospital?['bed','bed','bed','table','chair']:['bed','table','chair']):[],placed:[],bedsPlaced:0};
    const owned=created.get(run.id)||new Set();
    owned.add(project.wall.userData.editorId);owned.add(project.floor.userData.editorId);created.set(run.id,owned);
    trace(bot,'CONSTRUCT HOUSE',`Created ${spec.width}×${spec.depth}m room shell, doorway, windows, roof and independent floor · verified scene IDs ${project.wall.userData.editorId}, ${project.floor.userData.editorId}`);
@@ -157,10 +196,13 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    chair:{x:project.center.x+project.spec.width*.23,z:project.center.z-project.spec.depth*.17}};
   for(const variant of [...project.missing]){
    requireActive(run,bot);
-   const furniture=editor.createRobotFurniture?.(bot,variant,{at:positions[variant]});
+   const position=variant==='bed'&&/\b(hospital|clinic)\b/i.test(run.order.goal)?
+    {x:project.center.x-project.spec.width*.28,z:project.center.z+project.spec.depth*(.26-.28*project.bedsPlaced)}:positions[variant];
+   const furniture=editor.createRobotFurniture?.(bot,variant,{at:position});
    if(!furniture){trace(bot,'FURNISH UNFINISHED',`${variant} could not fit; scene kept, no fictional completion`);continue;}
    const owned=created.get(run.id)||new Set();owned.add(furniture.userData.editorId);created.set(run.id,owned);
-   project.missing=project.missing.filter(v=>v!==variant);project.placed.push(furniture.name);
+   project.missing.splice(project.missing.indexOf(variant),1);project.placed.push(furniture.name);
+   if(variant==='bed')project.bedsPlaced++;
    trace(bot,'FURNISH',`${variant} added inside the house · ${furniture.userData.editorId}`);
   }
   const count=project.placed.length;
@@ -219,47 +261,62 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   return frames;
  }
  async function decision(run,bot){
-  const frames=await scan(run,bot,run.order.goal||'Inspect and decide a useful next action');
+  let frames=[];
+  try{frames=await scan(run,bot,run.order.goal||'Inspect and decide a useful next action');}
+  catch(error){
+   requireActive(run,bot);
+   trace(bot,'CAMERA RECOVERY',`360° capture unavailable: ${error.message}; retrying planning without camera images, with no visual claims`);
+  }
   requireActive(run,bot);
   const form=new FormData();form.append('room',run.room);form.append('robot_id',run.id);
   form.append('objective',run.order.goal||'Support other robots and maintain the room; rest when nothing requires attention.');
   form.append('last_result',run.last?JSON.stringify(run.last).slice(0,350):'');
+  form.append('research_notes',run.researchNotes||'');
   form.append('allow_changes',String(run.order.allowChanges));
   for(const {yaw,blob} of frames)form.append('views',blob,`eye-${yaw}.jpg`);
   trace(bot,'META PLANNING',`${frames.length} real camera frames → Meta Muse Spark; proposing ONE validated action, not performing it`);
   let answer;
   try{answer=await api.req('/api/robots/autonomy/plan',{method:'POST',body:form});}
   catch(error){
-   run.metaFailure=error.message;trace(bot,'META FAILED',error.message);
-   // This fallback is permitted only for an explicit house-building instruction
-   // and authorised scene changes. All physical results remain verifiable.
-   if(houseGoal(run.order.goal)&&run.order.allowChanges&&run.house&&!run.house.missing.length){
-    trace(bot,'PROJECT CHECK','House previously built; no need to create a duplicate while Meta is unavailable');
-    return {action:'idle',reason:'House already constructed; Meta unavailable to suggest another task'};
-   }
-   if(houseGoal(run.order.goal)&&run.order.allowChanges){
-    trace(bot,'LOCAL RECOVERY','Meta failed; using the bounded, documented build_house tool, not inventing an LLM decision');
-    return {action:'build_house',house:houseBlueprint(),reason:'Explicit house goal; deterministic fallback after Meta failure'};
-   }
-   throw error;
+   run.metaFailure=error.message;run.metaFailures++;
+   run.nextMetaAt=Date.now()+metaRetryDelay(run.metaFailures);
+   trace(bot,'META FAILED',`${error.message} · retry after ${Math.ceil((run.nextMetaAt-Date.now())/60000)} minute(s); local safe tools remain available`);
+   return recovery(run,bot,'Meta planning failure');
   }
   requireActive(run,bot);
   if(answer.vision_fallback)trace(bot,'VISION LIMIT','Meta rejected six-frame input; text-only retry succeeded, so no image perception is claimed');
   if(answer.validated===false){
    run.metaFailure=answer.decision?.reason||'Invalid model JSON';trace(bot,'MODEL OUTPUT REJECTED',answer.decision?.reason||'Unsupported planning output');
-   if(houseGoal(run.order.goal)&&run.order.allowChanges&&run.house&&!run.house.missing.length)return {action:'idle',reason:'Project already built; no verified new task'};
-   if(houseGoal(run.order.goal)&&run.order.allowChanges)return {action:'build_house',house:houseBlueprint(),reason:'Verified local house plan after invalid model JSON'};
-   throw Error('Meta returned no valid action. Check the model response format and permitted robot tools.');
+   run.metaFailures++;
+   run.nextMetaAt=Date.now()+metaRetryDelay(run.metaFailures);
+   return recovery(run,bot,'Invalid Meta tool call');
   }
   if(answer.decision?.action==='use_preset')await refreshPresets();
   const decision=cleanAutonomyDecision(answer.decision,editor.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind})),run.id,publicPresetIndex(presets));
   if(!decision)throw Error('Model response had no valid scene-grounded action');
   trace(bot,'META PROPOSAL',`${decision.action}: ${decision.reason||'(no reason)'} · Meta usage ~US$${Number(answer.usage?.estimated_usd||0).toFixed(6)}`);
+  run.metaFailures=0;run.nextMetaAt=0;
+  if(decision.action==='idle'&&run.loop)return recovery(run,bot,'Model suggested waiting without resolving the work order');
   return decision;
  }
  async function execute(run,bot,plan){
   const obj=objectFor(plan.target_id),dest=objectFor(plan.destination_id);
-  if(plan.action==='idle')return 'No task available; safely idle';
+  if(plan.action==='site_check'){
+   if(!run.house?.wall||!editor.items.includes(run.house.wall))throw Error('House to inspect is no longer available');
+   await moveTo(run,bot,run.house.wall);
+   run.house.inspectionFailed=null;
+   trace(bot,'SITE CHECK','Arrived at existing structure; no duplicate house created');
+   return 'Rechecked existing house from the exterior';
+  }
+  if(plan.action==='research'){
+   const result=await api.req('/api/robots/autonomy/research',{method:'POST',body:JSON.stringify({room:run.room,robot_id:run.id,topic:run.order.goal})});
+   requireActive(run,bot);
+   const notes=(result.sources||[]).slice(0,2).map(source=>`${source.title}: ${source.summary||''}`).join(' | ');
+   run.researchNotes=notes.slice(0,900);
+   trace(bot,'RESEARCH',notes?`Checked relevant public background: ${(result.sources||[]).map(x=>x.title+' ('+x.url+')').join(' · ')}. Source summaries are not physical build instructions.`:result.finding||'No relevant public source');
+   return notes?'Read relevant public background; construction still requires verified scene tools':'No useful external reference was available; continuing with local scene tools';
+  }
+  if(plan.action==='idle')return 'No safe untried step remains; work order blocked pending new tools, instructions or the next Meta retry';
   if(plan.action==='visit'){await moveTo(run,bot,obj);return `Visited ${obj.name}`;}
   if(plan.action==='deliver')return deliver(run,bot,obj,dest);
   if(plan.action==='build'){const built=await construct(run,bot,plan.variant);return 'Built '+built.name;}
@@ -288,26 +345,45 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   run.busy=true;update();
   try{
    let plan;
-   if(run.order.mode==='agent')plan=await decision(run,bot);
+   if(run.order.mode==='agent'){
+    if(run.nextMetaAt&&Date.now()<run.nextMetaAt){
+     trace(bot,'META BACKOFF',`Avoiding repeated failed requests until ${new Date(run.nextMetaAt).toLocaleTimeString()}`);
+     plan=recovery(run,bot,'Waiting for Meta retry window');
+    }else plan=await decision(run,bot);
+   }
    else if(run.order.mode==='deliver')plan={action:'deliver',target_id:run.order.sourceId,destination_id:run.order.destinationId};
    else if(run.order.mode==='build')plan={action:'build',variant:run.order.variant};
    else if(run.order.mode==='house'){
     const sizes=run.order.goal.match(/(\d+(?:\.\d+)?)\s*(?:×|x|by)\s*(\d+(?:\.\d+)?)/i);
-    plan={action:'build_house',house:houseBlueprint(sizes?{width:Number(sizes[1]),depth:Number(sizes[2])}:{})};
+    plan={action:'build_house',house:houseBlueprint(sizes?{width:Number(sizes[1]),depth:Number(sizes[2])}:/\b(hospital|clinic)\b/i.test(run.order.goal)?{width:8,depth:8}:{})};
    }else if(run.order.mode==='preset')plan={action:'use_preset',preset_id:run.order.presetId};
    else if(run.order.mode==='rest')plan={action:'rest',target_id:run.order.destinationId};
    else plan={action:'ask',target_id:run.order.destinationId,message:run.order.goal};
    requireActive(run,bot);
+   run.pendingAction=plan.action;
+   if(plan.recovery)run.recoveryAttempts[plan.action]=(run.recoveryAttempts[plan.action]||0)+1;
    const detail=await execute(run,bot,plan);
-   run.completed++;run.last=autonomyResult(plan.action,true,detail);
+   const evidence=projectOutcome({house:run.house,goal:run.order.goal});
+   if(plan.action!=='idle')run.completed++;
+   run.last=autonomyResult(plan.action,plan.action!=='idle',detail);
+   if(plan.action==='idle')run.last.status='blocked';
+   else if(run.house&&!evidence.done)run.last.status='partial';
+   if(plan.action==='site_check'&&run.house&&!evidence.done)run.last.status='partial';
    if(plan.action==='build_house'&&(run.house?.missing?.length||run.house?.inspectionFailed))run.last.status='partial';
-   trace(bot,run.last.status==='partial'?'PARTIAL':'COMPLETED',detail);
-   $('autonomyFailure').textContent=(run.metaFailure?'Meta planning unavailable: '+run.metaFailure+'\nVerified local action: ':'Task verified: ')+detail;
+   // A verified tool action is not the same as completing a complex goal.
+   if(run.order.mode==='agent'&&houseGoal(run.order.goal)&&(!run.house||!evidence.done)&&run.last.status==='completed')run.last.status='partial';
+   const remaining=evidence.blockers.join('; ');
+   trace(bot,run.last.status==='completed'&&run.order.mode==='agent'?'STEP VERIFIED':run.last.status==='completed'?'COMPLETED':run.last.status.toUpperCase(),detail+(run.house&&remaining?' · Remaining: '+remaining:''));
+   report(run,bot,plan,run.last.status,detail+(run.house&&remaining?' · Remaining: '+remaining:''));
+   $('autonomyFailure').textContent=(run.metaFailure?'Meta planning unavailable: '+run.metaFailure+'\nVerified local action: ':'Work order: ')+detail+(run.house&&remaining?'\nUNFINISHED: '+remaining:'')+(!run.house&&run.order.mode==='agent'&&houseGoal(run.order.goal)?'\nUNFINISHED: no confirmed house yet':'');
+   if(run.last.status==='blocked'&&run.loop)trace(bot,'AWAITING NEW CAPABILITY','No safe untried tool. Will check for new model availability at the scheduled time; not a completed task.');
    run.metaFailure=null;
   }catch(error){
    const diagnosis=operatorFailure(error);run.last={...autonomyResult('task',false,error.message),diagnosis};
    $('autonomyFailure').textContent=`FAILED · ${diagnosis.code}\n${diagnosis.reason}\nNEXT: ${diagnosis.remedy}`;
    trace(bot,'UNFINISHED',diagnosis.reason+' · Next: '+diagnosis.remedy+' · No unverified completion is claimed');
+   if(run.recoveryAttempts[run.pendingAction])run.recoveryAttempts[run.pendingAction]=Math.max(1,run.recoveryAttempts[run.pendingAction]);
+   report(run,bot,{action:run.pendingAction||'task'},'failed',diagnosis.reason);
   }finally{
    run.busy=false;update();
    if(!run.loop)stop(run.id,run.last?.status||'finished one cycle');
@@ -330,7 +406,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   if(billable&&!await confirmAction(`This ${loop?'loop':'task'} will send billable Meta API requests${order.vision?' with six real head-camera images per decision':''}. ${loop?'Each decision repeats no more frequently than every '+order.interval+' seconds.':'Only one cycle runs.'} Scene changes are ${order.allowChanges?'enabled for robot-built objects':'disabled'}.`,{title:'Enable autonomous robot operator?',confirmLabel:'Enable autonomy'}))return;
   if(!billable&&!await confirmAction(`The robot will ${order.mode} using scene tools${loop?' every '+order.interval+' seconds':''}. Creation is ${order.allowChanges?'enabled':'disabled'}.`,{title:'Start robot work order?',confirmLabel:'Start'}))return;
   stop(order.robotId,'replaced work order');
-  const run={id:order.robotId,name:bot.name,room:order.room,order,loop,token:'autonomy-'+crypto.randomUUID(),step:0,completed:0,last:null,busy:false,cancelled:false,timer:null};
+  const run={id:order.robotId,name:bot.name,room:order.room,order,loop,token:'autonomy-'+crypto.randomUUID(),step:0,completed:0,last:null,busy:false,cancelled:false,timer:null,
+   metaFailures:0,nextMetaAt:0,recoveryAttempts:{},researchNotes:'',pendingAction:'task'};
   runs.set(run.id,run);$('autonomyFailure').textContent='Working · awaiting verified scene tool results.';if(loop)run.timer=setInterval(()=>cycle(run),order.interval*1000);
   trace(bot,'START',`${loop?'Loop':'Once'} · mode ${order.mode} · goal ${order.goal} · 360 vision ${order.vision} · scene changes ${order.allowChanges} · cadence ${order.interval}s`);
   void cycle(run);update();

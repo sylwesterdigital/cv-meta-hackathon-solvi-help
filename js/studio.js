@@ -494,7 +494,7 @@ async function runRobotDiscussion(message,room){
   const opened=await api.req('/api/robots/discussion/start',{method:'POST',body:JSON.stringify({room,message_id:message.id})});
   const topic=opened.topic||'the topic',steps=opened.steps||[];
   const count=(opened.sources||[]).length;
-  $('chatStatus').textContent='Discussion: '+topic+' · '+(count?`${count} external reference(s) retrieved`:'no live sources verified');
+  $('chatStatus').textContent=opened.mode==='work-review'?'Project conversation: '+topic:'Discussion: '+topic+' · '+(count?`${count} external reference(s) retrieved`:'no live sources verified');
   for(const step of steps){
    if(state.cancelled||room!==activeRoom)break;
    if(step.index)await robotSpeech?.waitUntilQuiet();
@@ -504,6 +504,7 @@ async function runRobotDiscussion(message,room){
    if(result.answer){await bubble(result.answer);if(step.phase==='synthesis')$('chatStatus').textContent='Discussion concluded: agreement and differences recorded';}
   }
   if(state.cancelled)$('chatStatus').textContent='Discussion stopped after the last completed robot turn';
+  else if(opened.mode==='work-review')$('chatStatus').textContent='Project conversation finished · next work step recorded';
  }catch(error){$('chatStatus').textContent='Discussion failed: '+error.message;toast('Research discussion: '+error.message);}
  finally{if(discussionRun===state)discussionRun=null;if(stop)stop.hidden=true;}
 }

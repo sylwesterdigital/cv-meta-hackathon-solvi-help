@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.183",
+  "currentVersion": "0.2.184",
   "releases": [
+    {
+      "version": "0.2.184",
+      "publishedAt": "2026-11-04T17:15:59Z",
+      "changes": [
+        "Add deterministic recovery planning to agent loops with bounded retries, Meta exponential backoff, resume of unfinished house furnishing, one site recheck, relevant public research, colleague assistance and rest before reporting a blocked state.",
+        "Avoid duplicate house shells when re-running robot agent work orders. Build a larger, multi-bed bounded structure for hospital goals while explicitly retaining lack of medicine and patient-care tools as incomplete work.",
+        "Persist authenticated, bounded client-reported robot work receipts in SQLite to ground later discussions in actual work steps, failures and remaining tasks.",
+        "Route project status/recent-achievements discussions to a concise two-robot colleague exchange rather than a formal debate with irrelevant [S1] citations; preserve the sourced research debate for genuine evidence questions.",
+        "Allow topic-scoped, rate-limited optional public encyclopedia reading for construction/navigation goals from fixed HTTPS endpoints; do not treat summaries as building standards or code execution.",
+        "Attempt an explicit text-only Meta fallback on six-image TypeError, and continue with permitted scene tools if Meta remains unavailable. Do not imply provider outage is repaired without live verification.",
+        "Add regression tests, preserve deployment watcher, avatar binaries and current scene persistence; live browser, Meta, WebXR and actual scene placements remain to verify."
+      ]
+    },
     {
       "version": "0.2.183",
       "publishedAt": "2026-11-04T16:28:14Z",
@@ -325,20 +338,6 @@
         "Fix blank chat video by retrieving the authenticated video blob, decoding a local preview-frame poster, and playing the direct recording instead of relying on HLS negotiation; expose codec and decode errors.",
         "Report pose/hand landmark detection exceptions to the console and camera status without treating routine TensorFlow Lite or MediaPipe acceleration warnings as fatal.",
         "Automated tests cover inspector layout, keyboard isolation, unified camera stage, video preview/direct playback, pending attachment thumbnails, SVG transport icons and diagnostics. Real webcam, playback and MediaPipe require browser smoke testing."
-      ]
-    },
-    {
-      "version": "0.2.152",
-      "publishedAt": "2026-11-02T13:23:19Z",
-      "changes": [
-        "Unify Basic Furniture numeric inputs and dropdowns with the compact dark Transform inspector appearance; expose one reusable contextual slider for the currently focused numeric property without rendering a slider on every row.",
-        "Preserve numeric focus and linked slider during dimension editing; expand the contextual numeric-slider pattern across compatible Properties inspector fields.",
-        "Fix resetting or entering rotation/position on Dynamic Rapier objects by explicitly synchronising the edited rigid-body pose and clearing inherited velocities without changing ordinary gravity updates.",
-        "Fix presets spawning back at world origin for Dynamic objects: after camera-centre ground placement, also move the Rapier body to the new transform.",
-        "Fix audio-only recording null getTracks crash when both optional video streams were null; log recording exceptions to developer console and display actionable permission/device errors.",
-        "Unify webcam recordings under the single draggable My camera panel with capture status, time, audio-level meter, playback and Attach to chat / Add to scene / Place on surface / Discard actions; keep audio-only recordings in chat composer.",
-        "Retain the My camera feed during recording (no duplicate preview) and display recorded playback in the same panel; use existing window drag and position persistence.",
-        "Add five focused regressions for physics transform edits, preset placement, compact numeric inspector, null audio recording, and single camera interface. Browser/WebRTC and live Rapier gameplay require deployment testing."
       ]
     }
   ]
