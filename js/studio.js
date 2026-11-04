@@ -17,6 +17,7 @@ import {observationTarget,matchesObservationTarget,pickTargetViews} from './targ
 import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,uiScalePercent,safeFontName,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
 import {playCue,primeAudio} from './audio-cues.js';
 import {RobotSpeech} from './robot-speech.js';
+import {installRobotComicBubbles} from './robot-comic-bubbles.js';
 import {ENVIRONMENT_DEFAULTS,normalizeEnvironment} from './scene-environment.js';
 import {createRoomAutosave} from './room-settings-autosave.js';
 import {initCameraBookmarks} from './camera-bookmarks.js';
@@ -246,7 +247,11 @@ async function bubble(entry){
     if(!renderingChat)scrollChatToLatest();
   }).catch(()=>{if(slot.isConnected&&roomAtBubble===activeRoom&&renderEpoch===chatEpoch)slot.textContent='Attachment unavailable';}));
  }
- lastBubbleEntry=entry;if(!renderingChat)scrollChatToLatest();if(!suppressRobotSpeech&&role==='assistant'&&!entry.isBrainTrace)robotSpeech?.speak(entry);
+ lastBubbleEntry=entry;if(!renderingChat)scrollChatToLatest();
+ if(!renderingChat&&role==='assistant'&&!entry.isBrainTrace&&entry.text){
+  window.dispatchEvent(new CustomEvent('solvi:robot-comic',{detail:{name:entry.speaker,text:entry.text,kind:'speech'}}));
+ }
+ if(!suppressRobotSpeech&&role==='assistant'&&!entry.isBrainTrace)robotSpeech?.speak(entry);
 }
 function observeChatAttachment(slot,load){
  // Defer large robot panoramas and thumbnails until they enter the chat viewport.
@@ -1452,6 +1457,7 @@ function bindUI(world){
    speechFrame=requestAnimationFrame(follow);
   };follow();
  });
+ installRobotComicBubbles(world);
  const editor=new SceneEditor(world,toast);setupChatMentions();robotSpeech=new RobotSpeech(world,api,()=>activeRoom,toast);window.addEventListener('solvi:scene-ready',()=>editor.load());
  initCameraBookmarks({world,api,room:()=>activeRoom,getRooms:()=>[...$('roomSelect').options].filter(o=>o.value).map(o=>({id:o.value,title:o.textContent})),uploadFile,toast,post:async body=>{const out=await api.req('/api/message',{method:'POST',body:JSON.stringify(body)});await bubble(out.message);return out;},switchRoom:async target=>{const select=$('roomSelect');if(![...select.options].some(o=>o.value===target))throw Error('Realm is not accessible');select.value=target;select.dispatchEvent(new Event('change'));}});
  initRobotRoutines({editor,room:()=>activeRoom,toast,

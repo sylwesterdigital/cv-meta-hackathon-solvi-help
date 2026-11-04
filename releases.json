@@ -1,6 +1,19 @@
 {
-  "currentVersion": "0.2.176",
+  "currentVersion": "0.2.177",
   "releases": [
+    {
+      "version": "0.2.177",
+      "publishedAt": "2026-11-04T01:11:25Z",
+      "changes": [
+        "Active infrastructure drawing Ctrl/Cmd+Z/Y/Shift+Z now undoes/redoes path vertices, freehand strokes and draft field changes rather than unrelated saved scene history.",
+        "Continuous freehand capture and adaptive path simplification preserve gestures beyond 80 raw points while saving no more than 80 validated control points.",
+        "Restore camera orbit/pan/zoom while creating infrastructure; only left scene clicks append vertices; show a temporary dashed guide from the previous vertex to the pointer.",
+        "Keep fence, hedge, road and wall controls in the existing Properties window; remove meaningless fence/wall Width setting and live-preview functional settings.",
+        "Detect a robot capsule wedged and frozen in a falling animation against edited walls/fences and return it to a last safely grounded pose and Idle.",
+        "Introduce robot head-anchored comic speech/thought overlays, using the user-supplied SVG assets without redistributing the separately uploaded proprietary font.",
+        "Extend automated tests and retain all prior assets, room sync, presets and watcher-compatible application file integrity."
+      ]
+    },
     {
       "version": "0.2.176",
       "publishedAt": "2026-11-04T00:19:49Z",
@@ -327,16 +340,6 @@
         "Add a local Test sphere action to per-avatar Pickup & Throw calibration: immediately place a small sphere in the right palm; press O to throw with the same animation, release timing and Dynamic Rapier physics.",
         "Temporary test spheres expire after twelve seconds and are excluded from room saves, object lists, carry events and physics-state multiplayer packets.",
         "Retain backward compatibility for four-field throwSettings on the backend and add timed-grasp, test-sphere and persistence-regression tests."
-      ]
-    },
-    {
-      "version": "0.2.145",
-      "publishedAt": "2026-11-02T01:16:07Z",
-      "changes": [
-        "Use right-hand middle metacarpal or palm bone ahead of wrist for Pickable objects, with nearby proximal finger bones and rig-independent hand fallback.",
-        "Throw animation retains the object in the moving hand until a configurable release percentage, then detaches before Dynamic Rapier physics and applies a gentle directed impulse.",
-        "Expose compact per-avatar Throw settings: elevation angle, hand-height offset, horizontal direction and release delay; save, reload, duplicate and realm-archive these settings with server validation.",
-        "Add runtime tests for skeletal grip selection, delayed animated release, configurable direction/height and correct replicated release position."
       ]
     }
   ]

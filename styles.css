@@ -2533,3 +2533,27 @@ body>#inspectorValueSlider #inspectorActiveRange{
  #propertiesPanel #furnitureProperties #furniturePropertiesFields .infra-drawing-mode>span{flex-basis:82px!important;width:82px!important;max-width:82px!important}
  #propertiesPanel #furnitureProperties #furniturePropertiesFields .infra-inspector-actions button{font-size:10px!important;padding:5px 4px!important}
 }
+
+/* v0.2.177: OrbitControls receives right/middle drags and zoom while drawing;
+   left scene clicks are consumed by the infrastructure pointer handler. */
+#spatialDrawShield.solvi-infra-pass-through:not([hidden]){pointer-events:none!important;touch-action:auto!important}
+#propertiesPanel #furnitureProperties #furniturePropertiesFields .infra-inspector-actions button{font-size:10.5px!important;gap:2px!important;padding:5px 3px!important}
+
+/* v0.2.177 — robot speech / thought overlays, non-interactive and bounded. */
+#solviComicBubbles{position:fixed;inset:0;pointer-events:none;z-index:113;overflow:hidden;contain:layout style;}
+.solvi-comic-balloon{position:absolute;max-width:min(270px,62vw);width:max-content;min-width:75px;
+ transform:translate(-50%,-100%);box-sizing:border-box;padding:9px 13px 11px;
+ background:#fff;color:#111;border:2.5px solid #111;border-radius:48% / 35%;
+ box-shadow:1px 3px 0 #151515,0 6px 14px #0005;text-align:center;
+ font-family:'ACME Secret Agent','Comic Sans MS','Trebuchet MS',system-ui,sans-serif;
+ font-weight:800;font-size:13px;line-height:1.27;letter-spacing:.01em;
+ overflow-wrap:anywhere;white-space:normal;}
+.solvi-comic-text{position:relative;z-index:1;display:block;}
+.solvi-comic-speech::after{content:'';position:absolute;left:27%;bottom:-22px;width:34px;height:32px;
+ background:#111;mask:url('/assets/ui-icons/speech-bubble-1.svg') center / contain no-repeat;
+ -webkit-mask:url('/assets/ui-icons/speech-bubble-1.svg') center / contain no-repeat;
+ transform:rotate(-18deg);z-index:-1;}
+.solvi-comic-thought{border-radius:48% 52% 45% 55%;font-style:italic;}
+.solvi-comic-thought::after{content:'';position:absolute;left:34%;bottom:-22px;
+ width:13px;height:13px;background:#fff;border:2px solid #111;border-radius:50%;box-shadow:-11px 12px 0 -3px white,-11px 12px 0 -1px #111;}
+@media(max-width:600px){.solvi-comic-balloon{font-size:11px;max-width:190px;padding:7px 10px}}

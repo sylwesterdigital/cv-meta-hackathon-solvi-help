@@ -281,7 +281,7 @@ export class ScenePhysics{
   this.bodies.set(id,body);this.colliders.set(id,collider);this.settings.set(id,signature);
   if(type==='dynamic')body.wakeUp();
   if(isRobot){
-   this.characters.set(id,{verticalSpeed:0,grounded:object.position.y<=.08,previousJump:false,jumpStarted:false,wasAirborne:false,airStartY:null,airStartAt:0,jumpStartedAt:0});
+   this.characters.set(id,{verticalSpeed:0,grounded:object.position.y<=.08,lastSafePose:{x:object.position.x,y:object.position.y,z:object.position.z},wedgedFor:0,previousJump:false,jumpStarted:false,wasAirborne:false,airStartY:null,airStartAt:0,jumpStartedAt:0});
    object.userData.physicsCharacterActive=true;
   }
  }
@@ -686,6 +686,32 @@ export class ScenePhysics{
   const climbing=state.jumpStarted&&state.verticalSpeed>.05;
   state.grounded=resolved.grounded&&supported&&!climbing;
   if(!state.grounded&&state.verticalSpeed>=0&&!jump&&!state.jumpStarted)state.verticalSpeed=-.1;
+  // Recovery for a kinematic capsule pinned inside a new wall/fence collider:
+  // only trigger after the character has been genuinely airborne and vertically
+  // motionless against a collision for >1.25 s. Never teleport a normal jump.
+  if(state.grounded){
+   state.wedgedFor=0;
+   if(!object.userData.robotLadderRide&&!object.userData.robotSeatedTarget){
+    state.lastSafePose={x:resolved.x,y:resolved.y,z:resolved.z};
+   }
+  }else if(!state.jumpStarted&&!object.userData.robotLadderRide&&
+           Math.abs(resolved.y-p.y)<.008&&state.verticalSpeed<-.15){
+   state.wedgedFor=(state.wedgedFor||0)+Math.min(.05,dt);
+  }else state.wedgedFor=0;
+  if(state.wedgedFor>1.25&&state.lastSafePose){
+   const safe=state.lastSafePose;
+   if([safe.x,safe.y,safe.z].every(Number.isFinite)){
+    const next={x:safe.x,y:safe.y+.03,z:safe.z};
+    body.setTranslation(next,true);body.setNextKinematicTranslation(next);
+    object.position.set(next.x,next.y,next.z);
+    state.verticalSpeed=0;state.grounded=true;state.wedgedFor=0;state.airStartY=null;state.airStartAt=0;
+    state.jumpStarted=false;state.wasAirborne=false;
+    object.userData.robotFallActive=false;object.userData.robotJumpActive=false;
+    object.userData.physicsAirborne=false;object.userData.robotReaction=null;
+    object.userData.robotMode='idle';object.userData.robotPlaying=null;
+    return;
+   }
+  }
   const now=performance.now();
   if(!state.grounded){
    if(state.airStartY===null||state.airStartY===undefined)state.airStartY=p.y;

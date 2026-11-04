@@ -130,6 +130,8 @@ test('road lanes are whole numbers and one property-window drawing replaces the 
  assert.match(editor,/infraDrawingFinish/);
  assert.match(drawing,/id\('propertiesPanel'\)\.hidden=false/);
  assert.doesNotMatch(drawing,/infra-draw-panel|ensurePanel\(/);
- assert.doesNotMatch(drawing,/d\.cursor\s*=|points\.push\(new THREE\.Vector3\(d\.cursor/);
+ assert.match(drawing,/new THREE\.LineDashedMaterial/);
+ assert.match(drawing,/updateGuide\(editor\)/);
+ assert.doesNotMatch(drawing,/points\.push\(new THREE\.Vector3\(d\.cursor/);
  assert.match(drawing,/e\.target===id\('spatialDrawShield'\)/);
 });

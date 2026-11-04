@@ -50,7 +50,7 @@ import {cleanOpenings,cutCubeGeometry,surfaceAxis,rectangleFromSurface} from './
 import {setupSpatialTools,renderCurveControls,startCurveDrawing,startFaceDrawing,spatialPointer,cancelSpatialDrawing,openChatMediaPicker,updateMountedMedia} from './spatial-editor.js';
 import {setupObjectPresets} from './object-presets.js';
 import {startVegetationPlot,vegetationPointer,finishVegetationPlot,cancelVegetationPlot} from './vegetation-drawing.js';
-import {startInfrastructureDrawing,infrastructurePointer,finishInfrastructureDrawing,cancelInfrastructureDrawing} from './infrastructure-drawing.js';
+import {startInfrastructureDrawing,infrastructurePointer,finishInfrastructureDrawing,cancelInfrastructureDrawing,drawingUndo,drawingRedo,recordInfrastructureDraftChange} from './infrastructure-drawing.js';
 import {VEGETATION_TYPES} from './procedural-vegetation.js';
 import {canPreset,presetEntry} from './object-preset-data.js';
 import {centreGroundFromCamera,positionNewOnGround} from './scene-placement.js';
@@ -164,7 +164,17 @@ export class SceneEditor{
   for(const [label,options] of groups){const group=document.createElement('div');group.className='add-group';const strong=document.createElement('strong');strong.textContent=label;group.append(strong);
    for(const k of options){const button=document.createElement('button');button.textContent=k[0].toUpperCase()+k.slice(1);button.dataset.objectKind=k;button.onclick=()=>{if(k==='add 3D model'){menu.hidden=true;byId('modelImportFile').click();}else if(k==='media frame'){this.add('media');}else if(k==='walls'){this.startWallDrawing('wall');}else if(k==='closed room'){this.startWallDrawing('wall',true);}else if(k==='stairs'){this.startWallDrawing('stairs');}else if(k==='stairs advanced'){this.startWallDrawing('stairs',false,'advanced');}else if(k==='escalator'){this.startWallDrawing('stairs',false,'escalator');}else if(k==='moving walkway'){this.startWallDrawing('stairs',false,'walkway');}else if(k==='lift'){this.addLift();}else if(FURNITURE_TYPES.includes(k)){this.add('furniture',true,undefined,true,k);}else if(k==='paired portal'){this.addPortalPair();}else if(k==='draw curve in 3d'){this.startCurveDrawing();}else if(k==='draw forest / orchard area'){startVegetationPlot(this,'vegetationArea','forest');}else if(k==='draw brushwood area'){startVegetationPlot(this,'vegetationArea','brushwood');}else if(k==='draw grass / soil plot'){startVegetationPlot(this,'groundPlot');}else if(k==='draw vegetable bed'){startVegetationPlot(this,'cropBed');}else if(k==='draw water / lake patch'){startVegetationPlot(this,'waterPatch');}else if(k.startsWith('draw ')){const infra={ 'draw wall line':'pathWall','draw plank fence':'fence','draw mesh fence':'fence','draw rod fence':'fence','draw hedge':'hedge','draw curb':'curb','draw footpath':'footpath','draw road':'road','draw motorway':'road'}[k];if(infra){if(k==='draw mesh fence')this.infrastructureDefaultStyle='mesh';else if(k==='draw rod fence')this.infrastructureDefaultStyle='rods';else if(k==='draw motorway')this.infrastructureDefaultRoadLanes=4;else this.infrastructureDefaultStyle='plank';startInfrastructureDrawing(this,infra);}}else this.add(k.endsWith(' light')?'light':k,true,k.endsWith(' light')?k.split(' ')[0]:undefined);};group.append(button);}content.append(group);}
   this.setupFurnitureControls();this.setupLadderControls();this.setupWallControls();this.setupSpatialTools();
-  window.addEventListener('keydown',e=>{if(!this.infrastructureDrawing||e.target?.closest?.('input,textarea,select,[contenteditable]'))return;if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();cancelInfrastructureDrawing(this);}else if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();finishInfrastructureDrawing(this);}},true);
+  window.addEventListener('keydown',e=>{
+   if(!this.infrastructureDrawing||e.target?.closest?.('input,textarea,select,[contenteditable]'))return;
+   const cmd=e.metaKey||e.ctrlKey;
+   if(cmd&&(e.code==='KeyZ'||e.code==='KeyY')){
+    e.preventDefault();e.stopImmediatePropagation();
+    if(e.code==='KeyY'||e.shiftKey)drawingRedo(this);else drawingUndo(this);
+    return;
+   }
+   if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();cancelInfrastructureDrawing(this);}
+   else if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();finishInfrastructureDrawing(this);}
+  },true);
   for(const [id,handler] of [['vegetationDrawCancel',()=>cancelVegetationPlot(this)],['vegetationDrawUndo',()=>{this.vegetationDrawing?.points.pop();this.vegetationDrawing&&this.vegetationDrawing.redraw();}],['vegetationDrawSave',()=>finishVegetationPlot(this)]]){const button=byId(id);if(button)button.onclick=handler;}
   window.addEventListener('keydown',e=>{if(!this.vegetationDrawing||e.target?.closest?.('input,textarea,select,[contenteditable]'))return;if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();cancelVegetationPlot(this);}else if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();finishVegetationPlot(this);}},true);this.setupTextGeometryControls();this.setupPortalControls();
   const toolbox=byId('toolboxActions');for(const id of ['addObjectButton','objectsButton','avatarsButton','assetsButton'])toolbox.append(byId(id));toolbox.append(byId('presetsButton'));
@@ -1325,6 +1335,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    disposeEquipmentMedia(obj);
    rebuildFurniture(obj,key==='variant'?{variant:value,color:obj.userData.furniture.color,fabricColor:obj.userData.furniture.fabricColor,texture:obj.userData.furniture.texture}:{...obj.userData.furniture,[key]:value});
    const activeInfrastructureDraw=this.infrastructureDrawing?.editTarget===obj?this.infrastructureDrawing:null;
+   if(activeInfrastructureDraw)recordInfrastructureDraftChange(this,old?.furniture);
    if(!activeInfrastructureDraw){this.physics.sync(obj);syncEquipmentMedia(obj,this);}
    if(key==='infraLanes')target.value=String(obj.userData.furniture.infraLanes);
    if(activeInfrastructureDraw){
@@ -1408,6 +1419,9 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     add('infraStreetlights','Streetlights','checkbox');if(p.infraStreetlights){add('infraLightSpacing','Lamp spacing','number');add('infraLightHeight','Lamp height','number');add('infraLampsOn','Lamps illuminated','checkbox');}
    }
    for(const [k,l] of [['infraWidth','Width (m)'],['infraHeight','Height (m)'],['infraThickness','Thickness']]){
+    // Line length is edited by moving its vertices. Do not expose a fence/wall
+    // "Width" value that cannot affect an individual segment's length.
+    if(k==='infraWidth'&&['fence','pathWall'].includes(p.infraType))continue;
     if((k==='infraHeight'&&!['fence','hedge','pathWall'].includes(p.infraType))||(k==='infraThickness'&&p.infraType==='hedge'))continue;
     add(k,l,'number');
    }
@@ -1449,8 +1463,11 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    actions.append(start);
    if(activeDraw){
     const undo=document.createElement('button');undo.type='button';undo.id='infraDrawingUndo';undo.textContent='Undo';
-    undo.title='Remove last point';undo.setAttribute('aria-label',undo.title);undo.disabled=!activeDraw.points.length;
-    undo.onclick=()=>{const d=this.infrastructureDrawing;if(d?.points.length){d.points.pop();d.redraw?.();}};actions.append(undo);
+    undo.title='Remove last point';undo.setAttribute('aria-label',undo.title);undo.disabled=!activeDraw.undoStack.length;
+    undo.onclick=()=>drawingUndo(this);actions.append(undo);
+    const redo=document.createElement('button');redo.type='button';redo.id='infraDrawingRedo';redo.textContent='Redo';
+    redo.title='Redo last drawing point or stroke';redo.disabled=!activeDraw.redoStack.length;
+    redo.onclick=()=>drawingRedo(this);actions.append(redo);
     const cancel=document.createElement('button');cancel.type='button';cancel.id='infraDrawingCancel';cancel.textContent='Cancel';
     cancel.title='Discard drawing (Escape)';cancel.setAttribute('aria-label',cancel.title);
     cancel.onclick=()=>cancelInfrastructureDrawing(this);actions.append(cancel);
