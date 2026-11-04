@@ -193,7 +193,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.182',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.183',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1522,14 +1522,14 @@ def ai_vision():
                                'output_types':[item.get('type') for item in response.get('output',[]) if isinstance(item,dict)]},
                        usage=usage,note='SAM returns matching object geometry, not a scene description. Bounding boxes are shown; pixel masks are not yet rendered.')
     except Exception as exc:return json_error(str(exc),502)
-# v0.2.182 — Meta camera-grounded, server-scoped autonomy proposals. This
+# v0.2.183 — Meta camera-grounded, server-scoped autonomy proposals. This
 # endpoint NEVER edits scenes; the browser must use authorised scene tools.
 ROBOT_AUTONOMY_LAST = {}
 ROBOT_AUTONOMY_DAILY = {}
-AUTONOMY_ACTIONS = {'visit','deliver','build','remove','rest','ask','inspect','idle'}
+AUTONOMY_ACTIONS = {'visit','deliver','build','build_house','use_preset','remove','rest','ask','inspect','idle'}
 AUTONOMY_BUILD_VARIANTS = {'chair','officeChair','bed','sofa','stool','table','cabinet'}
 
-def validate_autonomy_decision(value,objects,robot_id,allow_changes=False):
+def validate_autonomy_decision(value,objects,robot_id,allow_changes=False,presets=None):
     if not isinstance(value,dict) or value.get('action') not in AUTONOMY_ACTIONS:return None
     action=value['action'];by_id={str(o.get('id')):o for o in objects if isinstance(o,dict)}
     target=str(value.get('target_id') or '')[:100];destination=str(value.get('destination_id') or '')[:100]
@@ -1537,14 +1537,25 @@ def validate_autonomy_decision(value,objects,robot_id,allow_changes=False):
     if action=='deliver' and (not destination or destination not in by_id or destination in (robot_id,target) or by_id[target].get('kind')=='robot'):return None
     if action=='ask' and by_id[target].get('kind')!='robot':return None
     if action=='remove' and by_id[target].get('kind') in ('robot','light'):return None
-    if action in ('build','remove') and not allow_changes:return None
+    if action in ('build','build_house','use_preset','remove') and not allow_changes:return None
+    preset_id=str(value.get('preset_id') or '')[:100]
+    if action=='use_preset' and preset_id not in (presets or []):return None
+    raw_house=value.get('house') if isinstance(value.get('house'),dict) else {}
+    def house_dimension(name,default,minimum,maximum):
+        try:n=float(raw_house.get(name,default))
+        except (TypeError,ValueError):n=default
+        return round(max(minimum,min(maximum,n)),2) if math.isfinite(n) else default
+    house={'width':house_dimension('width',5,3,8),'depth':house_dimension('depth',4,3,8),
+           'height':house_dimension('height',2.8,2.3,4),
+           'roof':raw_house.get('roof') if raw_house.get('roof') in ('flat','shed','pyramid') else 'pyramid',
+           'furnish':raw_house.get('furnish') is not False}
     if action=='rest' and target and (target not in by_id or target==robot_id):return None
     return {'action':action,'target_id':target,'destination_id':destination,
-        'variant':value.get('variant') if value.get('variant') in AUTONOMY_BUILD_VARIANTS else 'chair',
+        'preset_id':preset_id,'house':house,'variant':value.get('variant') if value.get('variant') in AUTONOMY_BUILD_VARIANTS else 'chair',
         'message':str(value.get('message') or '')[:240],
         'reason':str(value.get('reason') or '')[:240]}
 
-def parse_autonomy_decision(text,objects,robot_id,allow_changes=False):
+def parse_autonomy_decision(text,objects,robot_id,allow_changes=False,presets=None):
     if not isinstance(text,str) or len(text)>9000:return None
     # Reject prose or fabricated executable instructions. Only the first JSON
     # object is considered and is revalidated against real room object IDs.
@@ -1553,7 +1564,7 @@ def parse_autonomy_decision(text,objects,robot_id,allow_changes=False):
         body=re.sub(r'^```(?:json)?\s*|\s*```$', '',body,flags=re.I).strip()
     try:data=json.loads(body)
     except (ValueError,TypeError):return None
-    return validate_autonomy_decision(data,objects,robot_id,allow_changes)
+    return validate_autonomy_decision(data,objects,robot_id,allow_changes,presets)
 
 @app.post('/api/robots/autonomy/plan')
 def robot_autonomy_plan():
@@ -1562,7 +1573,7 @@ def robot_autonomy_plan():
     room_id=selected_room(request.form.get('room','main'))
     if not room_id:return json_error('Unknown room',404)
     rid=str(request.form.get('robot_id',''))[:100]
-    goal=str(request.form.get('objective','')).strip()[:600]
+    goal=str(request.form.get('objective','')).strip()[:1800]
     if not goal:return json_error('Objective required',400)
     if not active_model_key():return json_error('Configure a Meta model API key for autonomous decisions',503)
     with db() as con:
@@ -1588,7 +1599,7 @@ def robot_autonomy_plan():
     stamp=time.time();day=dt.datetime.now(dt.timezone.utc).date().isoformat()
     with robot_task_lock:
         last=ROBOT_AUTONOMY_LAST.get((room_id,rid),0)
-        if stamp-last<175:return json_error('Autonomy decision cooldown: wait at least three minutes',429)
+        if stamp-last<175:return jsonify(error='Autonomy decision cooldown: wait at least three minutes',failure_code='rate-limited',retry_after_seconds=max(1,int(175-(stamp-last)))),429
         used=ROBOT_AUTONOMY_DAILY.get((user['id'],day),0)
         if used>=36:return json_error('Daily autonomous decision budget reached',429)
         ROBOT_AUTONOMY_LAST[(room_id,rid)]=stamp
@@ -1596,41 +1607,86 @@ def robot_autonomy_plan():
         for key in list(ROBOT_AUTONOMY_LAST):
             if stamp-ROBOT_AUTONOMY_LAST[key]>86400:ROBOT_AUTONOMY_LAST.pop(key,None)
     allow_changes=request.form.get('allow_changes')=='true'
+    with db() as con:
+        preset_rows=con.execute('SELECT id,name,category,kind,payload FROM object_presets WHERE user_id=? ORDER BY created DESC LIMIT 35',(user['id'],)).fetchall()
+    preset_index=[]
+    for p in preset_rows:
+        if p['kind'] not in ('furniture','wall'):continue
+        payload=json.loads(p['payload'])
+        preset_index.append({'id':p['id'],'name':p['name'][:90],'kind':p['kind'],
+            'category':p['category'],'variant':str((payload.get('furniture') or {}).get('variant',''))[:32] if p['kind']=='furniture' else 'room'})
     index=[{'id':str(o.get('id',''))[:100],'name':str(o.get('name',''))[:90],
         'kind':str(o.get('kind',''))[:30],
         'position':o.get('position') if isinstance(o.get('position'),list) else None,
         'pickable':o.get('pickable') is True,'furniture':str((o.get('furniture') or {}).get('variant',''))[:35] if isinstance(o.get('furniture'),dict) else ''}
         for o in objects if isinstance(o,dict) and o.get('id')][:65]
+    # Public, versioned tool vocabulary, not a UI-driving instruction. The
+    # model can only propose a single action; the editor verifies every tool.
+    tools={'visit':'travel to scene target_id', 'deliver':'pickup target_id, deliver to destination_id',
+           'build':'create a small chair/bed/table/sofa/officeChair/stool/cabinet near robot',
+           'build_house':'create a 3–8m house shell, floor, door, windows, roof and optional furnishings',
+           'use_preset':'place an account-owned Furniture/Architecture preset by preset_id',
+           'remove':'remove only robot-created objects from this session',
+           'rest':'sit on existing seat or create one (if allowed)', 'ask':'ask another robot for help',
+           'inspect':'SAM-inspect an existing object', 'idle':'wait when no safe action'}
     instruction=(
-        'You are planning ONE concrete action for an opt-in 3D-world robot operator. The attached ordered 0,60,120,180,240,300-degree images are real snapshots from the avatar head camera, NOT a video. '
-        'Distinguish visible evidence from this JSON scene index. The index provides exact object IDs and positions, but does NOT prove an object is visible. '
-        'Select ONLY one of visit, deliver, build, remove, rest, ask, inspect, idle. '
-        'Return ONLY valid JSON: {"action":"...","target_id":"scene-id or empty", "destination_id":"scene-id or empty", "variant":"chair or bed or sofa or stool or officeChair or table or cabinet", "message":"short question for colleague", "reason":"short fact grounded in perception and objective"}. '
-        'For visit/inspect choose existing target_id. For deliver choose a Pickable target_id and a distinct destination_id. '
-        'For ask choose another robot target_id, and write a helpful short question. '
-        'For rest choose an existing seat target_id or empty if building a new chair is allowed. '
-        'Never invent an object ID or assert a completed action. Never request moving or deleting other users or avatars. '
-        'For idle return action idle and empty IDs. '
-        'Only propose build/remove when allow_changes is true; deletion is additionally restricted by the client to objects this agent built in the current session. '
-        'If there is no feasible action, choose rest or idle; do not fill in fictitious world facts. '
-        'Remember recent success/failure and try another feasible action when blocked. '
-        'Context: '+json.dumps({'objective':goal,'robot':{'id':rid,'name':robot.get('name'), 'position':robot.get('position')},
-            'allow_changes':allow_changes,'memory':[row['event'][:210] for row in memory],
-            'last_result':str(request.form.get('last_result',''))[:350], 'objects':index},ensure_ascii=False)[:12500]
+        'You are selecting ONE safe tool call for a fictional robot in a 3D world. Use simple practical reasoning. '
+        'The attached camera JPEG views (when provided) are 0,60,120,180,240,300 degrees. '
+        'The scene index has real IDs and positions, but does not prove objects are visible in a camera. '
+        'For a request to construct a little house, prefer build_house if scene changes are enabled; do not merely reply in prose. '
+        'Check available_presets FIRST when they are useful; use_preset only with an actual preset_id. '
+        'For larger tasks, a verified first step can include constructing a complete house with local substeps. '
+        'Return exactly ONE JSON object, without prose or markdown: '
+        '{"action":"build_house","target_id":"","destination_id":"","preset_id":"","house":{"width":5,"depth":4,"height":2.8,"roof":"pyramid","furnish":true},"variant":"chair","message":"","reason":"short practical reason"}. '
+        'Choose the action from available_tools; modify its parameters appropriately. '
+        'Never invent IDs or say any physical task was completed before tool confirmation. '
+        'Use build_house only for an explicit construction goal. Use house dimensions between 3 and 8 metres. '
+        'Do not delete other users, pre-existing scene objects, avatars or lights. '
+        'Do not select build, build_house, use_preset or remove unless allow_changes is true. '
+        'For visit/inspect/ask/deliver use exact IDs from the scene index; ask requires a robot ID. '
+        'If an action failed, use last_result and choose a different feasible action rather than repeating forever. '
+        'If nothing is feasible, return idle with a clear reason. '
+        'Tool API version 1. Context: '+json.dumps({'objective':goal,'robot':{'id':rid,'name':robot.get('name'),'position':robot.get('position')},
+            'available_tools':tools,'allow_changes':allow_changes,'available_presets':preset_index,
+            'memory':[row['event'][:210] for row in memory],
+            'last_result':str(request.form.get('last_result',''))[:600], 'objects':index},ensure_ascii=False)[:14500]
     )
     try:
-        answer=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,
-            'input':[{'role':'user','content':[{'type':'input_text','text':instruction}]+image_parts}]})
-        usage=record_usage(user['id'],'muse-spark-1.3','robot-autonomy-plan',answer,images=len(image_parts))
-        plan=parse_autonomy_decision(meta_output_text(answer),objects,rid,allow_changes)
+        # Try the requested 360° images first. Provider failures are visible,
+        # never disguised as success. Text-only fallback is limited to HTTP
+        # 400/413 (provider rejected multimodal image shape), not outages.
+        vision_fallback=False
+        try:
+            answer=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,
+                'input':[{'role':'user','content':[{'type':'input_text','text':instruction}]+image_parts}]})
+        except Exception as image_error:
+            if not image_parts or not re.search(r'Meta API HTTP (400|413):',str(image_error)):
+                raise
+            vision_fallback=True
+            answer=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,
+                'input':[{'role':'user','content':[{'type':'input_text','text':instruction+'\nThe image request was rejected. No camera frames are supplied in this retry. Ground every claim in scene-index data, not in vision.'}]}]})
+        usage=record_usage(user['id'],'muse-spark-1.3','robot-autonomy-plan',answer,images=0 if vision_fallback else len(image_parts))
+        plan=parse_autonomy_decision(meta_output_text(answer),objects,rid,allow_changes,{p['id'] for p in preset_index})
         if not plan:
+            audit_event('robot-autonomy-invalid-model-plan',room=room_id,robot_id=rid)
             return jsonify(decision={'action':'idle','target_id':'','destination_id':'','variant':'chair','message':'',
-                'reason':'Meta response was not a valid, authorised scene operation'},usage=usage,validated=False)
-        audit_event('robot-autonomy-proposed',room=room_id,robot_id=rid,action=plan['action'],images=len(image_parts))
-        return jsonify(decision=plan,usage=usage,validated=True,views=len(image_parts),model='muse-spark-1.3')
+                'reason':'Meta returned no valid tool call. The editor will not execute model prose.'},usage=usage,validated=False,
+                failure_code='invalid-model-plan',vision_fallback=vision_fallback)
+        audit_event('robot-autonomy-proposed',room=room_id,robot_id=rid,action=plan['action'],images=0 if vision_fallback else len(image_parts))
+        return jsonify(decision=plan,usage=usage,validated=True,views=0 if vision_fallback else len(image_parts),model='muse-spark-1.3',vision_fallback=vision_fallback)
     except Exception as exc:
-        audit_event('robot-autonomy-unavailable',room=room_id,robot_id=rid,error=type(exc).__name__)
-        return json_error('Meta autonomous planning failed; no tool action was performed',502)
+        # An unsuccessful request may be retried without a needless 3-minute
+        # cooldown; the account's daily attempts still count toward its cap.
+        with robot_task_lock:
+            if ROBOT_AUTONOMY_LAST.get((room_id,rid))==stamp:ROBOT_AUTONOMY_LAST.pop((room_id,rid),None)
+        detail=str(exc)
+        hint='Check the Meta model key, provider service and payload support. No scene operation was executed.'
+        code='meta-http' if 'Meta API HTTP' in detail else 'meta-transport'
+        audit_event('robot-autonomy-unavailable',room=room_id,robot_id=rid,error=type(exc).__name__,code=code)
+        return jsonify(error='Meta autonomous planning failed; no tool action was performed',
+            failure_code=code,detail=('Meta API '+re.search(r'HTTP (\d+)',detail).group(0) if re.search(r'HTTP (\d+)',detail) else type(exc).__name__),
+            remedy=hint),502
+
 
 
 # Robot-to-robot speech is authored by the explicitly enabled agent,

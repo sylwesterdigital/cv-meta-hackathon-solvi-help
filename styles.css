@@ -2627,3 +2627,36 @@ body>#inspectorValueSlider #inspectorActiveRange{
 .autonomy-work-order small{display:block;line-height:1.45;overflow-wrap:anywhere}
 .autonomy-work-order .bookmark-actions{display:flex;flex-wrap:wrap;gap:6px}
 .autonomy-work-order .bookmark-actions button{flex:1 0 auto;min-width:max-content}
+
+/* v0.2.183 — independently resizable Routines, larger work-order goal and real tab pages. */
+#robotRoutinePanel.robot-routine-panel{
+ width:min(660px,calc(100vw - 24px));min-width:min(385px,calc(100vw - 24px));
+ height:min(750px,calc(100vh - 110px));min-height:300px;max-height:calc(100vh - 40px);
+ resize:both;overflow:hidden;display:flex;flex-direction:column;
+}
+#robotRoutinePanel .routine-page{min-height:0;min-width:0;overflow-y:auto;flex:1 1 auto;padding:8px 13px 13px}
+#robotRoutinePanel .routine-page[hidden],#robotBrainsPanel [data-brain-page][hidden]{display:none!important}
+#robotRoutinePanel .robot-routine-controls{overflow:visible;min-height:0;padding:6px 2px;gap:10px}
+#robotRoutinePanel .autonomy-work-order{margin:0;padding:0;border:0}
+#robotRoutinePanel .autonomy-work-order>summary{display:none}
+#robotRoutinePanel .autonomy-work-order>.robot-routine-controls{max-height:none!important;overflow:visible!important;padding:6px 2px 10px}
+#robotRoutinePanel #autonomyGoal{box-sizing:border-box;display:block;width:100%;min-height:190px!important;resize:vertical;line-height:1.52;padding:11px 12px;font-size:14px!important}
+#robotRoutinePanel :is(.routines-tabs,.routine-log-controls),#robotBrainsPanel .brains-tabs{display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding:7px 12px;border-bottom:1px solid rgba(155,185,210,.25);flex:0 0 auto}
+#robotRoutinePanel .routines-tabs button,#robotBrainsPanel .brains-tabs button{min-width:0;white-space:nowrap;padding:7px 11px;border-radius:7px;font-size:12px}
+#robotRoutinePanel .routines-tabs button[aria-selected=true],#robotBrainsPanel .brains-tabs button[aria-selected=true]{background:var(--solvi-accent,#76cae7);color:#072133;font-weight:750}
+#robotRoutinePanel .routine-failure{white-space:pre-wrap;overflow-wrap:anywhere;padding:10px 12px;line-height:1.55;border:1px solid rgba(155,185,210,.3);border-radius:8px;color:var(--ui-fg);background:rgba(19,33,46,.7);font-size:12px;max-height:260px;overflow:auto}
+#robotRoutinePanel #autonomyLog{min-height:190px;max-height:none;max-width:100%;overflow:auto;white-space:pre-wrap;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
+#robotRoutinePanel #autonomyApiGuide{max-height:none;white-space:pre-wrap;line-height:1.5}
+#robotBrainsPanel{display:flex;flex-direction:column;overflow:hidden;max-height:94vh}
+#robotBrainsPanel[hidden]{display:none!important}
+#robotBrainsPanel .brains-tabs{gap:4px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
+#robotBrainsPanel .brains-tabs button{flex:0 0 auto}
+#robotBrainsPanel #brainsCopyTop{margin-left:auto}
+#robotBrainsPanel .brains-scroll{flex:1 1 auto;overflow:auto;min-height:0;max-height:none}
+#robotBrainsPanel .brains-scroll>details.brains-section>summary{display:none}
+#robotBrainsPanel .brains-scroll>details.brains-section[open]>.brains-section-body{padding:6px 0}
+#robotBrainsPanel #brainsManualVisionDetails[open]>.brains-section-body{padding:8px 2px}
+#robotBrainsPanel [data-brain-page="log"]{display:flex;flex-direction:column;min-height:300px}
+#robotBrainsPanel #brainsTaskTrace{max-height:none;min-height:280px;flex:1 1 auto}
+#robotBrainsPanel [data-brain-page="memory"] #brainsMemory{max-height:65vh}
+@media(max-width:650px){#robotRoutinePanel.robot-routine-panel{resize:none;min-width:0;max-height:calc(100vh - 85px);height:75vh;left:8px;top:70px;width:calc(100vw - 16px)}#robotBrainsPanel .brains-tabs{padding:6px 8px}#robotBrainsPanel .brains-tabs button{padding:6px 8px}#robotRoutinePanel #autonomyGoal{min-height:140px!important}}

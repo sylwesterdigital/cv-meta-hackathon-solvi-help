@@ -54,6 +54,7 @@ import {startInfrastructureDrawing,infrastructurePointer,finishInfrastructureDra
 import {VEGETATION_TYPES} from './procedural-vegetation.js';
 import {canPreset,presetEntry} from './object-preset-data.js';
 import {centreGroundFromCamera,positionNewOnGround} from './scene-placement.js';
+import {houseBlueprint,houseWallSettings} from './robot-construction-api.js';
 
 const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'];
 const byId=id=>document.getElementById(id);
@@ -1271,7 +1272,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  // Autonomous agents use the same furniture generator, scene ownership,
  // history, collider and persistence path as human Add — without selecting the
  // object or moving the operator's camera/inspector.
- createRobotFurniture(robot,variant='chair'){
+ createRobotFurniture(robot,variant='chair',options={}){
   if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot)||
      !['chair','officeChair','stool','bed','armchair','sofa','table','cabinet'].includes(variant))return null;
   const obj=objectFor('furniture');rebuildFurniture(obj,{variant});obj.userData.physics={mode:'static'};
@@ -1286,6 +1287,12 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
    const x=robot.position.x+Math.sin(heading)*radius,z=robot.position.z+Math.cos(heading)*radius;
    if(!pathBlocked(x,z,obstacles,margin)&&Math.hypot(x-robot.position.x,z-robot.position.z)>margin+1){position={x,z};break;}
   }
+  if(options.at && Number.isFinite(options.at.x)&&Number.isFinite(options.at.z)){
+   const {x,z}=options.at;const bounding={minX:x-size.x/2,maxX:x+size.x/2,minZ:z-size.z/2,maxZ:z+size.z/2};
+   const blocked=obstacles.some(b=>b.minX<bounding.maxX+.08&&b.maxX>bounding.minX-.08&&b.minZ<bounding.maxZ+.08&&b.maxZ>bounding.minZ-.08);
+   if(blocked){this.disposeObject(obj);return null;}
+   position={x,z};
+  }
   if(!position){this.disposeObject(obj);return null;}
   positionNewOnGround(obj,{x:position.x,y:0,z:position.z});
   obj.name=robot.name+' · '+variant;
@@ -1295,6 +1302,93 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   this.items.push(obj);this.world.scene.add(obj);this.physics.sync(obj);
   this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);this.refreshList();
   return obj;
+ }
+ // House construction uses the same procedural Office Wall tool as a human,
+ // plus a separately editable floor cube. A failed site check creates nothing.
+ createRobotHouse(robot,input={}){
+  if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot))return null;
+  const spec=houseBlueprint(input),obstacles=this.navigationObstacles(robot);
+  const clearance=Math.hypot(spec.width,spec.depth)/2+.6;
+  let site=null;
+  for(const radius of [10,14,18,24,30]){
+   for(let i=0;i<12;i++){
+    const heading=robot.rotation.y+i*Math.PI/6;
+    const x=robot.position.x+Math.sin(heading)*radius,z=robot.position.z+Math.cos(heading)*radius;
+    // The entire rectangular footprint, plus a 60cm working margin, must be free.
+    if(!pathBlocked(x,z,obstacles,clearance)){site={x,z};break;}
+   }
+   if(site)break;
+  }
+  if(!site)return null;
+  const wall=objectFor('wall');
+  rebuildOfficeWall(wall,houseWallSettings(spec));
+  wall.position.set(site.x-spec.width/2,0,site.z-spec.depth/2);
+  wall.name=robot.name+' · small house';
+  const floor=objectFor('cube');
+  const dims=sanitisePrimitive('cube',{width:spec.width-.28,height:.12,depth:spec.depth-.28});
+  floor.geometry.dispose();floor.geometry=buildPrimitive('cube',dims);
+  floor.userData.primitive=dims;floor.userData.autonomyFloor=true;floor.name=robot.name+' · house floor';
+  floor.position.set(site.x,.06,site.z);
+  if(floor.material?.color)floor.material.color.set('#a48a69');
+  const owner=window.solviAPI?.auth()?.profile?.id||null;
+  for(const obj of [wall,floor]){
+   obj.userData.ownerId=owner;obj.userData.physics={mode:'static'};
+   obj.userData.autonomyCreatedBy=robot.userData.editorId;
+   obj.userData.autonomyCreatedRoom=window.solviRoom||'main';
+   this.items.push(obj);this.world.scene.add(obj);this.physics.sync(obj);
+   this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);
+  }
+  this.refreshList();
+  return {wall,floor,center:site,spec};
+ }
+ // Saved presets are account-scoped. The caller must obtain them through the
+ // authenticated /api/object-presets endpoint and revalidate the current user.
+ createRobotPreset(robot,saved){
+  if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot)||
+     !saved||!['wall','furniture'].includes(saved.kind))return null;
+  const data=presetEntry(saved.payload);if(!data||data.kind!==saved.kind)return null;
+  const candidate=objectFor(data.kind);
+  if(data.kind==='wall')rebuildOfficeWall(candidate,data.wall||{});
+  else rebuildFurniture(candidate,data.furniture||{});
+  candidate.scale.fromArray(Array.isArray(data.scale)?data.scale:[1,1,1]);
+  const dims=new THREE.Box3().setFromObject(candidate).getSize(new THREE.Vector3());
+  this.disposeObject(candidate);
+  if(!Number.isFinite(dims.x)||dims.x>.0+10||dims.z>10||dims.y>7)return null;
+  const clearance=Math.hypot(dims.x,dims.z)/2+.6;
+  const obstacles=this.navigationObstacles(robot);
+  let position=null;
+  for(const radius of [7,11,16,22,28])for(let i=0;i<8;i++){
+   const angle=robot.rotation.y+i*Math.PI/4;
+   const x=robot.position.x+Math.sin(angle)*radius,z=robot.position.z+Math.cos(angle)*radius;
+   if(!pathBlocked(x,z,obstacles,clearance)){position={x,z};break;}
+  }
+  if(!position)return null;
+  const entry={...data,id:crypto.randomUUID(),name:robot.name+' · '+String(saved.name||'preset').slice(0,75),
+   owner:window.solviAPI?.auth()?.profile?.id||null,physics:{mode:'static'},position:[0,0,0],
+   rotation:Array.isArray(data.rotation)?data.rotation:[0,0,0],scale:Array.isArray(data.scale)?data.scale:[1,1,1]};
+  this.addSceneEntry(entry);
+  const object=this.items.find(o=>o.userData.editorId===entry.id);
+  if(!object)return null;
+  positionNewOnGround(object,{x:position.x,y:0,z:position.z});
+  object.userData.autonomyCreatedBy=robot.userData.editorId;
+  object.userData.autonomyCreatedRoom=window.solviRoom||'main';
+  this.physics.applyEditedPose(object);
+  this.recordEdit(null,this.snapshot(object));this.queueSave(object);this.refreshList();
+  return object;
+ }
+ // Same removal path as the human inspector, but only for session-created items.
+ removeRobotCreatedObject(robot,obj){
+  if(!robot||!obj||!this.items.includes(obj)||['robot','light'].includes(obj.userData.editorKind)||
+   obj.userData.autonomyCreatedBy!==robot.userData.editorId||
+   obj.userData.autonomyCreatedRoom!==(window.solviRoom||'main')||
+   !this.canEdit(robot)||!this.canEdit(obj)||isTransformLocked(obj))return false;
+  const previous=this.snapshot(obj);
+  for(const bot of this.items)if(bot.userData.robotSeatedTarget===obj.userData.editorId)standUp(bot,this);
+  if(this.selected===obj){this.transform.detach();this.selected=null;this.updateInspector();}
+  this.items=this.items.filter(o=>o!==obj);this.world.scene.remove(obj);
+  this.physics.remove(obj.userData.editorId);this.disposeObject(obj);
+  this.recordEdit(previous,null);this.persistRemoval(obj.userData.editorId);this.refreshList();
+  return true;
  }
  // Removal is intentionally narrower than human Delete. Only a robot-owned
  // object created in THIS browser session and room can be removed automatically.
@@ -2297,7 +2391,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   syncRobotPathDebug(){for(const robot of this.items.filter(o=>o.userData.editorKind==='robot')){const route=robot.userData.robotDebugRoute;if(this.robotPathDebugVisible(robot)&&route&&!route.finished)updateRobotPathDebug(this.world,robot,route);else if(!this.robotPathDebugVisible(robot))clearRobotPathDebug(this.world,robot.userData.editorId);}this.updateRobotDebugStatus();}
   navigationObstacles(robot){
     this.world.scene.updateMatrixWorld(true);
-    return this.items.filter(o=>o!==robot&&o.visible&&!o.userData.carriedBy&&!o.userData.storage&&!['light','plane','points','curve'].includes(o.userData.editorKind)).flatMap(o=>{
+    return this.items.filter(o=>o!==robot&&o.visible&&!o.userData.carriedBy&&!o.userData.storage&&!(o.userData.editorKind==='cube'&&o.name?.endsWith(' · house floor'))&&!['light','plane','points','curve'].includes(o.userData.editorKind)).flatMap(o=>{
       if(['wall','stairs'].includes(o.userData.editorKind))return o.children.filter(child=>child.userData.wallSegment||child.userData.stairTread).map((child,i)=>{const b=new THREE.Box3().setFromObject(child);return {minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z,name:(o.name||'Office wall')+' section '+(i+1),kind:'wall',id:o.userData.editorId};});
       // Human-like glTF bounds can swell with animation and accessories. Use a
       // stable feet-centred capsule footprint for other robots instead.

@@ -9,7 +9,7 @@ let activeRobot=null,frame=null,frameURL=null;
 const latestFrames=new Map(),frameHistory=new Map(),taskTraces=new Map();
 export function robotTraceEntries(id){return (taskTraces.get(id)||[]).map(e=>({...e}));}
 export function robotTraceText(id){return robotTraceEntries(id).map(e=>`[${e.at}] ${e.step}: ${e.detail}`).join('\n\n');}
-export function robotTraceExport(id,name='Robot'){return JSON.stringify({schema:'solvi-robot-diagnostics-v1',version:'0.2.69',robot:{id,name},exportedAt:new Date().toISOString(),scope:'this browser tab only; last 1500 events per robot',events:robotTraceEntries(id)},null,2);}
+export function robotTraceExport(id,name='Robot'){return JSON.stringify({schema:'solvi-robot-diagnostics-v1',version:'0.2.183',robot:{id,name},exportedAt:new Date().toISOString(),scope:'this browser tab only; last 1500 events per robot',events:robotTraceEntries(id)},null,2);}
 function rememberFrame(id,blob,label){
  const rec={blob,label,boxes:[],usage:null};latestFrames.set(id,rec);
  const history=frameHistory.get(id)||[];history.push(rec);if(history.length>10)history.shift();frameHistory.set(id,history);
@@ -120,6 +120,17 @@ function showBoxes(boxes){
 }
 export function initRobotBrains(world,api,getRoom,toast){
  const panel=$('robotBrainsPanel');
+ const selectPage=name=>{
+  for(const page of panel.querySelectorAll('[data-brain-page]'))page.hidden=page.dataset.brainPage!==name;
+  for(const button of panel.querySelectorAll('[data-brain-tab]')){
+   const selected=button.dataset.brainTab===name;
+   button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;
+  }
+  for(const details of panel.querySelectorAll('details[data-brain-page]'))details.open=true;
+ };
+ panel.querySelectorAll('[data-brain-tab]').forEach(button=>button.addEventListener('click',()=>selectPage(button.dataset.brainTab)));
+ $('brainsCopyTop').onclick=()=>$('brainsCopyLog').click();
+ selectPage('vision');
  $('closeRobotBrains').onclick=()=>{panel.hidden=true;$('brainsEyeLightbox').hidden=true;document.body.classList.remove('solvi-brain-chat-side-by-side');};
  $('expandBrainsEye').onclick=()=>{if(!frame)return;$('brainsEyeLarge').src=$('brainsEyeImage').src;$('brainsEyeLightbox').hidden=false;};
  $('closeBrainsEyeLightbox').onclick=()=>$('brainsEyeLightbox').hidden=true;
@@ -165,8 +176,8 @@ export function initRobotBrains(world,api,getRoom,toast){
    $('brainsVisionResult').textContent='Capture eyes, then Describe scene with Muse Spark or Find object with SAM 3.1.';
    const previous=latestFrames.get(robot.userData.editorId);
    if(previous)showFrame(previous.blob,previous.label,previous.boxes);
-   renderFrameGallery();$('brainsIdentityDetails').open=false;renderTaskTrace();
-   $('brainsTraceDetails').open=true;panel.hidden=false;refreshMemory();
+   renderFrameGallery();$('brainsIdentityDetails').open=true;renderTaskTrace();
+   $('brainsTraceDetails').open=true;panel.hidden=false;selectPage('vision');refreshMemory();
  }
  window.addEventListener('solvi:open-brains',open);
  window.addEventListener('solvi:brain-trace',event=>{

@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.182",
+  "currentVersion": "0.2.183",
   "releases": [
+    {
+      "version": "0.2.183",
+      "publishedAt": "2026-11-04T16:28:14Z",
+      "changes": [
+        "Redesign Routines with Schedules/Work orders/Runtime log tabs, adjustable window dimensions and expanded 1,800-character goal input; improve failure visibility, recovery suggestions, copyable per-tab routine traces and tool documentation.",
+        "Replace Brains scroll-and-fold interaction with Vision, Identity, Learning, Decision log and Memory tabs; provide one-click Copy log in the top bar alongside existing JSON export.",
+        "Expose a safe, versioned Robot Tool API for bounded house blueprints, account-owned saved Architecture/Furniture presets, existing navigation/carry/seat routines and scene mutation controls.",
+        "Construct real procedural room walls with door, windows and roof, a separately persisted floor, and bed/table/chair where collision-free. Keep operation results explicit and partial on blocked construction.",
+        "Improve Meta autonomy planning validation, provider error diagnostics, 360-degree image request fallback only for incompatible HTTP 400/413, and deterministic construction recovery for explicitly authorized house goals; preserve three-minute cooldown and daily budget.",
+        "Add regression checks, uphold GitHub watcher packaging and avatar GLB preservation; real-browser/Meta/WebXR verification remains required."
+      ]
+    },
     {
       "version": "0.2.182",
       "publishedAt": "2026-11-04T15:52:05Z",
@@ -327,18 +339,6 @@
         "Unify webcam recordings under the single draggable My camera panel with capture status, time, audio-level meter, playback and Attach to chat / Add to scene / Place on surface / Discard actions; keep audio-only recordings in chat composer.",
         "Retain the My camera feed during recording (no duplicate preview) and display recorded playback in the same panel; use existing window drag and position persistence.",
         "Add five focused regressions for physics transform edits, preset placement, compact numeric inspector, null audio recording, and single camera interface. Browser/WebRTC and live Rapier gameplay require deployment testing."
-      ]
-    },
-    {
-      "version": "0.2.151",
-      "publishedAt": "2026-11-02T12:14:39Z",
-      "changes": [
-        "Compact the Pickable, Follow hand rotation and Climbable checkboxes into a two-/three-column left-aligned grid with consistent 15px controls instead of tall full-width rows.",
-        "Place newly created procedural objects and furniture at the viewport centre projected onto the ground plane, grounding the actual mesh bounds rather than applying a fixed forward camera offset.",
-        "Add user-owned, account-persistent procedural Presets gallery with categories, search by name, object preview thumbnails, instant Add and Delete. Presets are accessible from World tools and Add menu.",
-        "Save named procedural settings (variants, dimensions, materials/colours, scale/rotation, physics and interaction flags) for furniture, Basic props, standard geometry, curves/text, ladder and non-lift stairs. New instances are independent objects with new ownership and scene IDs.",
-        "Secure Flask/SQLite /api/object-presets with per-user CRUD, bounded finite configurations, safe image previews and exclusion of unrelated uploaded assets. Exclude custom-uploaded texture presets and non-single-object lifts.",
-        "Add focused frontend regression tests for preset categories, deep-copy/no scene identity, camera-centre ground ray, scoped checkbox CSS and authenticated gallery wiring. Live browser visual/UI behaviour remains unverified."
       ]
     }
   ]

@@ -7,7 +7,7 @@ const objects=[{id:'robot-1',kind:'robot'},{id:'robot-2',kind:'robot'},{id:'parc
 test('work order rejects unbounded cadences and privileges by default',()=>{
  const d=cleanAutonomyOrder({mode:'inject',interval:5,allowChanges:'true',vision:'true',goal:'x'.repeat(950)});
  assert.equal(d.mode,'agent');assert.equal(d.interval,AUTONOMY_MIN_INTERVAL);
- assert.equal(d.allowChanges,false);assert.equal(d.vision,false);assert.equal(d.goal.length,600);
+ assert.equal(d.allowChanges,false);assert.equal(d.vision,false);assert.equal(d.goal.length,950);
  assert.equal(cleanAutonomyOrder({interval:99_999}).interval,3600);
 });
 test('only supported scene-grounded Meta actions are executable',()=>{

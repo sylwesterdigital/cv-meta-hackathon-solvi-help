@@ -135,7 +135,9 @@ const api={
   const data=await res.json().catch(()=>({error:'Invalid server response'}));
   if(!res.ok){if((res.status===401||(res.status===409&&/active (?:in another|session|tab)|session.*(?:expired|conflict)|signed in elsewhere/i.test(data.error||'')))&&auth)needSignIn(data.error||'Session expired or active in another window.');
     if(res.status===403&&url.includes('/api/admin/stats')){clearAdminSession();$('adminStats').textContent='Admin session expired. Unlock from Profile again.';}
-    throw Error(data.error||`${res.status} ${res.statusText}`);}
+    const planError=url.split('?')[0]==='/api/robots/autonomy/plan';
+    const message=planError?[data.error,data.detail,data.failure_code,data.remedy,data.retry_after_seconds?`Retry after ${data.retry_after_seconds}s`:null].filter(Boolean).join(' · '):data.error;
+    throw Error(message||`${res.status} ${res.statusText}`);}
   return data;
  },
  async mediaBlobInfo(id){if(!auth)throw Error('Sign in to view media');const res=await fetch(`/api/media/${encodeURIComponent(id)}`,{headers:{Authorization:'Bearer '+auth.token,'X-Solvi-Tab':tab}});if([401,409].includes(res.status))needSignIn('Media session expired');if(!res.ok)throw Error('Media unavailable');const blob=await res.blob();return {id,url:URL.createObjectURL(blob),mime:blob.type,name:decodeURIComponent(res.headers.get('X-Solvi-File-Name')||''),blob};},
