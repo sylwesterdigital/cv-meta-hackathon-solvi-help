@@ -1,3 +1,18 @@
+# SOLVI.help Master LLM Handover — v0.2.176
+
+## v0.2.176 — Compact, consistent infrastructure Properties and real material finishes
+
+- The infrastructure drawing workflow lives solely in the standard draggable **Properties** inspector. Its drawing controls render **one horizontal row** with an accent-coloured **Save wall / Save road / Save fence / Save hedge / Save path** action, **Undo**, and **Cancel**; the action labels remain readable at compact and mobile widths.
+- **Save** is the explicit commit point: drafts remain temporary 3D scene previews, are not persisted/transmitted until Save (or Enter), and Cancel restores the previously saved object or discards a new draft. Esc is also available. Single-line / multiline / freehand are preserved.
+- The previous 54 px furniture-grid selector forced status into vertical one-word columns. `.infra-inspector-status` and `.infra-inspector-actions` no longer have the `furniture-field-full` class; new high-specificity rules span all grid columns. Status is now a compact single-line `N points · Live construction` caption, not multi-line instructions. Drawing mode is likewise full-width with an accessible label.
+- **Texture / variation seed** is no longer exposed in Properties. It remains an internal, stable seed for asphalt grain and saved legacy infrastructure. The **Material finish** selector for walls/fences now uses SOLVI's existing `wallPresetTexture()` generator for Wood, Concrete, Bricks, Metal, Plaster, Marble and Granite, with metal roughness/metalness settings. Road/footpath surface types remain separate (Asphalt, Concrete, Gravel, Pavers, Earth). No external asset dependency.
+- New `infraTexture` key is cleaned by `cleanInfrastructure()`, persists via `sanitiseFurniture()` and scene presets, and is accepted by backend `valid_basic_furniture()` with a default of `none` for legacy scene payloads.
+- Updated regression coverage for compact controls, named texture options, sanitizer defaults and source-level checks; preserve full syntax/test, complete hashed manifest, unchanged bundled avatar GLBs. Live DOM/WebGL tests still need browser verification.
+
+**Files**: `js/editor.js`, `js/infrastructure-drawing.js`, `js/procedural-infrastructure.js`, `styles.css`, `backend/server.py`, `tests/release-173-infrastructure.test.mjs`, `tests/release-176-infrastructure-inspector-ux.test.mjs`, frontend/backend version metadata.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.175
 
 ## Release v0.2.175 — LIVE 3D INFRASTRUCTURE CONSTRUCTION PREVIEW

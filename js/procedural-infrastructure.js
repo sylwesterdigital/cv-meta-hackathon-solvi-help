@@ -1,6 +1,7 @@
 // SOLVI v0.2.174 — continuous-road, bounded outdoor paths, roads, fences and hedges.
 // All generated components are children of ONE persistent furniture entity.
 import * as THREE from 'three';
+import {wallPresetTexture} from './office-walls.js';
 
 export const INFRASTRUCTURE_VARIANTS=['road','footpath','curb','fence','hedge','pathWall'];
 export const INFRASTRUCTURE_NUMERIC={
@@ -33,6 +34,7 @@ export function cleanInfrastructure(raw={}){
  p.infraColour=hex(raw.infraColour,'#62696e');
  p.infraMarkingColour=hex(raw.infraMarkingColour,'#ebeadc');
  p.infraHedgeColour=hex(raw.infraHedgeColour,'#497e43');
+ p.infraTexture=['none','wood','concrete','bricks','metal','plaster','marble','granite'].includes(raw.infraTexture)?raw.infraTexture:'none';
  p.infraPoints=cleanInfrastructurePoints(raw.infraPoints);
  for(const [key,[def,min,max]] of Object.entries(INFRASTRUCTURE_NUMERIC)){
   const value=Number(raw[key]);let n=raw[key]!==undefined&&Number.isFinite(value)?Math.max(min,Math.min(max,value)):def;
@@ -261,7 +263,15 @@ function addFence(seg,p,parts,batches,materials){
 export function infrastructureParts(raw){
  const p=cleanInfrastructure(raw),parts=[],segments=infrastructureSegments(p);
  const path=infrastructurePath(p);
- const materials={surface:surfaceMaterial(p),frame:standard(p.infraColour,{metalness:p.infraStyle==='rods'||p.infraStyle==='mesh'?.52:0}),concrete:standard('#9b9992'),marking:standard(p.infraMarkingColour),centre:standard('#e9be4b'),edge:standard('#dfdfd2'),leaf:standard(p.infraHedgeColour,{flatShading:true})};
+ const materials={surface:surfaceMaterial(p),frame:standard(p.infraColour,{metalness:p.infraStyle==='rods'||p.infraStyle==='mesh'||p.infraTexture==='metal'?.52:0}),concrete:standard('#9b9992'),marking:standard(p.infraMarkingColour),centre:standard('#e9be4b'),edge:standard('#dfdfd2'),leaf:standard(p.infraHedgeColour,{flatShading:true})};
+ if(p.infraTexture!=='none'&&['pathWall','fence'].includes(p.infraType)){
+  // Share SOLVI's existing material preset renderer with ordinary walls.
+  const preset=p.infraTexture==='metal'?'concrete':p.infraTexture;
+  materials.frame.map=wallPresetTexture(preset,{scale:1,distortion:.35,contrast:1.1});
+  materials.frame.needsUpdate=true;
+  if(p.infraTexture==='metal'){materials.frame.metalness=.72;materials.frame.roughness=.34;}
+ }
+
  const batches={posts:[],pickets:[],rods:[],meshWires:[],leaves:[],stripes:[],lampPosts:[],lampHeads:[]};
  if(['road','footpath','curb'].includes(p.infraType)){
   const width=p.infraType==='curb'?Math.max(.12,p.infraWidth*.12):p.infraWidth;

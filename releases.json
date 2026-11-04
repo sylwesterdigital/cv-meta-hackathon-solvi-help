@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.175",
+  "currentVersion": "0.2.176",
   "releases": [
+    {
+      "version": "0.2.176",
+      "publishedAt": "2026-11-04T00:19:49Z",
+      "changes": [
+        "Replace fragmented Finish/Undo/Cancel controls and unreadable column-wrapped status with a single full-width inline row: an accent-coloured, descriptive Save construction action, Undo and Cancel, plus a concise single-line preview status in the standard draggable Properties inspector.",
+        "Fix the 54px legacy furniture-column CSS override that squeezed drawing status and drawing mode into vertical letter stacks; keep the compact three-column property grid unchanged for normal settings.",
+        "Remove the exposed arbitrary texture/variation seed from infrastructure Properties; add actual selectable Wood, Concrete, Brick, Metal, Plaster, Marble and Granite finishes for solid walls and fences using SOLVI\u2019s existing procedural texture generator.",
+        "Keep the deterministic internal material seed for asphalt/paving texture generation, but make roads use named surface presets and walls/fences use visible named finishes; validate infraTexture on the backend with legacy defaults.",
+        "Retain unsaved 3D live previews, single-line, polyline and freehand modes, existing scene persistence, undo/cancel restoration, multiplayer and avatar GLBs; test focused UI, sanitizer, backend and archive watcher consistency."
+      ]
+    },
     {
       "version": "0.2.175",
       "publishedAt": "2026-11-03T23:23:02Z",
@@ -326,16 +337,6 @@
         "Throw animation retains the object in the moving hand until a configurable release percentage, then detaches before Dynamic Rapier physics and applies a gentle directed impulse.",
         "Expose compact per-avatar Throw settings: elevation angle, hand-height offset, horizontal direction and release delay; save, reload, duplicate and realm-archive these settings with server validation.",
         "Add runtime tests for skeletal grip selection, delayed animated release, configurable direction/height and correct replicated release position."
-      ]
-    },
-    {
-      "version": "0.2.144",
-      "publishedAt": "2026-11-02T00:33:30Z",
-      "changes": [
-        "Use only one non-looping Lifting animation for pickup (I); stop overriding animation once the object is in hand so Idle, Walk and Run work normally while carrying.",
-        "Throw (O) detaches the object immediately, then rebuilds its Dynamic Rapier collider and applies a bounded, mass-scaled forward impulse from hand height with a small vertical arc.",
-        "Reset stale rigid-body velocity before the throw and preserve object-save and multiplayer throw events; validate authoritative remote release positions.",
-        "Add five executable regressions for single Lifting action, Idle/Walk/Run while held, detach-before-impulse, hand-height forward launch and remote throw."
       ]
     }
   ]

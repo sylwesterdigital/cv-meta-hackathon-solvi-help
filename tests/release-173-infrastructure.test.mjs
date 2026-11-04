@@ -124,7 +124,8 @@ test('road lanes are whole numbers and one property-window drawing replaces the 
  assert.equal(lib.cleanInfrastructure({infraLanes:2.03}).infraLanes,2);
  assert.equal(lib.cleanInfrastructure({infraLanes:5.8}).infraLanes,6);
  const editor=read('js/editor.js'),drawing=read('js/infrastructure-drawing.js');
- assert.match(editor,/infraLanes','infraSeed'/);
+ assert.match(editor,/infraLanes'/);
+ assert.doesNotMatch(editor,/Texture \/ variation seed/);
  assert.match(editor,/infraDrawingMode/);
  assert.match(editor,/infraDrawingFinish/);
  assert.match(drawing,/id\('propertiesPanel'\)\.hidden=false/);

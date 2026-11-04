@@ -1,4 +1,4 @@
-// SOLVI v0.2.175 — infrastructure drawing lives in the normal Properties panel.
+// SOLVI v0.2.176 — infrastructure drawing lives in the normal Properties panel.
 // The canvas receives the path; no extra floating window, no cursor-attached
 // phantom segment, and no saved scene object until the path is finished.
 // As each committed point arrives, draw the ACTUAL textured geometry, not a line.
@@ -67,9 +67,9 @@ function redraw(editor){
  }
  const status=id('infraDrawingStatus'),undo=id('infraDrawingUndo'),done=id('infraDrawingFinish');
  if(status)status.textContent=d.points.length>=2
-  ?`${d.points.length} placed points · Live construction · Change settings or Finish to save`
-  :d.points.length===1?'1 point placed · Click the next point to construct the object'
-  :'Click the ground to place the first point';
+  ?`${d.points.length} points · Live construction`
+  :d.points.length===1?'1 point · Add the next point'
+  :'Click ground to begin drawing';
  if(undo)undo.disabled=d.points.length===0;
  if(done)done.disabled=d.points.length<2;
 }

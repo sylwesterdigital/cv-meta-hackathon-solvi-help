@@ -1359,7 +1359,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    if(type==='select')for(const [value,title] of choices){const item=document.createElement('option');item.value=value;item.textContent=title;control.append(item);}
    else if(type==='checkbox')control.type='checkbox';
    else if(type==='color')control.type='color';
-   else{control.type='number';control.className='inspector-compact-number';const [,min,max]=FURNITURE_NUMERIC[key];control.min=String(min);control.max=String(max);control.step=['shelves','corners','seats','infraLanes','infraSeed'].includes(key)?'1':'.01';control.setAttribute('aria-label',label);}
+   else{control.type='number';control.className='inspector-compact-number';const [,min,max]=FURNITURE_NUMERIC[key];control.min=String(min);control.max=String(max);control.step=['shelves','corners','seats','infraLanes'].includes(key)?'1':'.01';control.setAttribute('aria-label',label);}
    if(type==='checkbox')control.checked=p[key];else control.value=p[key];control.disabled=!this.canEdit(obj);
    holder.append(caption,control);
    root.append(holder);
@@ -1416,10 +1416,14 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    if(p.infraType==='hedge'){add('infraHedgeDensity','Hedge density','number');add('infraHedgeColour','Leaves colour','color');}
    if(p.infraType==='road'&&p.infraCurbs)add('infraCurbHeight','Curb height','number');
    add('infraColour',p.infraType==='hedge'?'Branch colour':'Material colour','color');
-   add('infraSmooth','Smooth corners','checkbox');add('infraClose','Close path','checkbox');add('infraSeed','Texture / variation seed','number');
+   if(['pathWall','fence'].includes(p.infraType))add('infraTexture','Material finish','select',[
+    ['none','Plain / colour'],['wood','Wood'],['concrete','Concrete'],['bricks','Brick'],
+    ['metal','Metal'],['plaster','Plaster'],['marble','Marble'],['granite','Granite']
+   ]);
+   add('infraSmooth','Smooth corners','checkbox');add('infraClose','Close path','checkbox');
    const activeDraw=this.infrastructureDrawing?.editTarget===obj?this.infrastructureDrawing:null;
-   const modeLabel=document.createElement('label');modeLabel.className='furniture-param furniture-field-full';
-   const caption=document.createElement('span');caption.textContent='Draw mode';
+   const modeLabel=document.createElement('label');modeLabel.className='infra-drawing-mode furniture-param';
+   const caption=document.createElement('span');caption.textContent='Drawing mode';
    const mode=document.createElement('select');mode.id='infraDrawingMode';mode.setAttribute('aria-label','Infrastructure drawing mode');
    for(const [value,title] of [['line','Single line'],['polyline','Multi-line / polyline'],['freehand','Freehand stroke']]){
     const opt=document.createElement('option');opt.value=value;opt.textContent=title;mode.append(opt);
@@ -1427,19 +1431,31 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    mode.value=activeDraw?.mode||'polyline';
    mode.onchange=()=>{const d=this.infrastructureDrawing;if(d&&d.editTarget===obj){d.mode=mode.value;d.drawing=false;}};
    modeLabel.append(caption,mode);root.append(modeLabel);
-   const actions=document.createElement('div');actions.className='infra-inspector-actions furniture-field-full';
-   const start=document.createElement('button');start.type='button';start.id=activeDraw?'infraDrawingFinish':'infraDrawingStart';start.textContent=activeDraw?'Finish path':'Draw / redraw path';
+   if(activeDraw){
+    const status=document.createElement('div');status.className='infra-inspector-status';status.id='infraDrawingStatus';
+    status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+    status.textContent=activeDraw.points.length>=2?`${activeDraw.points.length} points · Live construction`:activeDraw.points.length?'1 point · Add the next point':'Click the ground to start drawing';
+    root.append(status);
+   }
+   const actions=document.createElement('div');actions.className='infra-inspector-actions';
+   const start=document.createElement('button');start.type='button';start.id=activeDraw?'infraDrawingFinish':'infraDrawingStart';
+   const subject={road:'road',footpath:'footpath',curb:'curb',fence:'fence',hedge:'hedge',pathWall:'wall'}[p.infraType]||'path';
+   start.textContent=activeDraw?'Save '+subject:'Draw / redraw';
+   start.className=activeDraw?'primary infra-drawing-save':'infra-drawing-start';
+   start.disabled=Boolean(activeDraw&&activeDraw.points.length<2);
+   start.title=activeDraw?'Save this '+subject+' to the scene (Enter)':'Edit this construction on the ground';
+   start.setAttribute('aria-label',start.title);
    start.onclick=()=>activeDraw?finishInfrastructureDrawing(this):startInfrastructureDrawing(this,p.infraType,mode.value,obj);
    actions.append(start);
    if(activeDraw){
-    const undo=document.createElement('button');undo.type='button';undo.id='infraDrawingUndo';undo.textContent='Undo point';
+    const undo=document.createElement('button');undo.type='button';undo.id='infraDrawingUndo';undo.textContent='Undo';
+    undo.title='Remove last point';undo.setAttribute('aria-label',undo.title);undo.disabled=!activeDraw.points.length;
     undo.onclick=()=>{const d=this.infrastructureDrawing;if(d?.points.length){d.points.pop();d.redraw?.();}};actions.append(undo);
     const cancel=document.createElement('button');cancel.type='button';cancel.id='infraDrawingCancel';cancel.textContent='Cancel';
+    cancel.title='Discard drawing (Escape)';cancel.setAttribute('aria-label',cancel.title);
     cancel.onclick=()=>cancelInfrastructureDrawing(this);actions.append(cancel);
    }
    root.append(actions);
-   if(activeDraw){const status=document.createElement('div');status.className='infra-inspector-status furniture-field-full';status.id='infraDrawingStatus';
-    status.textContent=activeDraw.points.length?`${activeDraw.points.length} points · Enter to finish`:'Click on the ground to draw · Enter to finish';root.append(status);}
 
   }
   if(VEGETATION_TYPES.includes(p.variant)){
