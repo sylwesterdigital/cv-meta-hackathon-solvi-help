@@ -294,6 +294,92 @@ def github_https(*args,timeout=50):
     return run(['git','-c','credential.interactive=never',*args],cwd=ROOT,timeout=timeout,
                env={**os.environ,'GIT_TERMINAL_PROMPT':'0'})
 
+# SOLVI_GITHUB_TRANSIENT_PUSH_V3
+GITHUB_PENDING_FILE=STATE/'github-pending.json'
+
+def github_remote_matches(expected):
+    """An HTTP 500 can happen *after* GitHub accepted the new commit."""
+    try:
+        return github_https('ls-remote',GITHUB,'refs/heads/main',timeout=40).startswith(expected+'\t')
+    except (ReleaseError,subprocess.TimeoutExpired):
+        return False
+
+def github_is_transient_5xx(output):
+    """Never mistake authentication/rejected/permission errors for outages."""
+    lowered=output.lower()
+    if any(word in lowered for word in ('permission denied','authentication failed',
+                                        'repository not found','non-fast-forward',
+                                        'protected branch','permission to ',
+                                        '403 forbidden','401 unauthorized')):
+        return False
+    return (('internal server error' in lowered) or
+            bool(re.search(r'(?:http(?:/\d(?:\.\d)?)?\s*|http code\s*|error:\s*)(?:500|502|503|504)\b',lowered)) or
+            bool(re.search(r'requested url returned error:\s*(?:500|502|503|504)\b',lowered)) or
+            any(x in lowered for x in ('502 bad gateway','503 service unavailable',
+                                      '504 gateway timeout','remote: internal server error')))
+
+def github_pending_save(version,expected):
+    STATE.mkdir(parents=True,exist_ok=True)
+    record={'version':version,'commit':expected,'utc':dt.datetime.now(dt.timezone.utc).isoformat(),
+            'reason':'GitHub HTTPS transient server error; local commit pending push',
+            'remote':GITHUB}
+    tmp=GITHUB_PENDING_FILE.with_suffix('.json.tmp')
+    tmp.write_text(json.dumps(record,indent=2)+'\n',encoding='utf-8')
+    tmp.replace(GITHUB_PENDING_FILE)
+
+def github_pending_clear():
+    try:GITHUB_PENDING_FILE.unlink()
+    except FileNotFoundError:pass
+
+def github_push_resilient(version,attempts=3):
+    """Return True after remote commit verification, False only for GitHub 5xx.
+
+    The local git commit is never rewritten or reset; HEAD remains available for
+    later pushes. Other Git failures always raise, preventing an unsafe deploy.
+    """
+    expected=run(['git','rev-parse','HEAD'],cwd=ROOT)
+    if github_remote_matches(expected):
+        github_pending_clear()
+        display('GitHub main already matches local HEAD','EVENT')
+        return True
+    for attempt in range(1,attempts+1):
+        args=['git','-c','credential.interactive=never','-c','http.version=HTTP/1.1',
+              'push','-u','origin','main']
+        display(f'GitHub HTTPS push attempt {attempt}/{attempts}','EVENT')
+        env={**os.environ,'GIT_TERMINAL_PROMPT':'0'}
+        try:
+            proc=subprocess.run(args,cwd=ROOT,stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,text=True,timeout=95,env=env)
+        except subprocess.TimeoutExpired:
+            # A timeout is not proof of a transient GitHub 5xx. Check whether
+            # GitHub accepted HEAD; otherwise fail safely.
+            if github_remote_matches(expected):
+                github_pending_clear();return True
+            raise ReleaseError('GitHub push timed out; remote acceptance unverified; Ubuntu not changed')
+        output=proc.stdout or ''
+        if _log and output:
+            with _log.open('a',encoding='utf-8') as log:log.write(output+'\n')
+        if proc.returncode==0:
+            if not github_remote_matches(expected):
+                raise ReleaseError('GitHub push completed, but remote HEAD verification failed; Ubuntu not changed')
+            github_pending_clear()
+            display('GitHub main updated and verified','PASS')
+            return True
+        # A failed push might already have committed on the remote.
+        if github_remote_matches(expected):
+            github_pending_clear()
+            display('GitHub accepted local HEAD despite failed push response','EVENT')
+            return True
+        if not github_is_transient_5xx(output):
+            if output:print('\n'.join(output.splitlines()[-6:]),flush=True)
+            raise ReleaseError('GitHub push rejected for a non-5xx reason; Ubuntu deployment blocked')
+        display(f'GitHub returned a transient 5xx on push {attempt}/{attempts}','WARN')
+        if attempt<attempts:
+            time.sleep(min(2*attempt,5))
+    github_pending_save(version,expected)
+    display('GitHub still returning 5xx: local commit retained; GitHub sync PENDING','WARN')
+    return False
+
 def git_preflight(stage):
     display('Checking local Git, branch and GitHub HTTPS credentials','STEP')
     if not (ROOT/'.git').exists():raise ReleaseError('Run inside the cloned Git repository root (missing .git)')
@@ -415,12 +501,7 @@ def update_git(stage,manifest):
         raise
     current=run(['git','remote','get-url','origin'],cwd=ROOT)
     if current!=GITHUB:run(['git','remote','set-url','origin',GITHUB],cwd=ROOT)
-    github_https('push','-u','origin','main',timeout=95)
-    expected=run(['git','rev-parse','HEAD'],cwd=ROOT)
-    remote=github_https('ls-remote',GITHUB,'refs/heads/main',timeout=40)
-    if not remote.startswith(expected+'\t'):
-        raise ReleaseError('GitHub main does not match local HEAD after push')
-    display('GitHub main updated and verified','PASS')
+    return github_push_resilient(manifest['version'])
 
 def publish(stage,version):
     display('Staging on Ubuntu and backing up previous public files','STEP')
@@ -506,18 +587,21 @@ def process(archive,dry):
             display(f'DRY RUN PASSED — v{manifest["version"]}; NOT deployed or pushed','PASS')
             return
         announce('github','[4/5] Committing and pushing to GitHub main…')
-        update_git(stage,manifest)
-        _RUN['git']=True
-        display('[4/5] GITHUB UPDATED — main','EVENT')
+        github_pushed=update_git(stage,manifest)
+        _RUN['git']=bool(github_pushed)
+        if github_pushed:
+            display('[4/5] GITHUB UPDATED — main','EVENT')
+        else:
+            display('[4/5] GITHUB PENDING — transient server 5xx; local commit retained','WARN')
         announce('server','[5/5] Deploying Ubuntu files and checking public HTTPS…')
         try:publish(stage,manifest['version'])
         except Exception:
-            display('GitHub already updated; Ubuntu deployment failed. Server rollback attempted.','WARN')
+            display('Ubuntu deployment failed; server rollback attempted. GitHub state retained.','WARN')
             raise
         _RUN['server']=True
         (STATE/'deployed.json').write_text(json.dumps({'version':manifest['version'],'utc':dt.datetime.now(dt.timezone.utc).isoformat()})+'\n')
         seconds=round(time.monotonic()-_RUN['started'])
-        display(f'LIVE! v{manifest["version"]} FULL-STACK DEPLOYED — {PUBLIC} | GitHub: UPDATED | API: VERIFIED | {seconds}s','LIVE')
+        display(f'LIVE! v{manifest["version"]} FULL-STACK DEPLOYED — {PUBLIC} | GitHub: {"UPDATED" if github_pushed else "PENDING (HTTP 5xx)"} | API: VERIFIED | {seconds}s','LIVE')
 
 def show_status():
     local=last_deployed()
@@ -541,6 +625,7 @@ def main():
     group.add_argument('--once',action='store_true',help='Process all ZIPs now, then exit')
     group.add_argument('--dry-run',action='store_true',help='Check ZIP without pushing or deploying')
     group.add_argument('--status',action='store_true',help='Check deployed version locally and on the live site')
+    group.add_argument('--sync-github',action='store_true',help='Retry pending GitHub HTTPS push without redeploying Ubuntu')
     arg.add_argument('--interval',type=int,default=3,help='Seconds between ZIP checks (default: 3)')
     arg.add_argument('--verbose',action='store_true',help='Print all commands and detailed test output')
     args=arg.parse_args()
@@ -549,6 +634,17 @@ def main():
     if args.status:
         show_status()
         return 0
+    if args.sync_github:
+        if run(['git','branch','--show-current'],cwd=ROOT)!='main':
+            raise ReleaseError('GitHub sync must run on main branch')
+        version=last_deployed()
+        if GITHUB_PENDING_FILE.exists():
+            try:version=json.loads(GITHUB_PENDING_FILE.read_text()).get('version',version)
+            except (OSError,ValueError):pass
+        if github_push_resilient(version):
+            display('GitHub main synchronised; no Ubuntu deployment required','LIVE')
+            return 0
+        return 1
     UPDATES.mkdir(exist_ok=True);STATE.mkdir(exist_ok=True)
     for d in ('processed','failed'): (UPDATES/d).mkdir(exist_ok=True)
     import fcntl
@@ -581,7 +677,7 @@ def main():
                 except Exception as exc:
                     failed=True
                     website='UPDATED' if _RUN['server'] else 'NOT DEPLOYED / ROLLBACK ATTEMPTED' if _RUN['phase']=='server' else 'UNCHANGED'
-                    github='UPDATED' if _RUN['git'] else 'UNCHANGED'
+                    github='UPDATED' if _RUN['git'] else 'PENDING' if GITHUB_PENDING_FILE.exists() else 'UNCHANGED'
                     display(f'FAILED v{_RUN["version"]} in {_RUN["phase"]}: {exc}','FAIL')
                     display(f'GitHub: {github} | Website: {website}','FAIL')
                     if not args.dry_run:
