@@ -16,6 +16,7 @@ import {freeCameraAxes} from './camera-key-movement.js';
 import {createFloorTexture} from './floor-textures.js';
 import {updateSceneMedia,toggleSceneMediaPlayback,setSceneMediaMuted,sceneMediaMuted,showSceneMediaCaptions} from './scene-media.js';
 import {updateGrassRobotInfluence} from './procedural-vegetation.js';
+import {confirmAction} from './app-dialogs.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const random=(a,b)=>a+Math.random()*(b-a);
@@ -63,7 +64,7 @@ export class SolviWorld {
     this.raycaster=new THREE.Raycaster();this.mouse=new THREE.Vector2();
     this.xrTeleportDistance=xrTeleportRange(localStorage.getItem('solvi-xr-teleport-range')||XR_TELEPORT_DEFAULT_DISTANCE);
     this.xrStandingSurfaceY=0;
-    this.setupEnvironment();this.setupEvents();this.setupXR();
+    this.setupEnvironment();this.setupEvents();this.setupXR();this.setupCameraStartControls();
     const fly=document.getElementById('cameraFlyButton');
     document.getElementById('cameraSpeed').value=this.cameraMoveSpeed;document.getElementById('cameraSpeed').oninput=e=>{this.cameraMoveSpeed=Number(e.target.value);localStorage.setItem('solvi-camera-speed',String(this.cameraMoveSpeed));};
     // Orbit is an independent scene-navigation action, even with a robot selected.
@@ -868,6 +869,52 @@ export class SolviWorld {
     const delta=this.cameraVelocity.clone().multiplyScalar(dt);
     this.camera.position.add(delta);this.controls.target.add(delta);
   }
+  cameraStartKey(type){return `solvi-camera-${type}-${window.solviRoom||'main'}`;}
+  cameraStartSnapshot(){return {position:this.camera.position.toArray().map(n=>+n.toFixed(5)),target:this.controls.target.toArray().map(n=>+n.toFixed(5))};}
+  loadCameraSnapshot(name){
+   try{
+    const value=JSON.parse(localStorage.getItem(this.cameraStartKey(name))||'null');
+    if(!value||!['position','target'].every(key=>Array.isArray(value[key])&&value[key].length===3&&value[key].every(n=>Number.isFinite(n)&&Math.abs(n)<1500)))return false;
+    this.camera.position.fromArray(value.position);this.controls.target.fromArray(value.target);this.controls.update();return true;
+   }catch{return false;}
+  }
+  restoreCameraStart(){
+   const mode=localStorage.getItem(this.cameraStartKey('mode'))||'entry';
+   const select=document.getElementById('cameraStartMode');if(select)select.value=mode;
+   if(mode==='last'||mode==='saved')this.loadCameraSnapshot(mode);
+  }
+  setupCameraStartControls(){
+   const holder=document.getElementById('controlSwitcher'),follow=document.getElementById('cameraFollowButton'),distance=document.getElementById('chaseDistanceControl');
+   if(!holder||!follow||!distance)return;
+   const row=document.createElement('div');row.className='camera-position-controls';row.setAttribute('aria-label','Scene camera position controls');
+   const mode=document.createElement('select');mode.id='cameraStartMode';mode.title='Where to start next time';mode.setAttribute('aria-label','Start position on next visit');
+   for(const [key,label] of [['entry','Start: entry'],['last','Start: last position'],['saved','Start: saved point']])mode.append(new Option(label,key));
+   mode.onchange=()=>localStorage.setItem(this.cameraStartKey('mode'),mode.value);
+   const button=document.createElement('button');button.id='saveCameraPosition';button.type='button';button.title='Save camera start point · Shift+P';button.setAttribute('aria-label','Save camera start point · Shift+P');
+   const icon=document.createElement('img');icon.src='./assets/ui-icons/drawing-save.svg';icon.alt='';button.append(icon,document.createTextNode(' Save'));
+   button.onclick=async()=>{
+    const approved=await confirmAction('This saves only your camera position, not the game or scene. Start from this location next time?',{title:'Save your starting position',confirmLabel:'Save position',cancelLabel:'Cancel'});
+    if(!approved)return;
+    localStorage.setItem(this.cameraStartKey('saved'),JSON.stringify(this.cameraStartSnapshot()));
+    mode.value='saved';mode.onchange();
+   };
+   const view=document.createElement('div');view.className='camera-follow-inline';view.append(follow,distance);
+   row.append(view,mode,button);holder.append(row);
+   this.restoreCameraStart();
+   window.addEventListener('keydown',event=>{
+    if(event.code!=='KeyP'||!event.shiftKey||event.ctrlKey||event.altKey||event.metaKey||event.repeat)return;
+    if(event.target?.closest?.('input,textarea,select,[contenteditable]'))return;
+    event.preventDefault();button.click();
+   });
+   // Remember the last viewed point without altering the user's chosen entry mode.
+   window.addEventListener('pagehide',()=>this.persistCameraLastPoint());
+   window.addEventListener('solvi:room-changed',()=>{this.restoreCameraStart();});
+  }
+  persistCameraLastPoint(){
+   if(!this.renderer.xr?.isPresenting&&['free','orbit'].includes(this.cameraFollowMode)&&[...this.camera.position.toArray(),...this.controls.target.toArray()].every(Number.isFinite)){
+    localStorage.setItem(this.cameraStartKey('last'),JSON.stringify(this.cameraStartSnapshot()));
+   }
+  }
   repairCameraPose(){
     const finiteVector=v=>v&&[v.x,v.y,v.z].every(Number.isFinite);
     const finiteQuaternion=q=>q&&[q.x,q.y,q.z,q.w].every(Number.isFinite);
@@ -893,6 +940,7 @@ export class SolviWorld {
   }
   frame(){
     this.repairCameraPose();
+    if(!this.lastCameraSnapshotAt||performance.now()-this.lastCameraSnapshotAt>3500){this.lastCameraSnapshotAt=performance.now();this.persistCameraLastPoint();}
     const dt=Math.min(.05,this.clock.getDelta());
     this.skyClock+=dt*this.environment.skySpeed;
     if(this.skyDome?.visible){this.skyDome.position.copy(this.camera.position);this.skyDome.material.uniforms.uTime.value=this.skyClock;}

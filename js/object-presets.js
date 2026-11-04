@@ -1,6 +1,7 @@
 import {canPreset,presetEntry} from './object-preset-data.js';
 import {makeFurniture,buildPrimitive} from './primitive-properties.js';
 import {makeOfficeStairs} from './office-stairs.js';
+import {makeOfficeWall} from './office-walls.js';
 import {renderModelThumbnail} from './preview-renderer.js';
 import * as THREE from 'three';
 import {textEntry,confirmAction} from './app-dialogs.js';
@@ -53,6 +54,7 @@ function previewSource(preset){
  const data=preset.payload||{};
  if(data.kind==='furniture')return makeFurniture(data.furniture||{});
  if(data.kind==='stairs'&&data.stairs?.variant!=='lift')return makeOfficeStairs(data.stairs||{});
+ if(data.kind==='wall')return makeOfficeWall(data.wall||{});
  if(['cube','sphere','cylinder','plane','torus'].includes(data.kind)){
   const geometry=buildPrimitive(data.kind,data.primitive||{});
   return geometry?new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:data.color||'#b2bdc8',roughness:.76})):null;

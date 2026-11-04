@@ -132,39 +132,98 @@ export function followFurnitureSeats(editor){
 // Convert the robot's facing into a ray through the seat's local footprint.
 // The exit distance accounts for rotation/scale and adds capsule clearance.
 // Keep world Y and yaw unchanged; Rapier/grounding own the vertical position.
-export function standClearancePosition(robot,target,margin=.52){
+// Use the seat's own -Z front, not the avatar's animated heading, which may
+// rotate when a Sit animation starts. The entire chair/sofa footprint plus
+// capsule radius must be cleared before the seated pose is released.
+export function standClearancePosition(robot,target,margin=.72){
  if(!robot||!target)return null;
  target.updateWorldMatrix?.(true,true);
  const footprint=new THREE.Box3();
  target.traverse?.(part=>{
   if(!part.geometry?.boundingBox)part.geometry?.computeBoundingBox?.();
   if(!part.geometry?.boundingBox)return;
-  const fromPart=new THREE.Matrix4().copy(target.matrixWorld).invert().multiply(part.matrixWorld);
-  footprint.union(part.geometry.boundingBox.clone().applyMatrix4(fromPart));
+  const matrix=new THREE.Matrix4().copy(target.matrixWorld).invert().multiply(part.matrixWorld);
+  footprint.union(part.geometry.boundingBox.clone().applyMatrix4(matrix));
  });
  if(footprint.isEmpty())return null;
- const worldForward=new THREE.Vector3(Math.sin(robot.rotation.y),0,Math.cos(robot.rotation.y));
- const localStart=target.worldToLocal(robot.position.clone());
- const localForward=target.worldToLocal(robot.position.clone().add(worldForward)).sub(localStart);
+ const current=target.worldToLocal(robot.position.clone());
  const scale=target.getWorldScale(new THREE.Vector3());
- const padX=margin/Math.max(.01,Math.abs(scale.x)),padZ=margin/Math.max(.01,Math.abs(scale.z));
- const x0=footprint.min.x-padX,x1=footprint.max.x+padX;
- const z0=footprint.min.z-padZ,z1=footprint.max.z+padZ;
- if(localStart.x<x0||localStart.x>x1||localStart.z<z0||localStart.z>z1)return null;
- const steps=[];
- if(localForward.x>1e-5)steps.push((x1-localStart.x)/localForward.x);
- if(localForward.x< -1e-5)steps.push((x0-localStart.x)/localForward.x);
- if(localForward.z>1e-5)steps.push((z1-localStart.z)/localForward.z);
- if(localForward.z< -1e-5)steps.push((z0-localStart.z)/localForward.z);
- const distance=Math.min(...steps.filter(v=>Number.isFinite(v)&&v>=0));
- if(!Number.isFinite(distance))return null;
- return robot.position.clone().addScaledVector(worldForward,distance+.06);
+ const clearance=margin/Math.max(.01,Math.abs(scale.z));
+ const exit=(target.localToWorld||((p)=>p)).call(target,new THREE.Vector3(
+  Math.max(footprint.min.x,Math.min(footprint.max.x,current.x)),
+  current.y,footprint.min.z-clearance));
+ return new THREE.Vector3(exit.x,robot.position.y,exit.z);
+}
+// Probe real geometry under the new standing position, excluding the seat
+// itself. Prefer the nearest upward-facing floor and preserve upper storeys.
+export function floorSupportY(editor,position,excluded=null){
+ if(!position||!editor?.items||typeof THREE.Raycaster!=='function')return null;
+ const origin=new THREE.Vector3(position.x,position.y+1.2,position.z),direction=new THREE.Vector3(0,-1,0);
+ const ray=new THREE.Raycaster(origin,direction,0,4.2);
+ const solids=[];
+ for(const item of editor.items){
+  if(item===excluded||item.userData?.editorKind==='robot'||item.userData?.editorKind==='media')continue;
+  if(item.userData?.editorKind==='wall'||item.userData?.editorKind==='stairs'||item.userData?.editorKind==='furniture'&&['groundPlot','cropBed','waterPatch','vegetationArea'].includes(item.userData.furniture?.variant))solids.push(item);
+ }
+ if(editor.world?.floor)solids.push(editor.world.floor);
+ const hits=ray.intersectObjects(solids,true);
+ for(const hit of hits){
+  if(hit.object?.userData?.wallGlass||hit.object?.userData?.wallWindowButton||hit.object?.userData?.wallRoofPanel)continue;
+  const normal=hit.face?.normal?.clone().transformDirection(hit.object.matrixWorld);
+  if(normal&&normal.y<.65)continue;
+  if(hit.point.y<=position.y+.75&&hit.point.y>=position.y-2.9)return hit.point.y;
+ }
+ return null;
+}
+export function restoreSeatedRobots(editor){
+ if(!editor?.items)return 0;
+ let restored=0;
+ for(const robot of editor.items){
+  if(robot.userData?.editorKind!=='robot')continue;
+  const seat=robot.userData.robotSeatState;
+  if(!robot.userData.robotSeated||!seat?.targetId||!Array.isArray(seat.local)||seat.local.length!==3)continue;
+  const target=editor.items.find(item=>item.userData?.editorId===seat.targetId);
+  if(!target){robot.userData.robotSeated=false;robot.userData.robotSeatState=null;robot.userData.robotSeatedTarget=null;continue;}
+  target.updateWorldMatrix?.(true,false);
+  robot.position.copy(target.localToWorld(new THREE.Vector3(...seat.local)));
+  robot.rotation.y=new THREE.Euler().setFromQuaternion(target.getWorldQuaternion(new THREE.Quaternion()),'YXZ').y+(Number(seat.yawRelative)||0);
+  robot.userData.robotSeatedTarget=seat.targetId;
+  robot.userData.robotSeatSlot=seat.slot??0;
+  const names=robot.userData.robotAvailableActions||[];
+  const clip=sittingClip(names);
+  const variant=target.userData.furniture?.variant;
+  const reclined=['sunbed','deckChair'].includes(variant);
+  robot.userData.robotSitPose=clip?'clip':reclined?'reclined':'procedural';
+  robot.userData.robotMode=clip||'idle';robot.userData.robotPlaying=null;
+  robot.userData.robotSeatTargetPose=[target.position.x,target.position.y,target.position.z,target.quaternion.x,target.quaternion.y,target.quaternion.z,target.quaternion.w,target.scale.x,target.scale.y,target.scale.z];
+  editor.physics?.applyEditedPose?.(robot);restored++;
+ }
+ return restored;
+}
+export function repairLoadedRobotElevation(editor){
+ if(!editor?.items)return 0;
+ let recovered=0;
+ for(const bot of editor.items){
+  if(bot.userData?.editorKind!=='robot'||bot.userData.robotSeated||bot.userData.robotLadderRide||bot.userData.liftRide)continue;
+  const support=floorSupportY(editor,bot.position);
+  if(support===null||!Number.isFinite(support))continue;
+  const difference=support-bot.position.y;
+  if(difference>.09&&difference<1.35){
+   bot.position.y=support+.035;
+   bot.userData.physicsAirborne=false;bot.userData.robotFallActive=false;bot.userData.robotJumpActive=false;
+   bot.userData.robotReaction=null;bot.userData.robotMode='idle';bot.userData.robotPlaying=null;
+   editor.physics?.applyEditedPose?.(bot);recovered++;
+  }
+ }
+ return recovered;
 }
 export function standUp(robot,editor){
  if(!robot?.userData?.robotSeated)return false;
  const target=editor?.items?.find(o=>o.userData.editorId===robot.userData.robotSeatedTarget);
  const clearPosition=standClearancePosition(robot,target);
  if(clearPosition){robot.position.x=clearPosition.x;robot.position.z=clearPosition.z;}
+ const support=floorSupportY(editor,robot.position,target);
+ if(support!==null)robot.position.y=support+.035;
  else if(editor?.world?.floor&&!editor?.physics?.enabled){
   const y=Number(editor.world.floor.position?.y)||0;
   robot.position.y=y;

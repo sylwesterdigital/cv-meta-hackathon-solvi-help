@@ -2557,3 +2557,25 @@ body>#inspectorValueSlider #inspectorActiveRange{
 .solvi-comic-thought::after{content:'';position:absolute;left:34%;bottom:-22px;
  width:13px;height:13px;background:#fff;border:2px solid #111;border-radius:50%;box-shadow:-11px 12px 0 -3px white,-11px 12px 0 -1px #111;}
 @media(max-width:600px){.solvi-comic-balloon{font-size:11px;max-width:190px;padding:7px 10px}}
+
+/* v0.2.178: camera controls share the same draggable robot switcher window. */
+#controlSwitcher .camera-position-controls{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:4px;background:rgba(13,24,38,.9);border:1px solid var(--ui-border,#71809b);border-radius:9px;max-width:380px;cursor:default;}
+#controlSwitcher .camera-follow-inline{display:flex;align-items:center;gap:4px;flex-wrap:wrap;flex:1 1 100%;}
+#controlSwitcher #cameraFollowButton.bottom-camera-mode,#controlSwitcher #chaseDistanceControl.chase-distance-control{position:static!important;left:auto!important;bottom:auto!important;z-index:auto!important;width:auto!important;max-width:none!important;box-shadow:none!important;margin:0!important;}
+#controlSwitcher #cameraFollowButton{flex:0 1 auto!important;min-height:25px!important;}
+#controlSwitcher #chaseDistanceControl.chase-distance-control:not([hidden]){display:flex!important;flex:1 1 130px;}
+#controlSwitcher #chaseDistanceControl[hidden]{display:none!important;}
+#controlSwitcher #cameraStartMode{flex:1 1 154px;min-width:150px;max-width:260px;min-height:28px;background:var(--ui-panel,#172235);color:var(--ui-fg,#fff);border:1px solid var(--ui-border,#71809b);border-radius:7px;padding:2px 4px;font-size:11px;}
+#controlSwitcher #saveCameraPosition{display:inline-flex!important;gap:4px;align-items:center;justify-content:center;white-space:nowrap;min-height:28px;padding:3px 8px!important;border:1px solid var(--ui-border,#71809b);border-radius:7px;background:var(--ui-panel,#172235);color:var(--ui-fg,#fff);font-size:11px;}
+#controlSwitcher #saveCameraPosition img{width:15px;height:15px;object-fit:contain;}
+
+/* v0.2.178: individual robot comic configuration. No downloaded or bundled proprietary fonts. */
+.solvi-comic-balloon.comic-shape-rounded{border-radius:20px 20px 18px 18px;}
+.solvi-comic-balloon.comic-shape-oval{border-radius:50% / 44%;}
+.solvi-comic-balloon.comic-shape-cloud{border-radius:39% 43% 37% 42% / 42% 40% 50% 38%;}
+.solvi-comic-balloon.comic-font-digital{font-family:'Digital Strip','DigiStrip','Comic Sans MS',system-ui,sans-serif;letter-spacing:.015em;}
+.solvi-comic-balloon.comic-font-comic{font-family:'Comic Sans MS','Segoe Print',cursive;font-weight:700;}
+.solvi-comic-balloon.comic-font-sans{font-family:'Arial Rounded MT Bold','Trebuchet MS',system-ui,sans-serif;font-weight:850;}
+#robotComicConfig .wall-compact-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
+#robotComicConfig .wall-compact-fields label{min-width:0;display:grid;gap:4px;}
+#robotComicConfig .wall-compact-fields select{max-width:100%;min-width:0;}

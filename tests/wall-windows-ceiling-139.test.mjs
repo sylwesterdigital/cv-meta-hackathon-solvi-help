@@ -27,7 +27,7 @@ test('window state and ceiling configuration round-trip; old walls stay valid',(
 });
 test('building code creates physical window gaps, openable panes, and lift-punched ceilings',()=>{
  const walls=source('js/office-walls.js'),physics=source('js/scene-physics.js'),editor=source('js/editor.js'),world=source('js/world.js');
- assert.match(walls,/const openings=wallWindowLayout/);
+ assert.match(walls,/wallWindowLayout\(seg\.length,s\.height,s\.windows\)/);
  assert.match(walls,/add\(left-cursor,s\.height,s\.width/);
  assert.match(walls,/s\.windows\.openIds\.includes/);
  assert.match(walls,/wallWindowButton=true/);

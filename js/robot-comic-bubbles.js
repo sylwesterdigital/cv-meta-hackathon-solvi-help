@@ -17,10 +17,14 @@ export function installRobotComicBubbles(world){
   if(!name||!text)return;
   const robot=window.solviEditor?.items?.find(o=>o.userData.editorKind==='robot'&&o.name===name);
   if(!robot)return;
+  const cfg=robot.userData.robotBrain||{};
+  if(cfg.comicEnabled==='off'||d.kind==='thought'&&cfg.comicThought==='off')return;
   entries.get(name)?.node.remove();
   const node=document.createElement('div');
   const thinking=d.kind==='thought';node.className='solvi-comic-balloon '+(thinking?'solvi-comic-thought':'solvi-comic-speech');
-  const caption=document.createElement('span');caption.className='solvi-comic-text';caption.textContent=text;
+  node.classList.add('comic-shape-'+(['rounded','oval','cloud'].includes(cfg.comicShape)?cfg.comicShape:'rounded'));
+  node.classList.add('comic-font-'+(['digital','comic','sans'].includes(cfg.comicFont)?cfg.comicFont:'digital'));
+  const caption=document.createElement('span');caption.className='solvi-comic-text';caption.textContent=cfg.comicCaps==='upper'?text.toLocaleUpperCase():text;
   node.append(caption);layer.append(node);
   entries.set(name,{robot,node,until:performance.now()+comicBubbleDuration(text,thinking)});
  };

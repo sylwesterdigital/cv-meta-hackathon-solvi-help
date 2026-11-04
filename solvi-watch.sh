@@ -32,7 +32,10 @@ STATE=ROOT/'.solvi'
 REMOTE_USER='root@yolo.cx'
 SSH_PORT='18021'
 WEBROOT='/var/www/solvi.help'
-GITHUB='git@github.com:sylwesterdigital/cv-meta-hackathon-solvi-help.git'
+GITHUB='https://github.com/sylwesterdigital/cv-meta-hackathon-solvi-help.git'
+GITHUB_LEGACY_SSH='git@github.com:sylwesterdigital/cv-meta-hackathon-solvi-help.git'
+GITHUB_LEGACY_SSH_URL='ssh://git@github.com/sylwesterdigital/cv-meta-hackathon-solvi-help.git'
+# SOLVI_GITHUB_HTTPS_WATCHER_V2
 PUBLIC='https://solvi.help/'
 VERSION_PATTERN=re.compile(r'^\d+\.\d+\.\d+$')
 SHA_PATTERN=re.compile(r'^[0-9a-f]{64}$')
@@ -73,10 +76,10 @@ def announce(phase,message):
     _RUN['phase']=phase
     display(message,'EVENT')
 
-def run(args,cwd=None,timeout=180,output=True):
+def run(args,cwd=None,timeout=180,output=True,env=None):
     args=[str(x) for x in args]
     display('$ '+' '.join(subprocess.list2cmdline([x]) for x in args))
-    p=subprocess.run(args,cwd=cwd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=timeout)
+    p=subprocess.run(args,cwd=cwd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=timeout,env=env)
     if _log and p.stdout:
         with _log.open('a') as f:f.write(p.stdout+'\n')
     if p.returncode:
@@ -283,8 +286,16 @@ def test_stage(stage):
         finally:server.shutdown();t.join(timeout=5)
     display('Local validation passed','PASS')
 
+def github_https(*args,timeout=50):
+    """GitHub over HTTPS with the macOS user's existing credential helper.
+
+    Never prompt interactively or print credentials; Ubuntu SSH is separate.
+    """
+    return run(['git','-c','credential.interactive=never',*args],cwd=ROOT,timeout=timeout,
+               env={**os.environ,'GIT_TERMINAL_PROMPT':'0'})
+
 def git_preflight(stage):
-    display('Checking local Git, branch and GitHub SSH remote','STEP')
+    display('Checking local Git, branch and GitHub HTTPS credentials','STEP')
     if not (ROOT/'.git').exists():raise ReleaseError('Run inside the cloned Git repository root (missing .git)')
     if run(['git','branch','--show-current'],cwd=ROOT)!='main':raise ReleaseError('Expected Git branch main')
     staged=run(['git','diff','--cached','--name-only'],cwd=ROOT)
@@ -323,23 +334,22 @@ def git_preflight(stage):
         raise ReleaseError('Uncommitted edits conflict with release: '+', '.join(dangerous))
     try:origin=run(['git','remote','get-url','origin'],cwd=ROOT)
     except ReleaseError:origin=''
-    accepted=('',GITHUB,'https://github.com/sylwesterdigital/cv-meta-hackathon-solvi-help.git',
-              'ssh://git@github.com/sylwesterdigital/cv-meta-hackathon-solvi-help.git')
+    accepted=('',GITHUB,GITHUB_LEGACY_SSH,GITHUB_LEGACY_SSH_URL,GITHUB.removesuffix('.git'))
     if origin not in accepted:raise ReleaseError('Git origin is unexpected: '+origin)
     run(['git','var','GIT_AUTHOR_IDENT'],cwd=ROOT)
-    remote=run(['git','-c','core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=10',
-                'ls-remote',GITHUB,'refs/heads/main'],cwd=ROOT,timeout=30)
+    remote=github_https('ls-remote',GITHUB,'refs/heads/main',timeout=40)
     if remote:
-        run(['git','-c','core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=10',
-             'fetch','--no-tags',GITHUB,'refs/heads/main'],cwd=ROOT,timeout=40)
+        github_https('fetch','--no-tags',GITHUB,'refs/heads/main',timeout=60)
         relation=subprocess.run(['git','merge-base','--is-ancestor','FETCH_HEAD','HEAD'],
                                 cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         if relation.returncode:raise ReleaseError('GitHub main diverged; git pull --ff-only first')
+    # Verify permission to push before committing or changing public files.
+    github_https('push','--dry-run',GITHUB,'HEAD:refs/heads/main',timeout=60)
     ssh('test -d /var/www && command -v nginx >/dev/null && nginx -t >/dev/null 2>&1')
-    display('GitHub SSH and Ubuntu preflight passed','PASS')
+    display('GitHub HTTPS and Ubuntu preflight passed','PASS')
 
 def update_git(stage,manifest):
-    display('Committing verified release to GitHub via SSH','STEP')
+    display('Committing verified release to GitHub via HTTPS','STEP')
     changed=[]
     # Stage ONLY files explicitly declared and SHA-256 verified in the release
     # manifest, never derived build/test artifacts (__pycache__, .pyc, caches).
@@ -405,11 +415,9 @@ def update_git(stage,manifest):
         raise
     current=run(['git','remote','get-url','origin'],cwd=ROOT)
     if current!=GITHUB:run(['git','remote','set-url','origin',GITHUB],cwd=ROOT)
-    run(['git','-c','core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=10',
-         'push','-u','origin','main'],cwd=ROOT,timeout=95)
+    github_https('push','-u','origin','main',timeout=95)
     expected=run(['git','rev-parse','HEAD'],cwd=ROOT)
-    remote=run(['git','-c','core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=10',
-                'ls-remote',GITHUB,'refs/heads/main'],cwd=ROOT,timeout=30)
+    remote=github_https('ls-remote',GITHUB,'refs/heads/main',timeout=40)
     if not remote.startswith(expected+'\t'):
         raise ReleaseError('GitHub main does not match local HEAD after push')
     display('GitHub main updated and verified','PASS')

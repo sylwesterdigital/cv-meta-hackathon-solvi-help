@@ -43,7 +43,7 @@ export async function hydrateRobot(group){
     group.userData.robotAvailableActions=group.userData.robotAnimator.clipNames;
     window.dispatchEvent(new CustomEvent('solvi:robot-model-ready',{detail:{id:group.userData.editorId}}));
     group.userData.robotAnimator.play('idle');
-    group.userData.robotReady=true;group.userData.robotMode='idle';
+    group.userData.robotReady=true;if(!group.userData.robotSeated)group.userData.robotMode='idle';
   }catch(error){if(group.userData.robotLoadToken===token){console.warn('Robot asset could not load:',error);group.userData.robotError=error.message;}}
   finally{if(group.userData.robotLoadToken===token)group.userData.robotLoading=false;}
 }
@@ -416,14 +416,15 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     if(robot.userData.robotSeated&&['procedural','reclined'].includes(robot.userData.robotSitPose)){
       const visualModel=visual?.children[0];
       if(visualModel){visualModel.position.y+=(Math.max(-.40,(visualModel.userData.sitBaseY??visualModel.position.y)-.32)-visualModel.position.y)*Math.min(1,dt*4);
-        visualModel.traverse(bone=>{if(!bone.isBone)return;const name=bone.name.toLowerCase();
+        if((robot.userData.avatarUrl||DEFAULT_ROBOT_AVATAR)===DEFAULT_ROBOT_AVATAR)visualModel.traverse(bone=>{if(!bone.isBone)return;const name=bone.name.toLowerCase();
           if(/(?:left|right|l_|r_).*(?:upleg|thigh|upperleg)|(?:upleg|thigh|upperleg).*(?:left|right)/.test(name))bone.rotation.x+=((bone.userData.sitBaseX??(bone.userData.sitBaseX=bone.rotation.x))+1.0-bone.rotation.x)*Math.min(1,dt*5);
           if(/(?:left|right|l_|r_).*(?:leg|calf|shin)|(?:calf|shin|lowerleg).*(?:left|right)/.test(name)&&!/upper|thigh|upleg/.test(name))bone.rotation.x+=((bone.userData.sitBaseX??(bone.userData.sitBaseX=bone.rotation.x))-.9-bone.rotation.x)*Math.min(1,dt*5);
         });
       }
     }else if(visual?.children[0]?.userData.sitBaseY!==undefined){
       const model=visual.children[0];model.position.y+=(model.userData.sitBaseY-model.position.y)*Math.min(1,dt*5);
-      model.traverse(bone=>{if(bone.isBone&&Number.isFinite(bone.userData.sitBaseX))bone.rotation.x+=(bone.userData.sitBaseX-bone.rotation.x)*Math.min(1,dt*7);});
+      // The animation mixer now owns walking bones. A stale per-bone sitX
+      // offset must not override authored motion and turn the legs sideways.
     }
   }
 }

@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.177",
+  "currentVersion": "0.2.178",
   "releases": [
+    {
+      "version": "0.2.178",
+      "publishedAt": "2026-11-04T11:05:46Z",
+      "changes": [
+        "Add individual full-height door openings to existing Office Space wall segments, selectable during the Closed Outline draft; preserve openings in saved wall objects and Architecture presets.",
+        "Generate saved single-slope roofs (4 orientations), flat overhang roofs and pyramid roofs, with optional chimney, solar-panel details and roof opening; validate and preview through the existing Office Space wall panel.",
+        "Restore saved seating anchors after furniture and robot scene hydration, stand clear of chair and sofa fronts, recover robot foot elevation from upper-storey supporting surfaces, and avoid stale procedural leg poses in authored walking animation.",
+        "Add entry/last/saved per-room camera start position, a one-click save-with-confirmation action in the shared Control Switcher beside follow/distance controls; save camera pose only, not world state.",
+        "Introduce per-robot comic speech/thought bubble options for shape (rounded/oval/cloud), Digital Strip or fallback font family, all-caps and visibility, without redistributing uploaded font binaries.",
+        "Unify the Office Space wall numeric slider with the shared active-field slider beneath the focused row; add backend and regression checks for new door/roof/preset, camera, seating and comic settings."
+      ]
+    },
     {
       "version": "0.2.177",
       "publishedAt": "2026-11-04T01:11:25Z",
@@ -330,16 +342,6 @@
         "Add an opt-in temporary trajectory guide with a line and landing marker calculated from the actual throw aim and launch force; truncate the prediction at Rapier geometry raycast hits or floor.",
         "Retain Test sphere and per-avatar throw settings, preserve old saved values, and keep the preview out of scene persistence and multiplayer.",
         "Add five regression tests for animation timing, throw impulse, ballistic path, collision checks and transient guide cleanup; 642 JavaScript tests passed."
-      ]
-    },
-    {
-      "version": "0.2.146",
-      "publishedAt": "2026-11-02T01:33:44Z",
-      "changes": [
-        "Configurable Pickup delay (%) determines when the one-shot Lifting animation attaches the selected Pickable object to the hand, independently of the existing Throw release delay.",
-        "Add a local Test sphere action to per-avatar Pickup & Throw calibration: immediately place a small sphere in the right palm; press O to throw with the same animation, release timing and Dynamic Rapier physics.",
-        "Temporary test spheres expire after twelve seconds and are excluded from room saves, object lists, carry events and physics-state multiplayer packets.",
-        "Retain backward compatibility for four-field throwSettings on the backend and add timed-grasp, test-sphere and persistence-regression tests."
       ]
     }
   ]

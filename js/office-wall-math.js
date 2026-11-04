@@ -11,6 +11,8 @@ export function sanitiseWall(raw={}){
  const color=typeof raw.color==='string'&&/^#[0-9a-fA-F]{6}$/.test(raw.color)?raw.color:'#c6d1dc';
  const windowRaw=raw.windows&&typeof raw.windows==='object'?raw.windows:{};
  const ceilingRaw=raw.ceiling&&typeof raw.ceiling==='object'?raw.ceiling:{};
+ const doorRaw=raw.doors&&typeof raw.doors==='object'?raw.doors:{};
+ const roofRaw=raw.roof&&typeof raw.roof==='object'?raw.roof:{};
  const bool=(v)=>v===true;
  const numeric=(v,def,min,max)=>Number.isFinite(Number(v))&&v!==null&&v!==''?clamp(Number(v),min,max):def;
  const triplet=(value,limit)=>Array.from({length:3},(_,i)=>numeric(Array.isArray(value)?value[i]:null,0,-limit,limit));
@@ -25,10 +27,17 @@ export function sanitiseWall(raw={}){
   widthRatio:clamp(Number(windowRaw.widthRatio)||.36,.15,.7),heightRatio:clamp(Number(windowRaw.heightRatio)||.42,.2,.75),
   color:hex(windowRaw.color,'#b6ecfc'),opacity:clamp(Number(windowRaw.opacity)||.42,.08,.85),
   openIds:Array.isArray(windowRaw.openIds)?windowRaw.openIds.filter(v=>Number.isInteger(v)&&v>=0&&v<16384).slice(0,640):[]};
+ const doors={enabled:bool(doorRaw.enabled),width:numeric(doorRaw.width,1.05,.5,2.8),height:numeric(doorRaw.height,2.12,1.5,4.5),
+  segments:Array.isArray(doorRaw.segments)?[...new Set(doorRaw.segments.filter(v=>Number.isInteger(v)&&v>=0&&v<80))].slice(0,32):[]};
+ const roof={enabled:bool(roofRaw.enabled),style:['flat','shed','pyramid'].includes(roofRaw.style)?roofRaw.style:'flat',
+  direction:['north','south','east','west'].includes(roofRaw.direction)?roofRaw.direction:'north',
+  rise:numeric(roofRaw.rise,1.1,.15,6),overhang:numeric(roofRaw.overhang,.28,0,2),thickness:numeric(roofRaw.thickness,.14,.05,.5),
+  color:hex(roofRaw.color,'#495d6d'),texture:validTexture(roofRaw.texture,'concrete'),
+  chimney:bool(roofRaw.chimney),solarPanels:bool(roofRaw.solarPanels),skylight:bool(roofRaw.skylight)};
  const ceiling={enabled:bool(ceilingRaw.enabled),thickness:clamp(Number(ceilingRaw.thickness)||.16,.05,.6),
   texture:validTexture(ceilingRaw.texture,'plaster'),color:hex(ceilingRaw.color,'#e1e7eb'),
   autoLiftOpenings:ceilingRaw.autoLiftOpenings!==false};
- return {array,windows,ceiling,textureScale:numeric(raw.textureScale,1,.25,5),textureDistortion:numeric(raw.textureDistortion,.38,0,2),textureContrast:numeric(raw.textureContrast,1,.2,3),points:unique,closed:raw.closed===true,width:num('width',.16,.05,1.5),height:num('height',2.8,.3,10),texture,textureMediaId,color,opacity:num('opacity',texture==='glass'?.4:1,.08,1),smooth:raw.smooth!==false};
+ return {array,windows,doors,roof,ceiling,textureScale:numeric(raw.textureScale,1,.25,5),textureDistortion:numeric(raw.textureDistortion,.38,0,2),textureContrast:numeric(raw.textureContrast,1,.2,3),points:unique,closed:raw.closed===true,width:num('width',.16,.05,1.5),height:num('height',2.8,.3,10),texture,textureMediaId,color,opacity:num('opacity',texture==='glass'?.4:1,.08,1),smooth:raw.smooth!==false};
 }
 // The first room is the authored outline. Other array elements are generated at render time.
 // Rotation (degrees) and scale (additive per copy) are relative to the base room.

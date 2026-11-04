@@ -193,7 +193,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.177',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.178',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -960,8 +960,8 @@ def bookmark_payload(obj):
 
 # User-owned catalogue of procedural object configurations. Templates cannot include
 # asset URLs, ownership, robot data or uploaded media; every instance gets a fresh ID.
-_PRESET_TYPES={'furniture','cube','sphere','cylinder','plane','torus','surface','curve','text','ladder','stairs'}
-_PRESET_FIELDS={'kind','name','rotation','scale','color','texture','physics','pickable','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture'}
+_PRESET_TYPES={'furniture','cube','sphere','cylinder','plane','torus','surface','curve','text','ladder','stairs','wall'}
+_PRESET_FIELDS={'kind','name','rotation','scale','color','texture','physics','pickable','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture','wall'}
 
 def _preset_finite(value,depth=0):
     if depth>14:return False
@@ -987,9 +987,10 @@ def object_presets():
     if 'rotation' in entry and (not isinstance(entry['rotation'],list) or len(entry['rotation'])!=3 or any(type(v) not in (int,float) or not math.isfinite(v) for v in entry['rotation'])):return json_error('Invalid preset rotation')
     if 'color' in entry and entry['color'] is not None and (not isinstance(entry['color'],str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',entry['color'])):return json_error('Invalid preset colour')
     if 'texture' in entry and (not isinstance(entry['texture'],str) or len(entry['texture'])>40):return json_error('Invalid preset texture')
-    for key in ('furniture','primitive','curve','text','openings','stairs','ladder','physics'):
+    for key in ('furniture','primitive','curve','text','openings','stairs','ladder','physics','wall'):
         if key in entry and entry[key] is not None and not isinstance(entry[key],dict):return json_error('Invalid preset properties')
     if entry.get('texture')=='custom':return json_error('Custom-uploaded textures are not portable presets')
+    if entry['kind']=='wall' and not valid_office_wall(entry.get('wall')):return json_error('Invalid wall preset')
     if entry['kind']=='stairs' and (entry.get('stairs') or {}).get('variant')=='lift':return json_error('Lift systems cannot be saved as single-object presets')
     if not isinstance(thumb,str) or (thumb and (len(thumb)>145000 or not re.fullmatch(r'data:image/(?:webp|png);base64,[A-Za-z0-9+/=]+',thumb))):return json_error('Invalid preset preview')
     entry={key:value for key,value in entry.items() if key in _PRESET_FIELDS}
@@ -3101,7 +3102,7 @@ def get_scene():
     return jsonify(revision=row['revision'],objects=json.loads(row['payload']))
 
 def valid_office_wall(wall):
-    if not isinstance(wall,dict) or len(wall)>15:return False
+    if not isinstance(wall,dict) or len(wall)>18:return False
     points=wall.get('points',[])
     if not isinstance(points,list) or not 2<=len(points)<=80:return False
     if any(not isinstance(p,list) or len(p)!=2 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or abs(v)>500 for v in p) for p in points):return False
@@ -3145,6 +3146,24 @@ def valid_office_wall(wall):
         for name,limit in (('rotation',45),('scale',.25)):
             values=a.get(name)
             if not isinstance(values,list) or len(values)!=3 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) or not -limit<=v<=limit for v in values):return False
+    if 'doors' in wall:
+        d=wall['doors']
+        if not isinstance(d,dict) or set(d)-{'enabled','width','height','segments'} or type(d.get('enabled')) is not bool:return False
+        for key,lo,hi in (('width',.5,2.8),('height',1.5,4.5)):
+            v=d.get(key)
+            if type(v) not in (int,float) or not math.isfinite(v) or not lo<=v<=hi:return False
+        values=d.get('segments',[])
+        if not isinstance(values,list) or len(values)>32 or any(type(v) is not int or not 0<=v<80 for v in values):return False
+    if 'roof' in wall:
+        r=wall['roof']
+        if not isinstance(r,dict) or set(r)-{'enabled','style','direction','rise','overhang','thickness','color','texture','chimney','solarPanels','skylight'}:return False
+        if any(type(r.get(k)) is not bool for k in ('enabled','chimney','solarPanels','skylight')):return False
+        if r.get('style') not in {'flat','shed','pyramid'} or r.get('direction') not in {'north','south','east','west'}:return False
+        if r.get('texture') not in {'plaster','concrete','bricks','glass','wood','marble','granite'}:return False
+        if not isinstance(r.get('color'),str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',r['color']):return False
+        for key,lo,hi in (('rise',.15,6),('overhang',0,2),('thickness',.05,.5)):
+            v=r.get(key)
+            if type(v) not in (int,float) or not math.isfinite(v) or not lo<=v<=hi:return False
     return isinstance(wall.get('smooth',False),bool) and isinstance(wall.get('closed',False),bool)
 
 def valid_wear_attachment(value):
@@ -3410,7 +3429,8 @@ def set_scene():
             if 'runMultiplier' in o and (not isinstance(o['runMultiplier'],(float,int)) or isinstance(o['runMultiplier'],bool) or not math.isfinite(o['runMultiplier']) or not 1<=o['runMultiplier']<=5):return json_error('Invalid run multiplier')
             if 'climbSpeed' in o and (not isinstance(o['climbSpeed'],(float,int)) or isinstance(o['climbSpeed'],bool) or not math.isfinite(o['climbSpeed']) or not .2<=o['climbSpeed']<=4):return json_error('Invalid robot climb speed')
             brain=o.get('brain',{})
-            if not isinstance(brain,dict) or any((k in ('initiative','initiativeVision') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision') and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch','gender','voiceGender'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8,'gender':12,'voiceGender':12}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
+            if not isinstance(brain,dict) or any((k in ('initiative','initiativeVision') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision') and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch','gender','voiceGender','comicEnabled','comicShape','comicFont','comicThought','comicCaps'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8,'gender':12,'voiceGender':12,'comicEnabled':8,'comicShape':12,'comicFont':12,'comicThought':8,'comicCaps':8}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
+            if any(brain.get(k,v) not in values for k,v,values in [('comicEnabled','on',('on','off')),('comicThought','on',('on','off')),('comicShape','rounded',('rounded','oval','cloud')),('comicFont','digital',('digital','comic','sans')),('comicCaps','auto',('auto','upper'))]):return json_error('Invalid comic bubble settings')
             if brain.get('portrait') and not re.fullmatch(r'[0-9a-f-]{36}',brain['portrait']):return json_error('Invalid portrait reference')
             if brain.get('portrait'):
                 with db() as con:portrait=con.execute('SELECT mime FROM media WHERE id=?',(brain['portrait'],)).fetchone()

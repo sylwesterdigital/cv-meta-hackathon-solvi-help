@@ -49,13 +49,25 @@ export function rebuildOfficeWall(group,settings,lifts=[]){
  group.userData.wall=s;
  const segments=wallSegments(s);
  let windowId=0;
- for(const seg of segments){
+ for(const [segmentIndex,seg] of segments.entries()){
   const tex=s.texture==='glass'||s.texture==='custom'?(retain?prior.texture||null:null):wallPresetTexture(s.texture,{scale:s.textureScale,distortion:s.textureDistortion,contrast:s.textureContrast});
   const material=wallMaterial(s,tex);
-  const openings=wallWindowLayout(seg.length,s.height,s.windows);
+  const doorOn=s.doors.enabled&&s.doors.segments.includes(segmentIndex)&&seg.length>s.doors.width+.24;
+  const openings=doorOn?[]:wallWindowLayout(seg.length,s.height,s.windows);
   const c=Math.cos(seg.yaw),sn=Math.sin(seg.yaw);
   const add=(w,h,d,lx,cy,lz=0,mat=material,extra={})=>solid(w,h,d,mat,seg.x+c*lx+sn*lz,cy,seg.z-sn*lx+c*lz,seg.yaw,group,extra);
   let cursor=-seg.length/2;
+  if(doorOn){
+   const width=Math.min(s.doors.width,seg.length-.24),height=Math.min(s.height-.12,s.doors.height);
+   const left=-width/2,right=width/2;
+   add(left-cursor,s.height,s.width,(cursor+left)/2,s.height/2);
+   add(width,s.height-height,s.width,0,height+(s.height-height)/2);
+   const frame=new THREE.MeshStandardMaterial({color:'#6f7782',roughness:.68});
+   add(.065,height,.07,left+.015,height/2,0,frame,{wallDoorFrame:true});
+   add(.065,height,.07,right-.015,height/2,0,frame,{wallDoorFrame:true});
+   add(width+.07,.075,.07,0,height+.035,0,frame,{wallDoorFrame:true});
+   cursor=right;
+  }
   for(const slot of openings){
    const left=slot.x-slot.width/2,right=slot.x+slot.width/2,top=slot.bottom+slot.height;
    add(left-cursor,s.height,s.width,(cursor+left)/2,s.height/2);
@@ -112,6 +124,39 @@ export function rebuildOfficeWall(group,settings,lifts=[]){
   ceiling.position.y=s.height-s.ceiling.thickness;
   ceiling.userData.wallCeiling=true;ceiling.receiveShadow=true;ceiling.castShadow=true;group.add(ceiling);
  }
+  // A bounded, independent roof mesh sits above the room outline. A pitched
+  // roof slopes to one of four directions; pyramid roofs rise at the centre.
+  // Flat skylights have a genuine rectangular cut-out in their deck mesh.
+  if(s.roof.enabled&&s.closed&&s.points.length>=3){
+   const xs=s.points.map(pt=>pt[0]),zs=s.points.map(pt=>pt[1]),o=s.roof.overhang;
+   const x0=Math.min(...xs)-o,x1=Math.max(...xs)+o,z0=Math.min(...zs)-o,z1=Math.max(...zs)+o;
+   const cx=(x0+x1)/2,cz=(z0+z1)/2,y=s.height+.025,r=s.roof;
+   const mat=new THREE.MeshStandardMaterial({color:r.color,roughness:.86,side:THREE.DoubleSide,
+    map:wallPresetTexture(r.texture,{scale:s.textureScale,distortion:s.textureDistortion,contrast:s.textureContrast})});
+   const addRoof=(points,indices)=>{
+    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(points.flat(),3));
+    geometry.setIndex(indices);geometry.computeVertexNormals();
+    const roofMesh=new THREE.Mesh(geometry,mat);roofMesh.castShadow=true;roofMesh.receiveShadow=true;roofMesh.userData.wallCeiling=true;roofMesh.userData.wallRoof=true;group.add(roofMesh);
+   };
+   if(r.style==='flat'){
+    const outline=new THREE.Shape();outline.moveTo(x0,-z0);outline.lineTo(x1,-z0);outline.lineTo(x1,-z1);outline.lineTo(x0,-z1);outline.closePath();
+    if(r.skylight&&x1-x0>2&&z1-z0>2){const w=Math.min(1.3,(x1-x0)*.29),d=Math.min(1.1,(z1-z0)*.29);
+     const opening=new THREE.Path();opening.moveTo(cx-w/2,-cz-d/2);opening.lineTo(cx-w/2,-cz+d/2);opening.lineTo(cx+w/2,-cz+d/2);opening.lineTo(cx+w/2,-cz-d/2);opening.closePath();outline.holes.push(opening);}
+    const deck=new THREE.ExtrudeGeometry(outline,{depth:r.thickness,bevelEnabled:false});deck.rotateX(-Math.PI/2);
+    const roofMesh=new THREE.Mesh(deck,mat);roofMesh.position.y=y;roofMesh.userData.wallCeiling=true;roofMesh.userData.wallRoof=true;roofMesh.receiveShadow=true;roofMesh.castShadow=true;group.add(roofMesh);
+   }else if(r.style==='pyramid'){
+    const corners=[[x0,y,z0],[x1,y,z0],[x1,y,z1],[x0,y,z1],[cx,y+r.rise,cz]];
+    addRoof(corners,[0,1,4,1,2,4,2,3,4,3,0,4]);
+   }else{
+    const up=(x,z)=>r.direction==='north'?(z1-z)/(z1-z0):r.direction==='south'?(z-z0)/(z1-z0):r.direction==='east'?(x-x0)/(x1-x0):(x1-x)/(x1-x0);
+    addRoof([[x0,y+r.rise*up(x0,z0),z0],[x1,y+r.rise*up(x1,z0),z0],[x1,y+r.rise*up(x1,z1),z1],[x0,y+r.rise*up(x0,z1),z1]],[0,1,2,0,2,3]);
+   }
+   if(r.chimney){const chimney=new THREE.Mesh(new THREE.BoxGeometry(.43,1.0,.43),new THREE.MeshStandardMaterial({color:'#82746e',roughness:.85}));chimney.position.set(x0+.8,y+r.rise*.7+.45,z0+.8);chimney.userData.wallSegment=true;chimney.castShadow=true;group.add(chimney);}
+   if(r.solarPanels){const panelMaterial=new THREE.MeshStandardMaterial({color:'#183c5b',metalness:.38,roughness:.35});
+    for(let i=0;i<3;i++){const panel=new THREE.Mesh(new THREE.BoxGeometry(.72,.035,1.25),panelMaterial);
+     panel.position.set(cx+(i-1)*.82,y+r.rise+.055,cz);panel.userData.wallRoofPanel=true;panel.rotation.x=r.style==='shed'?.17:0;group.add(panel);}}
+   if(r.skylight&&r.style!=='flat'){const glass=new THREE.Mesh(new THREE.PlaneGeometry(.9,.8),new THREE.MeshPhysicalMaterial({color:'#97c8dd',transparent:true,opacity:.5,side:THREE.DoubleSide,roughness:.08}));glass.rotation.x=-Math.PI/2;glass.position.set(cx,y+r.rise+.02,cz);glass.userData.wallRoofPanel=true;group.add(glass);}
+  }
  // Arrays are one saved, editable room object. Flatten generated meshes into direct
  // children so existing Rapier compound-collider traversal includes every copy.
  if(s.array.enabled&&s.closed&&s.points.length>=3){
