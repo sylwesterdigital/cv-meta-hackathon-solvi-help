@@ -2661,9 +2661,53 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #robotBrainsPanel [data-brain-page="memory"] #brainsMemory{max-height:65vh}
 @media(max-width:650px){#robotRoutinePanel.robot-routine-panel{resize:none;min-width:0;max-height:calc(100vh - 85px);height:75vh;left:8px;top:70px;width:calc(100vw - 16px)}#robotBrainsPanel .brains-tabs{padding:6px 8px}#robotBrainsPanel .brains-tabs button{padding:6px 8px}#robotRoutinePanel #autonomyGoal{min-height:140px!important}}
 
-/* v0.2.191: expose only inputs used by the selected autonomous work tool. */
+/* v0.2.192: expose only inputs used by the selected autonomous work tool. */
 #robotRoutinePanel [data-autonomy-field][hidden],#robotRoutinePanel #autonomyStart[hidden]{display:none!important}
 #robotRoutinePanel #autonomyModeHelp{display:block;margin:0 0 5px;font-size:12px;line-height:1.5;opacity:.9}
 #robotRoutinePanel .autonomy-help{font-size:12px;line-height:1.5;opacity:.85}
 #robotRoutinePanel .autonomy-help summary{cursor:pointer}
 #robotRoutinePanel [data-autonomy-field="goal"] textarea{min-height:145px!important}
+
+/* v0.2.192 — Isolated, intermittent vertical rainbow on the .help wordmark only.
+   The original grey label remains underneath; SOLVI and the version are untouched.
+   Two identical color cycles (0–50%, 50–100%) make the vertical scroll seamless. */
+.wordmark > span.wordmark-rainbow {
+  position: relative;
+  isolation: isolate;
+}
+.wordmark > span.wordmark-rainbow::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  pointer-events: none;
+  background-image: linear-gradient(to bottom,
+    #ff4767 0%, #ffad4c 7%, #fce96b 14%, #5be79b 21%,
+    #52d9ed 28%, #5e88ff 35%, #a67bff 42%, #f16cce 47%,
+    #ff4767 50%, #ffad4c 57%, #fce96b 64%, #5be79b 71%,
+    #52d9ed 78%, #5e88ff 85%, #a67bff 92%, #f16cce 97%,
+    #ff4767 100%);
+  background-size: 100% 200%;
+  background-position: 0 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  opacity: 0;
+  animation:
+    solvi-help-rainbow-blink 9s ease-in-out infinite,
+    solvi-help-rainbow-vertical 6s linear infinite;
+}
+@keyframes solvi-help-rainbow-blink {
+  0%, 15%, 46%, 100% { opacity: 0; }
+  19%, 40% { opacity: 1; }
+}
+@keyframes solvi-help-rainbow-vertical {
+  from { background-position: 0 0; }
+  to   { background-position: 0 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wordmark > span.wordmark-rainbow::after {
+    animation: none;
+    opacity: 0;
+  }
+}

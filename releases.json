@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.191",
+  "currentVersion": "0.2.192",
   "releases": [
+    {
+      "version": "0.2.192",
+      "publishedAt": "2026-11-05T00:32:41Z",
+      "changes": [
+        "Add an intermittent, softly fading rainbow text effect to the .help portion of the SOLVI.help header wordmark; SOLVI and the version label retain their existing appearance.",
+        "Animate a vertical rainbow slowly across the text using two identical gradient cycles to prevent visible jumps or color discontinuities at the loop boundary.",
+        "Use CSS-only overlay animation with the original neutral .help text always present underneath, no JavaScript, no network dependencies, and no layout changes.",
+        "Respect reduced-motion preferences by leaving the original static logo intact; preserve existing analytics, navigation, robots, and watcher release contract."
+      ]
+    },
     {
       "version": "0.2.191",
       "publishedAt": "2026-11-05T00:17:55Z",
@@ -325,16 +335,6 @@
         "Use a forward-facing sound cone with reduced rear output, preserve the on-screen mute control and mute Web Audio gain along with the video element.",
         "Disconnect positional audio nodes when switching channels or deleting screens; keep existing channels, IPTV, mute settings and backend schema unchanged.",
         "Include targeted spatial-audio regression tests and preserve original avatar files."
-      ]
-    },
-    {
-      "version": "0.2.158",
-      "publishedAt": "2026-11-02T22:57:22Z",
-      "changes": [
-        "Add selectable per-display audio enabled/start-muted, persistent mute overlay, optional original-aspect playback, recorded-video looping, configurable initial channel and opt-in startup playback.",
-        "Enable copying an HTTPS HLS/MP4/WebM URL and pasting directly while a TV or monitor is selected; add without a separate clipboard button.",
-        "Add CORS-aware IPTV .m3u playlist import, bounded search results and one-click channel selection from curated country/category playlists.",
-        "Apply smart playback options to procedural TVs/monitors and in-world media frames with strict frontend/backend validation; retain saved Rantlist channels and existing avatar models."
       ]
     }
   ]

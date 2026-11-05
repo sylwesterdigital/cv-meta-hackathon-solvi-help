@@ -197,7 +197,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.191',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.192',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1531,7 +1531,7 @@ def ai_vision():
                                'output_types':[item.get('type') for item in response.get('output',[]) if isinstance(item,dict)]},
                        usage=usage,note='SAM returns matching object geometry, not a scene description. Bounding boxes are shown; pixel masks are not yet rendered.')
     except Exception as exc:return json_error(str(exc),502)
-# v0.2.191 — Meta camera-grounded, server-scoped autonomy proposals. This
+# v0.2.192 — Meta camera-grounded, server-scoped autonomy proposals. This
 # endpoint NEVER edits scenes; the browser must use authorised scene tools.
 ROBOT_AUTONOMY_LAST = {}
 ROBOT_AUTONOMY_DAILY = {}
@@ -1848,7 +1848,7 @@ def robot_autonomy_research():
     sources=[]
     try:
         search=urllib.parse.urlencode({'action':'query','list':'search','srsearch':query,'srnamespace':'0','srlimit':'4','format':'json'})
-        req=Request('https://en.wikipedia.org/w/api.php?'+search,headers={'User-Agent':'SOLVI-help-robot-study/0.2.191','Accept':'application/json'})
+        req=Request('https://en.wikipedia.org/w/api.php?'+search,headers={'User-Agent':'SOLVI-help-robot-study/0.2.192','Accept':'application/json'})
         with urlopen(req,timeout=4) as response:
             if int(response.headers.get('Content-Length') or 0)>180000:raise ValueError('Oversized research response')
             result=json.loads(response.read(180001))

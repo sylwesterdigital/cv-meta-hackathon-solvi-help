@@ -1,3 +1,7 @@
+# SOLVI.help v0.2.192 — Wordmark rainbow animation
+
+Only `.help` in the topbar wordmark receives a CSS-only intermittent vertical rainbow (9s show/hide pulse; 6s seamless flow). Original base text remains in place; reduced-motion preference disables animation. The SOLVI portion, version label, startup, backend, Meta/robot logic, and nonblocking Umami loader are unchanged. Source: `index.html`, `styles.css`; regression: `tests/release-192-wordmark-rainbow.test.mjs`. The release ZIP must remain watcher-compatible and preserve both source GLBs.
+
 # SOLVI.help v0.2.182 — Autonomous Robot Operators, Meta 360° perception and service work orders
 
 **Status:** Release candidate for the unchanged `updates/` deployment watcher; **not yet deployed or browser-verified**.

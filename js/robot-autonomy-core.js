@@ -1,4 +1,4 @@
-// v0.2.191: bounded autonomous work orders. Pure validation so decisions from
+// v0.2.192: bounded autonomous work orders. Pure validation so decisions from
 // Meta remain *proposals* until an authorised scene tool checks them again.
 export const AUTONOMY_ACTIONS=Object.freeze(['visit','deliver','build','build_house','use_preset','remove','rest','ask','inspect','idle']);
 export const AUTONOMY_MODES=Object.freeze(['agent','deliver','build','house','preset','assist','rest']);

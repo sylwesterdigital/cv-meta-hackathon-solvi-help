@@ -1,3 +1,10 @@
+# SOLVI.help v0.2.192 — Intermittent rainbow .help wordmark
+
+- Only the `.help` portion of the existing header wordmark briefly reveals a vertically scrolling rainbow. `SOLVI` and the current version text are visually unchanged.
+- The rainbow fades in and out on a nine-second CSS-only cycle. Two identical gradient halves make the six-second vertical flow seamless, including at loop boundaries.
+- The original grey `.help` text remains underneath the overlay; reduced-motion users always see the original static text. No JavaScript, network requests or layout changes.
+- Full regression coverage: `tests/release-192-wordmark-rainbow.test.mjs` plus the existing suite. Previous analytics, navigation and robot work remain intact.
+
 # SOLVI v0.2.191 — Non-blocking Umami analytics
 
 - Add opt-in-free Umami website analytics via the supplied analytics.mielniczuk.com endpoint and website ID, without modifying the Meta/robot application module graph.

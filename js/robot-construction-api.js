@@ -1,4 +1,4 @@
-// v0.2.191 · Documented, bounded, deterministic robot construction interface.
+// v0.2.192 · Documented, bounded, deterministic robot construction interface.
 // The Meta model proposes data; the editor remains the sole privileged executor.
 export const ROBOT_TOOL_API_VERSION='1';
 export const ROBOT_TOOL_DESCRIPTIONS=Object.freeze({

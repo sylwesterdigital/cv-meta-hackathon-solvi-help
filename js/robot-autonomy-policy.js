@@ -1,4 +1,4 @@
-// v0.2.191: bounded, deterministic recovery strategy. A model can propose
+// v0.2.192: bounded, deterministic recovery strategy. A model can propose
 // tools, but the runtime owns actual state, retries and completion evidence.
 import {houseGoal} from './robot-construction-api.js';
 export const META_RECOVERY_MIN_MS=180000;
