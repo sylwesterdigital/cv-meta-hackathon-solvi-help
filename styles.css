@@ -2711,3 +2711,14 @@ body>#inspectorValueSlider #inspectorActiveRange{
     opacity: 0;
   }
 }
+
+
+/* v0.2.195 — In-app About tab (project overview, separate from release notes). */
+.dev-about{min-height:120px;max-height:48svh;overflow:auto;color:var(--ui-fg,#d8e3ef);font-size:13px;line-height:1.65}
+.dev-about[hidden],.log-scroll[hidden]{display:none!important}
+.dev-about h2{font-size:20px;line-height:1.25;margin:8px 0 12px}
+.dev-about h3{font-size:14px;margin:16px 0 5px}
+.dev-about p{margin:8px 0 12px}
+.dev-about-links{display:flex;gap:12px;flex-wrap:wrap}
+.dev-about-links a{color:#9bd4ff;text-decoration:underline;text-underline-offset:3px}
+.dev-about-links a:focus-visible{outline:2px solid #a9dcff;outline-offset:3px}

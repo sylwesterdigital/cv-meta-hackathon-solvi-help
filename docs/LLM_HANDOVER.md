@@ -1,8 +1,18 @@
-# SOLVI.help Master LLM Handover — v0.2.194
+# SOLVI.help Master LLM Handover — v0.2.195
+
+
+## v0.2.195 — Public project README and About
+
+- Confirmed root `README.md` saved earlier is a ~7 KB public project explanation; application `app/README.md` had grown into a ~156 KB chronological dev log by v0.2.194. This caused confusion about where the project introduction belongs.
+- Preserve the entire v0.2.194 app README verbatim within the new `app/CHANGELOG.md`, preceded by a v0.2.195 entry. Replace `app/README.md` with a concise project overview based on the original public README; add `app/ABOUT.md` and an About tab within the existing in-app Dev log dialog.
+- Restore and independently provide repository-root `README.md` (with `app/`-relative links), since the watcher ZIP contract allows only `manifest.json` + `app/**`; it cannot write a root repository README by itself. The user may need a separate ordinary git commit for this document.
+- The About tab is local static markup and does not load markdown, external scripts, or API keys. Existing release notes, diagnostics, save, scenes, avatars and robotics are unchanged.
+- Add `app/docs/RELEASE_0.2.195_SPEC.md` and tests covering README/CHANGELOG/ABOUT separation, tab semantics and links.
+- **Deployment:** Not confirmed. User reported previous v0.2.194 ZIP and asked for proper README. Do not assume any v0.2.190–v0.2.195 deployments without watcher success logs.
 
 ## Scene and preset consistency; preserving edits across multiplayer clients
 
-**Status:** v0.2.194 full local release candidate for the Mac `updates/` watcher. Not confirmed deployed. The user most recently confirmed v0.2.189 live; subsequent ZIPs were produced without watcher logs confirming deployment. Do not claim GitHub push or Ubuntu deployment. Back up the production SQLite database and existing realm archives before deploying. This update cannot restore objects previously deleted from the server; old scene snapshots/backups are required for recovery.
+**Status:** v0.2.195 full local release candidate for the Mac `updates/` watcher. Not confirmed deployed. The user most recently confirmed v0.2.189 live; subsequent ZIPs were produced without watcher logs confirming deployment. Do not claim GitHub push or Ubuntu deployment. Back up the production SQLite database and existing realm archives before deploying. This update cannot restore objects previously deleted from the server; old scene snapshots/backups are required for recovery.
 
 **Reported symptoms:** screenshot showed `Preset could not be saved: Invalid preset properties`; remote clients sometimes missed furniture or furnished houses appeared to vanish; single-line stairs reverted custom colours; Live diagnostics showed periodic `presence-sync` but no object-save failures. The user's laptop-error description was incomplete, so avoid asserting an unknown laptop issue was fixed.
 

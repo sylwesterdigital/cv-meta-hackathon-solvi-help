@@ -4,18 +4,22 @@ const byId = id => document.getElementById(id);
 export async function initDevLog(){
   const backdrop=byId('devBackdrop'); let autoClose=0;let viewedVersion='';
   initRoomDiagnostics();
-  function selectTab(diagnostics){
-    byId('logEntries').hidden=diagnostics;byId('devDiagnostics').hidden=!diagnostics;
-    byId('devReleasesTab').classList.toggle('selected',!diagnostics);
-    byId('devDiagnosticsTab').classList.toggle('selected',diagnostics);
-    byId('devReleasesTab').setAttribute('aria-pressed',String(!diagnostics));
-    byId('devDiagnosticsTab').setAttribute('aria-pressed',String(diagnostics));
+  function selectTab(tab){
+    const panels={about:'devAbout',releases:'logEntries',diagnostics:'devDiagnostics'};
+    const buttons={about:'devAboutTab',releases:'devReleasesTab',diagnostics:'devDiagnosticsTab'};
+    for(const [name,id] of Object.entries(panels))byId(id).hidden=name!==tab;
+    for(const [name,id] of Object.entries(buttons)){
+      const selected=name===tab;
+      byId(id).classList.toggle('selected',selected);
+      byId(id).setAttribute('aria-pressed',String(selected));
+    }
   }
-  byId('devReleasesTab').addEventListener('click',()=>selectTab(false));
-  byId('devDiagnosticsTab').addEventListener('click',()=>selectTab(true));
+  byId('devAboutTab').addEventListener('click',()=>selectTab('about'));
+  byId('devReleasesTab').addEventListener('click',()=>selectTab('releases'));
+  byId('devDiagnosticsTab').addEventListener('click',()=>selectTab('diagnostics'));
   function open(){clearTimeout(autoClose);backdrop.hidden=false;backdrop.classList.add('open');}
   function close(){clearTimeout(autoClose);backdrop.hidden=true;backdrop.classList.remove('open');markDevLogRead(viewedVersion,localStorage);}
-  byId('devLogButton').addEventListener('click',open);byId('devLogNavButton').addEventListener('click',open);backdrop.hidden=true;backdrop.classList.remove('open');
+  byId('devLogButton').addEventListener('click',()=>{selectTab('releases');open();});byId('devLogNavButton').addEventListener('click',()=>{selectTab('about');open();});backdrop.hidden=true;backdrop.classList.remove('open');
   byId('closeLog').addEventListener('click',close);
   byId('continueButton').addEventListener('click',close);
   document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&!backdrop.hidden)close();});

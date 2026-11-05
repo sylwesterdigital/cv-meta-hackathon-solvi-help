@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.194",
+  "currentVersion": "0.2.195",
   "releases": [
+    {
+      "version": "0.2.195",
+      "publishedAt": "2026-11-05T10:52:11Z",
+      "changes": [
+        "Replace application developer-diary README with a public-facing project overview; preserve original historical notes in CHANGELOG.md.",
+        "Add ABOUT.md and a local About tab in the existing application window while keeping release notes and diagnostics unchanged.",
+        "Provide a separate GitHub repository-root README with correct app-relative links, without changing the watcher ZIP contract.",
+        "Retain all v0.2.194 scene, preset, multiplayer, procedural equipment and Meta AI features; original GLB assets unchanged."
+      ]
+    },
     {
       "version": "0.2.194",
       "publishedAt": "2026-11-05T10:29:29Z",
@@ -327,17 +337,6 @@
         "Add procedural Office chair with seat, backrest, adjustable optional headrest and single-pedestal/four-leg bases, using existing furniture editor, presets and seat logic.",
         "Expose independently adjustable translucent bottle liquid opacity, with a visible fill-level surface; preserve old bottle opacity and cap behaviour.",
         "Use the supplied Delete SVG and ensure the SVG button glyph is centred horizontally and vertically in existing SOLVI icon buttons."
-      ]
-    },
-    {
-      "version": "0.2.161",
-      "publishedAt": "2026-11-03T11:46:01Z",
-      "changes": [
-        "Inventory window uses the shared draggable-window system and displays robot portrait plus thumbnail-based item cards.",
-        "Presets become truly image-only click targets without the global automatic Add icon; name and type overlay the preview and Delete remains a corner icon.",
-        "Rebuild all supported procedural preset thumbnails using the shared dedicated offscreen renderer, with centered orthographic object bounds.",
-        "Bottles support shell opacity, hollow uncapped opening, liquid colour and 0\u2013100% simulated fill level.",
-        "Shift+I picks up a nearby backpack or removes a worn backpack without losing its stored contents."
       ]
     }
   ]
