@@ -1,3 +1,21 @@
+# SOLVI.help Master LLM Handover — v0.2.199
+
+## v0.2.199 — Outdoor draw commands bypass the smart furniture-placement gate (2026-11-05)
+
+**Reported regression:** The user attempted Draw road in open terrain, with the camera some distance from the estate. v0.2.198 displayed `No visible, collision-free space. Look into an open part of the room or move the camera closer.` and aborted before drawing began. Screenshots show plenty of ground. This is an application logic error, not proof of a collision.
+
+**Exact root cause:** `startInfrastructureDrawing(editor, 'road')` calls `editor.add('furniture', false, undefined, false, 'infrastructure')` to create a provisional unsaved draft. `SceneEditor.add` (changed in v0.2.197) always invoked `this.placeSmartNewObject` for furniture, including a temporary infrastructure model BEFORE the user supplied any points. The camera/frustum/collision search is designed for individual pieces of furniture (15–20m window), not a road laid out across distant ground. This rejected the provisional draft. Related sketch creators `finishVegetationPlot` and `finishCurve` also called `.add(...persist=false)` and could be incorrectly rejected; portal pairs also construct objects at explicit later coordinates.
+
+**Fix:** In `app/js/editor.js`, `SceneEditor.add` now recognises `explicitlyPositionedDraft` only for non-persistent infrastructure/groundPlot/cropBed/waterPatch/vegetationArea furniture drafts, 3D curves, and portal pair drafts. These skip smart placement, start at origin, and never update the last auto-placement anchor. The original sketch/draw workflow then computes its final position based on ground-pointer points / custom geometry and calls `queueSave` once the object has been completed, using the existing object-level multiplayer persistence path. Normal furniture, procedural tools, small tabletop props, generic primitives and saved presets still require collision-free smart placement. No scene schema, backend validation, robot logic, database or security changes. `js/infrastructure-drawing.js` and `js/vegetation-drawing.js` still handle explicit path drawing, with no camera-distance cap on ground ray intersections.
+
+**Regression:** `tests/release-199-drawn-infrastructure-placement.test.mjs` extracts and invokes the ACTUAL `SceneEditor.add` method against a deterministic mocked scene with a smart-placement function that always rejects. Proves seven explicit draft types succeed without call/publish/save/anchor, while standard furniture and primitives remain blocked and successful ordinary furniture saves normally. Confirms drawing modules supply their own final positions and per-object save path.
+
+**Verified before packaging:** JavaScript source suite **950/950** passed with concurrency 6; all six standalone backend checks passed; 13 Python backend modules parsed; `install-ubuntu.sh` and `deploy-from-mac.sh` pass Bash syntax. Full Flask integration remains unverified locally.
+
+**Deployment:** Use a complete v0.2.199 ZIP with a verified `manifest.json` and original GLBs unchanged; place in Mac `updates/` watcher. Live WebGL road path drawing, canvas raycasting, production sync, Flask test API, and deployment are not confirmed locally. Critical previous database recovery concerns remain unresolved without production database inspection. If a draft fails for any other reason, avoid changing real room objects until the server is known healthy.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.198
 
 ## v0.2.198 — Smart support-surface placement (2026-11-05)

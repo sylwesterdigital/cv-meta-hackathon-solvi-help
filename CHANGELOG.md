@@ -1,3 +1,10 @@
+## v0.2.199 — Outdoor road and path drawing no longer blocked by smart furniture placement
+
+- Restore road/motorway/path/fence drawing in open terrain and at a distance from the camera: creating the unsaved infrastructure draft no longer invokes room furniture visibility and collision restrictions.
+- Extend the same fix to explicit-geometry workflows for vegetation plots, ground plots, beds, lakes, 3D curves and paired portals.
+- Keep roads and fences positioned from the user's actual drawn points and publish only their finished shapes through the existing per-object multiplayer persistence path.
+- Do not weaken smart placement for newly added independent furniture, tools, props or presets. No schema changes; preserve server scene backups and recovery safeguards.
+
 ## v0.2.198 — Smart tabletop and raised-floor placement
 
 - Fix v0.2.197 placement failure in populated houses: small objects (cans, bottles, mugs, plates, laptops and similar props) are placed on **visible existing tables** or other genuine horizontal support surfaces before ground-level placement is considered.

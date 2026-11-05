@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.198",
+  "currentVersion": "0.2.199",
   "releases": [
+    {
+      "version": "0.2.199",
+      "publishedAt": "2026-11-05T13:57:48Z",
+      "changes": [
+        "Restore Draw road and motorway in outdoor open terrain without the furniture-placement collision/camera distance gate rejecting an unsaved infrastructure draft.",
+        "Explicitly positioned, non-persistent infrastructure paths, fences, hedges, vegetation/ground plots, freehand 3D curves and portal pairs bypass the smart furniture planner until their drawing tools position completed objects.",
+        "Normal furniture, tools, primitive objects and presets retain safe camera-aware collision-checked placement and existing multiplayer per-object saves.",
+        "Preserve all previous indoor tabletop placement, scene backups, database recovery protections, Meta AI workflows and original 3D avatar/model binaries."
+      ]
+    },
     {
       "version": "0.2.198",
       "publishedAt": "2026-11-05T13:24:11Z",
@@ -323,17 +333,6 @@
         "Draw orchard/forest/brushwood planting areas on the ground with the existing polygon closure, smoothing and redraw tools; expose density, spacing, species, scatter seed, cluster strength and scale variation in compact Properties.",
         "Use bounded shared InstancedMesh batches for trunks, crowns, conifers, palms, shrubs and undergrowth rather than creating a separate mesh per plant; retain deterministic restoration and prior v0.2.165 Nature scenes.",
         "Extend backend validation and add multi-mode deterministic scattering, geometry-budget and editor integration regression tests."
-      ]
-    },
-    {
-      "version": "0.2.165",
-      "publishedAt": "2026-11-03T14:49:31Z",
-      "changes": [
-        "Replace dark checkerboard soil with continuous multi-scale value noise, tone mapping and sRGB output; preview vegetation edits while numeric controls change.",
-        "Replace static grass cones with a single instanced mesh of thin blades, vertex-shader wind displacement, adjustable width/strength/speed and a bounded per-plot draw budget.",
-        "Extend the tree builder with blossom trees, palm fronds and coconuts; reduce default leaf sizes and make seeded foliage clusters denser without per-leaf draw calls.",
-        "Add procedural wood bark selection, trunk noise irregularity and editable blossom colour/density, keeping earlier Nature scenes and presets readable.",
-        "Extend backend validation and add regression tests for new vegetation settings, deterministic tree generation and bounded scene geometry."
       ]
     }
   ]
