@@ -8,6 +8,7 @@ import {EditHistory,duplicateElevation,nextDuplicateName} from './edit-history.j
 import {makeRobot,hydrateRobot,robotAction,tickRobots,animateRobots,setRobotDestination,interruptRobotMission,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
 import {intent,active,packetFor,stepRobotMotion,signedAngle,makeRemoteCorrection,applyRemoteCorrection} from './robot-net.js';
 import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneModelRenderer,isSceneModelURL,loadSceneAsset} from './scene-models.js';
+import {validateSceneSnapshot} from './scene-snapshot-guard.js';
 import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,toggleSceneMediaPlayback,setSceneMediaMuted,setSceneMediaLoop,setSceneMediaSpatial,syncSceneMediaGroup,sceneMediaMuted,sceneMediaPlaying,sceneMediaKind,showSceneMediaCaptions} from './scene-media.js';
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive,FURNITURE_TYPES,BASIC_PROP_TYPES,FURNITURE_NUMERIC,sanitiseFurniture,makeFurniture,rebuildFurniture} from './primitive-properties.js';
@@ -2222,6 +2223,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    const room=window.solviRoom||'main';
    const data=await api.req('/api/scene?room='+encodeURIComponent(room));
    if(ticket!==this.sceneLoadTicket||room!==(window.solviRoom||'main'))return;
+   const safety=validateSceneSnapshot(data,{localCount:this.items.length,sameRoom:this.lastLoadedRoom===room&&!this.realmTransitioning});
+   if(!safety.ok){this.sceneDiagnostic('scene-snapshot-rejected',{reason:safety.reason,count:data?.objects?.length??-1});throw Error(safety.reason);}
    // An older GET must never roll back a newer saved object or received revision.
    if(data.revision<this.revision){this.sceneDiagnostic('scene-stale-snapshot',{revision:data.revision,expected:this.revision,reason});return;}
    this.revision=Math.max(this.revision,data.revision);
@@ -2232,7 +2235,11 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     for(const old of [...this.items])if(!next.has(old.userData.editorId)&&!this.dirtyGenerations.has(old.userData.editorId)&&!this.pendingRemovals.has(old.userData.editorId))this.applyObjectPatch({action:'remove',id:old.userData.editorId});
    }else if(!await this.applyCooperatively(data.objects||[],()=>ticket===this.sceneLoadTicket&&room===(window.solviRoom||'main')))return;
    if(ticket!==this.sceneLoadTicket||room!==(window.solviRoom||'main'))return;
-   this.lastLoadedRoom=room;this.sceneDiagnostic('scene-reconciled',{revision:this.revision,count:(data.objects||[]).length,reason});
+   this.lastLoadedRoom=room;
+   // A local read-only emergency copy may assist recovery if server data is later lost.
+   // Quota failure must never interfere with the 3D application.
+   try{if(data.objects.length){const backup=JSON.stringify(data);if(backup.length<3000000)localStorage.setItem('solvi-scene-last-good-'+room,backup);}}catch{}
+   this.sceneDiagnostic('scene-reconciled',{revision:this.revision,count:data.objects.length,reason});
    if(!quiet)this.toast('Shared scene loaded');
   }catch(e){this.sceneDiagnostic('scene-fetch-failed',{reason:e.message});this.toast('Scene sync failed: '+e.message);}}
  async save(){const room=window.solviRoom||'main',api=window.solviAPI;

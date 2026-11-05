@@ -26,6 +26,6 @@ test('Selected TV receives paste directly; IPTV catalogue is searchable and boun
 });
 test('Backend validates new smart options with strict types and keeps existing Rantlist channels',()=>{
  const python=`import ast,math,re,sys\ntree=ast.parse(open(sys.argv[1]).read())\nneeded={'valid_smart_channels','valid_smart_options','valid_basic_furniture'}\nnamespace={'math':math,'re':re}\nexec(compile(ast.Module(body=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in needed],type_ignores=[]),'<validator>','exec'),namespace)\nvalid=namespace['valid_basic_furniture']\nu='https://rantlist.me/media/example/index.m3u8'\nassert valid({'variant':'tv','channels':[{'title':'Rantlist','url':u}],'smartAudio':True,'smartMuted':False,'smartLoop':True,'smartAutoPlay':True,'smartStartChannel':0,'smartPreserveAspect':True})\nassert not valid({'variant':'tv','smartAudio':'true'})\nassert not valid({'variant':'tv','smartStartChannel':999})
-assert 'len(value)>120' in open(sys.argv[1]).read()\nprint('ok')`;
+assert 'len(value)>200' in open(sys.argv[1]).read()\nprint('ok')`;
  const result=spawnSync('python3',['-c',python,new URL('../backend/server.py',import.meta.url).pathname],{encoding:'utf8'});assert.equal(result.status,0,result.stderr||result.stdout);
 });

@@ -9,7 +9,7 @@ let activeRobot=null,frame=null,frameURL=null;
 const latestFrames=new Map(),frameHistory=new Map(),taskTraces=new Map();
 export function robotTraceEntries(id){return (taskTraces.get(id)||[]).map(e=>({...e}));}
 export function robotTraceText(id){return robotTraceEntries(id).map(e=>`[${e.at}] ${e.step}: ${e.detail}`).join('\n\n');}
-export function robotTraceExport(id,name='Robot'){return JSON.stringify({schema:'solvi-robot-diagnostics-v1',version:'0.2.195',robot:{id,name},exportedAt:new Date().toISOString(),scope:'this browser tab only; last 1500 events per robot',events:robotTraceEntries(id)},null,2);}
+export function robotTraceExport(id,name='Robot'){return JSON.stringify({schema:'solvi-robot-diagnostics-v1',version:'0.2.196',robot:{id,name},exportedAt:new Date().toISOString(),scope:'this browser tab only; last 1500 events per robot',events:robotTraceEntries(id)},null,2);}
 function rememberFrame(id,blob,label){
  const rec={blob,label,boxes:[],usage:null};latestFrames.set(id,rec);
  const history=frameHistory.get(id)||[];history.push(rec);if(history.length>10)history.shift();frameHistory.set(id,history);

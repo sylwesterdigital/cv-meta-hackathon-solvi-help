@@ -23,6 +23,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+import zlib
 import uuid
 from pathlib import Path
 from contextlib import contextmanager
@@ -119,6 +120,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS room_policies (room_id TEXT PRIMARY KEY, objects TEXT NOT NULL DEFAULT 'open', robots TEXT NOT NULL DEFAULT 'open');
         CREATE TABLE IF NOT EXISTS room_environments (room_id TEXT PRIMARY KEY, payload TEXT NOT NULL DEFAULT '{}');
         CREATE TABLE IF NOT EXISTS room_scenes (room_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL DEFAULT '[]');
+        CREATE TABLE IF NOT EXISTS scene_snapshots (id TEXT PRIMARY KEY, room_id TEXT NOT NULL, revision INTEGER NOT NULL, payload BLOB NOT NULL, sha256 TEXT NOT NULL, object_count INTEGER NOT NULL, reason TEXT NOT NULL, created REAL NOT NULL);
+        CREATE INDEX IF NOT EXISTS scene_snapshots_room_time ON scene_snapshots(room_id,created DESC);
         INSERT OR IGNORE INTO rooms(id,title,created) VALUES('main','Main realm','2026-10-27T00:00:00Z');
         INSERT OR IGNORE INTO room_scenes VALUES('main',0,'[]');
         INSERT OR IGNORE INTO room_policies(room_id) VALUES('main');
@@ -153,6 +156,38 @@ init_db()
 
 
 def now(): return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
+# Safeguard: keep compressed, server-side, restorable versions BEFORE scene changes.
+# Snapshots are committed atomically with the mutation that follows; no export/import
+# path silently overwrites the original history. Never copy user access tokens here.
+def save_scene_snapshot(con, room_id, revision, payload, reason='upsert'):
+    if not isinstance(payload,str) or payload=='[]':return False
+    stamp=time.time()
+    latest=con.execute('SELECT revision,created FROM scene_snapshots WHERE room_id=? ORDER BY created DESC, rowid DESC LIMIT 1',(room_id,)).fetchone()
+    if reason=='upsert' and latest and stamp-latest['created']<300 and revision-latest['revision']<10:
+        return False
+    blob=payload.encode('utf-8')
+    count=len(json.loads(payload))
+    con.execute('INSERT INTO scene_snapshots VALUES(?,?,?,?,?,?,?,?)',
+                (str(uuid.uuid4()),room_id,revision,sqlite3.Binary(zlib.compress(blob,6)),hashlib.sha256(blob).hexdigest(),count,reason,stamp))
+    old=con.execute('SELECT id FROM scene_snapshots WHERE room_id=? ORDER BY created DESC,rowid DESC LIMIT -1 OFFSET 32',(room_id,)).fetchall()
+    if old:con.executemany('DELETE FROM scene_snapshots WHERE id=?',[(row['id'],) for row in old])
+    return True
+
+def decode_scene_snapshot(row):
+    raw=zlib.decompress(row['payload'])
+    if hashlib.sha256(raw).hexdigest()!=row['sha256']:raise ValueError('Scene snapshot checksum mismatch')
+    objects=json.loads(raw)
+    if not isinstance(objects,list):raise ValueError('Scene snapshot is not an object list')
+    return objects
+
+# Preserve each existing production scene on the first v0.2.196 startup,
+# before anyone edits, retries an invalid save, or runs a full-room replacement.
+with db() as _backup_con:
+    for _existing in _backup_con.execute('SELECT room_id,revision,payload FROM room_scenes').fetchall():
+        if _existing['payload']!='[]' and not _backup_con.execute('SELECT 1 FROM scene_snapshots WHERE room_id=? LIMIT 1',(_existing['room_id'],)).fetchone():
+            save_scene_snapshot(_backup_con,_existing['room_id'],_existing['revision'],_existing['payload'],'pre-upgrade')
+
 def sha(v): return hashlib.sha256(v.encode()).hexdigest()
 def new_token(): return secrets.token_urlsafe(32)
 def json_error(message, code=400): return jsonify(error=message), code
@@ -197,7 +232,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.195',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.196',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -965,6 +1000,7 @@ def bookmark_payload(obj):
 
 # User-owned catalogue of procedural object configurations. Templates cannot include
 # asset URLs, ownership, robot data or uploaded media; every instance gets a fresh ID.
+MAX_FURNITURE_FIELDS = 200  # Aligned with complete procedural builder schema; all names and values are validated below.
 _PRESET_TYPES={'furniture','cube','sphere','cylinder','plane','torus','surface','curve','text','ladder','stairs','wall'}
 _PRESET_FIELDS={'kind','name','rotation','scale','color','texture','physics','pickable','inventory','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture','wall'}
 
@@ -973,7 +1009,7 @@ def _preset_finite(value,depth=0):
     if value is None or isinstance(value,(str,bool)):return True
     if isinstance(value,(int,float)):return math.isfinite(value)
     if isinstance(value,list):return len(value)<=2500 and all(_preset_finite(v,depth+1) for v in value)
-    if isinstance(value,dict):return len(value)<=120 and all(isinstance(k,str) and len(k)<=100 and _preset_finite(v,depth+1) for k,v in value.items())
+    if isinstance(value,dict):return len(value)<=200 and all(isinstance(k,str) and len(k)<=100 and _preset_finite(v,depth+1) for k,v in value.items())
     return False
 
 @app.route('/api/object-presets',methods=['GET','POST'])
@@ -3571,6 +3607,29 @@ def get_scene():
     with db() as con:row=con.execute('SELECT revision,payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
     return jsonify(revision=row['revision'],objects=json.loads(row['payload']))
 
+@app.get('/api/scene/backups')
+def list_scene_backups():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    room_id=selected_room(request.args.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    with db() as con:
+        rows=con.execute('SELECT id,revision,object_count,reason,created FROM scene_snapshots WHERE room_id=? ORDER BY created DESC,rowid DESC LIMIT 32',(room_id,)).fetchall()
+    return jsonify(room=room_id,backups=[dict(r) for r in rows])
+
+@app.get('/api/scene/backups/<snapshot_id>')
+def download_scene_backup(snapshot_id):
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    room_id=selected_room(request.args.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    with db() as con:
+        row=con.execute('SELECT * FROM scene_snapshots WHERE id=? AND room_id=?',(snapshot_id,room_id)).fetchone()
+    if not row:return json_error('Scene backup not found',404)
+    try:objects=decode_scene_snapshot(row)
+    except (ValueError,zlib.error,json.JSONDecodeError):return json_error('Scene backup checksum failed',500)
+    return jsonify(room=room_id,revision=row['revision'],objects=objects,backupId=row['id'],created=row['created'],readonly=True)
+
 def valid_office_wall(wall):
     if not isinstance(wall,dict) or len(wall)>18:return False
     points=wall.get('points',[])
@@ -3682,9 +3741,7 @@ def valid_robot_seating(value):
 
 def valid_basic_furniture(value):
     if not isinstance(value,dict):return False
-    if value.get('variant')=='infrastructure':
-        if len(value)>165:return False
-    elif len(value)>120:return False
+    if len(value)>200:return False
     variant=value.get('variant')
     if variant not in ('table','chair','officeChair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box','tv','monitor','miniComputer','keyboard','trackpad','mouse','printer','laptop','fridge','shovel','axe','rake','stick','broom','mop','saw','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker','tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch','infrastructure'):return False
     numeric={'width':(.06,8),'depth':(.06,8),'height':(.025,4),'topThickness':(.025,.3),
@@ -3912,7 +3969,8 @@ def set_scene():
         con.execute('BEGIN IMMEDIATE')
         old=con.execute('SELECT revision FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['revision']
         if old!=revision:return jsonify(error='Scene changed on another client; reload before saving',revision=old),409
-        before=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['payload'])
+        before_payload=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['payload']
+        before=json.loads(before_payload)
         previous={o.get('id'):o for o in before}
         submitted={o.get('id'):o for o in objects}
         for identifier,existing in previous.items():
@@ -3920,6 +3978,9 @@ def set_scene():
                 return json_error('Cannot change objects owned by other users',403)
         for o in objects:
             o['owner']=(previous.get(o.get('id')) or {}).get('owner') or user['id']
+        if len(before)>4 and len(objects)<len(before)*.75 and data.get('confirmDestructive') is not True:
+            return json_error('Bulk scene replacement would remove many objects; explicit confirmation required',409)
+        save_scene_snapshot(con,room_id,old,before_payload,'bulk')
         con.execute('UPDATE room_scenes SET revision=?,payload=? WHERE room_id=?',(old+1,json.dumps(objects,separators=(',',':')),room_id))
     publish({'type':'scene-changed','revision':old+1,'room':room_id,'by':user['id'],'action':'bulk'},room_id=room_id)
     return jsonify(revision=old+1,ok=True)
@@ -4049,6 +4110,8 @@ def patch_scene_object():
             else:
                 if len(items)>=MAX_ROOM_SCENE_OBJECTS:return json_error('Room object limit reached',409)
                 items.append(obj)
+        if action!='remove' or existing is not None:
+            save_scene_snapshot(con,room_id,row['revision'],row['payload'],'remove' if action=='remove' else 'upsert')
         revision=row['revision']+1
         con.execute('UPDATE room_scenes SET revision=?,payload=? WHERE room_id=?',(revision,json.dumps(items,separators=(',',':')),room_id))
     # Send the single changed object, not a trigger to reload every GLB in the realm.

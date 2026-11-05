@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.195",
+  "currentVersion": "0.2.196",
   "releases": [
+    {
+      "version": "0.2.196",
+      "publishedAt": "2026-11-05T11:22:36Z",
+      "changes": [
+        "Fix rejected procedural furniture/tool/device scene saves and presets: full client 129-field configurations pass strict 200-field server compatibility limits, with type/range/allowlist/media validation intact.",
+        "Introduce checksummed, compressed room scene history with pre-upgrade startup snapshots, read-only backup endpoints, explicit bulk-delete safeguards and offline recovery utility.",
+        "Reject malformed or unexpectedly empty same-room loads without clearing locally rendered objects; retain a bounded read-only browser scene copy.",
+        "Preserve existing v0.2.195 README/ABOUT/CHANGELOG separation, multiplayer robot functionality, avatar model assets, and watcher ZIP contract."
+      ]
+    },
     {
       "version": "0.2.195",
       "publishedAt": "2026-11-05T10:52:11Z",
@@ -326,17 +336,6 @@
         "Upgrade procedural Office chair with an optional ergonomic backrest opening, optional armrests and a five-spoke wheeled pedestal base; retain four-leg variants and existing seat/preset persistence.",
         "Centre the preset Delete SVG in its button and prevent an automatically decorated duplicate icon from shifting it.",
         "Brighten Save Chat Portrait independently of the previously corrected robot eye-camera via sRGB offscreen output and temporary neutral portrait lights; restore scene and GPU state after capture."
-      ]
-    },
-    {
-      "version": "0.2.162",
-      "publishedAt": "2026-11-03T12:19:00Z",
-      "changes": [
-        "Interrupt the pickup/lift animation as soon as genuine avatar locomotion begins, while preserving the object carry timer and grip; recover looping gaits from a paused one-shot state.",
-        "Capture robot eye-camera JPEGs with proper sRGB output from the offscreen render target to avoid underexposed linear colour readback.",
-        "Add procedural Office chair with seat, backrest, adjustable optional headrest and single-pedestal/four-leg bases, using existing furniture editor, presets and seat logic.",
-        "Expose independently adjustable translucent bottle liquid opacity, with a visible fill-level surface; preserve old bottle opacity and cap behaviour.",
-        "Use the supplied Delete SVG and ensure the SVG button glyph is centred horizontally and vertically in existing SOLVI icon buttons."
       ]
     }
   ]

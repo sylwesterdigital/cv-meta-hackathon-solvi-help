@@ -1,3 +1,10 @@
+## v0.2.196 — Furniture persistence and scene recovery
+
+- Fix all default furniture/tool/equipment save failures caused by a backend property-count mismatch: 129 generated fields versus 120 allowed; preserve strict field allowlists and numeric bounds.
+- Save compressed, checksummed, bounded room-scene recovery snapshots before destructive operations; include safe read-only snapshot APIs and offline restore utility.
+- Prevent malformed or unexpectedly empty scene loads from discarding a previously populated client room; keep an optional last-good local JSON copy.
+- Keep v0.2.195 About and README separation and all previous features.
+
 # SOLVI.help v0.2.195 — Project README and About
 
 - Restore a concise, public-facing README for the app and separately provide the GitHub-root README.

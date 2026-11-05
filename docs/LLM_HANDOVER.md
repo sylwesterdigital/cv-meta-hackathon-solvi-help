@@ -1,4 +1,27 @@
-# SOLVI.help Master LLM Handover — v0.2.195
+# SOLVI.help Master LLM Handover — v0.2.196
+
+## v0.2.196 — Critical: furniture rejected on save; rooms appear empty
+
+**Reported on 2026-11-05:** User screenshots show `Scene object NOT saved: Rake · Invalid basic furniture`, and reports that prior sets of furnished interiors have disappeared and a fresh load reports furniture as invalid. Treat as a data-integrity incident, not cosmetic. The precise production SQLite data has not been inspected here; loss and recovery are not independently confirmed. The user most recently confirmed v0.2.189 deployed; later watcher logs have not been supplied.
+
+**Confirmed cause:** `app/js/primitive-properties.js` generates a **129-property** config for every one of 46 types (45 regular furniture/tool/equipment/nature variants plus infrastructure). Backend `valid_basic_furniture` rejected non-infrastructure dicts with more than 120 fields; `_preset_finite` also rejected nested dicts over 120. As a result, the server rejected object saves/presets even though the editor had rendered them locally. Loading the room later couldn't show locally created unsaved furniture, and periodic presence-sync is not a scene-save guarantee.
+
+**Changes:**
+- `backend/server.py`: enlarge field count to **200** in `valid_basic_furniture` and `_preset_finite`, preserving the existing strict enumerated field-name, type, numeric-range, HTTPS media, and semantic validators. Tests exercise 45 complete 129-field default configurations; infrastructure schema still requires valid physical points. Do not solve by accepting arbitrary keys/values.
+- Add `scene_snapshots` SQLite table with zlib-compressed SHA256-verified, timestamped per-room full scene snapshots; retain 32 snapshots/room. On first startup under v0.2.196, save each already-populated room as `pre-upgrade`. Backup before bulk overwrites and deletes; during edits, snapshots every ten revisions or five minutes. The backup is committed in the same transaction as the mutation; no automatic restoration occurs.
+- Read-only authenticated `GET /api/scene/backups?room=main` lists revisions. `GET /api/scene/backups/<snapshotId>?room=main` provides JSON snapshot data. No automatic full-room restore over other users' edits.
+- `backend/scene_recovery.py`: offline inspect/export and optional explicitly confirmed snapshot restore; requires `--service-stopped --confirm RESTORE:<room>`, creates a transactionally consistent SQLite `.before-restore-*.sqlite3` backup and increments scene revision. Existing pre-v0.2.196 databases may only contain `room_scenes`, `scene` legacy payload, or independent backups; newly introduced snapshots cannot reconstruct previously deleted historical objects.
+- In `editor.js`, import `scene-snapshot-guard.js` to reject malformed/missing/duplicate transformed objects and unexpected empty same-room responses before clearing the scene; preserve bounded 3MB local last-good read-only JSON when possible (`solvi-scene-last-good-<room>`). Do not auto-reupload local snapshots or silently overwrite remote scenes.
+- Bulk `PUT /api/scene` now requires `confirmDestructive:true` when removing over 25% of a populated scene of at least five objects; normal per-object saves remain backward compatible.
+- Version updated to 0.2.196 in index import maps, backend health, installer, package, releases and diagnostics. Preserve all originals and all v0.2.195 project/README/ABOUT/CHANGELOG split, v0.2.193 tools and earlier builds.
+
+**URGENT recovery advice:** STOP editing scenes and back up the actual production SQLite database including WAL/SHM using SQLite backup API (not an unsafe copy while live). Before changing versions or restoring, inspect `room_scenes`, old `scene` and older database/realm exports. This release creates backups only of data still present on startup. Do not promise lost interiors automatically restored.
+
+**Testing confirmed:** JS tests **920/920 passed** from source and from a fresh extraction of the complete v0.2.196 ZIP. Six standalone backend test scripts passed; 13 backend Python modules pass AST syntax, installer and deployment shell scripts pass Bash syntax. Offline recovery CLI was tested against a disposable SQLite database: it exported snapshots, restored a two-object scene and preserved the pre-restore DB copy. The complete release archive contains 461 application files with SHA-256 checks verified and original bundled GLBs byte-for-byte unchanged. **Not verified locally:** full Flask test API (Flask not installed), real WebGL browser UI/two-client sync, production SQLite contents, actual recovery of missing production furniture, or successful deployment. Do not claim production recovery or deployment.
+
+---
+
+## Preserved handover v0.2.195
 
 
 ## v0.2.195 — Public project README and About
