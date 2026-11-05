@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import {wallPresetTexture} from './office-walls.js';
 import {EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment} from './procedural-equipment.js';
+import {TOOL_TYPES,TOOL_NUMERIC,buildTool} from './procedural-tools.js';
+import {cleanDeviceMode} from './interactive-props.js';
 import {VEGETATION_TYPES,VEGETATION_NUMERIC,cleanVegetation,vegetationParts} from './procedural-vegetation.js';
 import {INFRASTRUCTURE_NUMERIC,cleanInfrastructure,infrastructureParts} from './procedural-infrastructure.js';
 
@@ -35,14 +37,14 @@ export function buildPrimitive(kind,values){
 // Basic furniture is built from individually collidable, editable primitive parts.
 // Keeping it here avoids a new module and preserves the deployment watcher's file budget.
 export const BASIC_PROP_TYPES=['plate','mug','glass','bowl','bottle','can','flowerpot','box'];
-export const FURNITURE_TYPES=['table','chair','officeChair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...EQUIPMENT_TYPES,...VEGETATION_TYPES,'infrastructure'];
+export const FURNITURE_TYPES=['table','chair','officeChair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...TOOL_TYPES,...EQUIPMENT_TYPES,...VEGETATION_TYPES,'infrastructure'];
 export const FURNITURE_NUMERIC={
  width:[1.2,.06,8],depth:[.75,.06,8],height:[.76,.025,4],
  topThickness:[.07,.025,.3],topRadius:[.55,.15,4],legRadius:[.04,.025,.3],
  corners:[4,3,8],seatHeight:[.46,.25,.9],backHeight:[.5,.2,1.3],
  shelves:[3,0,16],seats:[2,1,4],cushionThickness:[.14,.05,.35],
  wallThickness:[.025,.005,.15],fluidOpacity:[.52,0,1],neckRadius:[.065,.01,.5],neckHeight:[.12,.02,.6],bottleOpacity:[.7,0,1],fluidLevel:[50,0,100],
- rimHeight:[.018,.005,.1],...EQUIPMENT_NUMERIC,...VEGETATION_NUMERIC,...INFRASTRUCTURE_NUMERIC,textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
+ rimHeight:[.018,.005,.1],...EQUIPMENT_NUMERIC,...TOOL_NUMERIC,screenAngle:[105,90,155],...VEGETATION_NUMERIC,...INFRASTRUCTURE_NUMERIC,textureScale:[1,.25,5],textureDistortion:[.38,0,2],textureContrast:[1,.2,3]
 };
 const furniturePreset={
  table:{width:1.4,depth:.8,height:.75,legStyle:'four'},
@@ -62,10 +64,22 @@ const furniturePreset={
  flowerpot:{width:.22,depth:.22,height:.23,legStyle:'none'},
  box:{width:.35,depth:.3,height:.28,legStyle:'none'},
  tv:{width:1.21,depth:.12,height:.73,legStyle:'none'},monitor:{width:.61,depth:.13,height:.42,legStyle:'none'},
+ keyboard:{width:.47,depth:.17,height:.018,legStyle:'none'},
+ trackpad:{width:.14,depth:.13,height:.012,legStyle:'none'},mouse:{width:.065,depth:.11,height:.043,legStyle:'none'},
+ printer:{width:.48,depth:.36,height:.23,legStyle:'none'},
+ laptop:{width:.35,depth:.26,height:.24,legStyle:'none'},
+ fridge:{width:.82,depth:.67,height:1.82,shelves:3,legStyle:'none',color:'#c9d2da',fabricColor:'#a6b7c6'},
  miniComputer:{width:.2,depth:.2,height:.08,legStyle:'none'},bin:{width:.35,depth:.35,height:.5,legStyle:'none'},backpack:{width:.35,depth:.2,height:.45,legStyle:'none'},
  sunbed:{width:.8,depth:1.95,height:.31,legStyle:'none'},deckChair:{width:.64,depth:1.72,height:.42,legStyle:'none'},
  beachUmbrella:{width:2.4,depth:2.4,height:2.15,legStyle:'none'},
  lamp:{width:.45,depth:.45,height:1.6,legStyle:'none'},speaker:{width:.33,depth:.27,height:.65,legStyle:'none'},
+ shovel:{width:.23,depth:.13,height:1.28,handleLength:1.08,headWidth:.20,headDepth:.16,color:'#8e653e',fabricColor:'#547887'},
+ axe:{width:.22,depth:.15,height:.88,handleLength:.85,headWidth:.20,headDepth:.14,color:'#8e653e'},
+ rake:{width:.48,depth:.2,height:1.42,handleLength:1.38,headWidth:.47,headDepth:.12,color:'#8e653e'},
+ stick:{width:.05,depth:.05,height:1.25,handleLength:1.25,color:'#8e653e'},
+ broom:{width:.31,depth:.13,height:1.33,handleLength:1.29,headWidth:.30,headDepth:.13,color:'#9a754e',fabricColor:'#d0ac6e'},
+ mop:{width:.30,depth:.16,height:1.39,handleLength:1.37,headWidth:.29,headDepth:.14,color:'#889ba7',fabricColor:'#cad7da'},
+ saw:{width:.64,depth:.07,height:.25,handleLength:.67,headWidth:.20,headDepth:.13,color:'#8e653e'},
  tree:{width:2.8,depth:2.8,height:5,legStyle:'none',color:'#79513a',fabricColor:'#4a9254'},
  shrub:{width:1.4,depth:1.4,height:.9,legStyle:'none',color:'#79513a',fabricColor:'#4a9254'},
  vegetationArea:{width:8,depth:8,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
@@ -82,6 +96,7 @@ export function sanitiseFurniture(raw={}){
   const value=Number(source);
   result[key]=['corners','shelves','seats','canopySegments'].includes(key)?Math.round(Math.max(min,Math.min(max,Number.isFinite(value)?value:(defaults[key]??def)))):Math.max(min,Math.min(max,Number.isFinite(value)?value:(defaults[key]??def)));
  }
+ if(variant==='fridge')result.shelves=Math.max(1,Math.min(5,result.shelves));
  if(variant==='sofa'&&raw.width===undefined)result.width=result.seats*.82+.22;
  result.topShape=['rectangle','polygon','round'].includes(raw.topShape)?raw.topShape:'rectangle';
  result.legStyle=['four','three','single','casters','none'].includes(raw.legStyle)?raw.legStyle:defaults.legStyle;
@@ -89,7 +104,7 @@ export function sanitiseFurniture(raw={}){
  result.fluidColor=typeof raw.fluidColor==='string'&&/^#[0-9a-f]{6}$/i.test(raw.fluidColor)?raw.fluidColor:'#6eabd4';
  result.aspect=['16:9','21:9','4:3'].includes(raw.aspect)?raw.aspect:'16:9';
  result.mount=['wall','center','feet','none'].includes(raw.mount)?raw.mount:(variant==='tv'?'feet':'center');
- result.powered=raw.powered!==false;result.curved=raw.curved===true;result.binShape=raw.binShape==='square'?'square':'round';
+ result.open=raw.open===true;result.deviceMode=cleanDeviceMode(raw.deviceMode);result.powered=raw.powered!==false;result.curved=raw.curved===true;result.binShape=raw.binShape==='square'?'square':'round';
  result.lid=raw.lid===true;result.straps=raw.straps!==false;result.frontPocket=raw.frontPocket===true;
  result.backpackStyle=raw.backpackStyle==='bag'?'bag':'box';
  result.lampShape=['sphere','cube','pyramid'].includes(raw.lampShape)?raw.lampShape:'sphere';result.lampType=raw.lampType==='spot'?'spot':'point';result.lampOn=raw.lampOn!==false;
@@ -102,6 +117,7 @@ export function sanitiseFurniture(raw={}){
  result.headrest=raw.headrest===true;result.armrests=raw.armrests!==undefined?raw.armrests===true:variant==='officeChair';result.ergonomicBack=raw.ergonomicBack!==false;
  result.headboard=raw.headboard!==false;
  result.color=typeof raw.color==='string'&&/^#[0-9a-f]{6}$/i.test(raw.color)?raw.color:'#9b8068';
+ result.metalColor=typeof raw.metalColor==='string'&&/^#[0-9a-f]{6}$/i.test(raw.metalColor)?raw.metalColor:'#a1abb4';
  result.fabricColor=typeof raw.fabricColor==='string'&&/^#[0-9a-f]{6}$/i.test(raw.fabricColor)?raw.fabricColor:'#64798e';
  if(VEGETATION_TYPES.includes(variant))Object.assign(result,cleanVegetation({...raw,variant}));
  if(variant==='infrastructure')Object.assign(result,cleanInfrastructure(raw));
@@ -188,6 +204,8 @@ export function rebuildFurniture(group,raw={}){
   box(p.width,t,p.depth,0,t/2,0);box(p.width,t,p.depth,0,p.height-t/2,0);
   box(p.width-2*t,p.height-2*t,t,0,p.height/2,p.depth/2-t/2);
   for(let i=1;i<=p.shelves;i++)box(p.width-2*t,t,p.depth-t,0,t+(p.height-2*t)*i/(p.shelves+1),-t/2);
+ }else if(TOOL_TYPES.includes(p.variant)){
+  buildTool(p,{add,box,cylinder});
  }else if(EQUIPMENT_TYPES.includes(p.variant)){
   buildEquipment(p,{add,box,cylinder,wood,fabric,partsAddLight});
  }else if(p.variant==='box'){

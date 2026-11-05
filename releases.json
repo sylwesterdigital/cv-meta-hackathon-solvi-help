@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.192",
+  "currentVersion": "0.2.193",
   "releases": [
+    {
+      "version": "0.2.193",
+      "publishedAt": "2026-11-05T02:34:59Z",
+      "changes": [
+        "Add seven pickable procedural tools under a Tools category, with configurable size/materials and preserved inventory metadata in presets.",
+        "Add keyboard, trackpad/mouse/stylus device modes, mouse, decorative printer, foldable laptop and hollow fridge to Equipment.",
+        "Add persistent open/closed object state, click/tap interactions, ownership/undo support, and TV/monitor-compatible laptop media channels.",
+        "Enable fridge storage of real can/bottle/box scene objects with fitted bounded shelf slots, persistence, backend validation, safe removal and physics reconciliation.",
+        "Retain non-blocking Umami tracker, rainbow wordmark, fence-aware navigation and unchanged 3D model GLBs; include full implementation spec and regression tests."
+      ]
+    },
     {
       "version": "0.2.192",
       "publishedAt": "2026-11-05T00:32:41Z",
@@ -325,16 +336,6 @@
         "Redesign the preset gallery as image-first cards: thumbnail click directly inserts and closes, remove redundant permanent plus/Add control, and use a compact SVG delete icon over the thumbnail.",
         "Use projected camera-space bounds to center and tightly frame procedural thumbnails in a brighter isolated render, and regenerate gallery previews for saved furniture using current geometry.",
         "Add functional regression checks and preserve source-controlled assets; no watcher changes required."
-      ]
-    },
-    {
-      "version": "0.2.159",
-      "publishedAt": "2026-11-02T23:13:51Z",
-      "changes": [
-        "Route smart TV, monitor and media-frame video/HLS sound through Three.js PositionalAudio attached to each display, using the existing camera/WebXR AudioListener for distance attenuation and HRTF directional panning.",
-        "Use a forward-facing sound cone with reduced rear output, preserve the on-screen mute control and mute Web Audio gain along with the video element.",
-        "Disconnect positional audio nodes when switching channels or deleting screens; keep existing channels, IPTV, mute settings and backend schema unchanged.",
-        "Include targeted spatial-audio regression tests and preserve original avatar files."
       ]
     }
   ]

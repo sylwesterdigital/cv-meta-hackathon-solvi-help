@@ -1,4 +1,8 @@
-# SOLVI.help v0.2.192 — Intermittent rainbow .help wordmark
+# SOLVI.help v0.2.193 — Procedural tools & interactive equipment
+
+This complete SOLVI.help release adds seven basic procedural tools, keyboard/trackpad/mouse/printer/laptop/fridge devices, persistent laptop/fridge open states, laptop media playback and refrigerator item storage.
+
+**Spec:** [`docs/RELEASE_0.2.193_SPEC.md`](docs/RELEASE_0.2.193_SPEC.md).
 
 - Only the `.help` portion of the existing header wordmark briefly reveals a vertically scrolling rainbow. `SOLVI` and the current version text are visually unchanged.
 - The rainbow fades in and out on a nine-second CSS-only cycle. Two identical gradient halves make the six-second vertical flow seamless, including at loop boundaries.

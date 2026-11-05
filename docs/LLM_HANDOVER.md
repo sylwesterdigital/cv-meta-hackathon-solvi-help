@@ -1,3 +1,9 @@
+# SOLVI.help v0.2.193 — Procedural tools, interactive devices and fridge/laptop
+
+Added Tools category (shovel, axe, rake, stick, broom, mop, saw); keyboard, switchable trackpad/mouse/stylus, printer, laptop and hollow fridge in Equipment. Fridge and laptop support saved open/closed states from click targets or inspector. Laptop shares the existing TV/monitor smart-media engine. Fridge can persistently hold fitting can/bottle/box scene items by real container storage references (up to 48 computed shelf slots), with physics removed while stored and restored when taken out. The container storage whitelist in `robot-inventory.js` is critical. Ownership, scene persistence, undo, browser permissions, backend validators and mobile tap handling reuse current architecture. See `docs/RELEASE_0.2.193_SPEC.md`. No virtual text input, active printing, robot tool-use semantics or hinge motor simulation are provided; live browser behaviour and deployment must be verified. Preserve GLBs and all earlier SOLVI features. Full regression suite 904/904 tests passed in source prior to the final server preset metadata correction; focused v0.2.193 tests and backend syntax passed after that correction. Final archive retest follows. The six backend standalone tests passed.
+
+---
+
 # SOLVI.help v0.2.192 — Wordmark rainbow animation
 
 Only `.help` in the topbar wordmark receives a CSS-only intermittent vertical rainbow (9s show/hide pulse; 6s seamless flow). Original base text remains in place; reduced-motion preference disables animation. The SOLVI portion, version label, startup, backend, Meta/robot logic, and nonblocking Umami loader are unchanged. Source: `index.html`, `styles.css`; regression: `tests/release-192-wordmark-rainbow.test.mjs`. The release ZIP must remain watcher-compatible and preserve both source GLBs.

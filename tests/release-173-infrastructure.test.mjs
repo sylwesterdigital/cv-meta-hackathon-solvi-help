@@ -74,8 +74,8 @@ test('backend validates bounded infrastructure geometry, fields and transport pa
 
 test('full furniture payload passes backend strict validator and rejects unsafe paths',()=>{
  const furnitureCode=read('js/primitive-properties.js').replace(/^import .*;\s*$/gm,'').replace(/export (const|function|class) /g,'$1 ');
- const factory=new Function('EQUIPMENT_TYPES','EQUIPMENT_NUMERIC','VEGETATION_TYPES','VEGETATION_NUMERIC','INFRASTRUCTURE_NUMERIC','cleanInfrastructure','cleanVegetation',`${furnitureCode}\nreturn {sanitiseFurniture,FURNITURE_TYPES};`);
- const furniture=factory([],{},[],{},lib.INFRASTRUCTURE_NUMERIC,lib.cleanInfrastructure,v=>v);
+ const factory=new Function('EQUIPMENT_TYPES','EQUIPMENT_NUMERIC','TOOL_TYPES','TOOL_NUMERIC','buildTool','cleanDeviceMode','VEGETATION_TYPES','VEGETATION_NUMERIC','INFRASTRUCTURE_NUMERIC','cleanInfrastructure','cleanVegetation',`${furnitureCode}\nreturn {sanitiseFurniture,FURNITURE_TYPES};`);
+ const furniture=factory([],{},['shovel','axe','rake','stick','broom','mop','saw'],{handleLength:[1.1,.18,3],handleRadius:[.025,.007,.09],headWidth:[.22,.035,.85],headDepth:[.14,.012,.45]},()=>{},v=>v,[],{},lib.INFRASTRUCTURE_NUMERIC,lib.cleanInfrastructure,v=>v);
  assert.ok(furniture.FURNITURE_TYPES.includes('infrastructure'));
  const payload=furniture.sanitiseFurniture({variant:'infrastructure',infraType:'road',infraPoints:[[0,0],[40,0]],infraLanes:2});
  assert.ok(Object.keys(payload).length<=165);

@@ -11,6 +11,8 @@ import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneMode
 import {makeSceneMedia,hydrateSceneMedia,disposeSceneMedia,setSceneMediaBacking,toggleSceneMediaPlayback,setSceneMediaMuted,setSceneMediaLoop,setSceneMediaSpatial,syncSceneMediaGroup,sceneMediaMuted,sceneMediaPlaying,sceneMediaKind,showSceneMediaCaptions} from './scene-media.js';
 import {ScenePhysics} from './scene-physics.js';
 import {PRIMITIVE_FIELDS,sanitisePrimitive,buildPrimitive,FURNITURE_TYPES,BASIC_PROP_TYPES,FURNITURE_NUMERIC,sanitiseFurniture,makeFurniture,rebuildFurniture} from './primitive-properties.js';
+import {TOOL_TYPES} from './procedural-tools.js';
+import {STATEFUL_PROPS,FRIDGE_ITEM_TYPES,fridgeLayout,fridgeSlotPose,canStoreInFridge,propInteractionOf,nextPropOpen} from './interactive-props.js';
 import {syncEquipmentMedia,disposeEquipmentMedia,playEquipmentChannel,nextSpeakerChannel} from './equipment-media.js';
 import {smartScreenClick,openSmartChannel,parseChannel,cleanChannels,fetchIPTVPlaylist,safeIPTVPlaylistURL,cleanSmartOptions} from './smart-media-playlist.js';
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
@@ -161,7 +163,7 @@ export class SceneEditor{
  }
  setupUI(){
   const menu=byId('addMenu');menu.hidden=true; // Never auto-open: Shift+A or Add button only.
-  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','officeChair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Equipment',['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']],['Outdoor infrastructure',['draw wall line','draw plank fence','draw mesh fence','draw rod fence','draw hedge','draw curb','draw footpath','draw road','draw motorway']],['Nature & cultivation',['tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch','draw forest / orchard area','draw brushwood area','draw grass / soil plot','draw vegetable bed','draw water / lake patch']]];
+  const groups=[['Geometry',['cube','sphere','cylinder','plane','torus']],['Office Space',['walls','closed room','stairs','stairs advanced','ladder','escalator','moving walkway','lift']],['Basic furnitures',['table','chair','officeChair','stool','armchair','sofa','bed','cabinet']],['Basic props',BASIC_PROP_TYPES],['Tools',TOOL_TYPES],['Equipment',['tv','monitor','miniComputer','keyboard','trackpad','mouse','printer','laptop','fridge','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker']],['Portals',['paired portal']],['Curves / surfaces',['curve','draw curve in 3d','surface']],['Text / points',['text','points']],['Media surfaces',['media frame']],['Robots',['robot']],['3D Model · GLB / FBX',['add 3D model']],['Lighting',['point light','spot light','directional light','ambient light','hemisphere light']],['Outdoor infrastructure',['draw wall line','draw plank fence','draw mesh fence','draw rod fence','draw hedge','draw curb','draw footpath','draw road','draw motorway']],['Nature & cultivation',['tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch','draw forest / orchard area','draw brushwood area','draw grass / soil plot','draw vegetable bed','draw water / lake patch']]];
   menu.replaceChildren();const bar=document.createElement('div');bar.className='drag-handle add-drag';bar.textContent='Add object · Shift+A';const head=document.createElement('div');head.className='add-fixed-head';head.append(bar);const content=document.createElement('div');content.className='add-scroll-content';menu.append(head,content);const search=document.createElement('input');search.id='addSearch';search.placeholder='Search / Enter to add';search.autocomplete='off';search.className='add-search';head.append(search);
   const openPresets=document.createElement('button');openPresets.type='button';openPresets.className='add-presets-shortcut';openPresets.textContent='Presets · saved objects';openPresets.onclick=()=>{menu.hidden=true;this.objectPresets?.open();};head.append(openPresets);
   search.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=menu.querySelector('.add-group button:not([hidden])');if(first){event.preventDefault();first.click();}}if(event.key==='Escape')menu.hidden=true;});
@@ -1161,7 +1163,7 @@ export class SceneEditor{
    const hits=ray.intersectObjects(this.items,true);
    // 2D labels are not surfaces and must never occlude a smart display.
    const first=hits.find(h=>!h.object.isSprite);if(!first)return null;
-   const screenHit=hits.find(h=>['equipmentScreen','lampSwitch','equipmentSpeaker'].includes(h.object.name)||h.object.userData.smartScreenBack||h.object.userData.smartScreenAudio||h.object.userData.mediaPlaybackLabel||h.object.userData.editorKind==='media');
+   const screenHit=hits.find(h=>['equipmentScreen','lampSwitch','equipmentSpeaker'].includes(h.object.name)||Boolean(propInteractionOf(h.object))||h.object.userData.smartScreenBack||h.object.userData.smartScreenAudio||h.object.userData.mediaPlaybackLabel||h.object.userData.editorKind==='media');
    if(!screenHit||screenHit.distance>first.distance+.035)return null;
    let object=screenHit.object;
    while(object.parent&&!this.items.includes(object))object=object.parent;
@@ -1171,6 +1173,14 @@ export class SceneEditor{
     const obj=selection.object,hit=selection.hit;
     if(obj.userData.editorKind==='media'&&sceneMediaKind(obj.userData.media?.mime)==='audio'){
       toggleSceneMediaPlayback(obj);this.updateInspector();return true;
+    }
+    const interaction=propInteractionOf(hit.object);
+    if(interaction==='toggle-open'&&STATEFUL_PROPS.includes(obj.userData.furniture?.variant)){
+      if(!this.canEdit(obj)){this.toast('Owner only');return true;}
+      const before=this.snapshot(obj),next={...obj.userData.furniture,open:nextPropOpen(obj.userData.furniture.variant,obj.userData.furniture.open)};
+      disposeEquipmentMedia(obj);rebuildFurniture(obj,next);this.physics.sync(obj);syncEquipmentMedia(obj,this);
+      this.inventory?.reconcile?.();this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.updateInspector();
+      this.toast((next.variant==='fridge'?'Fridge':'Laptop')+(next.open?' opened':' closed'));return true;
     }
     if(hit.object.name==='equipmentSpeaker')return nextSpeakerChannel(obj,this.world);
     if(hit.object.userData.lampSwitch){const before=this.snapshot(obj);const p={...obj.userData.furniture,lampOn:!obj.userData.furniture.lampOn};rebuildFurniture(obj,p);this.physics.sync(obj);this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.toast(p.lampOn?'Lamp on':'Lamp off');return true;}
@@ -1268,7 +1278,7 @@ export class SceneEditor{
  }
  // compatibility marker: addSceneMedia(media,{backing='white',width=null,height=null}={})
 addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistance=4,maxDistance=18,autoplayDistance=0,constantVolume=false,group='',shape='speaker',mount=null}={}){const object=objectFor('media');const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.cameraDropPosition(3.2);object.position.copy(point);object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;object.userData.media={id:media.id,mime:media.mime,name:media.name,backing,stream:'direct',width:width??media.width??null,height:height??media.height??null,loop,muted:false,refDistance,maxDistance,autoplayDistance,constantVolume,group,shape,volume:1,color:'#3c9bd2',author:media.author||window.solviAPI?.auth()?.profile?.name||'User',created:media.created||new Date().toISOString(),caption:''};if(mount)object.userData.media.mount=structuredClone(mount);const kind=sceneMediaKind(media.mime);object.name=(kind==='video'?'Video screen · ':kind==='audio'?'Audio speaker · ':'Picture frame · ')+(media.name||'media');this.items.push(object);this.world.scene.add(object);this.physics.sync(object);hydrateSceneMedia(object,this.world);if(mount){object.userData.physics={mode:'off'};this.updateMountedMedia();this.physics.sync(object);}this.select(object);this.refreshList();this.recordEdit(null,this.snapshot(object));this.queueSave(object);return object;}
- add(kind,showGallery=true,lightType=undefined,persist=true,furnitureVariant='table'){const object=objectFor(kind);if(kind==='furniture'){rebuildFurniture(object,{variant:furnitureVariant});if(['groundPlot','cropBed','waterPatch','vegetationArea'].includes(furnitureVariant)||furnitureVariant==='infrastructure')object.userData.physics={mode:'static'};else if(furnitureVariant==='shrub')object.userData.physics={mode:'off'};if(furnitureVariant==='backpack'){object.userData.pickable=true;object.userData.inventory={category:'backpack',size:'bag',consumable:false};}object.name=furnitureVariant[0].toUpperCase()+furnitureVariant.slice(1);}if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
+ add(kind,showGallery=true,lightType=undefined,persist=true,furnitureVariant='table'){const object=objectFor(kind);if(kind==='furniture'){rebuildFurniture(object,{variant:furnitureVariant});if(['groundPlot','cropBed','waterPatch','vegetationArea'].includes(furnitureVariant)||furnitureVariant==='infrastructure')object.userData.physics={mode:'static'};else if(furnitureVariant==='shrub')object.userData.physics={mode:'off'};if(TOOL_TYPES.includes(furnitureVariant)){object.userData.pickable=true;object.userData.inventory={category:'tool',size:'bag',consumable:false};object.userData.physics={mode:'dynamic'};}if(furnitureVariant==='backpack'){object.userData.pickable=true;object.userData.inventory={category:'backpack',size:'bag',consumable:false};}object.name=furnitureVariant[0].toUpperCase()+furnitureVariant.slice(1);}if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
  const point=centreGroundFromCamera(this.world.camera,this.world.controls?.target);
  if(!['robot','model','media','light'].includes(kind))positionNewOnGround(object,point);
  else {const near=this.cameraDropPosition(3.2);object.position.x=near.x;object.position.z=near.z;if(kind!=='robot')object.position.y=Math.max(.8,near.y);}
@@ -1524,7 +1534,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     if(this.selected!==obj||!target.isConnected)return;
     disposeEquipmentMedia(obj);rebuildFurniture(obj,{...obj.userData.furniture,[key]:target.value});
     if(this.infrastructureDrawing?.editTarget===obj){this.infrastructureDrawing.redraw?.();return;}
-    this.physics.sync(obj);syncEquipmentMedia(obj,this);
+    this.physics.sync(obj);syncEquipmentMedia(obj,this);if(obj.userData.furniture?.variant==='fridge')this.inventory.reconcile();
    },90);
   });
   root.addEventListener('change',event=>{
@@ -1538,7 +1548,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    rebuildFurniture(obj,key==='variant'?{variant:value,color:obj.userData.furniture.color,fabricColor:obj.userData.furniture.fabricColor,texture:obj.userData.furniture.texture}:{...obj.userData.furniture,[key]:value});
    const activeInfrastructureDraw=this.infrastructureDrawing?.editTarget===obj?this.infrastructureDrawing:null;
    if(activeInfrastructureDraw)recordInfrastructureDraftChange(this,old?.furniture);
-   if(!activeInfrastructureDraw){this.physics.sync(obj);syncEquipmentMedia(obj,this);}
+   if(!activeInfrastructureDraw){this.physics.sync(obj);syncEquipmentMedia(obj,this);if(old?.furniture?.variant==='fridge'||obj.userData.furniture?.variant==='fridge')this.inventory.reconcile();}
    if(key==='infraLanes')target.value=String(obj.userData.furniture.infraLanes);
    if(activeInfrastructureDraw){
     // This provisional inspector object must not reach room save or undo until
@@ -1558,7 +1568,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   const isFurniture=obj?.userData?.editorKind==='furniture';section.hidden=!isFurniture;
   if(!isFurniture)return;
   const p=sanitiseFurniture(obj.userData.furniture);obj.userData.furniture=p;
-  const furnitureSummary=section.querySelector('summary');if(furnitureSummary)furnitureSummary.textContent=p.variant==='infrastructure'?({road:'Road',footpath:'Footpath',curb:'Curb',fence:'Fence',hedge:'Hedge',pathWall:'Wall'}[p.infraType]||'Infrastructure')+' · path settings':'Basic furniture';
+  const furnitureSummary=section.querySelector('summary');if(furnitureSummary)furnitureSummary.textContent=TOOL_TYPES.includes(p.variant)?'Tools · procedural':STATEFUL_PROPS.includes(p.variant)?'Interactive '+p.variant:p.variant==='infrastructure'?({road:'Road',footpath:'Footpath',curb:'Curb',fence:'Fence',hedge:'Hedge',pathWall:'Wall'}[p.infraType]||'Infrastructure')+' · path settings':'Basic furniture';
   // The shared contextual slider may be nested in this panel. Preserve it
   // before replacing fields; a new selection will attach it to its numeric row.
   const contextual=byId('inspectorValueSlider');if(root.contains(contextual)){section.append(contextual);contextual.hidden=true;}
@@ -1578,8 +1588,25 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    root.append(holder);
   };
   if(p.variant!=='infrastructure')add('variant','Type','select',FURNITURE_TYPES.map(kind=>[kind,kind==='miniComputer'?'Mini computer':kind==='officeChair'?'Office chair':kind[0].toUpperCase()+kind.slice(1)]));
-  const equipment=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant)||VEGETATION_TYPES.includes(p.variant)||p.variant==='infrastructure';
-  if(['tv','monitor'].includes(p.variant)){
+  const equipment=['tv','monitor','miniComputer','keyboard','trackpad','mouse','printer','laptop','fridge','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant)||TOOL_TYPES.includes(p.variant)||VEGETATION_TYPES.includes(p.variant)||p.variant==='infrastructure';
+  if(TOOL_TYPES.includes(p.variant)){
+   for(const [key,label] of [['handleLength','Handle length (m)'],['handleRadius','Handle radius (m)'],['headWidth','Head width (m)'],['headDepth','Head depth (m)']])if(p.variant!=='stick'||key.startsWith('handle'))add(key,label,'number');
+   add('fabricColor','Head / bristle colour','color');add('metalColor','Metal colour','color');
+  }else if(p.variant==='keyboard'||p.variant==='printer'||p.variant==='mouse'){
+   for(const [key,label] of [['width','Width'],['depth','Depth'],['height','Height']])add(key,label,'number');
+  }else if(p.variant==='trackpad'){
+   for(const [key,label] of [['width','Width'],['depth','Depth'],['height','Height']])add(key,label,'number');
+   add('deviceMode','Mode','select',[['trackpad','Touch trackpad'],['mouse','Mouse'],['stylus','Stylus tablet']]);
+  }else if(p.variant==='fridge'){
+   for(const [key,label] of [['width','Width'],['depth','Depth'],['height','Height'],['shelves','Shelves']])add(key,label,'number');
+   add('open','Door open','checkbox');
+   this.renderFridgeStorageControls(root,obj);
+  }else if(p.variant==='laptop'){
+   for(const [key,label] of [['width','Width'],['depth','Depth'],['height','Height'],['screenAngle','Screen angle (°)'],['diagonalInches','Diagonal (in)']])add(key,label,'number');
+   add('open','Lid open','checkbox');add('powered','Screen on','checkbox');
+   const mediaSources=this.items.filter(o=>o.userData.editorKind==='media'&&/^(video|image)\//.test(o.userData.media?.mime||''));
+   add('mediaId','Media source','select',[['','None / offline'],...mediaSources.map(o=>[o.userData.media.id,o.name||'Scene media'])]);
+  }else if(['tv','monitor'].includes(p.variant)){
    add('diagonalInches','Diagonal (in)','number');add('aspect','Aspect','select',[['16:9','16:9'],['21:9','21:9'],['4:3','4:3']]);
    add('bezel','Bezel (m)','number');add('mount','Mount','select',[['feet','Two feet'],['center','Centre stand'],['wall','VESA / wall'],['none','None']]);
    if(['feet','center'].includes(p.mount))add('standHeight','Stand height','number');
@@ -1757,7 +1784,39 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   if(['wood','marble','granite'].includes(p.texture)){add('textureScale','Pattern scale','number');add('textureDistortion','Distortion','number');add('textureContrast','Contrast','number');}
   if(!VEGETATION_TYPES.includes(p.variant)&&p.variant!=='infrastructure')add('color',isProp?'Colour':'Frame colour','color');
   if(['chair','officeChair','stool','armchair','sofa','bed','sunbed','deckChair','beachUmbrella','lamp','speaker'].includes(p.variant))add('fabricColor',p.variant==='beachUmbrella'?'Canopy colour':'Fabric colour','color');
-  if(['tv','monitor','speaker'].includes(p.variant))this.renderSmartChannelControls(root,obj,'furniture');
+  if(['tv','monitor','laptop','speaker'].includes(p.variant))this.renderSmartChannelControls(root,obj,'furniture');
+ }
+ renderFridgeStorageControls(root,fridge){
+  const p=fridge.userData.furniture,layout=fridgeLayout(p),stored=this.items.filter(o=>o.userData.storage?.type==='container'&&o.userData.storage.containerId===fridge.userData.editorId);
+  const section=document.createElement('section');section.className='smart-channel-controls';
+  const title=document.createElement('strong');title.textContent=`Fridge storage · ${stored.length}/${layout.capacity} slots`;section.append(title);
+  const note=document.createElement('small');note.textContent='Open door to add/remove cans, bottles or boxes. Items must fit inside one shelf slot.';section.append(note);
+  const store=document.createElement('select');store.setAttribute('aria-label','Item to store in fridge');
+  const empty=document.createElement('option');empty.value='';empty.textContent='Choose nearby world item';store.append(empty);
+  const valid=this.items.filter(o=>o!==fridge&&o.userData.editorKind==='furniture'&&FRIDGE_ITEM_TYPES.includes(o.userData.furniture?.variant)&&!o.userData.storage&&canStoreInFridge(p,o.userData.furniture,stored.map(s=>s.userData.storage.slot))>=0);
+  const near=o=>o.position.distanceTo(fridge.position)<3;
+  for(const o of valid.filter(near)){const option=document.createElement('option');option.value=o.userData.editorId;option.textContent=o.name;store.append(option);}
+  const addButton=document.createElement('button');addButton.type='button';addButton.textContent='Put on shelf';addButton.disabled=!p.open||!this.canEdit(fridge)||!valid.some(near);
+  addButton.onclick=()=>{const item=this.items.find(o=>o.userData.editorId===store.value);if(item)this.storeFridgeItem(fridge,item);};
+  const take=document.createElement('select');take.setAttribute('aria-label','Fridge item to remove');
+  for(const o of stored){const option=document.createElement('option');option.value=o.userData.editorId;option.textContent=o.name;take.append(option);}
+  const takeButton=document.createElement('button');takeButton.type='button';takeButton.textContent='Take out';takeButton.disabled=!p.open||!this.canEdit(fridge)||!stored.length;
+  takeButton.onclick=()=>{const item=this.items.find(o=>o.userData.editorId===take.value);if(item)this.takeFridgeItem(fridge,item);};
+  section.append(store,addButton,take,takeButton);root.append(section);
+ }
+ storeFridgeItem(fridge,item){
+  if(!this.canEdit(fridge)||!this.canEdit(item)||!fridge.userData.furniture?.open||item.userData.storage||item.position.distanceTo(fridge.position)>=3)return false;
+  const occupied=this.items.filter(o=>o.userData.storage?.type==='container'&&o.userData.storage.containerId===fridge.userData.editorId).map(o=>o.userData.storage.slot);
+  const slot=canStoreInFridge(fridge.userData.furniture,item.userData.furniture,occupied);if(slot<0){this.toast('Item does not fit or fridge is full');return false;}
+  const before=this.snapshot(item);item.userData.pickable=true;item.userData.inventory={category:item.userData.furniture.variant==='box'?'general':'food',size:'pocket',consumable:false};item.userData.storage={type:'container',containerId:fridge.userData.editorId,slot};
+  this.inventory.applyState(item);this.inventory.tick();this.recordEdit(before,this.snapshot(item));this.queueSave(item);this.renderFurnitureControls(fridge);this.toast(item.name+' stored');return true;
+ }
+ takeFridgeItem(fridge,item){
+  if(!this.canEdit(fridge)||!this.canEdit(item)||!fridge.userData.furniture?.open||item.userData.storage?.containerId!==fridge.userData.editorId)return false;
+  const before=this.snapshot(item);delete item.userData.storage;item.visible=true;
+  fridge.updateWorldMatrix(true,false);const outside=fridge.localToWorld(new THREE.Vector3(0,.35,fridge.userData.furniture.depth/2+.5));
+  item.position.copy(item.parent?.worldToLocal?.(outside)||outside);this.physics.sync(item);
+  this.recordEdit(before,this.snapshot(item));this.queueSave(item);this.renderFurnitureControls(fridge);this.toast(item.name+' removed');return true;
  }
  renderSmartChannelControls(root,obj,kind){
   const value=kind==='furniture'?obj.userData.furniture:obj.userData.media;
@@ -1950,7 +2009,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
  async remove(skipConfirmation=false){if(!this.selected)return;
   const deleting=this.selected;
   if(!skipConfirmation&&readDeleteConfirmation()&&!await confirmAction(`Delete object "${deleting.name}" from the shared scene?`,{title:'Delete scene object',confirmLabel:'Delete',danger:true}))return;
-  if(this.selected!==deleting||!this.items.includes(deleting))return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);for(const bot of this.items){if(bot.userData.robotSeatedTarget===o.userData.editorId)standUp(bot,this);}if(this.infrastructureDrawing?.editTarget===o)cancelInfrastructureDrawing(this,{keepTarget:true});if(this.wallEditTarget===o)this.endWallDrawing();this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
+  if(this.selected!==deleting||!this.items.includes(deleting))return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);if(o.userData.furniture?.variant==='fridge')this.inventory.releaseContainer(o);for(const bot of this.items){if(bot.userData.robotSeatedTarget===o.userData.editorId)standUp(bot,this);}if(this.infrastructureDrawing?.editTarget===o)cancelInfrastructureDrawing(this,{keepTarget:true});if(this.wallEditTarget===o)this.endWallDrawing();this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
  texture(name){if(!this.selected||this.selected.userData.editorKind==='robot')return;if(this.canEdit(this.selected))this.selected.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
   updateMediaHUDPosition(){const hud=byId('mediaInteractionHud');if(!hud)return;const obj=this.selected;if(!obj||obj.userData?.editorKind!=='media'){hud.hidden=true;return;}const pos=obj.getWorldPosition(new THREE.Vector3());pos.y+=0.9;pos.project(this.world.camera);if(pos.z>1){hud.hidden=true;return;}const rect=this.world.renderer.domElement.getBoundingClientRect();const x=(pos.x*.5+.5)*rect.width+rect.left,y=(-pos.y*.5+.5)*rect.height+rect.top;hud.style.left=`${x}px`;hud.style.top=`${y}px`;hud.hidden=false;byId('mediaHudPlay').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaHudMute').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';}

@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import {pickableTarget,canBePickable} from './object-carry.js';
 import {capturePresetThumbnail} from './object-presets.js';
 import {makeFurniture} from './primitive-properties.js';
+import {fridgeSlotPose} from './interactive-props.js';
 
 export const INVENTORY_CATEGORIES=Object.freeze(['world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable']);
 export const INVENTORY_SIZES=Object.freeze(['pocket','bag']);
@@ -23,8 +24,9 @@ export function cleanInventory(raw){
 }
 export function cleanStorage(raw){
  if(!raw||typeof raw!=='object')return null;
- if(!['pocket','bag','worn'].includes(raw.type))return null;
+ if(!['pocket','bag','worn','container'].includes(raw.type))return null;
  const id=/^[A-Za-z0-9_-]{8,80}$/;
+ if(raw.type==='container')return typeof raw.containerId==='string'&&id.test(raw.containerId)&&Number.isInteger(raw.slot)&&raw.slot>=0&&raw.slot<48?{type:'container',containerId:raw.containerId,slot:raw.slot}:null;
  if(raw.type==='bag')return typeof raw.bagId==='string'&&id.test(raw.bagId)?{type:'bag',bagId:raw.bagId}:null;
  if(typeof raw.holderId!=='string'||!id.test(raw.holderId))return null;
  return raw.type==='worn'&&['front','back'].includes(raw.slot)?{type:'worn',holderId:raw.holderId,slot:raw.slot}:
@@ -104,14 +106,14 @@ export class RobotInventory{
   if(!storage){obj.visible=true;return;}
   // Stored items are not physical scene obstacles while pocketed or carried.
   this.editor.physics?.remove?.(stableId(obj));
-  obj.visible=storage.type==='worn';
+  obj.visible=storage.type==='worn'||storage.type==='container'&&this.placeInContainer(obj,storage);
  }
  reconcile(){
   const ids=new Map(this.editor.items.map(o=>[stableId(o),o]));
   for(const obj of this.editor.items){
    const storage=cleanStorage(obj.userData?.storage);if(!storage)continue;
-   const ref=storage.type==='bag'?ids.get(storage.bagId):ids.get(storage.holderId);
-   const valid=ref&&(storage.type==='bag'?cleanInventory(ref.userData?.inventory).category==='backpack':ref.userData?.editorKind==='robot');
+   const ref=storage.type==='bag'?ids.get(storage.bagId):storage.type==='container'?ids.get(storage.containerId):ids.get(storage.holderId);
+   const valid=ref&&(storage.type==='bag'?cleanInventory(ref.userData?.inventory).category==='backpack':storage.type==='container'?ref.userData?.furniture?.variant==='fridge'&&Boolean(fridgeSlotPose(ref.userData.furniture,storage.slot)):ref.userData?.editorKind==='robot');
    if(!valid){delete obj.userData.storage;obj.visible=true;this.editor.physics?.sync?.(obj);this.editor.queueSave?.(obj);}
    else this.applyState(obj);
   }
@@ -136,12 +138,30 @@ export class RobotInventory{
   obj.quaternion.copy(parent.invert().multiply(follow).multiply(rotation));
   obj.position.copy(obj.parent?.worldToLocal?.(worldPos.clone())||worldPos);
  }
+ placeInContainer(obj,storage){
+  const container=this.editor.items.find(o=>stableId(o)===storage.containerId&&o.userData?.furniture?.variant==='fridge');
+  if(!container)return false;
+  const slot=fridgeSlotPose(container.userData.furniture,storage.slot);if(!slot)return false;
+  container.updateWorldMatrix(true,false);
+  const pos=container.localToWorld(new THREE.Vector3(slot.x,slot.y,slot.z));
+  obj.position.copy(obj.parent?.worldToLocal?.(pos)||pos);
+  return container.userData.furniture.open===true;
+ }
+ releaseContainer(container){
+  if(container?.userData?.furniture?.variant!=='fridge')return;
+  for(const obj of this.editor.items){if(obj.userData?.storage?.type!=='container'||obj.userData.storage.containerId!==stableId(container))continue;
+   delete obj.userData.storage;obj.visible=true;
+   const pos=container.localToWorld(new THREE.Vector3(0,.3,container.userData.furniture.depth/2+.5));
+   obj.position.copy(obj.parent?.worldToLocal?.(pos)||pos);this.editor.physics?.sync?.(obj);this.editor.queueSave?.(obj);
+  }
+ }
  tick(){
   for(const obj of this.editor.items){const storage=cleanStorage(obj.userData?.storage);if(!storage)continue;
    if(storage.type==='worn'){
     const robot=this.editor.items.find(r=>stableId(r)===storage.holderId&&r.userData.editorKind==='robot');
     if(robot){obj.visible=true;this.wearablePose(robot,obj);}else obj.visible=false;
-   }else obj.visible=false;
+   }else if(storage.type==='container')obj.visible=this.placeInContainer(obj,storage);
+   else obj.visible=false;
   }
  }
  drop(robot,obj){

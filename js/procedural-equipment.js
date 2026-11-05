@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 // Procedural assets share the existing furniture scene, preset and collider paths.
-export const EQUIPMENT_TYPES=['tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker'];
+export const EQUIPMENT_TYPES=['tv','monitor','miniComputer','keyboard','trackpad','mouse','printer','laptop','fridge','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker'];
 export const EQUIPMENT_NUMERIC={diagonalInches:[27,6,120],bezel:[.015,.003,.12],standHeight:[.17,0,1.2],curvature:[0,0,1],strapWidth:[.04,.01,.15],rimWidth:[.018,.005,.1],reclineDeg:[30,0,85],canopyRadius:[1.35,.4,4],canopySegments:[8,3,16],lampIntensity:[2,0,20],lampRange:[8,.5,80],shadeOpacity:[.55,.05,1]};
 export function displayDimensions(p){const [a,b]=({'16:9':[16,9],'21:9':[21,9],'4:3':[4,3]})[p.aspect]||[16,9];const diagonal=p.diagonalInches*.0254;return {width:diagonal*a/Math.hypot(a,b),height:diagonal*b/Math.hypot(a,b)};}
 export function buildEquipment(p,{add,box,cylinder,wood,fabric,partsAddLight}){
@@ -18,6 +18,70 @@ export function buildEquipment(p,{add,box,cylinder,wood,fabric,partsAddLight}){
   if(p.mount==='feet')for(const s of [-1,1]){cylinder(.014,p.standHeight||.03,s*w*.36,p.standHeight/2,0,dark);box(w*.12,.02,.13,s*w*.36,.01,.02,dark);}
   if(p.mount==='wall'){box(Math.min(w*.3,.26),Math.min(.15,h*.4),.06,0,y,-d/2-.04,dark);box(.10,.08,.10,0,y,-d/2-.10,dark);}
   if(p.powered)cylinder(.004,.005,w*.45,y-h*.46,d/2+.01,indicator,8);
+ }else if(p.variant==='keyboard'){
+  const w=p.width,d=p.depth,h=p.height;
+  box(w,h,d,0,h/2,0,dark);
+  const rows=5,cols=13,keyW=w*.91/cols,keyD=d*.82/rows;
+  for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
+   if(row===4&&col>3&&col<9){if(col!==4)continue;const key=box(keyW*4.8,.008,keyD*.8,0,h+.004,d*.4-row*keyD,dark);key.userData.keyboardKey=true;continue;}
+   const key=box(keyW*.75,.008,keyD*.72,-w*.455+(col+.5)*w*.91,h+.004,d*.38-row*keyD,dark);key.userData.keyboardKey=true;
+  }
+ }else if(['trackpad','mouse'].includes(p.variant)){
+  const mode=p.variant==='mouse'?'mouse':p.deviceMode;
+  if(mode==='mouse'){
+   const shell=box(p.width*.60,p.height*.6,p.depth,0,p.height*.4,0,wood);shell.name='equipmentMouse';
+   const button=box(.009,p.height*.12,p.depth*.36,0,p.height*.77,p.depth*.20,dark);button.userData.inputDevice=true;
+  }else{
+   const slab=box(p.width,p.height,p.depth,0,p.height/2,0,wood);slab.name='equipmentTrackpad';
+   box(p.width*.91,.003,p.depth*.87,0,p.height+.003,0,dark);
+   if(mode==='stylus'){
+    const stylus=cylinder(.008,p.depth*.83,p.width*.35,p.height+.03,0,fabric);stylus.rotation.x=Math.PI/2;stylus.name='equipmentStylus';
+   }
+  }
+ }else if(p.variant==='printer'){
+  const w=p.width,d=p.depth,h=p.height;
+  box(w,h*.70,d,0,h*.40,0,wood);
+  const lid=box(w*.91,.035,d*.68,0,h*.82,-d*.12,dark);lid.name='printerLid';
+  const page=box(w*.67,.009,d*.46,0,h*.12,d*.40,new THREE.MeshStandardMaterial({color:'#f0f3f6'}));page.name='printerOutput';
+  box(w*.55,.016,.025,0,h*.51,d*.505,dark);
+  cylinder(.012,.012,w*.35,h*.70,d*.495,indicator,10);
+ }else if(p.variant==='laptop'){
+  const w=p.width,d=p.depth,h=p.height,baseH=Math.max(.014,h*.22);
+  box(w,baseH,d,0,baseH/2,0,wood);
+  const rows=4,cols=11,keyW=w*.79/cols,keyD=d*.49/rows;
+  for(let row=0;row<rows;row++)for(let col=0;col<cols;col++)box(keyW*.78,.003,keyD*.75,-w*.395+(col+.5)*w*.79,baseH+.003,-d*.12+(row-1.5)*keyD,dark);
+  box(w*.34,.003,d*.20,0,baseH+.005,d*.33,dark);
+  if(p.open){
+   const ratio=displayDimensions({...p,diagonalInches:p.diagonalInches||14}),screenH=Math.min(w*ratio.height/ratio.width,h*.94),angle=THREE.MathUtils.degToRad(-(p.screenAngle-90));
+   const hingeY=baseH+.025,hingeZ=-d/2+.023;
+   const frame=box(w,.0+screenH+.026,.016,0,hingeY+(screenH/2+.01)*Math.cos(angle),hingeZ+(screenH/2+.01)*Math.sin(angle),wood);
+   frame.rotation.x=angle;frame.name='laptopLid';frame.userData.propInteraction='toggle-open';
+   const screen=add(new THREE.PlaneGeometry(w*.91,screenH*.9),0,hingeY+screenH*.52*Math.cos(angle),hingeZ+screenH*.52*Math.sin(angle)+.011,new THREE.MeshBasicMaterial({color:p.powered?'#213b50':'#05080c',side:THREE.DoubleSide}));
+   screen.rotation.x=angle;screen.name='equipmentScreen';screen.userData.equipmentScreen=true;
+   const hinge=box(w*.12,.023,.023,0,hingeY,hingeZ,dark);hinge.name='laptopHinge';hinge.userData.propInteraction='toggle-open';
+  }else{
+   const lid=box(w,.023,d,0,baseH+.02,0,wood);lid.name='laptopLid';lid.userData.propInteraction='toggle-open';
+   const grip=box(w*.13,.005,.015,0,baseH+.033,d*.43,dark);grip.userData.propInteraction='toggle-open';
+  }
+ }else if(p.variant==='fridge'){
+  const w=p.width,d=p.depth,h=p.height,t=Math.min(.065,w*.10,d*.10);
+  // True hollow interior: six independent panels rather than an obstructing solid cube.
+  box(w,t,d,0,t/2,0,wood);box(w,t,d,0,h-t/2,0,wood);
+  for(const side of [-1,1])box(t,h-2*t,d,side*(w-t)/2,h/2,0,wood);
+  box(w-2*t,h-2*t,t,0,h/2,-(d-t)/2,wood);
+  const count=p.shelves;
+  for(let i=1;i<=count;i++)box(w-2*t,t*.40,d-t*1.8,0,t+(h-2*t)*i/(count+1),-t*.2,fabric);
+  if(p.open){
+   const a=-Math.PI*.63,half=(w-t)/2,hingeX=-w/2+t/2,cz=d/2-t/2;
+   const x=hingeX+Math.cos(a)*half,z=cz-Math.sin(a)*half;
+   const door=box(w-t,h-t*1.5,t,x,h/2,z,wood);door.rotation.y=a;door.name='fridgeDoor';door.userData.propInteraction='toggle-open';
+   const handle=box(.026,h*.23,.028,hingeX+Math.cos(a)*(w-t)*.86-Math.sin(a)*t*.7,h*.57,cz-Math.sin(a)*(w-t)*.86+Math.cos(a)*t*.7,dark);
+   handle.name='fridgeHandle';handle.rotation.y=a;handle.userData.propInteraction='toggle-open';
+  }else{
+   const door=box(w-t,h-t*1.5,t,0,h/2,d/2,wood);door.name='fridgeDoor';door.userData.propInteraction='toggle-open';
+   const handle=box(.023,h*.26,.025,w*.38,h*.58,d/2+t*.58,dark);handle.name='fridgeHandle';handle.userData.propInteraction='toggle-open';
+  }
+  const button=cylinder(.022,.017,w*.32,h*.89,d/2+t*.6,indicator,12);button.rotation.x=Math.PI/2;button.name='fridgeDoorButton';button.userData.propInteraction='toggle-open';
  }else if(p.variant==='miniComputer'){
   box(p.width,p.height,p.depth,0,p.height/2,0,wood);
   box(p.width*.85,.012,p.depth*.85,0,.007,0,dark);

@@ -197,7 +197,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.192',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.193',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -965,7 +965,7 @@ def bookmark_payload(obj):
 # User-owned catalogue of procedural object configurations. Templates cannot include
 # asset URLs, ownership, robot data or uploaded media; every instance gets a fresh ID.
 _PRESET_TYPES={'furniture','cube','sphere','cylinder','plane','torus','surface','curve','text','ladder','stairs','wall'}
-_PRESET_FIELDS={'kind','name','rotation','scale','color','texture','physics','pickable','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture','wall'}
+_PRESET_FIELDS={'kind','name','rotation','scale','color','texture','physics','pickable','inventory','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture','wall'}
 
 def _preset_finite(value,depth=0):
     if depth>14:return False
@@ -993,6 +993,7 @@ def object_presets():
     if 'texture' in entry and (not isinstance(entry['texture'],str) or len(entry['texture'])>40):return json_error('Invalid preset texture')
     for key in ('furniture','primitive','curve','text','openings','stairs','ladder','physics','wall'):
         if key in entry and entry[key] is not None and not isinstance(entry[key],dict):return json_error('Invalid preset properties')
+    if 'inventory' in entry and entry['inventory'] is not None and not valid_inventory_item(entry['inventory']):return json_error('Invalid inventory preset')
     if entry.get('texture')=='custom':return json_error('Custom-uploaded textures are not portable presets')
     if entry['kind']=='wall' and not valid_office_wall(entry.get('wall')):return json_error('Invalid wall preset')
     if entry['kind']=='stairs' and (entry.get('stairs') or {}).get('variant')=='lift':return json_error('Lift systems cannot be saved as single-object presets')
@@ -1002,7 +1003,8 @@ def object_presets():
     if not _preset_finite(entry):return json_error('Invalid preset properties')
     payload=json.dumps(entry,allow_nan=False,separators=(',',':'))
     if len(payload)>48000:return json_error('Preset configuration too large')
-    category='Nature' if entry['kind']=='furniture' and (entry.get('furniture') or {}).get('variant') in ('tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch') else 'Furniture' if entry['kind']=='furniture' and (entry.get('furniture') or {}).get('variant','table') not in ('plate','mug','glass','bowl','bottle','can','flowerpot','box') else 'Props' if entry['kind']=='furniture' else 'Geometry' if entry['kind'] in ('cube','sphere','cylinder','plane','torus','surface','curve','text','points') else 'Architecture'
+    variant=(entry.get('furniture') or {}).get('variant','table') if entry['kind']=='furniture' else ''
+    category='Tools' if variant in ('shovel','axe','rake','stick','broom','mop','saw') else 'Nature' if variant in ('tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch') else 'Props' if variant in ('plate','mug','glass','bowl','bottle','can','flowerpot','box') else 'Furniture' if entry['kind']=='furniture' else 'Geometry' if entry['kind'] in ('cube','sphere','cylinder','plane','torus','surface','curve','text','points') else 'Architecture'
     with db() as con:
         if con.execute('SELECT COUNT(*) FROM object_presets WHERE user_id=?',(user['id'],)).fetchone()[0]>=250:return json_error('Maximum 250 saved presets')
         uid=str(uuid.uuid4());con.execute('INSERT INTO object_presets VALUES(?,?,?,?,?,?,?,?)',(uid,user['id'],name.strip(),category,entry['kind'],payload,thumb,now()))
@@ -3646,6 +3648,7 @@ def valid_inventory_storage(value):
     if kind=='pocket':return set(value)=={'type','holderId'} and re.fullmatch(id_pattern,str(value.get('holderId',''))) is not None
     if kind=='worn':return set(value)=={'type','holderId','slot'} and value.get('slot') in ('back','front') and re.fullmatch(id_pattern,str(value.get('holderId',''))) is not None
     if kind=='bag':return set(value)=={'type','bagId'} and re.fullmatch(id_pattern,str(value.get('bagId',''))) is not None
+    if kind=='container':return set(value)=={'type','containerId','slot'} and re.fullmatch(id_pattern,str(value.get('containerId',''))) is not None and type(value.get('slot')) is int and 0<=value['slot']<48
     return False
 
 def valid_smart_channels(value):
@@ -3676,13 +3679,13 @@ def valid_basic_furniture(value):
         if len(value)>165:return False
     elif len(value)>120:return False
     variant=value.get('variant')
-    if variant not in ('table','chair','officeChair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box','tv','monitor','miniComputer','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker','tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch','infrastructure'):return False
+    if variant not in ('table','chair','officeChair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box','tv','monitor','miniComputer','keyboard','trackpad','mouse','printer','laptop','fridge','shovel','axe','rake','stick','broom','mop','saw','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker','tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch','infrastructure'):return False
     numeric={'width':(.06,8),'depth':(.06,8),'height':(.025,4),'topThickness':(.025,.3),
              'legRadius':(.025,.3),'topRadius':(.15,4),'corners':(3,8),'seatHeight':(.25,.9),
              'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35),
              'wallThickness':(.005,.15),'neckRadius':(.01,.5),'neckHeight':(.02,.6),'bottleOpacity':(0,1),'fluidOpacity':(0,1),'fluidLevel':(0,100),
-             'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'reclineDeg':(0,85),'canopyRadius':(.4,4),'canopySegments':(3,16),'lampIntensity':(0,20),'lampRange':(.5,80),'shadeOpacity':(.05,1),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3),'treeHeight':(.4,18),'trunkRadius':(.025,1.4),'canopyRadius':(.15,7),'branchCount':(0,28),'leafClusters':(0,80),'leafSize':(.05,.8),'trunkWobble':(0,.7),'blossomDensity':(0,1),'palmFronds':(4,16),'treeSeed':(0,999999),'grassDensity':(0,1),'grassHeight':(.02,.7),'grassWidth':(.005,.1),'windStrength':(0,1.5),'windSpeed':(0,6),'soilRoughness':(0,1),'cropRows':(1,12),'cropSpacing':(.15,2),'growthPercent':(0,100),'plotSeed':(0,999999),'scatterCount':(1,160),'scatterSpacing':(.3,12),'scatterJitter':(0,1),'scatterCluster':(0,1),'scatterScale':(0,.85),'shrubHeight':(.12,3.5),'shrubRadius':(.12,2.5),'shrubLeaves':(3,48),'shrubBranches':(0,16),'terrainRelief':(0,3),'terrainFrequency':(.2,6),'waterDepth':(.05,4),'waterLevel':(0,1),'shoreSlope':(.1,3),'infraWidth':(.15,30),'infraHeight':(.08,8),'infraThickness':(.02,1),'infraLanes':(1,6),'infraPostSpacing':(.4,8),'infraPicketWidth':(.025,.8),'infraGap':(0,.8),'infraLightSpacing':(3,50),'infraLightHeight':(1.8,12),'infraMarkingWidth':(.025,.4),'infraDashLength':(.25,8),'infraDashGap':(.25,14),'infraCurbHeight':(.035,.5),'infraSidewalkWidth':(.35,5),'infraHedgeDensity':(.15,1),'infraSeed':(0,999999)}
-    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','armrests','ergonomicBack','color','fabricColor','texture','handle','cap','soil','openTop','seatMoveMode','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle','fluidColor','treeStyle','fruitType','groundCover','soilPreset','cropType','plotSmooth','plotPoints','scatterMode','scatterSpecies','shrubShape','leafColor','soilColor','blossomColor','plotShape','waterColor','infraType','infraStyle','infraSurface','infraTexture','infraTraffic','infraColour','infraMarkingColour','infraHedgeColour','infraPoints','infraSmooth','infraClose','infraMarkings','infraStreetlights','infraCurbs','infraSidewalks','infraLampsOn'}|set(numeric)
+             'rimHeight':(.005,.1),'diagonalInches':(6,120),'bezel':(.003,.12),'standHeight':(0,1.2),'curvature':(0,1),'strapWidth':(.01,.15),'rimWidth':(.005,.1),'reclineDeg':(0,85),'canopyRadius':(.4,4),'canopySegments':(3,16),'lampIntensity':(0,20),'lampRange':(.5,80),'shadeOpacity':(.05,1),'handleLength':(.18,3),'handleRadius':(.007,.09),'headWidth':(.035,.85),'headDepth':(.012,.45),'screenAngle':(90,155),'textureScale':(.25,5),'textureDistortion':(0,2),'textureContrast':(.2,3),'treeHeight':(.4,18),'trunkRadius':(.025,1.4),'canopyRadius':(.15,7),'branchCount':(0,28),'leafClusters':(0,80),'leafSize':(.05,.8),'trunkWobble':(0,.7),'blossomDensity':(0,1),'palmFronds':(4,16),'treeSeed':(0,999999),'grassDensity':(0,1),'grassHeight':(.02,.7),'grassWidth':(.005,.1),'windStrength':(0,1.5),'windSpeed':(0,6),'soilRoughness':(0,1),'cropRows':(1,12),'cropSpacing':(.15,2),'growthPercent':(0,100),'plotSeed':(0,999999),'scatterCount':(1,160),'scatterSpacing':(.3,12),'scatterJitter':(0,1),'scatterCluster':(0,1),'scatterScale':(0,.85),'shrubHeight':(.12,3.5),'shrubRadius':(.12,2.5),'shrubLeaves':(3,48),'shrubBranches':(0,16),'terrainRelief':(0,3),'terrainFrequency':(.2,6),'waterDepth':(.05,4),'waterLevel':(0,1),'shoreSlope':(.1,3),'infraWidth':(.15,30),'infraHeight':(.08,8),'infraThickness':(.02,1),'infraLanes':(1,6),'infraPostSpacing':(.4,8),'infraPicketWidth':(.025,.8),'infraGap':(0,.8),'infraLightSpacing':(3,50),'infraLightHeight':(1.8,12),'infraMarkingWidth':(.025,.4),'infraDashLength':(.25,8),'infraDashGap':(.25,14),'infraCurbHeight':(.035,.5),'infraSidewalkWidth':(.35,5),'infraHedgeDensity':(.15,1),'infraSeed':(0,999999)}
+    allowed={'smartAudio','smartMuted','smartLoop','smartAutoPlay','smartPreserveAspect','smartStartChannel','variant','topShape','legStyle','headrest','headboard','armrests','ergonomicBack','open','deviceMode','metalColor','color','fabricColor','texture','handle','cap','soil','openTop','seatMoveMode','aspect','mount','powered','curved','binShape','lid','backpackStyle','straps','frontPocket','mediaId','pairedDisplayId','channels','lampShape','lampType','lampOn','speakerStyle','fluidColor','treeStyle','fruitType','groundCover','soilPreset','cropType','plotSmooth','plotPoints','scatterMode','scatterSpecies','shrubShape','leafColor','soilColor','blossomColor','plotShape','waterColor','infraType','infraStyle','infraSurface','infraTexture','infraTraffic','infraColour','infraMarkingColour','infraHedgeColour','infraPoints','infraSmooth','infraClose','infraMarkings','infraStreetlights','infraCurbs','infraSidewalks','infraLampsOn'}|set(numeric)
     if any(key not in allowed for key in value):return False
     if 'channels' in value and not valid_smart_channels(value['channels']):return False
     if not valid_smart_options(value):return False
@@ -3696,9 +3699,9 @@ def valid_basic_furniture(value):
     if value.get('legStyle','four') not in ('four','three','single','casters','none'):return False
     if value.get('texture','none') not in ('none','plaster','concrete','bricks','metal','wood','marble','granite'):return False
     if any(not isinstance(value.get(k,False),bool) for k in ('headrest','headboard','armrests','ergonomicBack','handle','cap','soil','openTop')):return False
-    for field,options in (('aspect',('16:9','21:9','4:3')),('mount',('wall','center','feet','none')),('binShape',('round','square')),('backpackStyle',('box','bag')),('lampShape',('sphere','cube','pyramid')),('lampType',('point','spot')),('speakerStyle',('single','tower'))):
+    for field,options in (('aspect',('16:9','21:9','4:3')),('mount',('wall','center','feet','none')),('binShape',('round','square')),('backpackStyle',('box','bag')),('lampShape',('sphere','cube','pyramid')),('lampType',('point','spot')),('speakerStyle',('single','tower')),('deviceMode',('trackpad','mouse','stylus'))):
         if field in value and value[field] not in options:return False
-    for field in ('powered','curved','lid','straps','frontPocket','lampOn'):
+    for field in ('powered','curved','lid','straps','frontPocket','lampOn','open'):
         if field in value and type(value[field]) is not bool:return False
     for field in ('mediaId','pairedDisplayId'):
         if field in value and (not isinstance(value[field],str) or re.fullmatch(r'[A-Za-z0-9_-]{0,100}',value[field]) is None):return False
@@ -3721,7 +3724,7 @@ def valid_basic_furniture(value):
         pts=value['plotPoints']
         if not isinstance(pts,list) or not 3<=len(pts)<=80:return False
         if any(not isinstance(pt,list) or len(pt)!=2 or any(type(n) not in (int,float) or not math.isfinite(n) or abs(n)>80 for n in pt) for pt in pts):return False
-    for k in ('color','fabricColor','fluidColor','leafColor','soilColor','blossomColor','waterColor','infraColour','infraMarkingColour','infraHedgeColour'):
+    for k in ('color','metalColor','fabricColor','fluidColor','leafColor','soilColor','blossomColor','waterColor','infraColour','infraMarkingColour','infraHedgeColour'):
         if k in value and (not isinstance(value[k],str) or re.fullmatch(r'#[0-9a-fA-F]{6}',value[k]) is None):return False
     return True
 
