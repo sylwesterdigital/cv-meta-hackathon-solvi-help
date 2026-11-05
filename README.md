@@ -1,3 +1,9 @@
+# SOLVI.help v0.2.194 — Reliable shared scene editing
+
+This release fixes procedural preset saving and multiplayer scene consistency. Cube presets now accept validated cut-out openings. Stairs keep their edited colour and texture after a save, another client's update, and a reload. Live diagnostics report actual scene revisions and save failures, not just presence heartbeats. A periodic server reconciliation recovers missed scene events, while locally pending edits are protected. The Save button flushes changed objects without replacing the whole room snapshot. Capacity is now 512 objects per realm across editing and archive workflows.
+
+**Use the existing Mac `updates/` release watcher to deploy the complete ZIP.** A local unit-test pass is not proof of a successful two-browser production session. Review [`docs/RELEASE_0.2.194_SPEC.md`](docs/RELEASE_0.2.194_SPEC.md) for acceptance steps and known limitations.
+
 # SOLVI.help v0.2.193 — Procedural tools & interactive equipment
 
 This complete SOLVI.help release adds seven basic procedural tools, keyboard/trackpad/mouse/printer/laptop/fridge devices, persistent laptop/fridge open states, laptop media playback and refrigerator item storage.

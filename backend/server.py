@@ -197,11 +197,12 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.193',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.194',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
 MAX_SCENE_MODEL_BYTES = 20 * 1024 * 1024
+MAX_ROOM_SCENE_OBJECTS = 512
 SCENE_MODEL_PATTERN = re.compile(r'^/api/scene/models/([0-9a-f]{32})\.(glb|fbx)$')
 
 def model_asset_exists(value):
@@ -684,7 +685,7 @@ def clone_room(room_id):
         if not new_id:return json_error('No available clone name',409)
         source=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
         objects=json.loads(source['payload'] if source else '[]')
-        if not isinstance(objects,list) or len(objects)>128:return json_error('Invalid source scene',409)
+        if not isinstance(objects,list) or len(objects)>MAX_ROOM_SCENE_OBJECTS:return json_error('Invalid source scene',409)
         objects=json.loads(json.dumps(objects))
         for obj in objects:
             if isinstance(obj,dict):obj['owner']=user['id']
@@ -991,8 +992,14 @@ def object_presets():
     if 'rotation' in entry and (not isinstance(entry['rotation'],list) or len(entry['rotation'])!=3 or any(type(v) not in (int,float) or not math.isfinite(v) for v in entry['rotation'])):return json_error('Invalid preset rotation')
     if 'color' in entry and entry['color'] is not None and (not isinstance(entry['color'],str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',entry['color'])):return json_error('Invalid preset colour')
     if 'texture' in entry and (not isinstance(entry['texture'],str) or len(entry['texture'])>40):return json_error('Invalid preset texture')
-    for key in ('furniture','primitive','curve','text','openings','stairs','ladder','physics','wall'):
+    for key in ('furniture','primitive','curve','text','stairs','ladder','physics','wall'):
         if key in entry and entry[key] is not None and not isinstance(entry[key],dict):return json_error('Invalid preset properties')
+    # Cube openings are a bounded LIST, not a dict. Match /api/scene/object.
+    if 'openings' in entry and (entry['kind']!='cube' or not valid_cube_openings(entry['openings'])):return json_error('Invalid cube openings in preset')
+    if 'furniture' in entry and entry['kind']=='furniture' and not valid_basic_furniture(entry['furniture']):return json_error('Invalid furniture preset')
+    if 'stairs' in entry and entry['kind']=='stairs' and not valid_office_stairs(entry['stairs']):return json_error('Invalid stairs preset')
+    if 'ladder' in entry and entry['kind']=='ladder' and not valid_office_ladder(entry['ladder']):return json_error('Invalid ladder preset')
+    if 'wall' in entry and entry['kind']=='wall' and not valid_office_wall(entry['wall']):return json_error('Invalid wall preset')
     if 'inventory' in entry and entry['inventory'] is not None and not valid_inventory_item(entry['inventory']):return json_error('Invalid inventory preset')
     if entry.get('texture')=='custom':return json_error('Custom-uploaded textures are not portable presets')
     if entry['kind']=='wall' and not valid_office_wall(entry.get('wall')):return json_error('Invalid wall preset')
@@ -3853,7 +3860,7 @@ def set_scene():
     room_id=selected_room(data.get('room','main'))
     if not room_id:return json_error('Unknown room',404)
     objects=data.get('objects',[]);revision=data.get('revision');policy=room_policy(room_id)
-    if not isinstance(objects,list) or len(objects)>128 or not isinstance(revision,int):return json_error('Invalid scene')
+    if not isinstance(objects,list) or len(objects)>MAX_ROOM_SCENE_OBJECTS or not isinstance(revision,int):return json_error('Invalid scene')
     allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'}
     for o in objects:
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
@@ -3902,6 +3909,7 @@ def set_scene():
         if 'transformLocked' in o and not isinstance(o['transformLocked'],bool):return json_error('Invalid transform lock')
         if not all(isinstance(o.get(n),list) and len(o[n])==3 and all(isinstance(x,(int,float)) and abs(x)<1000000 for x in o[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
     with db() as con:
+        con.execute('BEGIN IMMEDIATE')
         old=con.execute('SELECT revision FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['revision']
         if old!=revision:return jsonify(error='Scene changed on another client; reload before saving',revision=old),409
         before=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['payload'])
@@ -4039,7 +4047,7 @@ def patch_scene_object():
             for i,item in enumerate(items):
                 if item.get('id')==obj_id:items[i]=obj;break
             else:
-                if len(items)>=128:return json_error('Room object limit reached',409)
+                if len(items)>=MAX_ROOM_SCENE_OBJECTS:return json_error('Room object limit reached',409)
                 items.append(obj)
         revision=row['revision']+1
         con.execute('UPDATE room_scenes SET revision=?,payload=? WHERE room_id=?',(revision,json.dumps(items,separators=(',',':')),room_id))
@@ -4411,8 +4419,8 @@ def export_realm(room_id):
           'media':[{'id':r['id'],'name':r['name'],'mime':r['mime']} for r in media] if mode!='json' else [],
           'models':[{'id':r['id'],'title':r['title'],'extension':r['extension']} for r in models] if mode!='json' else [],
           'avatars':[{'id':r['id'],'title':r['title']} for r in avatars] if mode!='json' else []} 
-    if mode=='full' and len(objects)>128:
-        return json_error('Full export exceeds scene import limit (128 objects)',409)
+    if mode=='full' and len(objects)>MAX_ROOM_SCENE_OBJECTS:
+        return json_error('Full export exceeds scene import limit (512 objects)',409)
     if mode=='json':
         body=json.dumps(meta,ensure_ascii=False,indent=2).encode()
         return send_file(io.BytesIO(body),mimetype='application/json',as_attachment=True,download_name=rid+'.realm.json')

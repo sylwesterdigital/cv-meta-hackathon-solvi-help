@@ -4,7 +4,7 @@ export class LiveRoom{
   constructor(onPresence,onState,onSignal){
     this.id=randomId();this.peers=new Map();this.onPresence=onPresence;
     this.onState=onState;this.onSignal=onSignal;this.ws=null;this.lastSent=0;
-    this.stopped=false;this.attempts=0;this.timer=null;this.syncTimer=null;this.joined=false;this.activeRoom=null;
+    this.stopped=false;this.attempts=0;this.timer=null;this.syncTimer=null;this.joined=false;this.activeRoom=null;this.lastSceneResync=0;
     this.updateStatus(false,'Solo mode · multiplayer not enabled');
   }
   connect(){
@@ -13,7 +13,7 @@ export class LiveRoom{
     const auth=window.solviAPI?.auth();if(!auth)return;this.id=auth.profile.id;
     this.attempts++;
     const protocol=location.protocol==='https:'?'wss:':'ws:';
-    const targetRoom=window.solviRoom||'main';this.activeRoom=targetRoom;this.joined=false;
+    const targetRoom=window.solviRoom||'main';this.activeRoom=targetRoom;this.joined=false;this.lastSceneResync=0;
     this.report('connecting',{room:targetRoom,attempt:this.attempts});
     const ws=this.ws=new WebSocket(`${protocol}//${location.host}/ws`);
     ws.onopen=()=>{if(this.ws!==ws)return;this.send({type:'join',token:auth.token,tab:auth.tab,room:targetRoom,admin:window.solviLibraryAdminToken?.()||''});this.report('socket-open',{room:targetRoom});this.updateStatus(false,'Joining shared room…');};
@@ -27,6 +27,9 @@ export class LiveRoom{
           this.joined=true;this.attempts=0;this.onPresence(this.peers);
           this.updateStatus(true,'Shared room connected');
           this.report('presence-sync',{room:targetRoom,participants:this.peers.size+1,peers:entries.map(p=>p.name||'Guest')});
+          // The presence heartbeat is NOT a scene health check. Reconcile the
+          // authoritative scene after joining/rejoining and then every 90 s.
+          const now=Date.now();if(!this.lastSceneResync||now-this.lastSceneResync>90000){this.lastSceneResync=now;window.dispatchEvent(new CustomEvent('solvi:scene-resync',{detail:{room:targetRoom,reason:'presence-checkpoint'}}));}
           clearInterval(this.syncTimer);this.syncTimer=setInterval(()=>{if(this.ws===ws&&this.joined&&ws.readyState===WebSocket.OPEN)this.send({type:'presence-sync'});},15000);
         }
         if(m.type==='presence'){
@@ -55,7 +58,10 @@ export class LiveRoom{
         if(m.type==='room-environment'&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:room-environment',{detail:m}));
         if(m.type==='chat-created'&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:chat-updated'));
         if(m.type==='chat_cleared'&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:room-chat-cleared',{detail:m}));
-        if(m.type==='scene-changed'&&(m.by!==this.id||m.reason==='robot-preference')&&m.room===(window.solviRoom||'main'))window.dispatchEvent(new CustomEvent('solvi:scene-changed',{detail:m}));
+        if(m.type==='scene-changed'&&m.room===(window.solviRoom||'main')){
+          this.report('scene-revision-received',{room:m.room,action:m.action||'bulk',revision:m.revision,kind:m.object?.kind||'',id:m.id||'',name:m.object?.name||''});
+          if(m.by!==this.id||m.reason==='robot-preference')window.dispatchEvent(new CustomEvent('solvi:scene-changed',{detail:m}));
+        }
       }catch(e){this.report('message-error',{reason:e?.message||String(e)});console.warn('Invalid room message',e);}
     };
     ws.onclose=(event)=>{

@@ -284,7 +284,7 @@ test('temporary props are excluded from persistence and replicated physics strea
  const physics=fs.readFileSync(new URL('../js/scene-physics.js',import.meta.url),'utf8');
  const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
  assert.match(editor,/serialize\(\)\{return this\.items\.filter\(o=>!o\.userData\.temporaryCarryTest\)/);
- assert.match(editor,/queueSave\(o\)\{if\(!o\|\|o\.userData\.temporaryCarryTest/);
+ assert.match(editor,/queueSave\(o\)\{\s*if\(!o\|\|o\.userData\.temporaryCarryTest/);
  assert.match(physics,/!object\.userData\.temporaryCarryTest&&awake/);
  assert.match(html,/id="robotPickupDelay"/);
  assert.match(html,/id="robotTestThrowSphere"/);

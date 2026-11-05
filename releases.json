@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.193",
+  "currentVersion": "0.2.194",
   "releases": [
+    {
+      "version": "0.2.194",
+      "publishedAt": "2026-11-05T10:29:29Z",
+      "changes": [
+        "Fix procedural cube-preset openings validation and strict furniture/stair/wall preset shape handling.",
+        "Persist single-line stair colour/texture through canonical parametric state and cross-client reloads.",
+        "Prevent lost room objects from stale full-scene saves by using per-object dirty generations, serialized saves and revision-aware scene reconciliation.",
+        "Show scene object save success/failure, revision gaps and reconciliation in Live diagnostics, beyond presence messages.",
+        "Use atomic full-scene writes and raise scene capacity to 512 consistently across scene updates, clone and archive operations.",
+        "Preserve all v0.2.193 tools, equipment, laptop/fridge states, original GLBs and prior app features."
+      ]
+    },
     {
       "version": "0.2.193",
       "publishedAt": "2026-11-05T02:34:59Z",
@@ -326,16 +338,6 @@
         "Rebuild all supported procedural preset thumbnails using the shared dedicated offscreen renderer, with centered orthographic object bounds.",
         "Bottles support shell opacity, hollow uncapped opening, liquid colour and 0\u2013100% simulated fill level.",
         "Shift+I picks up a nearby backpack or removes a worn backpack without losing its stored contents."
-      ]
-    },
-    {
-      "version": "0.2.160",
-      "publishedAt": "2026-11-03T00:14:28Z",
-      "changes": [
-        "Keep procedural smart TV/monitor media menus in sync with the exact saved inspector channel array, including after edits, preset load and remote scene updates; refresh menu textures without breaking current video/audio when the same channel remains.",
-        "Redesign the preset gallery as image-first cards: thumbnail click directly inserts and closes, remove redundant permanent plus/Add control, and use a compact SVG delete icon over the thumbnail.",
-        "Use projected camera-space bounds to center and tightly frame procedural thumbnails in a brighter isolated render, and regenerate gallery previews for saved furniture using current geometry.",
-        "Add functional regression checks and preserve source-controlled assets; no watcher changes required."
       ]
     }
   ]

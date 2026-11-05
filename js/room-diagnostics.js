@@ -2,7 +2,7 @@
 // Never log authorization tokens, full WebSocket payloads or model prompts.
 const MAX_ENTRIES=160;
 export function safeDiagnosticDetail(data={}){
- const allowed=['event','room','attempt','participants','peers','seconds','code','reason','expected','actual','name'];
+ const allowed=['event','room','attempt','participants','peers','seconds','code','reason','expected','actual','name','revision','action','kind','id','count'];
  const clean={};for(const key of allowed){if(data[key]===undefined)continue;
   const value=data[key];if(Array.isArray(value))clean[key]=value.slice(0,12).map(x=>String(x).slice(0,50));
   else if(typeof value==='number'&&Number.isFinite(value))clean[key]=value;

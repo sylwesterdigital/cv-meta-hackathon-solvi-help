@@ -154,7 +154,7 @@ export class SceneEditor{
    if(!e.detail?.enabled){this.transform.detach();this.world.editorGizmoPointer=false;this.world.editorDragging=false;this.endWallDrawing?.();}
    else if(isEditMode()&&this.selected&&this.canTransform(this.selected)&&this.selected.userData.editorKind!=='robot')this.transform.attach(this.selected);
    this.updateInspector();
-  });this.refreshList();this.avatarGallery=setupAvatarGallery(this);this.assetGallery=setupAssetGallery(this);this.objectPresets=setupObjectPresets(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.robotActionSeq=0;this.lastRobotCombat=0;this.remoteActionSequences=new Map();this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
+  });this.refreshList();this.avatarGallery=setupAvatarGallery(this);this.assetGallery=setupAssetGallery(this);this.objectPresets=setupObjectPresets(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.dirtyGenerations=new Map();this.inFlightSaves=new Map();this.retrySaveCounts=new Map();this.pendingRemovals=new Set();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.robotActionSeq=0;this.lastRobotCombat=0;this.remoteActionSequences=new Map();this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
   window.addEventListener('solvi:robot-task-update',event=>{const detail=event.detail||{},id=detail.robotId;const robot=this.items.find(o=>o.userData.editorId===id);
     if(robot){const audit=missionMovementEvidence(robot.userData.robotTelemetry,robot,robot.userData.robotDebugRoute,detail.status);
       if(audit){detail.routeTelemetry=audit;if(shouldRejectClaimedArrival(audit,detail.status))detail.status='failed';}
@@ -622,7 +622,10 @@ export class SceneEditor{
     }else vec[name]=field==='rotation'?THREE.MathUtils.degToRad(v):v;
     this.physics.applyEditedPose(obj);this.recordEdit(before,this.snapshot(obj));this.refreshList();this.queueSave(obj);};}
   byId('objectColor').addEventListener('focus',()=>this.colorBefore=this.snapshot(this.selected));byId('objectColor').addEventListener('change',()=>{this.recordEdit(this.colorBefore,this.snapshot(this.selected));this.colorBefore=null;});
-  byId('objectColor').oninput=e=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||obj.userData.editorKind==='robot')return;obj.traverse(o=>{if(o.material?.color)o.material.color.set(e.target.value);});this.queueSave(obj);};
+  byId('objectColor').oninput=e=>{const obj=this.selected;if(!obj||!this.canEdit(obj)||obj.userData.editorKind==='robot')return;
+   if(obj.userData.editorKind==='stairs'){const state=obj.userData.stairs||{};rebuildOfficeStairs(obj,{...state,color:e.target.value,surface:{...state.surface,color:e.target.value}});this.physics.sync(obj);}
+   else obj.traverse(o=>{if(o.material?.color)o.material.color.set(e.target.value);});
+   this.queueSave(obj);};
   byId('texturePreset').onchange=e=>{const before=this.snapshot(this.selected);this.texture(e.target.value);this.recordEdit(before,this.snapshot(this.selected));};byId('textureUploadButton').onclick=()=>byId('textureUpload').click();
   byId('textureUpload').onchange=async e=>{const file=e.target.files[0];if(!file||!file.type.startsWith('image/')||file.size>5_000_000)return this.toast('Select an image under 5 MB');
    const before=this.snapshot(this.selected);const blob=URL.createObjectURL(file);new THREE.TextureLoader().load(blob,tex=>{tex.colorSpace=THREE.SRGBColorSpace;this.selected.userData.textureName='custom';this.assignTexture(tex);this.recordEdit(before,this.snapshot(this.selected));URL.revokeObjectURL(blob);},undefined,()=>URL.revokeObjectURL(blob));};
@@ -1508,7 +1511,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     const v=obj[name][axis];byId(`${name}-${i}`).value=name==='rotation'?(THREE.MathUtils.radToDeg(v)).toFixed(1):v.toFixed(2);if(this.activateInspectorValue && !byId('inspectorValueSlider').hidden && byId('inspectorActiveRange') && document.activeElement?.id===`${name}-${i}`)this.activateInspectorValue(document.activeElement);
   });
   const color=obj.material?.color||obj.children.find(c=>c.material?.color)?.material?.color;
-  byId('objectColor').value=color?'#'+color.getHexString():'#88bbdd';byId('texturePreset').value=obj.userData.textureName||'none';
+  byId('objectColor').value=obj.userData.editorKind==='stairs'?(obj.userData.stairs?.surface?.color||'#c6d1dc'):color?'#'+color.getHexString():'#88bbdd';
+  byId('texturePreset').value=obj.userData.editorKind==='stairs'?(obj.userData.stairs?.surface?.texture||'none'):obj.userData.textureName||'none';
   if(restoreSlider)this.restoreInspectorValue?.();
  }
  setupFurnitureControls(){
@@ -2010,7 +2014,14 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   const deleting=this.selected;
   if(!skipConfirmation&&readDeleteConfirmation()&&!await confirmAction(`Delete object "${deleting.name}" from the shared scene?`,{title:'Delete scene object',confirmLabel:'Delete',danger:true}))return;
   if(this.selected!==deleting||!this.items.includes(deleting))return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);if(o.userData.furniture?.variant==='fridge')this.inventory.releaseContainer(o);for(const bot of this.items){if(bot.userData.robotSeatedTarget===o.userData.editorId)standUp(bot,this);}if(this.infrastructureDrawing?.editTarget===o)cancelInfrastructureDrawing(this,{keepTarget:true});if(this.wallEditTarget===o)this.endWallDrawing();this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
- texture(name){if(!this.selected||this.selected.userData.editorKind==='robot')return;if(this.canEdit(this.selected))this.selected.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
+ texture(name){if(!this.selected||this.selected.userData.editorKind==='robot'||!this.canEdit(this.selected))return;
+  const obj=this.selected;
+  if(obj.userData.editorKind==='stairs'){
+   const supported=['none','wood','marble','granite','concrete','bricks'];
+   if(!supported.includes(name)){this.toast('Stairs use a procedural surface texture: choose None, Wood, Marble, Granite, Concrete or Bricks.');return;}
+   const state=obj.userData.stairs||{};rebuildOfficeStairs(obj,{...state,surface:{...state.surface,texture:name}});this.physics.sync(obj);this.queueSave(obj);return;
+  }
+  obj.userData.textureName=name;this.assignTexture(name==='none'?null:makeTexture(name));}
  assignTexture(tex){if(!this.selected||!this.canEdit(this.selected)||this.selected.userData.editorKind==='robot')return;this.selected.userData.textureName=this.selected.userData.textureName||'custom';this.queueSave(this.selected);this.selected.traverse(o=>{if(o.material?.isMeshStandardMaterial){if(o.material.map&&o.material.map!==tex)o.material.map.dispose();o.material.map=tex;o.material.needsUpdate=true;}});}
   updateMediaHUDPosition(){const hud=byId('mediaInteractionHud');if(!hud)return;const obj=this.selected;if(!obj||obj.userData?.editorKind!=='media'){hud.hidden=true;return;}const pos=obj.getWorldPosition(new THREE.Vector3());pos.y+=0.9;pos.project(this.world.camera);if(pos.z>1){hud.hidden=true;return;}const rect=this.world.renderer.domElement.getBoundingClientRect();const x=(pos.x*.5+.5)*rect.width+rect.left,y=(-pos.y*.5+.5)*rect.height+rect.top;hud.style.left=`${x}px`;hud.style.top=`${y}px`;hud.hidden=false;byId('mediaHudPlay').textContent=sceneMediaPlaying(obj)?'Pause':'Play';byId('mediaHudMute').textContent=sceneMediaMuted(obj)?'Unmute':'Mute';}
 
@@ -2182,35 +2193,59 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   if(entry.storage)this.inventory.applyState(obj);else obj.visible=true;
   this.inventory.render();this.refreshList();
  }
+ sceneDiagnostic(event,data={}){
+  window.dispatchEvent?.(new CustomEvent('solvi:room-diagnostic',{detail:{event,room:window.solviRoom||'main',...data}}));
+ }
  acceptRemoteRevision(message){
   const revision=Number(message?.revision)||0;
-  if(message?.action&&message?.action!=='bulk'){
-   if(revision>this.revision+1){this.load();return;}
-   if(revision<=this.revision)return;
-   this.revision=revision;this.applyObjectPatch(message);return;
+  if(revision<=this.revision)return;
+  if(revision>this.revision+1){
+   this.sceneDiagnostic('scene-revision-gap',{revision,expected:this.revision+1,action:message.action||'bulk'});
+   void this.load({quiet:true,reason:'revision-gap'});return;
   }
-  if(this.world.editorDragging||this.pendingSaves.size){this.toast('Room changed: finish editing, then Load.');return;}
-  this.load();
+  this.revision=revision;
+  if(message?.action&&message.action!=='bulk'){
+   const id=message.id||message.object?.id;
+   // Never replace an unacknowledged local edit with a remote checkpoint.
+   if(this.dirtyGenerations.has(id)||this.pendingRemovals.has(id)){
+    this.sceneDiagnostic('scene-conflict-preserved',{revision,id,kind:message.object?.kind||'',action:message.action});
+    return;
+   }
+   this.applyObjectPatch(message);
+   this.sceneDiagnostic('scene-object-applied',{revision,id,kind:message.object?.kind||'',action:message.action});return;
+  }
+  void this.load({quiet:true,reason:'bulk-revision'});
  }
- async load(){const ticket=this.sceneLoadTicket=(this.sceneLoadTicket||0)+1;const api=window.solviAPI;const local=localStorage.getItem('solvi-scene-'+(window.solviRoom||'main')); 
-  if(!api?.online){if(local)this.apply(JSON.parse(local));this.toast('Local scene loaded (not shared)');return;}
+ async load({quiet=false,reason='manual-load'}={}){const ticket=this.sceneLoadTicket=(this.sceneLoadTicket||0)+1;const api=window.solviAPI;const local=localStorage.getItem('solvi-scene-'+(window.solviRoom||'main')); 
+  if(!api?.online){if(local)this.apply(JSON.parse(local));if(!quiet)this.toast('Local scene loaded (not shared)');this.sceneDiagnostic('scene-local-only',{reason});return;}
   try{
    const room=window.solviRoom||'main';
    const data=await api.req('/api/scene?room='+encodeURIComponent(room));
-   if(ticket!==this.sceneLoadTicket||room!==(window.solviRoom||'main'))return;this.revision=data.revision;
-   if(this.lastLoadedRoom===room&&this.items.length){
+   if(ticket!==this.sceneLoadTicket||room!==(window.solviRoom||'main'))return;
+   // An older GET must never roll back a newer saved object or received revision.
+   if(data.revision<this.revision){this.sceneDiagnostic('scene-stale-snapshot',{revision:data.revision,expected:this.revision,reason});return;}
+   this.revision=Math.max(this.revision,data.revision);
+   if(this.items.length&&(this.lastLoadedRoom===room||(!this.realmTransitioning&&this.dirtyGenerations.size))){
     // Merge revisions without destroying every GLB and its animation mixer.
     const next=new Set((data.objects||[]).map(o=>o.id));
-    for(const entry of data.objects||[])this.applyObjectPatch({action:'upsert',object:entry});
-    for(const old of [...this.items])if(!next.has(old.userData.editorId))this.applyObjectPatch({action:'remove',id:old.userData.editorId});
+    for(const entry of data.objects||[])if(!this.dirtyGenerations.has(entry.id)&&!this.pendingRemovals.has(entry.id))this.applyObjectPatch({action:'upsert',object:entry});
+    for(const old of [...this.items])if(!next.has(old.userData.editorId)&&!this.dirtyGenerations.has(old.userData.editorId)&&!this.pendingRemovals.has(old.userData.editorId))this.applyObjectPatch({action:'remove',id:old.userData.editorId});
    }else if(!await this.applyCooperatively(data.objects||[],()=>ticket===this.sceneLoadTicket&&room===(window.solviRoom||'main')))return;
    if(ticket!==this.sceneLoadTicket||room!==(window.solviRoom||'main'))return;
-   this.lastLoadedRoom=room;
-   this.toast('Shared scene loaded');
-  }catch(e){this.toast(e.message);}}
- async save(){const list=this.serialize();const api=window.solviAPI;
-  if(!api?.online){localStorage.setItem('solvi-scene-'+(window.solviRoom||'main'),JSON.stringify(list));this.toast('Scene saved locally (not shared)');return;}
-  try{const data=await api.req('/api/scene',{method:'PUT',body:JSON.stringify({room:window.solviRoom||'main',revision:this.revision,objects:list})});this.revision=data.revision;this.toast('Shared scene saved');}catch(e){this.toast(e.message);}}
+   this.lastLoadedRoom=room;this.sceneDiagnostic('scene-reconciled',{revision:this.revision,count:(data.objects||[]).length,reason});
+   if(!quiet)this.toast('Shared scene loaded');
+  }catch(e){this.sceneDiagnostic('scene-fetch-failed',{reason:e.message});this.toast('Scene sync failed: '+e.message);}}
+ async save(){const room=window.solviRoom||'main',api=window.solviAPI;
+  if(!api?.online){localStorage.setItem('solvi-scene-'+room,JSON.stringify(this.serialize()));this.toast('Scene saved locally (not shared)');return;}
+  // A bulk PUT with a stale peer snapshot may delete somebody else's furniture.
+  // The Save button flushes only changed objects via atomic per-object patches.
+  const ids=[...this.dirtyGenerations.keys()];
+  for(const id of ids){const timer=this.pendingSaves.get(id);if(timer){clearTimeout(timer);this.pendingSaves.delete(id);}}
+  const results=await Promise.allSettled(ids.map(id=>{const object=this.items.find(o=>o.userData.editorId===id);return object?this.persistObject(object,room):Promise.resolve();}));
+  const failed=results.filter(r=>r.status==='rejected').length+ids.filter(id=>this.dirtyGenerations.has(id)).length;
+  this.sceneDiagnostic(failed?'scene-save-partial':'scene-manual-save',{count:ids.length,reason:failed?failed+' changes awaiting successful save':'All changes synchronised'});
+  this.toast(failed?`${failed} scene changes are not yet saved. Check Live diagnostics.`:ids.length?'Shared changes saved':'Scene already synchronised');
+ }
 
   async importModel(file){
    if(!/\.(glb|fbx)$/i.test(file.name))return this.toast('Select a GLB or FBX model');
@@ -2284,18 +2319,62 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     if(object)void this.persistObject(object,room);
    }
   }
-  queueSave(o){if(!o||o.userData.temporaryCarryTest||this.realmTransitioning||!this.canEdit(o))return;const id=o.userData.editorId;const room=window.solviRoom||'main';clearTimeout(this.pendingSaves.get(id));this.pendingSaves.set(id,setTimeout(()=>{this.pendingSaves.delete(id);this.persistObject(o,room);},650));}
-  async persistObject(o,room=window.solviRoom||'main'){
-    if(!o||o.userData.temporaryCarryTest||!this.items.includes(o)||!this.canEdit(o))return;
-    const data=this.snapshot(o),api=window.solviAPI;
-    if(!api?.online){localStorage.setItem('solvi-scene-'+room,JSON.stringify(this.serialize()));return;}
-    try{const result=await api.req('/api/scene/object',{method:'POST',body:JSON.stringify({room,action:'upsert',object:data})});if(room===(window.solviRoom||'main'))this.revision=Math.max(this.revision,result.revision||0);}
-    catch(error){this.toast('Save failed: '+error.message);}
+  queueSave(o){
+   if(!o||o.userData.temporaryCarryTest||this.realmTransitioning||!this.canEdit(o))return;
+   const id=o.userData.editorId,room=window.solviRoom||'main';
+   this.dirtyGenerations.set(id,(this.dirtyGenerations.get(id)||0)+1);
+   clearTimeout(this.pendingSaves.get(id));
+   this.pendingSaves.set(id,setTimeout(()=>{this.pendingSaves.delete(id);void this.persistObject(o,room);},650));
   }
-  async persistRemoval(id){const api=window.solviAPI;
-    if(!api?.online){localStorage.setItem('solvi-scene-'+(window.solviRoom||'main'),JSON.stringify(this.serialize()));return;}
-    try{const result=await api.req('/api/scene/object',{method:'POST',body:JSON.stringify({room:window.solviRoom||'main',action:'remove',object:{id}})});this.revision=Math.max(this.revision,result.revision||0);}
-    catch(error){this.toast('Remove failed: '+error.message);}
+  async persistObject(o,room=window.solviRoom||'main'){
+   if(!o||o.userData.temporaryCarryTest||!this.items.includes(o)||!this.canEdit(o))return false;
+   const id=o.userData.editorId,key=room+':'+id;
+   const prior=this.inFlightSaves.get(key);
+   if(prior){await prior.catch(()=>{});if(!this.dirtyGenerations.has(id))return true;}
+   if(!this.items.includes(o)||!this.canEdit(o))return false;
+   const generation=this.dirtyGenerations.get(id)||0,data=this.snapshot(o),api=window.solviAPI;
+   if(!data)return false;
+   if(!api?.online){localStorage.setItem('solvi-scene-'+room,JSON.stringify(this.serialize()));return false;}
+   const task=api.req('/api/scene/object',{method:'POST',body:JSON.stringify({room,action:'upsert',object:data})});
+   this.inFlightSaves.set(key,task);
+   try{
+    const result=await task;
+    if(room===(window.solviRoom||'main')){
+     const old=this.revision;this.revision=Math.max(old,result.revision||0);
+     if(result.revision>old+1)void this.load({quiet:true,reason:'save-ack-revision-gap'});
+    }
+    if(this.dirtyGenerations.get(id)===generation)this.dirtyGenerations.delete(id);
+    this.retrySaveCounts.delete(key);
+    this.sceneDiagnostic('scene-object-saved',{room,id,kind:data.kind,name:data.name,revision:result.revision,action:'upsert'});
+    return true;
+   }catch(error){
+    const reason=String(error?.message||error);
+    this.sceneDiagnostic('scene-save-failed',{room,id,kind:data.kind,name:data.name,action:'upsert',reason});
+    this.toast('Scene object NOT saved: '+data.name+' · '+reason);
+    const count=(this.retrySaveCounts.get(key)||0)+1;this.retrySaveCounts.set(key,count);
+    const permanent=/invalid|unsupported|owner|owned|forbidden|limit reached|unknown|too long|missing uploaded|not found/i.test(reason);
+    if(!permanent&&count<=3&&room===(window.solviRoom||'main')){
+     clearTimeout(this.pendingSaves.get(id));
+     const delays=[1500,3500,7500];
+     this.pendingSaves.set(id,setTimeout(()=>{this.pendingSaves.delete(id);if(this.items.includes(o))void this.persistObject(o,room);},delays[count-1]));
+     this.sceneDiagnostic('scene-save-retry',{room,id,kind:data.kind,attempt:count,seconds:delays[count-1]/1000});
+    }
+    return false;
+   }finally{if(this.inFlightSaves.get(key)===task)this.inFlightSaves.delete(key);}
+  }
+  async persistRemoval(id){
+   const room=window.solviRoom||'main',api=window.solviAPI;this.pendingRemovals.add(id);
+   if(!api?.online){localStorage.setItem('solvi-scene-'+room,JSON.stringify(this.serialize()));return;}
+   for(let attempt=0;attempt<3;attempt++){
+    try{const result=await api.req('/api/scene/object',{method:'POST',body:JSON.stringify({room,action:'remove',object:{id}})});
+     if(room===(window.solviRoom||'main'))this.revision=Math.max(this.revision,result.revision||0);
+     this.pendingRemovals.delete(id);this.dirtyGenerations.delete(id);
+     this.sceneDiagnostic('scene-object-removed',{room,id,action:'remove',revision:result.revision});return;
+    }catch(error){this.sceneDiagnostic('scene-remove-failed',{room,id,action:'remove',reason:String(error.message),attempt:attempt+1});
+     if(attempt===2){this.toast('Remove NOT saved: '+error.message);return;}
+     await new Promise(resolve=>setTimeout(resolve,[1500,3500][attempt]));
+    }
+   }
   }
   clearLightHelper(){if(this.lightHelper){this.world.scene.remove(this.lightHelper);this.lightHelper.dispose?.();this.lightHelper=null;}}
   showLightHelper(group){this.clearLightHelper();if(group.userData.editorKind!=='light')return;const light=group.children.find(x=>x.isLight);if(!light)return;
