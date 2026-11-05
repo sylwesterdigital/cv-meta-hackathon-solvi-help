@@ -47,7 +47,7 @@ test('robot command card and editable gender/voice preferences are wired',()=>{
  assert.match(speech,/gender:\['female','male','neutral'\]/);
 });
 test('robot prompts retain speaker attribution and coffee visit is explicitly non-physical',()=>{
- assert.match(backend,/SELECT text,user_id,role,speaker_override FROM messages WHERE room_id/);
+ assert.match(backend,/robot_conversation_excerpt\(history,robot\['name'\],user\['id'\]\)/);
  assert.match(robots,/mission.kind==='coffee_visit'/);
  assert.match(backend,/'coffee-visit':f'I visited/);
 });

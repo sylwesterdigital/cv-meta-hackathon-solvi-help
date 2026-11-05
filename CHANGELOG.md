@@ -1,3 +1,17 @@
+# v0.2.203 — Backend authorization fix for captioned robot commands (2026-11-05)
+
+- Fix failed v0.2.202 Mac watcher integration assertion: `CC: Jessica, stop` now gets parsed as a real privileged STOP command; when robot policy is `owned`, non-owner attempts return HTTP 403 even without a Meta API key.
+- Keep ordinary conversation about help, stopping at a bus stop and other non-imperatives on the conversational path.
+- Clear pending reaction claims on rejected privileged robot commands and identity-setting requests; add explicit backend and real-Python-parser regression tests.
+- Full existing scene, profiles, inventory and the previous v0.2.202 conversation improvements are preserved. The failed v0.2.202 watcher run changed neither GitHub nor production.
+
+# v0.2.202 — Natural robot conversation and follow-up continuity (2026-11-05)
+
+- Fix accidental command-guide routing when a participant says "with the help of OpenAI". Only an explicit request for help/commands starts the command guide; ordinary discussion stays with Muse. Standalone Stop/Halt/Freeze still work, but references to bus stops, not stopping, or approaching somebody and stopping nearby do not preempt conversation or movement.
+- Include recent direct exchanges with the addressed robot in its conversation prompt, even when other robots have spoken since; attribute every speaker by their saved room display name. Retrieve from existing room-scoped SQLite messages; no new long-term user profiling or migration.
+- Exclude disabled old work orders, stale/duplicate camera-observation memories, and implausible malformed scene coordinates from conversation context. Prefer objects nearby or explicitly mentioned.
+- Preserve actual executable allowlisted commands, ongoing tasks, scene data, avatars, media and all previous fixes. Full end-to-end model conversational quality must still be verified after deployment.
+
 # v0.2.201 — Sign-in and world startup recovery (2026-11-05)
 
 - Remove startup dependency on Meta model-catalog API (up to 65 seconds external wait); scene starts independently of AI provider availability.

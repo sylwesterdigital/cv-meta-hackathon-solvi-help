@@ -1,3 +1,41 @@
+# SOLVI.help Master LLM Handover — v0.2.203
+
+## v0.2.203 — Backend integration hotfix: captioned command authorization
+
+**Production incident:** The Mac watcher rejected v0.2.202 on 2026-11-05 22:55:02 UTC during backend/test_api.py, at `other_reply.status_code==403`. HTTP response was 200 (`Robot heard the message. Set a Meta key to enable speech.`). GitHub and the live site remained unchanged. Therefore v0.2.202 was NOT deployed by that watcher run.
+
+**Cause:** The v0.2.202 conversational-safety update anchored `stop`/`help` matching to the beginning of its parsed text; it stripped `CC:` and `@Jessica`, but not the untagged spoken vocative `Jessica,`. As a result `CC: Jessica, stop` was treated as ordinary chat, bypassed the command ownership guard, and produced a 200 conversational fallback when Meta was disabled.
+
+**Fix:** `plan_robot_command` removes the target robot's exact name or unique known first-name at the beginning of a clause (with an optional `@`), after the existing CC/handle normalization; it then matches explicit imperatives as before. No free-text search for `stop`/`help` was reintroduced. Conversational statements about 'help' or 'bus stop' stay dialogue. On rejected privileged commands and robot identity preferences, `/api/robots/react` removes its pending deduplication record before returning 403.
+
+**Backend integration regression:** `backend/test_api.py` adds the original watcher example plus `Jessica, stop`, `@Jessica stop`, and `CC: Jessica, please stop` with `robots='owned'` and a non-owner sender. Each must return 403, and no rejection may consume a reaction slot. The integration suite is included for the watcher, but **cannot run locally in this sandbox because Flask is unavailable**. The executable AST-extracted real Python parser tests pass, and the complete source JavaScript suite passed **973/973**. Six standalone backend tests and syntax parsing of 13 backend Python modules passed; both deployment scripts pass shell syntax validation. The release ZIP must also pass SHA-256 verification and an extracted-archive test run.
+
+**Scope / safety:** Keeps all conversation-context changes from v0.2.202. Does not touch room scene, persistent inventory, profiles, database schema, bundled GLBs, live-site credentials, or multiplayer scene protocols. Watcher deployment must succeed before declaring v0.2.203 live.
+
+---
+
+# SOLVI.help Master LLM Handover — v0.2.202
+
+# v0.2.202 — Natural robot conversation and follow-up continuity (2026-11-05)
+
+- Fix accidental command-guide routing when a participant says "with the help of OpenAI". Only an explicit request for help/commands starts the command guide; ordinary discussion stays with Muse. Standalone Stop/Halt/Freeze still work, but references to bus stops, not stopping, or approaching somebody and stopping nearby do not preempt conversation or movement.
+- Include recent direct exchanges with the addressed robot in its conversation prompt, even when other robots have spoken since; attribute every speaker by their saved room display name. Retrieve from existing room-scoped SQLite messages; no new long-term user profiling or migration.
+- Exclude disabled old work orders, stale/duplicate camera-observation memories, and implausible malformed scene coordinates from conversation context. Prefer objects nearby or explicitly mentioned.
+- Preserve actual executable allowlisted commands, ongoing tasks, scene data, avatars, media and all previous fixes. Full end-to-end model conversational quality must still be verified after deployment.
+
+## Design and verified local tests
+
+See `app/docs/RELEASE_202_CONVERSATION_SPEC.md` for exact guardrails and acceptance cases. Source changes are confined to `backend/server.py` and source test expectations plus `tests/release-202-robot-conversation-continuity.test.mjs`.
+
+- Complete Node.js regression suite: **970/970 passed**, including an actual Python AST execution of the command routing, conversation recall and scene-context functions.
+- Six standalone Python backend checks passed; syntax parsing passed for 13 Python modules and both deployment shell scripts.
+- Complete ZIP contains the application and SHA-256 manifest; original `facecap.glb` and `solvi-character.glb` remain byte-identical to v0.2.201. The final package is checked via a fresh extraction and the full suite before delivery.
+- Full Flask HTTP integration and live Meta inference are unavailable locally. A deployed browser must verify conversational coherence, @All turn behaviour, old introductions, and response latency with real sessions.
+
+The uploaded log showed roughly 2,959-2,969 input tokens and 965-1,519 output tokens for very short replies, plus separate paid background-camera observations. v0.2.202 makes context more relevant and removes one false routing error; it does **not** guarantee shorter provider latency, eliminate camera charges, or repair a scene object whose recorded Y coordinate was -532553.75 (it excludes that malformed coordinate from the text sent to Muse).
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.201
 
 # SOLVI.help v0.2.201 — Profile Reconnect and World Startup Recovery

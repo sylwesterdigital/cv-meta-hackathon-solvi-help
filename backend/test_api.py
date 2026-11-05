@@ -668,6 +668,15 @@ other_message=c.post('/api/message',headers=other_headers,json={'room':'lab','te
 with patch('server.active_model_key',return_value=''):
     other_reply=c.post('/api/robots/react',headers=other_headers,json={'room':'lab','text':other_speech,'message_id':other_message['id']})
 assert other_reply.status_code==403,(other_reply.status_code,other_reply.data)
+# v0.2.203: the permission check must also work for captioned/plain
+# @handle-less imperatives; a forbidden reaction must not be consumed.
+for speech in ('Jessica, stop','@Jessica stop','CC: Jessica, please stop'):
+    posted=c.post('/api/message',headers=other_headers,json={'room':'lab','text':speech}).get_json()['message']
+    with patch('server.active_model_key',return_value=''):
+        denied=c.post('/api/robots/react',headers=other_headers,json={'room':'lab','text':speech,'message_id':posted['id']})
+    assert denied.status_code==403,(speech,denied.status_code,denied.data)
+    with db() as con:
+        assert not con.execute('SELECT 1 FROM robot_reactions WHERE message_id=?',(posted['id'],)).fetchone(),speech
 assert c.put('/api/room/settings',headers=headers,json={'room':'lab','objects':'owned','robots':'open','physics':0}).status_code==200
 assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'remove','object':{'id':'testsofa-0222'}}).status_code==200
 # v0.2.24: a real task result writes persistent chat/memory and rejects replay.

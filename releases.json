@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.201",
+  "currentVersion": "0.2.203",
   "releases": [
+    {
+      "version": "0.2.203",
+      "publishedAt": "2026-11-05T23:14:37Z",
+      "changes": [
+        "Fix captioned and untagged robot vocatives in explicit command parsing so CC: Jessica, stop is correctly interpreted as a stop command rather than chat.",
+        "Restore 403 owner-only room-policy enforcement for CC/untagged STOP, including when Meta is unavailable.",
+        "Clear rejected reaction reservations so failed authorization never consumes the message for later permitted execution.",
+        "Retain all v0.2.202 conversation-continuity enhancements, persistence, original GLB assets and watcher packaging."
+      ]
+    },
     {
       "version": "0.2.201",
       "publishedAt": "2026-11-05T18:06:13Z",
@@ -321,18 +331,6 @@
         "Synchronise range dragging and typed numeric values in both directions through the existing debounced geometry preview, undo history, physics update and multiplayer save pipeline.",
         "Preserve the existing floating contextual slider for transform position/rotation/scale, while avoiding redundant popovers over furniture controls.",
         "Add regression checks for slider creation, numeric bounds, change propagation and consistent non-reflow layout."
-      ]
-    },
-    {
-      "version": "0.2.169",
-      "publishedAt": "2026-11-03T17:47:33Z",
-      "changes": [
-        "Centre all single-seat robots on the cushion rather than the armrest, and give each sofa occupant a unique slot.",
-        "Add a persisted seatMoveMode for furniture: stand on movement or follow the furniture, including translation, rotation and physics pushes.",
-        "Keep multiple seated robots bound to their own furniture-local anchors without making the robots children of the furniture mesh.",
-        "Automatically stand occupied robots when non-stickable furniture is moved or removed, clearing sitting pose and restoring idle and physics.",
-        "Persist and validate robot seat anchors across multiplayer scene updates and remap references through realm archives.",
-        "Expand seating regressions and preserve original avatars, physics and inventory code."
       ]
     }
   ]

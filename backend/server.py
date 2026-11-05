@@ -232,7 +232,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.201',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.203',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -2394,12 +2394,32 @@ def stair_approach_instruction(target):
 
 def plan_robot_command(text,robot,objects):
     """Return a *suggested* action, never model-provided executable instructions."""
-    words=re.sub(r'^\s*CC\s*:\s*','',text,flags=re.I).casefold()
-    if re.search(r'\b(?:help|commands|instructions|what can you do|how do i talk to you)\b',words):
+    words=re.sub(r'^\s*(?:CC\s*:\s*)?(?:@[\w-]+\s*[,;:]?\s*)*','',text,flags=re.I).strip()
+    # CC captions and untagged direct addresses ("Jessica, stop") still
+    # contain the spoken robot name. Strip only the selected robot's name
+    # at the START of the clause before matching imperative commands. This
+    # never scans for "stop" or "help" in conversational prose.
+    robot_name=str(robot.get('name','')).strip()
+    for alias in dict.fromkeys((robot_name,robot_name.split()[0] if robot_name else '')):
+        if not alias:continue
+        direct=re.match(r'^@?'+re.escape(alias)+r'(?=$|[\s,;:!?])\s*[,;:]?\s*',words,re.I)
+        if direct:
+            words=words[direct.end():].strip()
+            break
+    words=words.casefold()
+    # Conversational references to assistance ("I built this with the help of AI")
+    # are NOT requests to print the robot's command manual or assigned tasks.
+    if re.search(r'^(?:please\s+)?(?:help|commands|instructions)\s*[!?.]?$',words) or re.search(
+        r'^(?:please\s+)?help\s+(?:with\s+)?(?:commands|instructions)\b',words) or re.search(
+        r'^(?:please\s+)?(?:show|list|explain|tell me|give me)\s+(?:your\s+)?(?:commands|instructions)\b',words) or re.search(
+        r'\b(?:what can you do|how do i talk to you|how can i command you)\b',words):
         return None,ROBOT_COMMAND_GUIDE
     if re.search(r'\b(?:list|show|which|available|choose|browse)\b.{0,30}\bvoices?\b',words):
         return None,robot_voice_catalog(robot)
-    if re.search(r'\b(stop|halt|freeze)\b',words):
+    # A bus stop, 'don't stop', or 'go to the sofa and stop nearby' is not
+    # an immediate STOP command. Those messages must retain their actual intent.
+    if re.search(r'^(?:please\s+)?(?:stop(?!\s+by\b)|halt|freeze)\b',words) or re.search(
+        r'^(?:can|could|would) you (?:please )?(?:stop|halt|freeze)\b',words):
         return {'kind':'stop'},'Stopping.'
     # Bounded random patrol. Always stoppable; no unchecked animation or object pushing.
     if re.search(r'\b(?:do|try|perform|make|take|choose)\s+(?:something\s+)?random\b|\b(?:random|surprise)\s+(?:action|move|walk|cycle)s?\b',words):
@@ -3002,6 +3022,68 @@ def robot_reaction_queue():
     return jsonify(discussion={'enabled':True,'topic':discussion_topic(m['text'],robots)} if discuss else None,targets=[{'id':r['id'],'name':r['name']} for r in targets if r['id'] not in consumed],
                    relay_depth=int(m['relay_depth']),broadcast=bool(re.search(r'(?<![\w@])@all(?![\w-])',m['text'],re.I) and not from_robot))
 
+def robot_conversation_excerpt(rows,robot_name,user_id,limit=18):
+    """Select recent room dialogue plus earlier turns actually directed at this robot.
+
+    Rows are newest-first SQLite messages joined with their real author names.
+    This is bounded retrieval of room chat, not a generated or hidden memory.
+    """
+    name=str(robot_name or '').strip()
+    first=name.split()[0] if name else ''
+    mention=re.compile(r'(?<![\w@])@'+re.escape(first)+r'(?![\w-])',re.I) if first else None
+    full=re.compile(r'(?<![\w@])@'+re.escape(name)+r'(?![\w-])',re.I) if name else None
+    selected=set(range(min(8,len(rows))))
+    personal=0
+    self_replies=0
+    # Reserve old-context capacity for direct human messages, not only bot chatter.
+    direct_cap=max(1,limit-11)
+    reply_cap=max(1,limit-15)
+    for index,row in enumerate(rows):
+        if index in selected:continue
+        speaker=str(row['speaker'] or '')
+        message=str(row['text'] or '')
+        own_reply=(row['role']=='assistant' and speaker.casefold()==name.casefold())
+        human_to_this=(row['role']=='user' and row['user_id']==user_id and (
+            (mention and mention.search(message)) or (full and full.search(message)) or
+            re.search(r'(?<![\w@])@all(?![\w-])',message,re.I)))
+        if human_to_this and personal<direct_cap:
+            selected.add(index)
+            personal+=1
+        elif own_reply and self_replies<reply_cap:
+            selected.add(index)
+            self_replies+=1
+        if personal>=direct_cap and self_replies>=reply_cap:break
+    selected=sorted(selected,reverse=True)[-limit:]
+    return [{'speaker':str(rows[i]['speaker'] or 'Participant')[:90],
+             'role':rows[i]['role'], 'text':str(rows[i]['text'] or '')[:240]}
+            for i in selected]
+
+
+def robot_scene_excerpt(objects,robot,message,limit=15):
+    """Give dialogue a small, spatially relevant scene index, never fake sight."""
+    position=robot.get('position') if isinstance(robot.get('position'),list) else [0,0,0]
+    try:rx,rz=float(position[0]),float(position[2])
+    except (ValueError,TypeError,IndexError):rx=rz=0.
+    if not math.isfinite(rx) or not math.isfinite(rz):rx=rz=0.
+    query=str(message).casefold()
+    ranked=[]
+    for obj in objects:
+        if obj.get('id')==robot.get('id'):continue
+        name=str(obj.get('name',''))[:90]
+        loc=obj.get('position')
+        if not name or not isinstance(loc,(list,tuple)) or len(loc)!=3:continue
+        try:x,y,z=[float(v) for v in loc]
+        except (ValueError,TypeError):continue
+        if not all(math.isfinite(v) and abs(v)<10000 for v in (x,y,z)):continue
+        dist=(x-rx)**2+(z-rz)**2
+        # Relevant distant targets must still be discoverable by name.
+        named=bool(len(name)>=3 and re.search(r'(?<!\w)'+re.escape(name.casefold())+r'(?!\w)',query))
+        ranked.append((0 if named else 1,dist,{'name':name,'kind':obj.get('kind'),
+                            'position':loc,'colour':obj.get('color')}))
+    ranked.sort(key=lambda item:(item[0],item[1]))
+    return [item[2] for item in ranked[:limit]]
+
+
 @app.post('/api/robots/react')
 def robot_react():
     user,msg,status=actor()
@@ -3038,6 +3120,8 @@ def robot_react():
     preference,value=robot_preference_command(text) if tagged and not from_robot else (None,None)
     if preference:
         if not may_edit(user['id'],robot,room_policy(room_id)):
+            with db() as con:
+                con.execute('DELETE FROM robot_reactions WHERE message_id=? AND robot_id=?',(message_id,robot['id']))
             return json_error('Permission to edit this robot required',403)
         with db() as con:
             con.execute('BEGIN IMMEDIATE')
@@ -3119,6 +3203,10 @@ def robot_react():
                {'step':'parse','result':command['kind'] if command else 'target-not-found','source':'explicit rule parser; not LLM'},
                {'step':'target','result':command.get('target_name',command.get('target_phrase','')) if command else 'none','source':source}]
         if command and not may_edit(user['id'],robot,room_policy(room_id)):
+            # A rejected command must not consume its deduplication slot.
+            # Otherwise changing room permissions would leave an inert message.
+            with db() as con:
+                con.execute('DELETE FROM robot_reactions WHERE message_id=? AND robot_id=?',(message_id,robot['id']))
             return json_error('Room policy does not allow you to command this robot',403)
         plan_usage=None;plan_inference=None
         if command and active_model_key() and command['kind'] not in ('turn','turn_walk','walk_forward','jump','go_to'):
@@ -3155,8 +3243,9 @@ def robot_react():
         with db() as con:
             con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
                        (aid,user['id'],'assistant','scene-command',ack,'[]',ts,room_id,str(robot['name'])[:100]))
-            con.execute('INSERT INTO robot_memories VALUES (?,?,?,?,?)',
-                       (str(uuid.uuid4()),room_id,robot['id'],'My assigned task: '+text[:260],ts))
+            if command is not None:
+                con.execute('INSERT INTO robot_memories VALUES (?,?,?,?,?)',
+                           (str(uuid.uuid4()),room_id,robot['id'],'My assigned task: '+text[:260],ts))
         publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
         if command:
             command={**command,'id':str(uuid.uuid4()),'room':room_id,'robot_id':robot['id']}
@@ -3191,20 +3280,28 @@ def robot_react():
     attempts.append(time.time());chat_attempts[user['id']]=attempts
     # A separate request is made for each explicitly addressed robot; each is deduplicated.
     with db() as con:
-        recent=con.execute('SELECT event FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 8',(room_id,robot['id'])).fetchall()
-        history=con.execute('SELECT text,user_id,role,speaker_override FROM messages WHERE room_id=? ORDER BY created DESC LIMIT 6',(room_id,)).fetchall()
+        recent=con.execute('SELECT event FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 24',(room_id,robot['id'])).fetchall()
+        # Last six room messages alone lose a participant's introduction when
+        # other robots reply. Include earlier direct turns with true speaker names.
+        history=con.execute('SELECT m.text,m.user_id,m.role,m.speaker_override,u.name AS author, '
+            "COALESCE(NULLIF(m.speaker_override,''),u.name) AS speaker "
+            'FROM messages m JOIN users u ON u.id=m.user_id WHERE m.room_id=? '
+            'ORDER BY m.created DESC,m.rowid DESC LIMIT 90',(room_id,)).fetchall()
         saved_order=con.execute('SELECT order_json,state_json,enabled FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',(room_id,robot['id'],user['id'])).fetchone()
         work_receipts=con.execute('SELECT action,status,detail FROM robot_work_events WHERE room_id=? AND robot_id=? AND user_id=? ORDER BY created DESC LIMIT 3',(room_id,robot['id'],user['id'])).fetchall()
     identity={k:str(brain.get(k,''))[:limit] for k,limit in [('personality',1000),('history',2000),('beliefs',1000),('scenario',500),('gender',24),('voiceGender',24)]}
-    room_objects=[{'name':str(o.get('name',''))[:90], 'kind':o.get('kind'),
-                   'position':o.get('position'), 'colour':o.get('color')}
-                  for o in objects if o.get('id')!=robot['id']][:35]
+    room_objects=robot_scene_excerpt(objects,robot,text)
+    conversation=robot_conversation_excerpt(history,robot['name'],user['id'])
+    # Head-camera observations are already supplied separately with their age;
+    # repeated copies and misclassified old command guides swamp human chat.
+    experience=[r['event'] for r in recent if not str(r['event']).startswith(
+        ('Camera observation:','My assigned task:','Heard '))][:5]
     robot_pose={'position':robot.get('position',[0,0,0]),'rotation':robot.get('rotation',[0,0,0])}
-    spatial_context={'room':room_id,'utc_time':now(),'robot':robot_pose,'visible_to_scene_index':room_objects,
+    spatial_context={'room':room_id,'utc_time':now(),'robot':robot_pose,'visible_to_scene_index':room_objects,'total_scene_objects':len(objects),
                      'ongoing_task':next(({'kind':v['kind'],'target':v.get('target'),'age_seconds':int(time.time()-v['created'])}
                         for v in ROBOT_TASKS.values() if v['robot_id']==robot['id'] and v['room']==room_id and not v['done']),None)}
     if last_visual:spatial_context['last_real_camera_observation']={'text':last_visual['text'],'age_seconds':last_visual['age_seconds']}
-    if saved_order:
+    if saved_order and bool(saved_order['enabled']):
         try:
             assignment=json.loads(saved_order['order_json']); progress=json.loads(saved_order['state_json'])
             spatial_context['saved_work_order']={'enabled':bool(saved_order['enabled']),
@@ -3231,10 +3328,14 @@ def robot_react():
        ' Prefer real task receipts and recent actions over old camera descriptions. Avoid repetitive sky/tiles reports, formal evidence-debate wording, generic self-assessment, and [S1] reference labels unless explicitly requested.'
        ' Do not claim to be walking, moving, rerouting, or executing a mission unless the server provided an actual scene command. A chat reply alone does not move the avatar.'
        ' Never state a movement happened unless confirmed in the task record. Do not ask permission to turn, angle, step back or replan: those are autonomous navigation decisions. Ask a short question only when the objective truly cannot be determined. If the objective is complete, stay idle or suggest a grounded next activity without claiming to have started it.'
-       ' Fictional character notes: '+json.dumps(identity,ensure_ascii=False)[:4800]+'.'
-       ' Previous experiences: '+json.dumps([r['event'] for r in recent],ensure_ascii=False)[:1500])
+       ' For an individual follow-up question, give a specific, useful answer using previous exchanges, usually 2-3 natural sentences; for @All be brief and non-repetitive.'
+       ' Treat introductions, personal facts, and explanations as conversation, not executable commands.'
+       ' When asked who someone is, use their actual room display name and facts they explicitly shared here; do not invent a real identity.'
+       ' Follow up on earlier turns addressed to you rather than restarting the conversation. Do not repeat a generic answer.'
+       ' Fictional character notes: '+json.dumps(identity,ensure_ascii=False)[:3400]+'.'
+       ' Relevant earlier experiences: '+json.dumps(experience,ensure_ascii=False)[:900])
     was_interrupted=not from_robot and str(data.get('interrupted_robot',''))[:80].casefold()==str(robot['name']).casefold()
-    prompt='World situation (scene-index evidence, NOT direct sight): '+json.dumps(spatial_context,ensure_ascii=False)[:5000]+'\nRecent room conversation: '+json.dumps([{'speaker':r['speaker_override'] or (user['name'] if r['user_id']==user['id'] else 'another participant'),'role':r['role'],'text':r['text'][:400]} for r in reversed(history)],ensure_ascii=False)[:2600]+'\nLatest from '+(m['speaker_override'] if from_robot else user['name'])+': '+text+'\nReact naturally as the robot. Respond to the addressed speaker; do not output debug logs.'+('\nYour spoken sentence was interrupted by the user. You may briefly clarify or repeat it, or show mild impatience fitting your personality, without being hostile.' if was_interrupted else '')
+    prompt='World situation (scene-index evidence, NOT direct sight): '+json.dumps(spatial_context,ensure_ascii=False)+'\nRoom conversation, including relevant earlier direct exchanges (oldest first): '+json.dumps(conversation,ensure_ascii=False)+'\nLatest from '+(m['speaker_override'] if from_robot else user['name'])+': '+text+'\nAnswer this latest message directly, using earlier dialogue for continuity; do not output debug logs.'+('\nYour spoken sentence was interrupted by the user. You may briefly clarify or repeat it, or show mild impatience fitting your personality, without being hostile.' if was_interrupted else '')
     try:
         response=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,'input':[{'role':'developer','content':[{'type':'input_text','text':instruction}]},{'role':'user','content':[{'type':'input_text','text':prompt}]}]})
         usage=record_usage(user['id'],'muse-spark-1.3','robot-reply',response)
@@ -3261,6 +3362,8 @@ def robot_react():
     publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
     return jsonify(triggered=True,responded=True,robot_id=robot['id'],robot_name=robot['name'],
        trace=[{'step':'route','result':'Addressed '+robot['name'],'source':'direct mention or subscribed phrase'},
+              {'step':'context','result':str(len(conversation))+' room/direct conversation turns; '+str(len(room_objects))+' relevant scene objects',
+                'source':'room-scoped SQLite dialogue with true speaker attribution'},
               {'step':'intent','result':'Conversational reply, no physical motion requested','source':'command parser'},
               {'step':'muse request','result':'muse-spark-1.3 · saved identity + room objects + robot pose + UTC time + recent chat + memory · store=false','source':'Meta Responses API'},
               {'step':'muse response','result':str(response.get('id','unknown'))+' · '+str(usage.get('input_tokens',0))+' input, '+str(usage.get('output_tokens',0))+' output tokens · estimated US$'+str(usage.get('estimated_usd',0)),'source':'Meta API usage'}],
