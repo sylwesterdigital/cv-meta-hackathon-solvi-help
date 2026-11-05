@@ -25,7 +25,13 @@ test('all local ES modules resolve to a version-specific URL regardless of old b
  assert.equal(mappings['three/addons/'],'./vendor/three/addons/');
  const firstParty=fs.readdirSync(path.join(root,'js')).filter(f=>f.endsWith('.js'));
  for(const f of firstParty){
-   assert.equal(mappings[`./js/${f}`],`./js/${f}?v=${version}`,`Cache-bust ${f}`);
+   if(f==='umami-loader.js'){
+     // This standalone async classic script is intentionally NOT in the ES
+     // module graph; it still needs its own versioned URL to defeat caches.
+     assert.ok(html.includes(`<script async src="./js/${f}?v=${version}"></script>`),`Cache-bust async ${f}`);
+   } else {
+     assert.equal(mappings[`./js/${f}`],`./js/${f}?v=${version}`,`Cache-bust ${f}`);
+   }
  }
  // An import './editor.js' in a cached './js/studio.js' must resolve through
  // the document's import map to a fresh versioned module URL.

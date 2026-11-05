@@ -28,6 +28,8 @@ import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
 import {planRobotMeeting,canMeetRobot,remainingRouteBlocked} from './robot-social-navigation.js';
 import {findRobotWorksite,footprintClear} from './robot-worksite.js';
+import {infrastructureSegments} from './procedural-infrastructure.js';
+import {infrastructureNavigationFootprints} from './robot-infrastructure-obstacles.js';
 import {planRobotLowStairApproach} from './robot-stair-approach.js';
 import {updateRobotPathDebug,trackRobotPathDebug,clearRobotPathDebug,finishRobotPathDebug,clearAllRobotPathDebug} from './robot-path-visuals.js';
 import {robotPathVisible} from './robot-debug.js';
@@ -2424,17 +2426,37 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   syncRobotPathDebug(){for(const robot of this.items.filter(o=>o.userData.editorKind==='robot')){const route=robot.userData.robotDebugRoute;if(this.robotPathDebugVisible(robot)&&route&&!route.finished)updateRobotPathDebug(this.world,robot,route);else if(!this.robotPathDebugVisible(robot))clearRobotPathDebug(this.world,robot.userData.editorId);}this.updateRobotDebugStatus();}
   navigationObstacles(robot){
     this.world.scene.updateMatrixWorld(true);
-    return this.items.filter(o=>o!==robot&&o.visible&&!o.userData.carriedBy&&!o.userData.storage&&!(o.userData.editorKind==='cube'&&o.name?.endsWith(' · house floor'))&&!['light','plane','points','curve'].includes(o.userData.editorKind)).flatMap(o=>{
+    const supplements=(robot.userData.robotNavTemporaryObstacles||[]).filter(o=>o.until>Date.now());
+    robot.userData.robotNavTemporaryObstacles=supplements;
+    const scene=this.items.filter(o=>o!==robot&&o.visible&&!o.userData.carriedBy&&!o.userData.storage&&!(o.userData.editorKind==='cube'&&o.name?.endsWith(' · house floor'))&&!['light','plane','points','curve'].includes(o.userData.editorKind)).flatMap(o=>{
       if(['wall','stairs'].includes(o.userData.editorKind))return o.children.filter(child=>child.userData.wallSegment||child.userData.stairTread).map((child,i)=>{const b=new THREE.Box3().setFromObject(child);if(b.isEmpty()||b.max.y<robot.position.y+.10||b.min.y>robot.position.y+1.7)return null;return {minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z,name:(o.name||'Office wall')+' section '+(i+1),kind:'wall',id:o.userData.editorId};}).filter(Boolean);
+      // A user-visible label can be stale (e.g. a fence still named 'Footpath').
+      // Use the generated infrastructure type/centreline, not its display name.
+      // Previously every object >28m was silently removed from the navmesh.
+      // That made long fences invisible to A* even though Rapier stopped robots.
+      if(o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='infrastructure'){
+        const cfg=o.userData.furniture;
+        if(['road','footpath','curb'].includes(cfg.infraType))return null; // ground surface, not a wall
+        const b=new THREE.Box3().setFromObject(o);
+        if(b.isEmpty()||b.max.y<robot.position.y+.10||b.min.y>robot.position.y+1.7)return null;
+        const segments=infrastructureSegments(cfg);
+        return infrastructureNavigationFootprints(segments,(x,z)=>{
+          const p=o.localToWorld(new THREE.Vector3(x,0,z));return {x:p.x,z:p.z};
+        },{...cfg,navigationWorldScale:Math.max(Math.abs(o.scale.x),Math.abs(o.scale.z))},
+        {name:o.name||cfg.infraType,id:o.userData.editorId});
+      }
       // Human-like glTF bounds can swell with animation and accessories. Use a
       // stable feet-centred capsule footprint for other robots instead.
       if(o.userData.editorKind==='robot')return {minX:o.position.x-.38,maxX:o.position.x+.38,minZ:o.position.z-.38,maxZ:o.position.z+.38,name:o.name||'Robot',kind:'robot',id:o.userData.editorId};
       const b=new THREE.Box3().setFromObject(o);
       if(b.isEmpty())return {minX:o.position.x-.33,maxX:o.position.x+.33,minZ:o.position.z-.33,maxZ:o.position.z+.33,name:o.name||'Unnamed object',kind:o.userData.editorKind||'object',id:o.userData.editorId};
       if(b.max.y<robot.position.y+.10||b.min.y>robot.position.y+1.7)return null;
-      if(b.max.x-b.min.x>28||b.max.z-b.min.z>28)return null;
+      // A long solid object must remain an obstacle; skipping it creates
+      // routes through actual colliders. Segmented infrastructure is above.
+      // An imported elongated model remains conservatively bounded.
       return {minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z,name:o.name||'Unnamed object',kind:o.userData.editorKind||'object',id:o.userData.editorId};
     }).filter(Boolean);
+    return [...scene,...supplements];
   }
   routeRobot(robot,point){
     const {preserveMission=false,quiet=false,wholePath=false}=arguments[2]||{};
@@ -2465,6 +2487,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       this.toast(`${robot.name}: no collision-free route found`);return false;
     }
     robot.userData.robotWaypoints=waypoints.slice(1);
+    robot.userData.robotProgressSample=null;
     robot.userData.robotPathObstacles=obstacles;
     if(!preserveMission)robot.userData.robotRecoveryAttempts=0;
     robot.userData.robotRouteDestination={x:point.x,z:point.z};
@@ -2595,7 +2618,23 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     const destination=robot.userData.robotRouteDestination;
     if(!destination)return false;
     window.dispatchEvent(new CustomEvent('solvi:robot-recovery',{detail:{robotId:robot.userData.editorId,name:robot.name,reason,attempt:attempts+1}}));
-    // Re-read every visible object, including independently moving robots.
+    // A physical stall can reveal a collider missing from the scene route
+    // snapshot. Temporarily mark the contact point, not an entire building or
+    // other robot. Each retry is bounded and never modifies persisted objects.
+    if(reason==='no measured movement' || reason==='scene obstacle'){
+      const from={x:robot.position.x,z:robot.position.z};
+      const goal=robot.userData.robotGoal||destination;
+      const dx=goal.x-from.x,dz=goal.z-from.z,len=Math.hypot(dx,dz)||1;
+      const cx=from.x+dx/len*.78,cz=from.z+dz/len*.78;
+      const blockers=robot.userData.robotNavTemporaryObstacles||[];
+      if(!blockers.some(b=>Math.hypot((b.minX+b.maxX)/2-cx,(b.minZ+b.maxZ)/2-cz)<.38)){
+        blockers.push({minX:cx-.24,maxX:cx+.24,minZ:cz-.24,maxZ:cz+.24,
+          kind:'runtime-contact',name:'Measured movement obstruction',until:Date.now()+45000});
+        robot.userData.robotNavTemporaryObstacles=blockers.slice(-3);
+      }
+    }
+    // Re-read every physical obstacle and choose a route around the latest
+    // contact rather than repeating the same straight line through the fence.
     if(this.routeRobot(robot,destination,{preserveMission:true,quiet:true}))return true;
     // A blocked narrow passage may require a short reverse step first. Both legs
     // must be verified by A* before movement starts; never back into obstacles.

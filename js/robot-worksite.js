@@ -1,4 +1,4 @@
-// v0.2.189: worksite discovery from the real 3D scene obstacle footprint.
+// v0.2.191: worksite discovery from the real 3D scene obstacle footprint.
 // Site is only a *candidate*. The controller must walk there and re-check before Add.
 import {planRobotPath,plannedPathLength,pathBlocked} from './robot-pathfinding.js';
 const finite=p=>Number.isFinite(p?.x)&&Number.isFinite(p?.z);

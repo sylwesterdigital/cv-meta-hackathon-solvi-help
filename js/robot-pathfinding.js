@@ -12,11 +12,12 @@ export function planRobotPath(start,end,obstacles=[],options={}){
  const direct=Math.hypot(end.x-start.x,end.z-start.z);
  if(direct<.10)return [{x:end.x,z:end.z}];
  // The grid covers the route and a 5m detour on both sides, bounded for performance.
- const extra=clamp(direct*.35+2.4,3.5,8);
+ const extra=Number.isFinite(options.extra)?clamp(options.extra,3.5,55):clamp(direct*.35+2.4,3.5,8);
  const minX=Math.min(start.x,end.x)-extra,minZ=Math.min(start.z,end.z)-extra;
  const maxX=Math.max(start.x,end.x)+extra,maxZ=Math.max(start.z,end.z)+extra;
- const nx=Math.min(105,Math.ceil((maxX-minX)/cell)+1),nz=Math.min(105,Math.ceil((maxZ-minZ)/cell)+1);
- if(nx*nz>8500)return null;
+ const nx=Math.ceil((maxX-minX)/cell)+1,nz=Math.ceil((maxZ-minZ)/cell)+1;
+ const maxCells=Math.min(36000,Math.max(8500,Number(options.maxCells)||8500));
+ if(nx>225||nz>225||nx*nz>maxCells)return null;
  const index=(x,z)=>z*nx+x;
  const at=(x,z)=>({x:minX+x*cell,z:minZ+z*cell});
  const sx=clamp(Math.round((start.x-minX)/cell),0,nx-1),sz=clamp(Math.round((start.z-minZ)/cell),0,nz-1);
@@ -116,7 +117,17 @@ export function planRobotTravelRoute(start,end,obstacles=[],options={}){
  const exact=(path,point)=>Array.isArray(path)&&path.length>0&&Math.hypot(path.at(-1).x-point.x,path.at(-1).z-point.z)<.12;
  // Prefer a single direct A* search for ordinary approaches. This allows A*
  // itself to choose the correct side of a medium-size building.
- if(distance<=30){const path=planRobotPath(start,end,obstacles,options);if(exact(path,end))return path;}
+ if(distance<=30){
+  const path=planRobotPath(start,end,obstacles,options);if(exact(path,end))return path;
+  // The local 8m detour can miss an endpoint of a long, real fence. Expand
+  // the A* search boundary progressively, while keeping a hard node budget.
+  // No model call, teleport, or crossing through scene collision footprints.
+  for(const extra of [16,30,50]){
+   const wide=planRobotPath(start,end,obstacles,{...options,extra,
+     cell:extra>30?.7:extra>16?.6:.45,maxCells:30000});
+   if(exact(wide,end))return wide;
+  }
+ }
  const maxDepth=Math.max(3,Math.ceil(Math.log2(Math.max(1,distance/maxLeg)))+3);
  let searches=0;
  const budget=Number(options.searchBudget)||95;

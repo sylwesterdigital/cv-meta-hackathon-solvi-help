@@ -4,6 +4,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MotionController,computeMode} from './animations.js';
 import {pathBlocked} from './robot-pathfinding.js';
+import {checkRobotWalkingProgress} from './robot-progress-watchdog.js';
 import {footfallRate,combatPhase} from './robot-combat.js';
 import {permittedRobotLocomotion} from './robot-contact.js';
 import {animationSpeedSettings,jumpAnimationKind,landingClipFor,gaitCadence,continuousGaitMode,jumpResumeMode} from './animation-tuning.js';
@@ -66,6 +67,7 @@ export function interruptRobotMission(robot){
   robot.userData.robotGoal=null;
   robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;
   robot.userData.robotRouteDestination=null;robot.userData.robotRecoveryAttempts=0;
+  robot.userData.robotProgressSample=null;robot.userData.robotNavTemporaryObstacles=null;
   robot.userData.robotSeated=false;
   robot.userData.robotSitPose=null;
 }
@@ -133,6 +135,23 @@ export function tickRobots(items,dt,onMove=()=>{}){
     if((mode==='walk'||mode==='run')&&robot.userData.robotGoal){
       const delta=robot.userData.robotGoal.clone().sub(robot.position);delta.y=0;
       const distance=delta.length();
+      // Detect a real-world stall (Rapier/contact holding the body still)
+      // even when the planned route looks clear and the walk clip is playing.
+      const progress=checkRobotWalkingProgress(robot.userData.robotProgressSample,
+        robot.position,robot.userData.robotGoal,dt);
+      robot.userData.robotProgressSample=progress.sample;
+      if(progress.stuck){
+        robot.userData.robotProgressSample=null;
+        if(onMove.recover?.(robot,'no measured movement')){onMove(robot,false);continue;}
+        const mission=robot.userData.robotMission;
+        robot.userData.robotGoal=null;robot.userData.robotWaypoints=null;
+        robot.userData.robotPathObstacles=null;robot.userData.robotMission=null;
+        robot.userData.robotMode='idle';mode='idle';
+        window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{
+          robot:robot.name,robotId:robot.userData.editorId,taskId:mission?.taskId,
+          target:mission?.targetName,status:'blocked',reason:'No measured movement after bounded detour attempts'}}));
+        onMove(robot,false);continue;
+      }
       if(distance<.07){
         if(robot.userData.robotWaypoints?.length){const point=robot.userData.robotWaypoints.shift();setRobotDestination(robot,point);onMove(robot,false);continue;}
         if(onMove.retarget?.(robot)){onMove(robot,false);continue;}
@@ -229,6 +248,7 @@ export function tickRobots(items,dt,onMove=()=>{}){
 export function setRobotDestination(robot,point,run=false){
   if(!robot||robot.userData.editorKind!=='robot')return;
   robot.userData.robotGoal=new THREE.Vector3(point.x,robot.position.y,point.z);
+  robot.userData.robotProgressSample=null;
   robot.userData.robotMode=run?'run':'walk';
 }
 export function robotHeadCameraPose(robot,options={}){

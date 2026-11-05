@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {checkRobotWalkingProgress} from '../js/robot-progress-watchdog.js';
 const source=readFileSync(new URL('../js/robots.js',import.meta.url),'utf8');
 const editor=readFileSync(new URL('../js/editor.js',import.meta.url),'utf8');
 const backend=readFileSync(new URL('../backend/server.py',import.meta.url),'utf8');
@@ -19,7 +20,7 @@ function tickHarness(){
  class CustomEvent{constructor(name,opts){this.detail=opts.detail;}}
  const clamp=(v,l,h)=>Math.max(l,Math.min(v,h));
  const setRobotDestination=(robot,p)=>{robot.userData.robotGoal=new Vector(p.x,robot.position.y,p.z);robot.userData.robotMode='walk';};
- const tick=new Function('clamp','setRobotDestination','window','CustomEvent','performance',`return function tickRobots(items,dt,onMove=()=>{}){${src}`)(clamp,setRobotDestination,window,CustomEvent,performance);
+ const tick=new Function('clamp','setRobotDestination','window','CustomEvent','performance','checkRobotWalkingProgress',`return function tickRobots(items,dt,onMove=()=>{}){${src}`)(clamp,setRobotDestination,window,CustomEvent,performance,checkRobotWalkingProgress);
  return {tick,events};
 }
 test('Cybert can turn 90° left in-place and report actual completion',()=>{

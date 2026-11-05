@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.189",
+  "currentVersion": "0.2.191",
   "releases": [
+    {
+      "version": "0.2.191",
+      "publishedAt": "2026-11-05T00:17:55Z",
+      "changes": [
+        "Add opt-in-free Umami website analytics via the supplied analytics.mielniczuk.com endpoint and website ID, without modifying the Meta/robot application module graph.",
+        "Load the tracker only after page load and idle scheduling, with an independent async script so analytics latency cannot delay 3D startup, DOM readiness or normal user interaction.",
+        "Ignore blocked or failed analytics requests, remove a hanging tracker after 8 seconds and never retry in a loop; test load/error/timeout/startup isolation.",
+        "Retain the v0.2.190 fence-aware navigation and stuck-recovery code, unchanged avatar binaries, full watcher release manifest and existing deployment contract."
+      ]
+    },
     {
       "version": "0.2.189",
       "publishedAt": "2026-11-04T19:58:09Z",
@@ -325,18 +335,6 @@
         "Enable copying an HTTPS HLS/MP4/WebM URL and pasting directly while a TV or monitor is selected; add without a separate clipboard button.",
         "Add CORS-aware IPTV .m3u playlist import, bounded search results and one-click channel selection from curated country/category playlists.",
         "Apply smart playback options to procedural TVs/monitors and in-world media frames with strict frontend/backend validation; retain saved Rantlist channels and existing avatar models."
-      ]
-    },
-    {
-      "version": "0.2.157",
-      "publishedAt": "2026-11-02T21:43:22Z",
-      "changes": [
-        "Fix smart-screen selection in Edit Mode and WebXR; add Play buttons for saved TV, monitor and media-frame channels and handle screen cleanup safely.",
-        "Improve remote walking animation tolerance, add contextual Cmd+/ robot keyboard help derived from per-robot combat shortcut settings and an explicit wearable Take off action.",
-        "Improve procedural preset card layout and center/safely frame thumbnail captures; clicking the preview directly adds an object.",
-        "Add procedural lamps with sphere/cuboid/pyramid shades, point/spot lights, adjustable intensity/range/opacity and a physical power switch.",
-        "Add procedural speakers with named saved HTTPS media channels, spatial audio, playback by clicking in-world or selecting a channel in Properties.",
-        "Synchronise stair root and tread surface color during editing, retain collision and persistence, preserve existing avatar GLBs and scene compatibility."
       ]
     }
   ]

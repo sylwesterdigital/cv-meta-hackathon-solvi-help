@@ -1,4 +1,4 @@
-"""v0.2.189 isolated bounded work-order checks without importing Flask."""
+"""v0.2.191 isolated bounded work-order checks without importing Flask."""
 import ast
 import json
 from pathlib import Path
