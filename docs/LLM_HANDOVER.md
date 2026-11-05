@@ -1,4 +1,17 @@
-# SOLVI.help Master LLM Handover — v0.2.197
+# SOLVI.help Master LLM Handover — v0.2.198
+
+## v0.2.198 — Smart support-surface placement (2026-11-05)
+
+**Verification:** Complete source JavaScript regression suite 939/939; all 6 standalone Python backend tests passed, 13 backend modules parsed, shell installer syntax passed. Package contains 466 SHA-256-verified application files; original two GLB model bytes unchanged. Full Flask integration, real browser WebGL placement and live multiplayer validation still require deployment checks.
+
+**Incident:** v0.2.197 falsely reported no collision-free visible space for cans and other small props in crowded indoor scenes. It planned on groundY=0 only, treated tables as fully solid obstacles, and treated broad low primitive cube floors as blocked volumes. Screenshots showed available tabletops and user unable to create props.
+
+**Code:** `js/scene-placement.js` now detects horizontal tabletop and floor slab support geometry (table/stool/cabinet; broad, low cube and horizontal plane), creates safe world-space polygons, selects tabletop first for small eligible items and floor support for any object. The pure `js/smart-placement-math.js` supports deterministic raised-surface candidate search with conservative footprint containment, obstacle-overlap and true camera visibility; the supporting object's own AABB is omitted only while placing *on that support*. Original ground planner remains fallback. Add and preset flows still publish only after safe positioning through the existing per-object queueSave path.
+
+**Tests:** `tests/release-198-smart-support-surface-placement.test.mjs` adds tabletop, raised floor, repeated small object, overhang, occlusion, below-top camera, and full-table cases. Version updated to 0.2.198.
+
+**Limits:** Actual production scene and browser camera untested locally; not guaranteed to recover any previously lost objects; no schema changes. Full two-client test on deployment required.
+
 
 ## v0.2.197 — Visibility-aware placement of new scene objects
 

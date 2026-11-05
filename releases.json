@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.197",
+  "currentVersion": "0.2.198",
   "releases": [
+    {
+      "version": "0.2.198",
+      "publishedAt": "2026-11-05T13:24:11Z",
+      "changes": [
+        "Correct indoor placement regression: small props now prefer visible non-overlapping table, stool and cabinet tops rather than being rejected as overlapping the supporting furniture.",
+        "Support low broad cube floors and horizontal plane platforms as actual walkable surfaces, so existing indoor floors do not block placement of other furniture.",
+        "Use full world-space footprint containment, vertical support height, per-support collider exclusion, occlusion checks, recent-item proximity, and a safe ground fallback.",
+        "Preserve existing per-object authoritative multiplayer scene saves, scene-recovery protections, previous releases and original model binaries."
+      ]
+    },
     {
       "version": "0.2.197",
       "publishedAt": "2026-11-05T13:00:49Z",
@@ -324,17 +334,6 @@
         "Extend the tree builder with blossom trees, palm fronds and coconuts; reduce default leaf sizes and make seeded foliage clusters denser without per-leaf draw calls.",
         "Add procedural wood bark selection, trunk noise irregularity and editable blossom colour/density, keeping earlier Nature scenes and presets readable.",
         "Extend backend validation and add regression tests for new vegetation settings, deterministic tree generation and bounded scene geometry."
-      ]
-    },
-    {
-      "version": "0.2.164",
-      "publishedAt": "2026-11-03T13:43:53Z",
-      "changes": [
-        "Create bounded, seed-reproducible procedural broadleaf, conifer, and orchard trees with adjustable height, trunk/leaf geometry, fruit and colours; foliage/fruit are instanced for WebXR draw-call efficiency.",
-        "Add soil/grass plots and simple crop beds using a lightweight procedural ground shader, instanced grass and vegetable rows with manual growth percentage, soil type, colours and fixed complexity budgets.",
-        "Draw ground polygons from the Add > Nature menu; auto-close the boundary on Save/Enter or click near start, with optional outline smoothing and editable saved points.",
-        "Enable tree, soil and crop configurations as account-saved presets in a new Nature gallery tab; preserve existing scene IDs and cross-client furniture updates.",
-        "Validate all new settings, numeric ranges, plot coordinates and bounded polygon sizes on the backend; no new asset dependency, watcher changes or third-party runtime library."
       ]
     }
   ]

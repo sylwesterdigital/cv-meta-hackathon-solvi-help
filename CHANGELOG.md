@@ -1,3 +1,11 @@
+## v0.2.198 — Smart tabletop and raised-floor placement
+
+- Fix v0.2.197 placement failure in populated houses: small objects (cans, bottles, mugs, plates, laptops and similar props) are placed on **visible existing tables** or other genuine horizontal support surfaces before ground-level placement is considered.
+- Detect real table/cabinet tops and broad low floor slabs (including raised cube and horizontal plane floors); place the new object's bottom at the support height rather than rejecting every candidate because the support's own collider fills the footprint.
+- Use deterministic candidate sampling, entire object-footprint containment, 3D overlap avoidance, camera projection/occlusion checks and recent-placement proximity. Never publish a rejected object; all successful additions retain the normal per-object multiplayer scene save path.
+- No scene format or database migration. No changes to robot autonomy, recovery snapshots, original 3D models or unrelated editor behaviour.
+- Local WebGL viewport and live two-client behaviour require deployment verification.
+
 ## v0.2.197 — Smart, room-aware object placement
 
 - New primitives, tools, devices, furniture and saved presets favour positions beside the last addition in the current realm, close to the viewport centre and the viewer.

@@ -50,7 +50,7 @@ function browser({readyState='loading', idle=true, throwCreate=false, throwAppen
 
 test('Umami uses an independent async local loader, not a render-blocking remote tag or main import',()=>{
   const html=read('index.html');
-  assert.match(html,/<script async src="\.\/js\/umami-loader\.js\?v=0\.2\.197"><\/script>/);
+  assert.match(html,/<script async src="\.\/js\/umami-loader\.js\?v=0\.2\.198"><\/script>/);
   assert.doesNotMatch(html,/src="https:\/\/analytics\.mielniczuk\.com/);
   assert.doesNotMatch(read('js/main.js'),/umami-loader|analytics\.mielniczuk\.com/);
   assert.match(loader,/data|dataset/);

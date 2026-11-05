@@ -91,3 +91,78 @@ export function chooseSmartPlacement({camera,centre,forward,footprint,anchor=nul
  }
  return best;
 }
+
+
+// Candidate points are on *real support surfaces*, not at the room's ground
+// level. This makes a visible tabletop an available location for a can even if
+// its supporting table occupies the entire ground footprint underneath it.
+function polygonContains(p,polygon,margin=0){
+ if(!Array.isArray(polygon)||polygon.length<3)return false;
+ let sign=0;
+ for(let i=0;i<polygon.length;i++){
+  const a=polygon[i],b=polygon[(i+1)%polygon.length];
+  const cross=(b.x-a.x)*(p.z-a.z)-(b.z-a.z)*(p.x-a.x);
+  const edge=Math.hypot(b.x-a.x,b.z-a.z);
+  if(!edge)return false;
+  if(Math.abs(cross)<=margin*edge)return false;
+  const side=Math.sign(cross);
+  if(sign&&side!==sign)return false;
+  sign=side;
+ }
+ return true;
+}
+
+/** Check every corner of the item's world-axis-aligned footprint against the
+ * surface polygon. This is conservative for rotated tables and round tops. */
+export function placementFitsSurface(x,z,width,depth,polygon,edgeMargin=.018){
+ const w=width*.5+edgeMargin,d=depth*.5+edgeMargin;
+ return [[x-w,z-d],[x+w,z-d],[x+w,z+d],[x-w,z+d]]
+  .every(([px,pz])=>polygonContains({x:px,z:pz},polygon));
+}
+
+/** Choose a visible, unoccupied horizontal supporting surface.
+ * Supports have {id,kind,topY,polygon}; `kind` is tabletop or floor.
+ * Non-support furniture continues to block collisions and sightlines.
+ * All operations are deterministic and read-only. */
+export function chooseSurfacePlacement({camera,footprint,supports=[],obstacles=[],project,
+ anchor=null,maxCameraDistance=16,allowTabletop=false}={}){
+ if(!camera||!footprint||typeof project!=='function'||
+    ![camera.x,camera.y,camera.z,footprint.width,footprint.depth,footprint.height].every(finite))return null;
+ const safeObstacles=obstacles.filter(b=>b?.min&&b?.max&&['x','y','z'].every(k=>finite(b.min[k])&&finite(b.max[k])));
+ const width=Math.max(.06,footprint.width),depth=Math.max(.06,footprint.depth),height=Math.max(.02,footprint.height);
+ let best=null,bestScore=Infinity;
+ for(const support of supports.slice(0,160)){
+  if(!support||!['floor','tabletop'].includes(support.kind)||
+     (support.kind==='tabletop'&&!allowTabletop)||!finite(support.topY)||
+     support.topY>camera.y-.14||!Array.isArray(support.polygon)||support.polygon.length<3)continue;
+  const xs=support.polygon.map(p=>p.x),zs=support.polygon.map(p=>p.z);
+  const minX=Math.min(...xs),maxX=Math.max(...xs),minZ=Math.min(...zs),maxZ=Math.max(...zs);
+  if(![minX,maxX,minZ,maxZ].every(finite))continue;
+  // Big floor slabs should be sampled at a sensible density; tables need
+  // tighter sampling to find space between previously placed cups and cans.
+  const steps=support.kind==='tabletop'?10:12;
+  const surfaceObstacles=safeObstacles.filter(b=>b.sourceId!==support.id);
+  for(let ix=0;ix<steps;ix++)for(let iz=0;iz<steps;iz++){
+   const x=minX+(ix+.5)*(maxX-minX)/steps,z=minZ+(iz+.5)*(maxZ-minZ)/steps;
+   if(!placementFitsSurface(x,z,width,depth,support.polygon))continue;
+   const dist=Math.hypot(camera.x-x,camera.z-z);
+   if(dist>.6+maxCameraDistance||dist<.35)continue;
+   const baseY=support.topY+.009;
+   const volume={min:{x:x-width/2,y:baseY,z:z-depth/2},max:{x:x+width/2,y:baseY+height,z:z+depth/2}};
+   if(surfaceObstacles.some(b=>placementBoxesOverlap(volume,b,.035)))continue;
+   const target={x,y:baseY+Math.min(height*.5,.55),z};
+   const ndc=project(target);
+   if(!ndc||![ndc.x,ndc.y,ndc.z].every(finite)||ndc.z<=-1||ndc.z>=1||
+      Math.abs(ndc.x)>.94||Math.abs(ndc.y)>.91)continue;
+   if(surfaceObstacles.some(b=>placementLineBlocked(camera,target,b)))continue;
+   const screenScore=ndc.x*ndc.x+ndc.y*ndc.y;
+   const nearAnchor=anchor&&[anchor.x,anchor.z].every(finite)?
+    Math.min(8,Math.hypot(anchor.x-x,anchor.z-z)) : 0;
+   const sameLevel=anchor&&finite(anchor.y)&&Math.abs(anchor.y-baseY)<.35;
+   const score=4.8*screenScore+.11*dist+(sameLevel?.14:.30)*nearAnchor+
+    (support.kind==='tabletop'&&!allowTabletop?100:0);
+   if(score<bestScore){best={x,z,groundY:baseY,supportId:support.id,kind:support.kind};bestScore=score;}
+  }
+ }
+ return best;
+}
