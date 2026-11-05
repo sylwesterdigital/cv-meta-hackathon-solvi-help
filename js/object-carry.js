@@ -142,7 +142,7 @@ export function gripQuaternion(robot){
 }
 export class ObjectCarry{
  constructor(editor){this.editor=editor;this.trajectoryEnabled=false;this.trajectoryLine=null;this.trajectoryEnd=null;this.trajectoryClock=0;}
- eligible(robot){return robot?.userData?.editorKind==='robot'&&this.editor.canEdit(robot)&&!robot.userData.robotLadderRide&&!robot.userData.robotJumpActive&&!robot.userData.robotOneShot&&!robot.userData.robotCarry;}
+ eligible(robot){return robot?.userData?.editorKind==='robot'&&this.editor.canEdit(robot)&&!robot.userData.robotLadderRide&&!robot.userData.robotJumpActive&&!robot.userData.robotOneShot&&!robot.userData.robotCarry&&!this.editor.inventory?.entries?.(robot)?.some(o=>o.userData.storage?.type==='held');}
  pickup(robot,remote=false,targetId=null){
   if(!remote&&!this.eligible(robot))return false;
   const target=targetId?this.editor.items.find(o=>o.userData.editorId===targetId):pickableTarget(robot,this.editor.items);

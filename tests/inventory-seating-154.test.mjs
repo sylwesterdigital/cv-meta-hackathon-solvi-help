@@ -37,7 +37,7 @@ const THREE={Vector3:V,Quaternion:Q,Euler:E,Box3:B,Matrix4,Raycaster};
 const seatCode=read('js/robot-seating.js').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'');
 const {seatPlan,takeSeat,standUp}=new Function('THREE',seatCode+'\nreturn {seatPlan,takeSeat,standUp}')(THREE);
 const invCode=read('js/robot-inventory.js').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'');
-const {RobotInventory,cleanInventory,cleanStorage}=new Function('THREE','canBePickable','pickableTarget',invCode+'\nreturn {RobotInventory,cleanInventory,cleanStorage}')(THREE,()=>true,()=>null);
+const {RobotInventory,cleanInventory,cleanStorage}=new Function('THREE','canBePickable','pickableTarget','HANDS','isToolObject','updateHeldPose',invCode+'\nreturn {RobotInventory,cleanInventory,cleanStorage}')(THREE,()=>true,()=>null,['right','left'],o=>o?.userData?.inventory?.category==='tool',()=>true);
 const id='robot-12345678';
 function object(editorKind,editorId,inventory,position=new V()){
  return {name:editorId,visible:true,position,bounds:{min:new V(-.2,0,-.2),max:new V(.2,.4,.2)},removeFromParent(){},rotation:{y:0},userData:{editorKind,editorId,pickable:true,inventory,physics:{mode:'static'}},updateWorldMatrix(){},parent:null};
@@ -106,6 +106,45 @@ test('scene persistence and backend validate new inventory metadata, drop and ar
  assert.match(physics,/object\.userData\.carriedBy\|\|object\.userData\.storage/);
  assert.match(server,/def valid_inventory_item/);assert.match(server,/def valid_inventory_storage/);
  assert.match(server,/\('pickup','throw','drop'\)/);
- assert.match(archive,/reference='bagId' if storage\.get\('type'\)=='bag' else 'holderId'/);
+ assert.match(archive,/reference='bagId' if storage\.get\('type'\)=='bag' else 'containerId' if storage\.get\('type'\)=='container' else 'holderId'/);
  assert.match(read('index.html'),/id="robotInventoryItems"/);
+});
+
+test('tools move through held, bag, and ground without duplicate scene identities',()=>{
+ const f=fixture(),saw=object('furniture','saw-12345678',{category:'tool',size:'bag',consumable:false});
+ f.editor.items.push(saw);
+ assert.equal(f.manager.hold(f.robot,saw),true);
+ assert.deepEqual(saw.userData.storage,{type:'held',holderId:id,hand:'right'});
+ assert.equal(saw.visible,true);
+ assert.equal(f.manager.stow(f.robot,saw),false,'large saw cannot go into a pocket with no bag');
+ assert.equal(f.manager.entries(f.robot).filter(o=>o.userData.storage?.type==='held').length,1);
+ const bag=object('cube','bag-12345678',{category:'backpack',size:'bag',consumable:false});f.editor.items.push(bag);
+ assert.equal(f.manager.collect(f.robot,bag),true);
+ assert.equal(f.manager.stow(f.robot,saw),true);
+ assert.deepEqual(saw.userData.storage,{type:'bag',bagId:'bag-12345678'});
+ assert.equal(saw.visible,false);
+ assert.equal(f.manager.hold(f.robot,saw),true);
+ assert.equal(f.manager.drop(f.robot,saw),true);
+ assert.equal(saw.userData.storage,undefined);
+ assert.equal(f.editor.items.filter(o=>o===saw).length,1,'drop preserves item identity');
+ assert.ok(f.events.some(x=>x[0]==='save'&&x[1]==='saw-12345678'));
+});
+test('two hands are exclusive; transient carry and foreign storage are rejected',()=>{
+ const f=fixture(),tools=['saw','axe','rake','shovel'].map((s,i)=>object('furniture',`${s}-12345678`,{category:'tool',size:'bag',consumable:false}));
+ f.editor.items.push(...tools);
+ assert.equal(f.manager.hold(f.robot,tools[0]),true);
+ assert.equal(f.manager.hold(f.robot,tools[1]),true);
+ assert.equal(tools[1].userData.storage.hand,'left');
+ assert.equal(f.manager.hold(f.robot,tools[2]),false);
+ f.robot.userData.robotCarry={objectId:'other-item'};
+ assert.equal(f.manager.hold(f.robot,tools[3]),false);
+ delete f.robot.userData.robotCarry;
+ tools[0].userData.storage={type:'bag',bagId:'foreign-12345678'};
+ assert.equal(f.manager.hold(f.robot,tools[0]),false,'may not take an item belonging to a bag not worn by robot');
+});
+test('held storage round-trips through normal client storage validation',()=>{
+ const value={type:'held',holderId:id,hand:'right'};
+ assert.deepEqual(cleanStorage(JSON.parse(JSON.stringify(value))),value);
+ assert.equal(cleanStorage({...value,hand:'middle'}),null);
+ assert.equal(cleanStorage({...value,holderId:'oops'}),null);
 });

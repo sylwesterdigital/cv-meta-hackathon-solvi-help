@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.199",
+  "currentVersion": "0.2.200",
   "releases": [
+    {
+      "version": "0.2.200",
+      "publishedAt": "2026-11-05T17:30:50Z",
+      "changes": [
+        "Persistent held-item state for right and left avatar hands, with hand-bone/fallback animation tracking and no physics collision while held.",
+        "Held tab, Hold nearby, Hold, Store, Drop controls; bag/pocket size restrictions and backpack availability enforced.",
+        "Server-side atomic hand occupancy and avatar authorization checks, safe avatar-deletion release of held/pocket/worn equipment, and import/export holder ID remapping.",
+        "Preserve previous furniture persistence, indoor placement, road drawing, room snapshots, user README, and original GLB model assets."
+      ]
+    },
     {
       "version": "0.2.199",
       "publishedAt": "2026-11-05T13:57:48Z",
@@ -322,17 +332,6 @@
         "Add draw-on-ground water/lake patches with negative bowl terrain, adjustable water depth and level, freehand or parametric patch shapes, and semi-transparent wavy water surfaces.",
         "Extend nature object editing with patch-shape controls, relief/detail parameters and lake-specific controls while preserving existing preset and saved-scene compatibility.",
         "Add trimesh collider support for terrain furniture segments so capsules, dropped objects and teleport selection respect patch elevation instead of sinking through flat ground."
-      ]
-    },
-    {
-      "version": "0.2.166",
-      "publishedAt": "2026-11-03T15:37:06Z",
-      "changes": [
-        "Add seeded Nature arrays as a single persistent Vegetation Area object with orchard rows, mixed forests, clustered thickets, and brushwood patches; keep the entire patch under one multiplayer object ID.",
-        "Add individually editable Shrub / Brushwood objects with adjustable height, spread, branch count, foliage clusters and shape, all compatible with the existing Nature preset gallery.",
-        "Draw orchard/forest/brushwood planting areas on the ground with the existing polygon closure, smoothing and redraw tools; expose density, spacing, species, scatter seed, cluster strength and scale variation in compact Properties.",
-        "Use bounded shared InstancedMesh batches for trunks, crowns, conifers, palms, shrubs and undergrowth rather than creating a separate mesh per plant; retain deterministic restoration and prior v0.2.165 Nature scenes.",
-        "Extend backend validation and add multi-mode deterministic scattering, geometry-budget and editor integration regression tests."
       ]
     }
   ]

@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
 import {robotShortcutRows} from '../js/robot-shortcut-help.js';
 const read=f=>readFileSync(new URL('../'+f,import.meta.url),'utf8');
-test('robot help reflects actual configurable attack keys',()=>{const rows=robotShortcutRows({userData:{robotCombat:{kick:{key:'KeyQ',force:9}}}});assert.ok(rows.some(x=>x[1]==='Q'&&x[2]==='Kick'));assert.ok(rows.some(x=>x[1]==='I'&&x[2].includes('place')));});
+test('robot help reflects actual configurable attack keys',()=>{const rows=robotShortcutRows({userData:{robotCombat:{kick:{key:'KeyQ',force:9}}}});assert.ok(rows.some(x=>x[1]==='Q'&&x[2]==='Kick'));assert.ok(rows.some(x=>x[1]==='I'&&x[2].includes('Hold')));});
 test('shortcut help is dismissible, command-slash, live-generated, and keyboard safe',()=>{const text=read('js/robot-shortcut-help.js');assert.match(text,/metaKey\|\|e.ctrlKey/);assert.match(text,/code==='Slash'/);assert.match(text,/overlay.hidden=false/);assert.match(text,/robotShortcutRows\(getRobot\(\)\)/);});
 test('wearable has Take off and drops bag while preserving contents',()=>{const s=read('js/robot-inventory.js');assert.match(s,/action\('Take off',this.drop\)/);assert.match(s,/Dropping the/);});
 test('smart TV screens are selected in edit and XR modes',()=>{const e=read('js/editor.js'),w=read('js/world.js');assert.match(e,/this.hitSmartScreen\(this.raycaster\)/);assert.match(e,/this.activateSmartScreen\(smart\)/);assert.match(w,/if\(selection.smartScreen\)/);assert.match(w,/checkSmartScreen\?this.robotEditor/);});

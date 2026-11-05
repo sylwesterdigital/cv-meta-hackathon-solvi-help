@@ -6,6 +6,7 @@ import {pickableTarget,canBePickable} from './object-carry.js';
 import {capturePresetThumbnail} from './object-presets.js';
 import {makeFurniture} from './primitive-properties.js';
 import {fridgeSlotPose} from './interactive-props.js';
+import {HANDS,isToolObject,updateHeldPose} from './held-equipment.js';
 
 export const INVENTORY_CATEGORIES=Object.freeze(['world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable']);
 export const INVENTORY_SIZES=Object.freeze(['pocket','bag']);
@@ -24,9 +25,10 @@ export function cleanInventory(raw){
 }
 export function cleanStorage(raw){
  if(!raw||typeof raw!=='object')return null;
- if(!['pocket','bag','worn','container'].includes(raw.type))return null;
+ if(!['pocket','bag','worn','container','held'].includes(raw.type))return null;
  const id=/^[A-Za-z0-9_-]{8,80}$/;
  if(raw.type==='container')return typeof raw.containerId==='string'&&id.test(raw.containerId)&&Number.isInteger(raw.slot)&&raw.slot>=0&&raw.slot<48?{type:'container',containerId:raw.containerId,slot:raw.slot}:null;
+ if(raw.type==='held')return Object.keys(raw).length===3&&typeof raw.holderId==='string'&&id.test(raw.holderId)&&HANDS.includes(raw.hand)?{type:'held',holderId:raw.holderId,hand:raw.hand}:null;
  if(raw.type==='bag')return typeof raw.bagId==='string'&&id.test(raw.bagId)?{type:'bag',bagId:raw.bagId}:null;
  if(typeof raw.holderId!=='string'||!id.test(raw.holderId))return null;
  return raw.type==='worn'&&['front','back'].includes(raw.slot)?{type:'worn',holderId:raw.holderId,slot:raw.slot}:
@@ -48,7 +50,7 @@ export function bodyBackBone(robot,chosen='auto'){
 }
 function stableId(o){return String(o?.userData?.editorId||'');}
 export class RobotInventory{
- constructor(editor){this.editor=editor;this.activeRobot=null;this.tab='pocket';this.previewCache=new Map();this.portraitToken=0;}
+ constructor(editor){this.editor=editor;this.activeRobot=null;this.tab='held';this.previewCache=new Map();this.portraitToken=0;}
  owned(robot,obj){return this.editor.canEdit(robot)&&this.editor.canEdit(obj)&&obj.userData?.pickable===true&&canBePickable(obj.userData.editorKind);}
  entries(robot){
   if(!robot)return [];
@@ -62,6 +64,29 @@ export class RobotInventory{
   return [preferred,preferred==='back'?'front':'back'].find(slot=>!used.includes(slot))||null;
  }
  bagFor(robot){return this.entries(robot).find(o=>o.userData.storage?.type==='worn'&&cleanInventory(o.userData.inventory).category==='backpack')||null;}
+ heldFor(robot,hand='right'){return this.entries(robot).find(o=>o.userData.storage?.type==='held'&&o.userData.storage.hand===hand)||null;}
+ freeHand(robot,preferred='right'){return [preferred,preferred==='right'?'left':'right'].find(hand=>!this.heldFor(robot,hand))||null;}
+ hold(robot,obj,preferred='right'){
+  if(!this.owned(robot,obj)||!HANDS.includes(preferred)||robot.userData.robotCarry)return false;
+  const storage=cleanStorage(obj.userData.storage);
+  if(storage&&!this.entries(robot).includes(obj))return false;
+  if(storage?.type==='worn'||storage?.type==='container')return false;
+  if(!storage&&!this.editor.physics?.enabled){this.editor.toast?.('Enable room Physics to pick up a tool');return false;}
+  const hand=this.freeHand(robot,preferred);if(!hand){this.editor.toast?.('Both hands are occupied');return false;}
+  const cfg=cleanInventory(obj.userData.inventory);
+  if(cfg.category==='world'||['backpack','wearable','jetpack','parachute'].includes(cfg.category))return false;
+  obj.userData.storage={type:'held',holderId:stableId(robot),hand};
+  this.applyState(obj);updateHeldPose(robot,obj,hand);this.editor.queueSave(obj);this.render();
+  this.editor.toast?.(`${obj.name} held in ${hand} hand`);return true;
+ }
+ stow(robot,obj){
+  if(!this.owned(robot,obj)||!this.entries(robot).includes(obj)||obj.userData.storage?.type!=='held')return false;
+  const cfg=cleanInventory(obj.userData.inventory),id=stableId(robot);let storage=null;
+  if(cfg.size==='pocket'&&this.entries(robot).filter(o=>o.userData.storage?.type==='pocket').length<12)storage={type:'pocket',holderId:id};
+  else {const bag=this.bagFor(robot);if(bag&&this.entries(robot).filter(o=>o.userData.storage?.type==='bag'&&o.userData.storage.bagId===stableId(bag)).length<24)storage={type:'bag',bagId:stableId(bag)};}
+  if(!storage){this.editor.toast?.('No storage fits this item. Keep holding it or drop it.');return false;}
+  obj.userData.storage=storage;this.applyState(obj);this.editor.queueSave(obj);this.render();return true;
+ }
  collect(robot,obj){
   if(!this.owned(robot,obj)||obj.userData.storage||robot.userData.robotCarry||!this.editor.physics?.enabled)return false;
   const setting=cleanInventory(obj.userData.inventory);if(setting.category==='world')return false;
@@ -99,21 +124,27 @@ export class RobotInventory{
  }
  pickupNearest(robot){
   const obj=pickableTarget(robot,this.editor.items);
-  return obj&&cleanInventory(obj.userData.inventory).category!=='world'?this.collect(robot,obj):false;
+  return obj&&cleanInventory(obj.userData.inventory).category!=='world'?(isToolObject(obj)?this.hold(robot,obj):this.collect(robot,obj)):false;
  }
  applyState(obj){
   const storage=cleanStorage(obj.userData?.storage);
   if(!storage){obj.visible=true;return;}
   // Stored items are not physical scene obstacles while pocketed or carried.
   this.editor.physics?.remove?.(stableId(obj));
-  obj.visible=storage.type==='worn'||storage.type==='container'&&this.placeInContainer(obj,storage);
+  obj.visible=storage.type==='worn'||storage.type==='held'||storage.type==='container'&&this.placeInContainer(obj,storage);
  }
  reconcile(){
   const ids=new Map(this.editor.items.map(o=>[stableId(o),o]));
+  const claimedHands=new Set();
   for(const obj of this.editor.items){
    const storage=cleanStorage(obj.userData?.storage);if(!storage)continue;
+   if(storage.type==='held'){const slot=storage.holderId+':'+storage.hand;if(claimedHands.has(slot)){
+    // Unexpected duplicate in a bulk/legacy scene: don't publish a destructive guess.
+    obj.visible=false;this.editor.sceneDiagnostic?.('equipment-hand-conflict',{id:stableId(obj),holderId:storage.holderId,hand:storage.hand});continue;
+   }claimedHands.add(slot);}
    const ref=storage.type==='bag'?ids.get(storage.bagId):storage.type==='container'?ids.get(storage.containerId):ids.get(storage.holderId);
    const valid=ref&&(storage.type==='bag'?cleanInventory(ref.userData?.inventory).category==='backpack':storage.type==='container'?ref.userData?.furniture?.variant==='fridge'&&Boolean(fridgeSlotPose(ref.userData.furniture,storage.slot)):ref.userData?.editorKind==='robot');
+   if(!valid&&storage.type==='held'){obj.visible=false;continue;} // Delta ordering: never erase an equipment claim while its holder is loading.
    if(!valid){delete obj.userData.storage;obj.visible=true;this.editor.physics?.sync?.(obj);this.editor.queueSave?.(obj);}
    else this.applyState(obj);
   }
@@ -157,7 +188,10 @@ export class RobotInventory{
  }
  tick(){
   for(const obj of this.editor.items){const storage=cleanStorage(obj.userData?.storage);if(!storage)continue;
-   if(storage.type==='worn'){
+   if(storage.type==='held'){
+    const robot=this.editor.items.find(r=>stableId(r)===storage.holderId&&r.userData.editorKind==='robot');
+    obj.visible=robot?updateHeldPose(robot,obj,storage.hand):false;
+   }else if(storage.type==='worn'){
     const robot=this.editor.items.find(r=>stableId(r)===storage.holderId&&r.userData.editorKind==='robot');
     if(robot){obj.visible=true;this.wearablePose(robot,obj);}else obj.visible=false;
    }else if(storage.type==='container')obj.visible=this.placeInContainer(obj,storage);
@@ -185,6 +219,7 @@ export class RobotInventory{
   if(!this.entries(robot).includes(obj)||!this.editor.canEdit(obj))return false;
   const current=cleanStorage(obj.userData.storage),cfg=cleanInventory(obj.userData.inventory);
   if(!current||current.type==='worn')return false;
+  if(current.type==='held')return this.stow(robot,obj);
   if(current.type==='pocket'){
    const bag=this.bagFor(robot);if(!bag){this.editor.toast?.('Wear a backpack before moving this item');return false;}
    if(this.entries(robot).filter(o=>o.userData.storage?.type==='bag'&&o.userData.storage.bagId===stableId(bag)).length>=24)return false;
@@ -213,6 +248,11 @@ export class RobotInventory{
   if(this.editor.selected===obj){this.editor.selected=null;const panel=document.getElementById('propertiesPanel');if(panel)panel.hidden=true;}
   obj.removeFromParent();this.editor.persistRemoval(stableId(obj));this.editor.disposeObject?.(obj);
   this.editor.toast?.(`${cfg.category==='food'?'Ate':'Used'} ${obj.name}`);this.render();return true;
+ }
+ useHeldTool(robot,obj){
+  if(!this.owned(robot,obj)||obj.userData.storage?.type!=='held'||obj.userData.storage.holderId!==stableId(robot))return false;
+  // No tool operation is claimed until a real digging/sawing/sweeping action exists.
+  this.editor.toast?.(`${obj.name} is equipped. Tool actions are not yet available.`);return false;
  }
  show(robot){if(!robot||robot.userData.editorKind!=='robot')return;this.activeRobot=robot;const panel=document.getElementById('robotInventoryPanel');if(panel)panel.hidden=false;this.render();}
  updatePortrait(robot){
@@ -253,7 +293,7 @@ export class RobotInventory{
   const rows=document.getElementById('robotInventoryItems');rows.replaceChildren();
   const items=this.entries(robot).filter(obj=>{
    const storage=obj.userData.storage;
-   return this.tab==='pocket'?storage.type==='pocket':this.tab==='wearable'?storage.type==='worn':storage.type==='bag';
+   return this.tab==='held'?storage.type==='held':this.tab==='pocket'?storage.type==='pocket':this.tab==='wearable'?storage.type==='worn':storage.type==='bag';
   });
   if(!items.length){const empty=document.createElement('p');empty.className='small-note';empty.textContent='No items in this category';rows.append(empty);return;}
   for(const item of items){
@@ -267,7 +307,9 @@ export class RobotInventory{
    const detail=document.createElement('small');detail.textContent=cleanInventory(item.userData.inventory).category+(item.userData.storage?.slot?' · '+item.userData.storage.slot:'');info.className='inventory-item-info';info.append(name,detail);line.append(info);const actions=document.createElement('div');actions.className='inventory-item-actions';line.append(actions);
    const action=(text,fn)=>{const button=document.createElement('button');button.type='button';button.textContent=text;button.disabled=!this.editor.canEdit(item)||!this.editor.canEdit(robot);button.onclick=()=>fn.call(this,robot,item);actions.append(button);};
    if(item.userData.storage?.type==='worn'){action('Front / Back',this.moveBag);action('Take off',this.drop);}
-   else action(item.userData.storage.type==='pocket'?'To bag':'To pocket',this.transfer);
+   else if(item.userData.storage?.type==='held'){action('Store',this.stow);}
+   else {action('Hold',this.hold);action(item.userData.storage.type==='pocket'?'To bag':'To pocket',this.transfer);}
+   if(item.userData.storage?.type==='held'&&isToolObject(item))action('Use',this.useHeldTool);
    if(cleanInventory(item.userData.inventory).consumable)action(cleanInventory(item.userData.inventory).category==='food'?'Eat':'Use',this.use);
    action('Drop',this.drop);rows.append(line);
   }
@@ -276,6 +318,7 @@ export class RobotInventory{
   const panel=document.getElementById('robotInventoryPanel');if(!panel)return;
   panel.querySelector('[data-inventory-close]')?.addEventListener('click',()=>panel.hidden=true);
   for(const button of panel.querySelectorAll('[data-inventory-tab]'))button.addEventListener('click',()=>{this.tab=button.dataset.inventoryTab;this.render();});
+  document.getElementById('inventoryHoldNearby')?.addEventListener('click',()=>{const robot=this.activeRobot;if(!robot)return;const object=pickableTarget(robot,this.editor.items);if(!object||!this.hold(robot,object))this.editor.toast?.('Face a nearby portable item and make sure a hand is free');});
   document.getElementById('robotInventoryOpen')?.addEventListener('click',()=>this.show(this.editor.controlledRobot()||this.editor.robot()));
  }
 }

@@ -1,3 +1,11 @@
+## v0.2.200 — Persistent hand-held equipment and multiplayer storage
+
+- Add persistent Held inventory tab with Hold nearby, Hold, Store, Drop and explicit non-destructive Use controls for tools.
+- Keep each held scene item attached to the avatar right or left hand bone after animation; remove held collision body; preserve scene identity across pocket, worn backpack, hand and ground.
+- Enforce single occupancy of each avatar hand and owner permissions in transactional per-object scene writes; reject malformed held claims and duplicate hand slots during bulk replacement.
+- Maintain strict item size and backpack availability rules; remap persistent held holder references through realm exports/imports and avoid clearing a held item when a holder delta is temporarily missing.
+- Preserve previous object-placement, room persistence/recovery, all original 3D assets, and existing deployment watcher packaging contract.
+
 ## v0.2.199 — Outdoor road and path drawing no longer blocked by smart furniture placement
 
 - Restore road/motorway/path/fence drawing in open terrain and at a distance from the camera: creating the unsaved infrastructure draft no longer invokes room furniture visibility and collision restrictions.

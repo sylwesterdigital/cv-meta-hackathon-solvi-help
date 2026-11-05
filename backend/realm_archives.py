@@ -125,7 +125,7 @@ def safe_scene(objects):
         # An absent owner/container cannot leave an invisible orphan after import.
         storage=obj.get('storage')
         if isinstance(storage,dict):
-            reference='bagId' if storage.get('type')=='bag' else 'holderId'
+            reference='bagId' if storage.get('type')=='bag' else 'containerId' if storage.get('type')=='container' else 'holderId'
             if storage.get(reference) in remap:storage[reference]=remap[storage[reference]]
             else:obj.pop('storage',None)
         if obj.get('kind')=='media' and isinstance(obj.get('media'),dict):

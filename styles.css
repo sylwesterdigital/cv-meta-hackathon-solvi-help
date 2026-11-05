@@ -2722,3 +2722,10 @@ body>#inspectorValueSlider #inspectorActiveRange{
 .dev-about-links{display:flex;gap:12px;flex-wrap:wrap}
 .dev-about-links a{color:#9bd4ff;text-decoration:underline;text-underline-offset:3px}
 .dev-about-links a:focus-visible{outline:2px solid #a9dcff;outline-offset:3px}
+
+/* v0.2.200 — Persistent hand-held equipment actions. */
+#robotInventoryPanel .inventory-quick-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 9px}
+#robotInventoryPanel .inventory-quick-actions button{border:1px solid #557b93;background:#23445b;color:#eef7ff;border-radius:7px;padding:7px 10px;font-size:12px}
+#robotInventoryPanel .inventory-quick-actions small{font-size:10px;color:#adc1d3}
+#robotInventoryPanel .robot-inventory-item{flex-wrap:wrap}
+#robotInventoryPanel .inventory-item-actions{display:flex;gap:4px;flex:1 1 100%;justify-content:flex-start;flex-wrap:wrap}

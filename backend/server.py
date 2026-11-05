@@ -232,7 +232,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.199',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.200',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3711,11 +3711,36 @@ def valid_inventory_storage(value):
     if not isinstance(value,dict):return False
     id_pattern=r'[A-Za-z0-9_-]{8,80}'
     kind=value.get('type')
+    if kind=='held':return set(value)=={'type','holderId','hand'} and value.get('hand') in ('right','left') and re.fullmatch(id_pattern,str(value.get('holderId',''))) is not None
     if kind=='pocket':return set(value)=={'type','holderId'} and re.fullmatch(id_pattern,str(value.get('holderId',''))) is not None
     if kind=='worn':return set(value)=={'type','holderId','slot'} and value.get('slot') in ('back','front') and re.fullmatch(id_pattern,str(value.get('holderId',''))) is not None
     if kind=='bag':return set(value)=={'type','bagId'} and re.fullmatch(id_pattern,str(value.get('bagId',''))) is not None
     if kind=='container':return set(value)=={'type','containerId','slot'} and re.fullmatch(id_pattern,str(value.get('containerId',''))) is not None and type(value.get('slot')) is int and 0<=value['slot']<48
     return False
+
+def held_slot_conflict(objects, entry, ignore_id=None):
+    """Reject duplicate hand claims inside the room-scene write transaction."""
+    storage=entry.get('storage') if isinstance(entry,dict) else None
+    if not isinstance(storage,dict) or storage.get('type')!='held':return False
+    for other in objects:
+        other_storage=other.get('storage') if isinstance(other,dict) else None
+        if other.get('id')!=ignore_id and isinstance(other_storage,dict) and other_storage.get('type')=='held' and other_storage.get('holderId')==storage.get('holderId') and other_storage.get('hand')==storage.get('hand'):
+            return True
+    return False
+
+def valid_held_scene(objects):
+    seen=set()
+    ids={o.get('id'):o for o in objects if isinstance(o,dict)}
+    for obj in objects:
+        storage=obj.get('storage') if isinstance(obj,dict) else None
+        if not isinstance(storage,dict) or storage.get('type')!='held':continue
+        holder=ids.get(storage.get('holderId'))
+        if not holder or holder.get('kind')!='robot' or not valid_inventory_storage(storage):return False
+        if (obj.get('inventory') or {}).get('category') in (None,'world','backpack','jetpack','parachute','wearable'):return False
+        key=(storage['holderId'],storage['hand'])
+        if key in seen:return False
+        seen.add(key)
+    return True
 
 def valid_smart_channels(value):
     if not isinstance(value,list) or len(value)>12:return False
@@ -3965,6 +3990,12 @@ def set_scene():
                 if not portrait or portrait['mime'] not in ('image/jpeg','image/png','image/webp'):return json_error('Chat portrait must reference an uploaded image')
         if 'transformLocked' in o and not isinstance(o['transformLocked'],bool):return json_error('Invalid transform lock')
         if not all(isinstance(o.get(n),list) and len(o[n])==3 and all(isinstance(x,(int,float)) and abs(x)<1000000 for x in o[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
+    if not valid_held_scene(objects):return json_error('Invalid or duplicate held equipment',409)
+    all_ids={o.get('id'):o for o in objects}
+    for obj in objects:
+        storage=obj.get('storage')
+        if isinstance(storage,dict) and storage.get('type')=='held' and not may_edit(user['id'],all_ids[storage['holderId']],policy):
+            return json_error('Cannot equip another user avatar',403)
     with db() as con:
         con.execute('BEGIN IMMEDIATE')
         old=con.execute('SELECT revision FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()['revision']
@@ -4102,7 +4133,27 @@ def patch_scene_object():
         existing=next((item for item in items if item.get('id')==obj_id),None)
         if existing and not may_edit(user['id'],existing,policy):
             return json_error('Object is owned by another user',403)
-        if action=='remove':items=[item for item in items if item.get('id')!=obj_id]
+        if action=='upsert' and isinstance(obj.get('storage'),dict) and obj['storage'].get('type')=='held':
+            held=obj['storage'];holder=next((item for item in items if item.get('id')==held['holderId'] and item.get('kind')=='robot'),None)
+            if not holder:return json_error('Equipment holder is missing',409)
+            if not may_edit(user['id'],holder,policy):return json_error('Cannot equip another user avatar',403)
+            category=(obj.get('inventory') or {}).get('category')
+            if category in (None,'world','backpack','jetpack','parachute','wearable'):return json_error('Item cannot be held',409)
+            if held_slot_conflict(items,obj,obj_id):return json_error('Hand already occupied',409)
+        released=[]
+        if action=='remove':
+            if existing and existing.get('kind')=='robot':
+                # Do not orphan invisible pocket/held/worn objects when an avatar is removed.
+                anchor=existing.get('position',[0,0,0])
+                for candidate in items:
+                    storage=candidate.get('storage')
+                    if candidate.get('id')==obj_id or not isinstance(storage,dict) or storage.get('holderId')!=obj_id or storage.get('type') not in ('held','pocket','worn'):continue
+                    candidate.pop('storage',None)
+                    offset=len(released)*.18
+                    candidate['position']=[float(anchor[0])+offset, float(anchor[1])+.1, float(anchor[2])+.65+offset]
+                    if isinstance(candidate.get('physics'),dict):candidate['physics']['mode']='dynamic'
+                    released.append(candidate.get('id'))
+            items=[item for item in items if item.get('id')!=obj_id]
         else:
             obj['owner']=existing.get('owner') if existing and existing.get('owner') else user['id']
             for i,item in enumerate(items):
@@ -4116,7 +4167,7 @@ def patch_scene_object():
         con.execute('UPDATE room_scenes SET revision=?,payload=? WHERE room_id=?',(revision,json.dumps(items,separators=(',',':')),room_id))
     # Send the single changed object, not a trigger to reload every GLB in the realm.
     delta={'type':'scene-changed','revision':revision,'room':room_id,'by':user['id'],
-           'action':action,'id':obj_id}
+           'action':'bulk' if released else action,'id':obj_id}
     if action=='upsert':delta['object']=obj
     publish(delta,room_id=room_id)
     return jsonify(ok=True,revision=revision)

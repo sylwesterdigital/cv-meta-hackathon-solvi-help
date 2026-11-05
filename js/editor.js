@@ -1214,9 +1214,10 @@ export class SceneEditor{
     e.preventDefault();const bot=this.controlledRobot();if(!this.canEdit(bot))return;
     if(e.code==='KeyI'){
      if(bot.userData.robotCarry){if(!this.carry.drop(bot))this.toast('Could not place the held object');}
+     else if(this.inventory.heldFor(bot,'right')){if(!this.inventory.stow(bot,this.inventory.heldFor(bot,'right')))this.toast('No space to store the held item; use Inventory → Drop');}
      else{
       const target=pickableTarget(bot,this.items);
-      if(target&&cleanInventory(target.userData.inventory).category!=='world')this.inventory.collect(bot,target);
+      if(target&&cleanInventory(target.userData.inventory).category!=='world')this.inventory.pickupNearest(bot);
       else if(!this.carry.pickup(bot))this.toast('Face a nearby Pickable object, enable room Physics, then press I');
      }
     }else if(e.code==='KeyO'){if(!this.carry.throw(bot))this.toast('Pick up an object with I before pressing O');}
@@ -2529,6 +2530,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       return hits;
     });
     this.carry.tick(dt);
+    this.inventory.tick(dt); // Post-animation hand-bone pose for every client.
     for(const item of this.items){if(item.userData.editorKind!=='robot')continue;
       if(item.userData.robotTelemetry&&item.userData.robotMission)sampleMovementTelemetry(item.userData.robotTelemetry,item);
       if(item.userData.robotMission&&this.robotPathDebugVisible(item))trackRobotPathDebug(this.world,item);}
