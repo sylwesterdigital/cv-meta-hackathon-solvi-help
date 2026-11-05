@@ -1,4 +1,14 @@
-# SOLVI.help Master LLM Handover — v0.2.196
+# SOLVI.help Master LLM Handover — v0.2.197
+
+## v0.2.197 — Visibility-aware placement of new scene objects
+
+- A new dependency-free candidate planner in `js/smart-placement-math.js` scores placements by screen-centred framing, camera proximity and distance to the last object placed in the same room. Collision checks use 3D AABBs, not a naive 2D proximity threshold; the camera sight line must be clear. Bounded deterministic sample sets avoid an expensive physics scan.
+- `js/scene-placement.js` adapts the planner to Three.js geometry; generated wall groups and long fences are checked per mesh segment to keep room interiors and actual doorways available. Walkable roads, footpaths and ground-plot furnishings do not block placement.
+- `js/editor.js` integrates the new rule into Add and saved-preset insertion *before* scene publishing. Failed preset placement cleans up its provisional rigid body and object without sending network changes. Room switches/scene replacement clear the previous-object anchor. Manual move/rotate/scale, robot worksite placement, and media insertion remain independent.
+- New `tests/release-197-smart-object-placement.test.mjs` covers same-room proximity, small rooms, walls, door gaps, 3D occlusion, distinct floor elevations, safe failure, deterministic results and editor integration.
+- Prior v0.2.196 scene snapshots, full furniture schema, backup tooling and all other features remain intact. No production recovery or deployment has been verified here.
+
+**Local verification for v0.2.197:** 929/929 JavaScript tests passed from source; all six standalone backend checks, 13 Python AST modules, and shell syntax passed. The complete v0.2.197 ZIP was assembled with 464 SHA-256-verified application files and original 3D model bytes unchanged; 929/929 JavaScript tests also passed directly from a fresh extraction of that ZIP. Full Flask integration, live WebGL hit testing and two-client multiplayer behaviour have not been exercised here. The most recently confirmed live version in conversation remains v0.2.189, not proof of deployment for newer ZIPs. The prior production SQLite furniture-recovery incident remains unresolved without user-provided DB inspection and backups.
 
 ## v0.2.196 — Critical: furniture rejected on save; rooms appear empty
 

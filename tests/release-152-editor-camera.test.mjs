@@ -23,8 +23,8 @@ test('dynamic scene transforms teleport the existing Rapier pose and clear angul
 test('preset placement moves its dynamic rigid body as well as the scene object',()=>{
  const editor=src('js/editor.js');
  const call=editor.slice(editor.indexOf(' addFromPreset(saved){'),editor.indexOf(' select(obj){',editor.indexOf(' addFromPreset(saved){')));
- assert.match(call,/centreGroundFromCamera/);
- assert.match(call,/positionNewOnGround\(obj,point\)/);
+ assert.match(call,/placeSmartNewObject/);
+ assert.match(call,/this\.physics\.applyEditedPose\(obj\)/);
  assert.match(call,/this\.physics\.applyEditedPose\(obj\)/);
 });
 test('furniture dimensions use the shared contextual slider and compact transform styling',()=>{

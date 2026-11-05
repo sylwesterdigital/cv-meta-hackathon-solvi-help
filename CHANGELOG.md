@@ -1,3 +1,10 @@
+## v0.2.197 — Smart, room-aware object placement
+
+- New primitives, tools, devices, furniture and saved presets favour positions beside the last addition in the current realm, close to the viewport centre and the viewer.
+- Candidate selection checks XZ and height-specific collisions, individual wall/fence mesh segments, and 3D camera line of sight: no more placing a new object blindly behind a room wall or already occupied furniture.
+- Prevent publishing invalid placements; display a message suggesting a clearer view instead of creating a hidden or overlapping multiplayer object. Saved scene state and all older objects remain unchanged.
+- Preserve the v0.2.196 scene recovery/snapshot protections and manual repositioning paths.
+
 ## v0.2.196 — Furniture persistence and scene recovery
 
 - Fix all default furniture/tool/equipment save failures caused by a backend property-count mismatch: 129 generated fields versus 120 allowed; preserve strict field allowlists and numeric bounds.

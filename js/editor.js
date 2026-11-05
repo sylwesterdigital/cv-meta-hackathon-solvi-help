@@ -60,7 +60,7 @@ import {startVegetationPlot,vegetationPointer,finishVegetationPlot,cancelVegetat
 import {startInfrastructureDrawing,infrastructurePointer,finishInfrastructureDrawing,cancelInfrastructureDrawing,drawingUndo,drawingRedo,recordInfrastructureDraftChange} from './infrastructure-drawing.js';
 import {VEGETATION_TYPES} from './procedural-vegetation.js';
 import {canPreset,presetEntry} from './object-preset-data.js';
-import {centreGroundFromCamera,positionNewOnGround} from './scene-placement.js';
+import {centreGroundFromCamera,positionNewOnGround,positionNewSmartly} from './scene-placement.js';
 import {houseBlueprint,houseWallSettings} from './robot-construction-api.js';
 
 const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'];
@@ -133,7 +133,7 @@ export function setLight(group,settings){
 function readDeleteConfirmation(){return readPreferences().deleteConfirm!==false;}
 export class SceneEditor{
  constructor(world,onToast){
-  this.world=world;this.toast=onToast;configureSceneModelRenderer(world.renderer);this.physics=new ScenePhysics(this);this.carry=new ObjectCarry(this);this.inventory=new RobotInventory(this);this.items=[];this.selected=null;this.revision=0;this.controlMode='scene';this.controlledRobotId=null;
+  this.world=world;this.toast=onToast;configureSceneModelRenderer(world.renderer);this.physics=new ScenePhysics(this);this.carry=new ObjectCarry(this);this.inventory=new RobotInventory(this);this.items=[];this.selected=null;this.lastSmartPlacement=null;this.revision=0;this.controlMode='scene';this.controlledRobotId=null;
   this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
   this.history=new EditHistory(120);this.transformBefore=null;
   this.transform=new TransformControls(world.camera,world.renderer.domElement);
@@ -1280,13 +1280,26 @@ export class SceneEditor{
   point.y=Math.max(.65,point.y);
   return point;
  }
+ // The last ADD is a more useful spatial anchor than an arbitrary prior selection.
+ // Room-scoped IDs avoid borrowing a position from another multiplayer realm.
+ recentPlacementAnchor(){
+  const last=this.lastSmartPlacement;
+  if(!last||last.room!==(window.solviRoom||'main'))return null;
+  return this.items.find(o=>o.userData.editorId===last.id)||null;
+ }
+ rememberSmartPlacement(obj){this.lastSmartPlacement={id:obj.userData.editorId,room:window.solviRoom||'main'};}
+ placeSmartNewObject(obj){return positionNewSmartly(obj,{camera:this.world.camera,orbitTarget:this.world.controls?.target,items:this.items,anchor:this.recentPlacementAnchor()});}
  // compatibility marker: addSceneMedia(media,{backing='white',width=null,height=null}={})
 addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistance=4,maxDistance=18,autoplayDistance=0,constantVolume=false,group='',shape='speaker',mount=null}={}){const object=objectFor('media');const x=this.lastPointer?.x??innerWidth/2,y=this.lastPointer?.y??innerHeight/2;this.pointer.set(x/innerWidth*2-1,1-y/innerHeight*2);this.raycaster.setFromCamera(this.pointer,this.world.camera);const point=this.cameraDropPosition(3.2);object.position.copy(point);object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;object.userData.media={id:media.id,mime:media.mime,name:media.name,backing,stream:'direct',width:width??media.width??null,height:height??media.height??null,loop,muted:false,refDistance,maxDistance,autoplayDistance,constantVolume,group,shape,volume:1,color:'#3c9bd2',author:media.author||window.solviAPI?.auth()?.profile?.name||'User',created:media.created||new Date().toISOString(),caption:''};if(mount)object.userData.media.mount=structuredClone(mount);const kind=sceneMediaKind(media.mime);object.name=(kind==='video'?'Video screen · ':kind==='audio'?'Audio speaker · ':'Picture frame · ')+(media.name||'media');this.items.push(object);this.world.scene.add(object);this.physics.sync(object);hydrateSceneMedia(object,this.world);if(mount){object.userData.physics={mode:'off'};this.updateMountedMedia();this.physics.sync(object);}this.select(object);this.refreshList();this.recordEdit(null,this.snapshot(object));this.queueSave(object);return object;}
  add(kind,showGallery=true,lightType=undefined,persist=true,furnitureVariant='table'){const object=objectFor(kind);if(kind==='furniture'){rebuildFurniture(object,{variant:furnitureVariant});if(['groundPlot','cropBed','waterPatch','vegetationArea'].includes(furnitureVariant)||furnitureVariant==='infrastructure')object.userData.physics={mode:'static'};else if(furnitureVariant==='shrub')object.userData.physics={mode:'off'};if(TOOL_TYPES.includes(furnitureVariant)){object.userData.pickable=true;object.userData.inventory={category:'tool',size:'bag',consumable:false};object.userData.physics={mode:'dynamic'};}if(furnitureVariant==='backpack'){object.userData.pickable=true;object.userData.inventory={category:'backpack',size:'bag',consumable:false};}object.name=furnitureVariant[0].toUpperCase()+furnitureVariant.slice(1);}if(kind==='light'&&lightType){setLight(object,{type:lightType});object.name='New '+lightType+' light';}
- const point=centreGroundFromCamera(this.world.camera,this.world.controls?.target);
- if(!['robot','model','media','light'].includes(kind))positionNewOnGround(object,point);
- else {const near=this.cameraDropPosition(3.2);object.position.x=near.x;object.position.z=near.z;if(kind!=='robot')object.position.y=Math.max(.8,near.y);}
- object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;if(PRIMITIVE_FIELDS[kind])object.userData.primitive=sanitisePrimitive(kind);this.items.push(object);this.world.scene.add(object);if(kind==='furniture')syncEquipmentMedia(object,this);this.physics.sync(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}if(kind==='model'&&object.userData.modelUrl)hydrateSceneModel(object);if(kind!=='model'&&persist){this.recordEdit(null,this.snapshot(object));this.queueSave(object);}return object;}
+ if(!['robot','model','media','light'].includes(kind)){
+  if(!this.placeSmartNewObject(object)){
+   this.disposeObject(object);
+   this.toast('No visible, collision-free space. Look into an open part of the room or move the camera closer.');
+   return null; // Never publish an overlapping or wall-hidden item to multiplayer.
+  }
+ }else{const near=this.cameraDropPosition(3.2);object.position.x=near.x;object.position.z=near.z;if(kind!=='robot')object.position.y=Math.max(.8,near.y);}
+ object.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;if(PRIMITIVE_FIELDS[kind])object.userData.primitive=sanitisePrimitive(kind);this.items.push(object);this.world.scene.add(object);if(kind==='furniture')syncEquipmentMedia(object,this);this.physics.sync(object);if(!['robot','model','media','light'].includes(kind))this.rememberSmartPlacement(object);this.select(object);byId('addMenu').hidden=true;this.refreshList();if(kind==='robot'){hydrateRobot(object);if(showGallery)this.avatarGallery?.open();}if(kind==='model'&&object.userData.modelUrl)hydrateSceneModel(object);if(kind!=='model'&&persist){this.recordEdit(null,this.snapshot(object));this.queueSave(object);}return object;}
  // Autonomous agents use the same furniture generator, scene ownership,
  // history, collider and persistence path as human Add — without selecting the
  // object or moving the operator's camera/inspector.
@@ -1461,10 +1474,17 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   this.addSceneEntry(entry);
   const obj=this.items.find(o=>o.userData.editorId===entry.id);
   if(!obj)return null;
-  const point=centreGroundFromCamera(this.world.camera,this.world.controls?.target);
-  positionNewOnGround(obj,point);
+  if(!this.placeSmartNewObject(obj)){
+   // addSceneEntry already registered a provisional local rigid body: unwind
+   // both objects before returning, without sending a scene write or deletion.
+   this.items=this.items.filter(item=>item!==obj);
+   this.world.scene.remove(obj);this.physics.remove(obj.userData.editorId);
+   this.disposeObject(obj);
+   this.toast('No visible, collision-free space for this preset. Move the camera inside the room and try again.');
+   return null;
+  }
   this.physics.applyEditedPose(obj);
-  this.select(obj);this.refreshList();this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);
+  this.rememberSmartPlacement(obj);this.select(obj);this.refreshList();this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);
   return obj;
  }
  select(obj){if(this.infrastructureDrawing&&this.infrastructureDrawing.editTarget!==obj)cancelInfrastructureDrawing(this);if(this.wallEditTarget&&this.wallEditTarget!==obj)this.endWallDrawing();if(this.selected&&this.selected!==obj)this.broadcastEdit(false);this.clearLightHelper();this.robotKeys?.clear();this.localRobotInput=null;  this.selected=obj;
@@ -2032,7 +2052,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   // write must never end up in whichever room is active 650ms later.
   this.flushPendingRoomSaves(previousRoom);
   this.realmTransitioning=room;
-  this.sceneLoadTicket=(this.sceneLoadTicket||0)+1;
+  this.sceneLoadTicket=(this.sceneLoadTicket||0)+1;this.lastSmartPlacement=null;
   this.controlledRobotId=null;this.remoteInput.clear();this.remoteCorrections.clear();this.robotKeys.clear();
   this.localRobotInput=null;this.transform.detach();
   // A previous realm's collision world must not keep stepping as scene meshes
@@ -2046,7 +2066,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    this.physics.setEnabled(true).catch(error=>this.toast('Physics unavailable: '+error.message));
   }
  }
- beginSceneReplacement(){if(this.infrastructureDrawing)cancelInfrastructureDrawing(this);this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.liftCeilingSignature=null;this.selected=null;this.controlledRobotId=null;this.robotKeys.clear();this.sceneRestorePhysics=this.physics.enabled;this.physics.clear();this.carry.clearTrajectory();byId('propertiesPanel').hidden=true;}
+ beginSceneReplacement(){this.lastSmartPlacement=null;if(this.infrastructureDrawing)cancelInfrastructureDrawing(this);this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);this.history.clear();this.clearLightHelper();for(const o of [...this.items]){this.transform.detach();this.world.scene.remove(o);this.disposeObject(o);}this.items=[];this.liftCeilingSignature=null;this.selected=null;this.controlledRobotId=null;this.robotKeys.clear();this.sceneRestorePhysics=this.physics.enabled;this.physics.clear();this.carry.clearTrajectory();byId('propertiesPanel').hidden=true;}
  addSceneEntry(entry){if(!kinds.includes(entry.kind))return;const o=objectFor(entry.kind);o.userData.editorId=entry.id;o.name=entry.name||o.name;o.userData.ownerId=entry.owner||null;o.userData.transformLocked=entry.transformLocked===true;o.userData.avatarUrl=entry.avatar||DEFAULT_ROBOT_AVATAR;if(entry.kind==='robot'&&entry.seating){o.userData.robotSeatState=structuredClone(entry.seating);o.userData.robotSeatedTarget=entry.seating.targetId;o.userData.robotSeatSlot=entry.seating.slot??0;o.userData.robotSeated=true;o.userData.robotSitPose='procedural';o.userData.robotMode='idle';}o.userData.robotSpeed=entry.speed??1.8;o.userData.robotRunMultiplier=entry.runMultiplier??2.8;o.userData.robotStrafeSpeed=entry.strafeSpeed??2.5;o.userData.robotTurnSpeed=entry.turnSpeed??4;o.userData.robotClimbSpeed=entry.climbSpeed??1.25;o.userData.robotBrain=structuredClone(entry.brain||{});o.userData.robotCombat=combatSettings(entry.combat);o.userData.robotAnimationSpeed=animationSpeedSettings(entry.animationSpeed);o.userData.robotThrowSettings=cleanThrowSettings(entry.throwSettings);o.userData.physics=physicsOptions(entry.physics||(['ladder','furniture'].includes(entry.kind)?{mode:'static'}:undefined));o.userData.pickable=entry.pickable===true&&canBePickable(entry.kind);o.userData.followHandRotation=entry.followHandRotation!==false;o.userData.inventory=cleanInventory(entry.inventory);o.userData.storage=cleanStorage(entry.storage);o.userData.climbable=entry.climbable===true&&canBeClimbable(entry.kind);if(entry.kind==='light')setLight(o,entry.light||{});if(entry.kind==='model')o.userData.modelUrl=entry.model;if(entry.kind==='media')o.userData.media=structuredClone(entry.media||{});if(entry.kind==='curve'){o.userData.curve=cleanCurve(entry.curve);o.geometry.dispose();o.geometry=buildCurveGeometry(o.userData.curve);}if(entry.kind==='text')rebuildText(o,entry.text,()=>{if(this.items.includes(o))this.physics.sync(o);});if(entry.kind==='wall')rebuildOfficeWall(o,entry.wall||{},this.liftObjects());if(entry.kind==='stairs')rebuildOfficeStairs(o,entry.stairs||{});if(entry.kind==='ladder')rebuildLadder(o,entry.ladder||{});if(entry.kind==='furniture'){rebuildFurniture(o,entry.furniture||{});syncEquipmentMedia(o,this);}if(entry.kind==='portal')rebuildPortal(o,entry.portal||{});if(PRIMITIVE_FIELDS[entry.kind]){o.userData.primitive=sanitisePrimitive(entry.kind,entry.primitive);const previous=o.geometry;o.userData.openings=entry.kind==='cube'?cleanOpenings(entry.openings):undefined;o.geometry=entry.kind==='cube'?cutCubeGeometry(o.userData.primitive,o.userData.openings):buildPrimitive(entry.kind,o.userData.primitive);previous?.dispose();}
    o.position.fromArray(entry.position);o.rotation.fromArray(entry.rotation);o.scale.fromArray(entry.scale);
    if(entry.kind==='stairs'&&o.userData.stairs?.variant==='lift'){
@@ -2069,7 +2089,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   const yieldMain=()=>new Promise(resolve=>setTimeout(resolve,0));
   this.cancelSpatialDrawing?.();clearAllRobotPathDebug(this.world);
   this.history.clear();this.clearLightHelper();this.transform.detach();this.carry.clearTrajectory();
-  this.items=[];this.liftCeilingSignature=null;this.selected=null;this.sceneRestorePhysics=this.physics.enabled;
+  this.items=[];this.lastSmartPlacement=null;this.liftCeilingSignature=null;this.selected=null;this.sceneRestorePhysics=this.physics.enabled;
   this.physics.clear();this.carry.clearTrajectory();byId('propertiesPanel').hidden=true;
   for(let i=0;i<previous.length;i++){
    const old=previous[i];this.world.scene.remove(old);this.disposeObject(old);

@@ -33,8 +33,8 @@ test('compact checkbox layout and controls are scoped inside physics panel',()=>
  assert.match(css,/width:15px!important/);assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 });
 test('scene editor creates new identity, restores procedural configuration and persists created preset',()=>{
- const code=source('js/editor.js');assert.match(code,/addFromPreset\(saved\)/);assert.match(code,/this\.addSceneEntry\(entry\)/);assert.match(code,/positionNewOnGround\(obj,point\)/);assert.match(code,/this\.physics\.sync\(obj\)/);assert.match(code,/this\.queueSave\(obj\)/);
- assert.match(code,/centreGroundFromCamera\(this\.world\.camera/);
+ const code=source('js/editor.js');assert.match(code,/addFromPreset\(saved\)/);assert.match(code,/this\.addSceneEntry\(entry\)/);assert.match(code,/placeSmartNewObject\(obj\)/);assert.match(code,/this\.physics\.sync\(obj\)/);assert.match(code,/this\.queueSave\(obj\)/);
+ assert.match(code,/positionNewSmartly\(obj,/);
 });
 test('saved preset gallery is authenticated, searchable, filterable and offers thumbnail, add, delete',()=>{
  const client=source('js/object-presets.js'),server=source('backend/server.py');

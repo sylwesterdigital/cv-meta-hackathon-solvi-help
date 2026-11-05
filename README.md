@@ -100,3 +100,7 @@ This is an evolving research and creative prototype. AI can misunderstand images
 ## Vision
 
 **SOLVI.help explores a future where humans and AI agents share a world and collaborate through actions, not just words.**
+
+### Smart object placement
+
+When adding a primitive, tool, furniture item or saved preset, SOLVI searches for a visible, unobstructed floor position near the last object added. It avoids room walls and existing furniture, and asks the creator to adjust the camera if no suitable placement can be found. Manual transforms remain available.
