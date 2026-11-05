@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.200",
+  "currentVersion": "0.2.201",
   "releases": [
+    {
+      "version": "0.2.201",
+      "publishedAt": "2026-11-05T18:06:13Z",
+      "changes": [
+        "Fix multi-tab profile takeover: a stale tab never evicts a freshly authenticated tab or deletes its browser token, even when both tabs share the same valid token.",
+        "Make public site login backend-first with a retryable health check and explicit offline error rather than silent local-demo sign-in.",
+        "Make room/AI setup failures nonfatal for an authenticated session: scene load always starts when the active token remains valid.",
+        "Prevent duplicate sign-in submissions, show clear recovery-key errors, retain user recovery material, and preserve all scene/GLB data.",
+        "Allow profile recovery-key export while signed out, and prevent accidental logout of an already-invalid session."
+      ]
+    },
     {
       "version": "0.2.200",
       "publishedAt": "2026-11-05T17:30:50Z",
@@ -322,16 +333,6 @@
         "Automatically stand occupied robots when non-stickable furniture is moved or removed, clearing sitting pose and restoring idle and physics.",
         "Persist and validate robot seat anchors across multiplayer scene updates and remap references through realm archives.",
         "Expand seating regressions and preserve original avatars, physics and inventory code."
-      ]
-    },
-    {
-      "version": "0.2.167",
-      "publishedAt": "2026-11-03T16:33:33Z",
-      "changes": [
-        "Add terrain-relief support to ground and crop patches so drawn vegetation areas generate bounded height irregularity and act as elevated support surfaces for robots and XR teleport landing.",
-        "Add draw-on-ground water/lake patches with negative bowl terrain, adjustable water depth and level, freehand or parametric patch shapes, and semi-transparent wavy water surfaces.",
-        "Extend nature object editing with patch-shape controls, relief/detail parameters and lake-specific controls while preserving existing preset and saved-scene compatibility.",
-        "Add trimesh collider support for terrain furniture segments so capsules, dropped objects and teleport selection respect patch elevation instead of sinking through flat ground."
       ]
     }
   ]

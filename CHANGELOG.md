@@ -1,3 +1,10 @@
+# v0.2.201 — Sign-in and world startup recovery (2026-11-05)
+
+- Remove startup dependency on Meta model-catalog API (up to 65 seconds external wait); scene starts independently of AI provider availability.
+- Newest profile tab owns the session; stale tab yields without deleting the new tab token.
+- Public backend health is retryable; profile submission is guarded against duplicate clicks and surfaces recovery errors.
+- Authenticated scene boot is not suppressed by optional room/world settings errors. No scene or DB schema migration.
+
 ## v0.2.200 — Persistent hand-held equipment and multiplayer storage
 
 - Add persistent Held inventory tab with Hold nearby, Hold, Store, Drop and explicit non-destructive Use controls for tools.

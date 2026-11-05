@@ -1,3 +1,29 @@
+# SOLVI.help Master LLM Handover — v0.2.201
+
+# SOLVI.help v0.2.201 — Profile Reconnect and World Startup Recovery
+
+## Reported incident
+Screenshot at 2026-11-05 17:35 UTC shows the v0.2.200 page loading static resources but displaying the Sign in / reconnect profile dialog with no populated world. The browser screenshot alone does not prove an API outage; authenticated scene loading was gated on profile bootstrap. Production server logs and authenticated requests were not available for direct inspection.
+
+## Reproduced source defects
+1. `afterLogin()` awaited `/api/models` before requesting the room list or loading the scene. Server `/api/models` uses `meta_request` with up to 65s external timeout, which could leave the room apparently dead during AI-provider latency. **Fix:** create a local world-chat default; don't query Meta on login. The explicit Settings model check remains available.
+2. The `BroadcastChannel` HELLO/ACTIVE handshake allowed a stale tab to respond ACTIVE to a newly authenticated tab; the new tab would run `needSignIn`, erasing a valid login. **Fix:** the most recently authenticated tab announces a one-way CLAIM; old tabs yield without prompting the claimant, including when two tabs reused exactly the same valid bearer token; yielding never clears shared localStorage.
+3. `needSignIn` unconditionally deleted `localStorage` profile tokens, even if another tab had just written a newer token. **Fix:** only clear the token when it matches the expiring in-memory token; never broadcast credentials.
+4. A delayed `/api/health` response (2.5s timeout) could push the production site into demo-only mode. **Fix:** 6.5s health timeout and an explicit retryable shared-backend status on the hosted domain; no silent offline profile creation on solvi.help.
+5. Profile submissions could be repeated concurrently, and exceptions in optional post-login setup could keep the scene from bootstrapping. **Fix:** busy/disabled submit button, actionable error/recovery hint, and guaranteed `solvi:scene-ready` for an authenticated session even when optional room/world settings fail.
+
+6. The reconnect dialog showed Export profile but silently did nothing while logged out, and Log out could remain available. **Fix:** allow recovery-key export from the saved local profile and hide/prevent logout when there is no authenticated profile.
+
+## Unchanged
+No changes to backend authentication schema, SQLite storage, scene object records, world geometry, multiplayer object mutations, robots, original bundled GLBs, server credentials, or the watcher deployment format.
+
+## Local verification and remaining production checks
+The new tests simulate two tabs and ensure that a stale tab cannot evict the new login or clear a new token. Verify the source integration, offline production retry handling, and non-blocking scene-ready dispatch. The full source JavaScript regression suite passed 968/968 tests. Backend Python AST checks passed on 13 modules and six standalone backend checks passed; Flask HTTP integration remains unavailable locally because Flask is not installed. Exact-archive checksum and freshly extracted ZIP checks are performed during packaging. Live multi-tab browser authentication and production scene loading require deployment validation.
+
+After deployment, test: first-time login; expired-token profile recovery; two tabs with the same profile; two independent profiles; Meta models API deliberately slow/offline; backend health unavailable; refresh of main and other saved realms; and the existing inventory/scene functions. Confirm actual user login and scene load in production before calling this incident resolved. Do not reset production profiles or SQLite as a troubleshooting shortcut. Do not erase browser storage; keep the user's original recovery key or exported profile backup.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.200
 
 # SOLVI.help v0.2.200 — Persistent Held Tools & Equipment

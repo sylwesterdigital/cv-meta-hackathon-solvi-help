@@ -17,7 +17,7 @@ test('dev log shows local date and time, auto-closes and checks new release vers
 });
 test('401/409 prompts for login; preserves recovery details and prevents sending',()=>{
  const js=read('js/studio.js');
- for(const token of ['[401,409].includes(res.status)','needSignIn','delete previous.token','show(\'profileBackdrop\',true)','if(online&&!auth)','solvi:auth-required'])assert.ok(js.includes(token),token);
+ for(const token of ['[401,409].includes(res.status)','needSignIn','clearOnlyCurrentToken(saved,activeToken)','show(\'profileBackdrop\',true)','if(online&&!auth)','solvi:auth-required'])assert.ok(js.includes(token),token);
 });
 test('audio is analysed in bands and all 21 hand landmarks are transmitted',()=>{
  const audio=read('js/voice-captions.js'),face=read('js/face-tracking.js');

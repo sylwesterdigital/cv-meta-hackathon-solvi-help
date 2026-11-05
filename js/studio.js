@@ -1,4 +1,5 @@
 import {confirmAction,exactNameAction,textEntry} from './app-dialogs.js';
+import {claimProfileTab,clearOnlyCurrentToken,requireSharedBackend} from './profile-session-ownership.js';
 import {makeRealmCards} from './realm-gallery.js';
 import {mentionQuery,mentionCandidates,insertMention} from './chat-mentions.js';
 import {renderChatAttachment,ensureChatMediaViewer} from './chat-attachments.js';
@@ -32,14 +33,15 @@ const tab=sessionStorage.getItem('solvi-tab')||random();sessionStorage.setItem('
 // Detect duplicated tabs that copied sessionStorage; server still enforces token rotation.
 const pageNonce=random();let tabChannel=null;
 function establishTabChannel(uid){
-  tabChannel?.close();if(!('BroadcastChannel' in window))return;
-  tabChannel=new BroadcastChannel('solvi-active-'+uid);
-  tabChannel.onmessage=e=>{const m=e.data;if(m.page===pageNonce)return;
-    if(m.type==='HELLO'&&auth)tabChannel.postMessage({type:'ACTIVE',page:pageNonce});
-    if(m.type==='ACTIVE'&&auth)needSignIn('This profile is active in another window.');
-  };
-  tabChannel.postMessage({type:'HELLO',page:pageNonce});
+  tabChannel?.close();tabChannel=null;
+  if(!('BroadcastChannel' in window))return;
+  // Most recently authenticated tab takes ownership. Never let a stale tab
+  // send ACTIVE back to evict a fresh login (the old handshake did just that).
+  tabChannel=claimProfileTab(uid,pageNonce,window.BroadcastChannel,()=>{
+    if(auth)needSignIn('This profile was opened in another browser tab.',{preserveSharedProfile:true});
+  });
 }
+
 let recordStream=null,recorder=null,recKind=null,recTimer=null;
 let pending=[],me=null,auth=null,online=false,modelIds=[],adminToken=null,adminExpiresAt=0;
 let chatVisibleLimit=180;let cachedMessages=[],chatSignature='',lastBubbleEntry=null;let renderingChat=false,followChat=true;let chatEpoch=0,chatLoadSerial=0,chatClearingRoom=null;
@@ -104,12 +106,17 @@ async function lockAdmin(){
 
 const stored=()=>{try{return JSON.parse(localStorage.getItem('solvi-profile')||'null');}catch{return null;}};
 const saveLocal=(o)=>localStorage.setItem('solvi-profile',JSON.stringify(o));
-function needSignIn(message='Session expired. Sign in to continue.'){
+function needSignIn(message='Session expired. Sign in to continue.',{preserveSharedProfile=false}={}){
   if(sessionPrompt)return;
   sessionPrompt=true;
-  const previous=stored();
-  if(previous){delete previous.token;saveLocal(previous);}
-  auth=null;me=null;clearAdminSession();clearPortraitCache();releaseChatAttachments();
+  const activeToken=auth?.token;
+  const saved=stored();
+  const {profile:previous,changed}=clearOnlyCurrentToken(saved,activeToken);
+  // localStorage is shared between tabs. An old tab must not erase the newer
+  // tab's token after that tab has successfully taken over the profile.
+  if(changed&&!preserveSharedProfile)saveLocal(previous);
+  tabChannel?.close();tabChannel=null;
+  auth=null;me=null;$('profileLogout').hidden=true;clearAdminSession();clearPortraitCache();releaseChatAttachments();
   window.dispatchEvent(new Event('solvi:session-lost'));
   fillProfile(previous);
   $('profileBackdrop').classList.remove('profile-drawer-mode');$('profileStatus').textContent=message+' Enter your name and press Save / Sign in to reconnect.';
@@ -157,45 +164,93 @@ window.solviOpenAdminProfile=()=>{
 };
 function profileFields(){return {name:$('profileName').value.trim(),email:$('profileEmail').value.trim(),bio:$('profileBio').value.trim(),links:$('profileLinks').value.trim(),color:$('profileColor').value};}
 function fillProfile(o){$('profileName').value=o?.name||'';$('profileEmail').value=o?.email||'';$('profileBio').value=o?.bio||'';$('profileLinks').value=o?.links||'';$('profileColor').value=o?.color||'#69c5e5';$('profileIdentity').textContent=o?.id||'New profile';}
-async function checkBackend(){try{const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),2500);const res=await fetch('/api/health',{cache:'no-store',signal:controller.signal});clearTimeout(timeout);
- const data=await res.json();online=!!data.backend;api.online=online;$('backendLabel').textContent=online?`Backend connected · AI ${data.ai?'configured':'key missing'}`:'Local demo · backend not enabled';}
- catch{online=false;api.online=false;$('backendLabel').textContent='Local demo · backend not enabled';}}
+async function checkBackend(){
+ const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),6500);
+ try{
+  const res=await fetch('/api/health',{cache:'no-store',signal:controller.signal});
+  if(!res.ok)throw Error('Health check HTTP '+res.status);
+  const data=await res.json();online=!!data.backend;api.online=online;
+  $('backendLabel').textContent=online?`Backend connected · AI ${data.ai?'configured':'key missing'}`:'Backend not available';
+ }catch(error){
+  online=false;api.online=false;
+  $('backendLabel').textContent=requireSharedBackend(location.hostname)?'Backend unavailable · retry sign-in':'Local demo · backend not enabled';
+ }finally{clearTimeout(timeout);}
+ return online;
+}
 async function begin(){const p=stored();fillProfile(p);await checkBackend();
  if(!p?.name){$('profileLogout').hidden=true;$('profileBackdrop').classList.remove('profile-drawer-mode');show('profileBackdrop',true);$('profileName').focus();return;}
- if(!online){me=p;show('profileBackdrop',false);show('chatPanel',true);identity();window.dispatchEvent(new CustomEvent('solvi:scene-ready'));return;}
+ if(!online){
+  if(requireSharedBackend(location.hostname)){
+   $('profileBackdrop').classList.remove('profile-drawer-mode');show('profileBackdrop',true);
+   $('profileStatus').textContent='The SOLVI backend is temporarily unavailable. Your stored profile has not changed. Press Save / Sign in to retry the connection.';
+   return;
+  }
+  me=p;show('profileBackdrop',false);show('chatPanel',true);identity();window.dispatchEvent(new CustomEvent('solvi:scene-ready'));return;
+ }
  if(p.token){auth={token:p.token};try{const out=await api.req('/api/me');me=out.user;identity();await afterLogin();return;}catch(e){toast(e.message);}}
- $('profileBackdrop').classList.remove('profile-drawer-mode');show('profileBackdrop',true);$('profileStatus').textContent='Reconnect or take over this profile to continue.';
+ $('profileLogout').hidden=true;$('profileBackdrop').classList.remove('profile-drawer-mode');show('profileBackdrop',true);$('profileStatus').textContent='Reconnect or take over this profile to continue. Export profile keeps a backup of your recovery key.';
 }
 function identity(){const text=me?.name||'Guest';$('profilePanelTitle').textContent=text;$('profilePanelNote').textContent='Profile';$('profileButton').textContent=text.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'?';$('profilePhotoBadge').textContent=$('profileButton').textContent;$('profileButton').title='Profile · '+text;
  if(me?.avatar?.startsWith('data:image/')){for(const id of ['profilePhotoBadge','profileButton']){const el=$(id);el.replaceChildren();const img=document.createElement('img');img.src=me.avatar;img.alt='';el.append(img);}}
  if(me?.avatar&&online&&auth){api.mediaBlob(me.avatar).then(url=>{if(!me||!document.getElementById('profilePhotoBadge'))return;for(const id of ['profilePhotoBadge','profileButton']){const el=$(id);el.replaceChildren();const img=document.createElement('img');img.src=url;img.alt='';img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%';el.append(img);}}).catch(()=>{});}
  if(me?.intro&&online&&auth){api.mediaBlob(me.intro).then(url=>{if(me?.intro){$('introPreview').src=url;$('introPreview').hidden=false;const badge=$('profilePhotoBadge');badge.replaceChildren();const photo=document.createElement('img');photo.src=url;photo.alt='Profile animated GIF';badge.append(photo);}}).catch(()=>{});}
  $('profileLogout').hidden=!me;$('profileIdentity').textContent=me?.id||'Local demo profile';$('composerName').textContent=text;refreshProfileAdminUI();}
-async function afterLogin(){sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);
- try{const data=await api.req('/api/models');modelIds=data.models||[];const select=$('modelSelect');select.replaceChildren();select.hidden=true;
-  select.add(new Option('World chat · people',''));
-  for(const id of modelIds)select.add(new Option('AI · '+id,id));
-  select.value='' // Default to human world chat so @robot mentions can trigger character replies;select.disabled=false;
-  if(!modelIds.length)$('chatStatus').textContent=data.note||'Human chat available. AI key not configured.';}catch(e){$('modelSelect').replaceChildren(new Option('Model catalog unavailable',''));$('modelSelect').hidden=true;toast(e.message);}
+async function afterLogin(){
+ sessionPrompt=false;show('profileBackdrop',false);show('chatPanel',true);identity();establishTabChannel(me.id);
+ // Never block sign-in or occupy a Flask worker querying Meta's remote model
+ // catalog (which can take 65 seconds). Model checks remain in Settings.
+ const modelSelect=$('modelSelect');modelSelect.replaceChildren(new Option('World chat · people',''));
+ modelSelect.hidden=true;modelSelect.disabled=false;modelSelect.value='';
+ $('chatStatus').textContent='World chat available. Configure or check Meta models in Settings.';
+ if(!auth||!me)return; // A server rejection may have invalidated this session.
  const remembered=localStorage.getItem('solvi-last-realm-'+me.id);if(remembered)activeRoom=remembered;
- await configureRooms();
- // Authentication must be announced AFTER the per-profile remembered realm is
- // resolved. Otherwise the socket joins a stale room (Brave: 1, Safari: 2).
- window.dispatchEvent(new CustomEvent('solvi:authenticated'));
- await loadWorldSettings();
- // Draw the world without waiting for all chat portrait/media fetches.
- window.dispatchEvent(new CustomEvent('solvi:scene-ready'));void loadMessages();
+ try{
+  await configureRooms();
+  if(!auth||!me)return;
+  // Room choice must precede WebSocket authentication.
+  window.dispatchEvent(new CustomEvent('solvi:authenticated'));
+  try{await loadWorldSettings();}catch(error){toast('World settings unavailable: '+error.message);}
+ }catch(error){
+  // A room-list/UI error must not strand the user on a blank canvas after login.
+  toast('Room setup incomplete; loading available scene: '+error.message);
+  window.dispatchEvent(new CustomEvent('solvi:authenticated'));
+ }finally{
+  if(auth&&me){
+   window.dispatchEvent(new CustomEvent('solvi:scene-ready'));
+   void loadMessages();
+  }
+ }
 }
-async function submitProfile(){const fields=profileFields();if(!fields.name){$('profileStatus').textContent='Name is required';return;}
- if(!online){sessionPrompt=false;me={...fields,id:me?.id||random(),avatar:me?.avatar||''};saveLocal(me);show('profileBackdrop',false);show('chatPanel',true);identity();return;}
- try{const previous=stored();if(!auth || !me){
-  const data=await api.req('/api/onboard',{method:'POST',body:JSON.stringify({...fields,id:previous?.recovery?previous.id:undefined,recovery:previous?.recovery||undefined,tab})});
-  auth={token:data.token};me=data.user;saveLocal({...me,token:data.token,recovery:data.recovery||previous?.recovery});
-  await afterLogin();
- }else{
-  const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...fields,avatar:me.avatar||''})});
-  me=data.user;saveLocal({...stored(),...me});show('profileBackdrop',false);identity();
- }}catch(e){$('profileStatus').textContent=e.message;}
+let profileSubmitBusy=false;
+async function submitProfile(){
+ if(profileSubmitBusy)return;
+ const fields=profileFields();if(!fields.name){$('profileStatus').textContent='Name is required';return;}
+ profileSubmitBusy=true;const button=$('saveProfile');button.disabled=true;
+ $('profileStatus').textContent='Connecting to SOLVI…';
+ try{
+  if(!online){
+   await checkBackend(); // Transient backend delay must not silently create an offline profile.
+   if(!online&&requireSharedBackend(location.hostname)){
+    $('profileStatus').textContent='SOLVI backend is unavailable. Your profile is unchanged. Check the connection and press Save / Sign in to retry.';
+    return;
+   }
+  }
+  if(!online){sessionPrompt=false;me={...fields,id:me?.id||random(),avatar:me?.avatar||''};saveLocal(me);show('profileBackdrop',false);show('chatPanel',true);identity();window.dispatchEvent(new CustomEvent('solvi:scene-ready'));return;}
+  const previous=stored();
+  if(!auth||!me){
+   const data=await api.req('/api/onboard',{method:'POST',body:JSON.stringify({...fields,id:previous?.recovery?previous.id:undefined,recovery:previous?.recovery||undefined,tab})});
+   if(!data?.token||!data?.user?.id)throw Error('Invalid profile response from server.');
+   auth={token:data.token};me=data.user;saveLocal({...me,token:data.token,recovery:data.recovery||previous?.recovery});
+   await afterLogin();
+  }else{
+   const data=await api.req('/api/profile',{method:'PUT',body:JSON.stringify({...fields,avatar:me.avatar||''})});
+   me=data.user;saveLocal({...stored(),...me});show('profileBackdrop',false);identity();
+  }
+ }catch(error){
+  const recoveryHint=/recovery key/i.test(error.message)?' Import your saved SOLVI profile backup to recover the original account.':'';
+  $('profileStatus').textContent='Sign-in failed: '+error.message+recoveryHint;
+  show('profileBackdrop',true);
+ }finally{profileSubmitBusy=false;button.disabled=false;}
 }
 function safeTime(t){const d=new Date(t||Date.now());return isNaN(+d)?'':d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
 async function bubble(entry){
@@ -781,6 +836,7 @@ async function recordIntroGif(){
  }catch(error){$('profileStatus').textContent='GIF failed: '+error.message;closeProfileCamera();}
 }
 async function logoutProfile(){
+ if(!me){$('profileStatus').textContent='This profile is not signed in. Export profile to preserve its recovery key, then choose Save / Sign in.';return;}
  if(!await confirmAction('Log out and clear this device’s SOLVI session?',{title:'Sign out'}))return;
  const oldAuth=auth;
  try{if(online&&oldAuth)await api.req('/api/logout',{method:'POST',body:'{}'});}
@@ -798,7 +854,7 @@ async function robotView(world){
  if(!robot)throw Error('Select a robot in Objects first, then choose Robot view.');
  return captureRobotView(world,robot);
 }
-function exportProfile(){if(!me)return;const p=stored()||me;const data={format:'solvi-profile-v1',id:p.id,name:p.name,email:p.email,bio:p.bio,links:p.links,recovery:p.recovery||null};
+function exportProfile(){const p=stored()||me;if(!p?.name){$('profileStatus').textContent='No local SOLVI profile to export.';return;}const data={format:'solvi-profile-v1',id:p.id,name:p.name,email:p.email,bio:p.bio,links:p.links,recovery:p.recovery||null};
  const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='solvi-profile-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);
  $('profileStatus').textContent='Backup contains your recovery key. Keep it private.';
 }
