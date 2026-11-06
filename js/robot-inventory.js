@@ -270,7 +270,7 @@ export class RobotInventory{
   if(!isEditMode())applyEditMode(true,{persist:true});
   this.editor.toolGripEditingHand=obj.userData.storage?.hand==='left'?'left':'right';
   this.editor.select(obj);
-  const panel=document.getElementById('robotInventoryPanel');if(panel)panel.hidden=true;
+  // Keep the inventory open while calibrating: no forced reopen with B.
   const details=document.getElementById('toolGripDetails');
   if(details){details.open=true;const advanced=document.getElementById('toolGripAdvanced');if(advanced)advanced.open=false;details.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
   return true;
@@ -326,10 +326,10 @@ export class RobotInventory{
    const held=this.heldFor(robot,hand);
    button.hidden=this.tab!=='held'||!held;
    button.disabled=!held||!this.editor.canEdit(robot)||!this.editor.canEdit(held);
-   button.textContent=held?`Drop ${held.name} (${hand})`:`Drop ${hand}-hand tool`;
+   button.textContent=held?`Drop ${held.name} (${hand}) · I`:`Drop ${hand}-hand tool · I`;
   }
   const hint=document.getElementById('inventoryActionHint');
-  if(hint)hint.textContent=this.tab==='held'?'Use Drop above to put an equipped tool back into the world. Use Grip to adjust its pose.':'Select Held to drop equipped tools; other items can be moved or dropped from their cards.';
+  if(hint)hint.textContent=this.tab==='held'?'I · pick up / drop     U · use tool     B · close inventory':'I · pick up / drop     B · close inventory';
   const rows=document.getElementById('robotInventoryItems');rows.replaceChildren();
   const items=this.entries(robot).filter(obj=>{
    const storage=obj.userData.storage;
@@ -351,11 +351,12 @@ export class RobotInventory{
    else {action('Hold',this.hold);action(item.userData.storage.type==='pocket'?'To bag':'To pocket',this.transfer);}
    if(item.userData.storage?.type==='held'&&isToolObject(item)){
     const variant=item.userData.furniture?.variant,activity=TOOL_ACTIVITIES[variant];
-    action(variant==='shovel'?'Dig ahead':activity?.label||'Use',this.useHeldTool);
-    if(variant==='shovel')action('Aim dig',this.aimHeldTool);
+    action(variant==='shovel'?'Dig · U':activity?.label||'Use · U',this.useHeldTool);
+    if(variant==='shovel')action('Aim · click',this.aimHeldTool);
    }
    if(cleanInventory(item.userData.inventory).consumable)action(cleanInventory(item.userData.inventory).category==='food'?'Eat':'Use',this.use);
-   action('Drop',this.drop);rows.append(line);
+   if(item.userData.storage?.type!=='held')action('Drop',this.drop); // Held has one explicit Drop action above this list.
+   rows.append(line);
   }
  }
  bind(){

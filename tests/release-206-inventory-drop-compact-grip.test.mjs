@@ -33,7 +33,7 @@ test('Held tab has dedicated, visible left and right Drop controls outside item 
  assert.match(css,/#robotInventoryPanel \.robot-inventory-items\{flex:1 1 auto;min-height:0/);
  assert.match(css,/#robotInventoryPanel \.robot-inventory-item div\{flex:none!important/);
  assert.match(css,/#robotInventoryPanel \.robot-inventory-item\{display:grid!important/);
- assert.match(inventorySrc,/button\.textContent=held\?`Drop \$\{held\.name\} \(\$\{hand\}\)`/);
+ assert.match(inventorySrc,/button\.textContent=held\?`Drop \$\{held\.name\} \(\$\{hand\}\) · I`/);
 });
 
 test('one-click Drop removes hand ownership, persists item, and immediately clears quick action',()=>{
@@ -46,11 +46,12 @@ test('one-click Drop removes hand ownership, persists item, and immediately clea
  const inv=new RobotInventory(editor);inv.activeRobot=robot;inv.itemThumbnail=()=>'';inv.updatePortrait=()=>{};inv.bind();inv.render();
  assert.equal(elements.inventoryDropRight.hidden,false);
  assert.equal(elements.inventoryDropRight.disabled,false);
- assert.equal(elements.inventoryDropRight.textContent,'Drop Shovel (right)');
+ assert.equal(elements.inventoryDropRight.textContent,'Drop Shovel (right) · I');
  assert.equal(elements.inventoryDropLeft.hidden,true);
  assert.equal(elements.robotInventoryItems.children.length,1);
  const card=elements.robotInventoryItems.children[0];
- assert.ok(card.children[2].children.some(b=>b.textContent==='Drop'),'item also retains an in-card Drop button');
+ assert.ok(card.children[2].children.some(b=>b.textContent==='Grip'),'held tools keep Grip beside the preview');
+ assert.ok(!card.children[2].children.some(b=>b.textContent==='Drop'),'drop action is not duplicated in the card');
  elements.inventoryDropRight.click();
  assert.equal(shovel.userData.storage,undefined,'the same object is released into world');
  assert.equal(shovel.visible,true);

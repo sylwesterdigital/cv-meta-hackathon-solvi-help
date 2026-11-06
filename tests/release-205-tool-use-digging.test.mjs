@@ -33,7 +33,7 @@ test('digging requires an actual nearby target and refuses a building floor or e
 test('inventory Use is real, Drop remains available, keyboard shortcut is wired and animation is editable',()=>{
  const inv=src('js/robot-inventory.js'),editor=src('js/editor.js'),html=src('index.html'),keys=src('js/robot-shortcut-help.js');
  assert.match(inv,/this\.editor\.performToolUse\?\.\(robot,obj\)/);
- assert.match(inv,/action\('Aim dig',this\.aimHeldTool\)/);
+ assert.match(inv,/action\('Aim · click',this\.aimHeldTool\)/);
  assert.match(inv,/action\('Drop',this\.drop\)/);
  assert.match(editor,/performToolUse\(robot,tool,target=null\)/);
  assert.match(editor,/this\.queueSave\(site\)/);

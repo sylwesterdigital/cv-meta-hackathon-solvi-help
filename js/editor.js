@@ -1263,14 +1263,19 @@ export class SceneEditor{
     e.preventDefault();const bot=this.controlledRobot();if(!this.canEdit(bot))return;
     if(e.code==='KeyI'){
      if(bot.userData.robotCarry){if(!this.carry.drop(bot))this.toast('Could not place the held object');}
-     else if(this.inventory.heldFor(bot,'right')){if(!this.inventory.stow(bot,this.inventory.heldFor(bot,'right')))this.toast('No space to store the held item; use Inventory → Drop');}
+     else if(this.inventory.heldFor(bot,'right')||this.inventory.heldFor(bot,'left')){
+      // I is a pickup/drop toggle for ALL held items, including bag-sized tools.
+      // Never attempt to stow a shovel that has no backpack.
+      const held=this.inventory.heldFor(bot,'right')||this.inventory.heldFor(bot,'left');
+      if(!this.inventory.drop(bot,held))this.toast('Could not drop '+held.name+'; check permissions and connection');
+     }
      else{
       const target=pickableTarget(bot,this.items);
       if(target&&cleanInventory(target.userData.inventory).category!=='world')this.inventory.pickupNearest(bot);
       else if(!this.carry.pickup(bot))this.toast('Face a nearby Pickable object, enable room Physics, then press I');
      }
     }else if(e.code==='KeyO'){if(!this.carry.throw(bot))this.toast('Pick up an object with I before pressing O');}
-    else if(e.code==='KeyB')this.inventory.show(bot);
+    else if(e.code==='KeyB'){const panel=byId('robotInventoryPanel');if(panel&&!panel.hidden)panel.hidden=true;else this.inventory.show(bot);}
     else if(e.code==='KeyU'){const held=this.inventory.heldFor(bot,'right')||this.inventory.heldFor(bot,'left');if(!held||!this.inventory.useHeldTool(bot,held))this.toast('Hold a usable tool first (B → Held)');}
     else if(e.code==='KeyJ'){
      if(!standUp(bot,this)){
@@ -2074,7 +2079,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
  updateCombatPhysicsHint(){
   const obj=this.selected,hint=byId('combatObjectPhysicsHint'),make=byId('makeObjectPushable');
   if(!hint||!make)return;
-  const eligible=obj&&!['robot','light'].includes(obj.userData.editorKind);
+  const equipped=obj?.userData?.storage?.type==='held';
+  const eligible=obj&&!['robot','light'].includes(obj.userData.editorKind)&&!equipped;
   hint.hidden=!eligible;make.hidden=!eligible||byId('objectPhysicsMode').value==='dynamic';
   if(!eligible)return;
   const mode=byId('objectPhysicsMode').value;
@@ -2095,8 +2101,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   status.textContent=mode==='off'?'Enable Physics to use the selected Trimesh.':
    this.selected?.userData.colliderStatus||
    (this.selected?.userData.editorKind==='model'&&!this.selected?.userData.modelReady?'Waiting for imported model geometry':'Trimesh selected. Enable room Physics to create its collider.');
-  const runtime=byId('physicsRuntimeStatus');runtime.hidden=mode==='off';
-  if(mode!=='off'){
+  const runtime=byId('physicsRuntimeStatus');const equipped=this.selected?.userData?.storage?.type==='held';runtime.hidden=mode==='off'||equipped;
+  if(mode!=='off'&&!equipped){
    const editorObject=this.selected,id=editorObject?.userData.editorId;
    runtime.textContent=!window.solviRoomPolicy?.physics?'Room physics OFF. Enable Physics in World settings to activate gravity and collisions.':
     !this.physics.enabled||!this.physics.world?'Rapier physics is starting. If this persists, check the browser console and vendor assets.':
@@ -2625,8 +2631,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     if(!this.canEdit(robot)||!this.canEdit(tool)||tool?.userData?.storage?.type!=='held'||tool.userData.storage.holderId!==robot?.userData?.editorId||tool.userData?.furniture?.variant!=='shovel')return false;
     this.toolAim={robotId:robot.userData.editorId,toolId:tool.userData.editorId};
     this.world.renderer.domElement.style.cursor='crosshair';
-    const panel=byId('robotInventoryPanel');if(panel)panel.hidden=true;
-    this.toast('Click bare ground within 2.8 m of the avatar to dig; Esc cancels.');return true;
+    // Keep Inventory open even when aiming fails. The next world click or Esc resolves the action.
+    this.toast('Aim dig: click ground within 2.8 m · Esc cancels');return true;
   }
   startToolActionAnimation(robot,variant,chosen=''){
     const clip=resolveToolAnimation(variant,robot.userData.robotAvailableActions||[],chosen);

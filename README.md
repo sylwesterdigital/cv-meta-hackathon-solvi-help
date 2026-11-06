@@ -14,7 +14,7 @@ The project explores **embodied AI in simulation**, powered by **Meta's multimod
 - **See through a robot's eyes:** virtual head cameras capture actual 3D rendered observations, including 360° scans, for multimodal analysis.
 - **Give meaningful tasks:** navigation, object interaction, pick-up/delivery, furniture placement, and multi-step construction experiments.
 - **Build a world:** procedural homes, stairs, roads, fences, vegetation, screens, appliances, and interactive equipment can be placed and edited.
-- **Use interactive props:** laptops have hinged screens and media playback; fridges open and store supported small objects; tools and office equipment can be configured as procedural primitives. Equipped tools can be dropped directly from Inventory → Held and calibrated through compact per-hand grips. Shovels can mark an excavation site with an optional tool-use animation; physical terrain deformation is not yet supported.
+- **Use interactive props:** laptops have hinged screens and media playback; fridges open and store supported small objects; tools and office equipment can be configured as procedural primitives. While controlling an avatar, press **I** to pick up or drop a held tool, **U** to use it, and **B** to toggle Inventory. Equipped tools retain independently adjustable grips for each hand. Shovels can mark an excavation site with an optional tool-use animation; physical terrain deformation is not yet supported.
 - **Share and persist:** multiplayer scene updates, saved realms, object presets, and server-side persistence let participants work in the same space.
 - **Explore in a browser:** Three.js/WebGL rendering, Rapier physics, and experimental WebXR support.
 

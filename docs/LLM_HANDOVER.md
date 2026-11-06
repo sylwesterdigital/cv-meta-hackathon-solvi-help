@@ -1,3 +1,15 @@
+# SOLVI.help Master LLM Handover — v0.2.207
+
+## v0.2.207 — I-key toggle and compact tool grip inspector
+
+**Base:** complete v0.2.206 release ZIP (484 app files). The current I shortcut wrongly called `inventory.stow` for a held tool. Shovels are backpack-sized, so with no bag this path never released them. In `js/editor.js` it now calls `inventory.drop` for right or left held tool (temporary robotCarry has priority); the same scene object becomes visible with dynamic physics and `queueSave`. `B` toggles Inventory, `Shift+I` remains backpack-specific, `U` performs the existing shovel dig action. `js/robot-shortcut-help.js` and Inventory buttons display the shortcuts directly. No new API/schema.
+
+**Layout:** `index.html`/`styles.css` restructure Tool grip as compact Transform-like rows: Attach (hand, rig bone, Follow), Angle X/Y/Z + reset, Action animation, Advanced (offset/contact axes). Consistent 11px labels, 27px inputs; advanced starts folded. No redundant help text. `js/robot-inventory.js` no longer closes inventory for Grip and the Aim dig command keeps the panel open even after an invalid target. Top-bar Drop per hand remains; redundant in-card Drop removed. Held physics bodies are intentionally absent; `updateColliderOption` and combat hint hide false missing-body warnings while held.
+
+**Verification:** 999/999 JavaScript regression tests passed in the source workspace and from a fresh ZIP extraction. The new tests execute the actual I-key handler with right/left equipped items, a nearby new pickup, and transient carry. All six available standalone backend checks passed, 13 Python files passed AST syntax checks, and both installer/deployment shell scripts passed `bash -n`. The complete SHA-256 manifest includes 486 application files, all verified. All 111 original media/GLB asset files match the v0.2.206 archive byte-for-byte. Full Flask HTTP integration is unavailable locally without Flask; live browser layout and two-client sync remain unverified until Mac watcher deployment. Do not claim a deployment. Do not claim production deployment until watcher succeeds.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.206
 
 ## v0.2.206 — Visible Held Drop & Compact Tool Grip (2026-11-06)

@@ -1,11 +1,11 @@
 // Keyboard help derives combat bindings from the avatar's actual settings.
 import {combatSettings} from './robot-combat.js';
-export const ROBOT_KEY_ACTIONS=Object.freeze({KeyI:'pickup-place',KeyO:'throw',KeyJ:'sit-stand',KeyB:'inventory',KeyU:'use-equipped-tool'});
+export const ROBOT_KEY_ACTIONS=Object.freeze({KeyI:'pickup-drop',KeyO:'throw',KeyJ:'sit-stand',KeyB:'inventory',KeyU:'use-equipped-tool'});
 export const ROBOT_SHORTCUTS=Object.freeze([
  ['Movement','↑ / ↓','Move forward / reverse'],['Movement','← / →','Steer / sidestep when stopped'],
  ['Movement','Shift + ↑','Run (also automatically after holding forward)'],['Movement','Space','Jump / release ladder'],
- ['Actions','I','Hold a nearby tool; press again to store if space allows'],['Inventory','Shift + I','Pick up / take off / drop a backpack'],['Actions','O','Throw held object'],
- ['Actions','J','Sit / stand'],['Actions','U','Use held tool (shovel: dig ahead)'],['Inventory','B','Open inventory: held items, pockets, wearables and backpacks'],
+ ['Actions','I','Hold / pick up nearby item or drop held tool (no inventory needed)'],['Inventory','Shift + I','Pick up / take off / drop a backpack'],['Actions','O','Throw held object'],
+ ['Actions','J','Sit / stand'],['Actions','U','Use held tool (shovel: dig ahead)'],['Inventory','B','Toggle inventory (open / close)'],
  ['Navigation','Shift + A','Add object menu'],['Help','⌘ + /','Show / hide these shortcuts']]);
 export function robotShortcutRows(robot){const rows=ROBOT_SHORTCUTS.map(r=>[...r]);
  const combat=combatSettings(robot?.userData?.robotCombat);for(const [kind,item] of Object.entries(combat)){if(item.key)rows.push(['Combat',item.key.replace(/^Key/,'').replace(/^Digit/,'Number '),kind[0].toUpperCase()+kind.slice(1)]);}return rows;}

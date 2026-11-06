@@ -1,3 +1,10 @@
+# v0.2.207 — I-key pickup/drop and Transform-style grip editor (2026-11-06)
+
+- Press **I** to pick up a nearby tool or **drop the equipped tool**; never attempt backpack storage from I. Right hand takes priority, then left. **B** toggles Inventory; **U** uses the equipped tool, Shift+I handles a backpack and O throws transient carried objects.
+- Use compact Transform-style grip rows for Attach/Angle/Action; X/Y/Z and reset share a row, per-hand advanced offsets remain available but collapsed. Label and field font sizes are consistent; explanatory paragraphs were removed.
+- Label keyboard shortcuts in Held actions, remove redundant in-card Drop, keep Inventory open during Grip and aimed Dig, and suppress the misleading missing-physics-body warning on held items.
+- Preserve existing multiplayer scene storage, object IDs, per-hand tool profiles, backend schema, media and GLB models. No database migration.
+
 # v0.2.206 — Visible Drop and compact tool grip calibration (2026-11-06)
 
 - **Critical inventory usability fix:** the previous inventory item card could stretch beyond the visible panel and hide Store, Drop, and Dig. All inventory cards now use bounded preview sizes and content-sized rows, with action buttons aligned next to the preview.
