@@ -232,7 +232,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.204',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.205',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3824,7 +3824,22 @@ def valid_tool_grip(value):
     return True
 
 def valid_inventory_item(value):
-    return isinstance(value,dict) and set(value)<= {'category','size','consumable','attachment','grip'} and ('attachment' not in value or valid_wear_attachment(value['attachment'])) and ('grip' not in value or valid_tool_grip(value['grip'])) and value.get('category') in ('world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable') and value.get('size') in ('pocket','bag') and type(value.get('consumable')) is bool
+    return isinstance(value,dict) and set(value)<= {'category','size','consumable','attachment','grip','actionClip'} and ('actionClip' not in value or (isinstance(value['actionClip'],str) and len(value['actionClip'])<=100 and re.fullmatch(r'[A-Za-z0-9_ .:-]*',value['actionClip']) is not None)) and ('attachment' not in value or valid_wear_attachment(value['attachment'])) and ('grip' not in value or valid_tool_grip(value['grip'])) and value.get('category') in ('world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable') and value.get('size') in ('pocket','bag') and type(value.get('consumable')) is bool
+
+def valid_robot_tool_use_message(value,objects,uid,policy,admin=False):
+    # This packet relays a *pose only*. It cannot create terrain, override a
+    # held tool's scene state, or cause an impact on another avatar.
+    if not isinstance(value,dict):return None
+    identifier=value.get('id');tool=value.get('tool');clip=value.get('clip')
+    try:seq=int(value.get('seq',0))
+    except (ValueError,TypeError,OverflowError):return None
+    if not isinstance(identifier,str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):return None
+    if tool not in ('shovel','axe','rake','stick','broom','mop','saw'):return None
+    if not isinstance(clip,str) or not re.fullmatch(r'[A-Za-z0-9_ .:-]{1,100}',clip) or not 0<=seq<=2147483647:return None
+    actor=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
+    held=next((o for o in objects if o.get('kind')=='furniture' and (o.get('furniture') or {}).get('variant')==tool and (o.get('storage') or {}).get('type')=='held' and (o.get('storage') or {}).get('holderId')==identifier),None)
+    if not actor or not held or not may_edit(uid,actor,policy,admin) or not may_edit(uid,held,policy,admin):return None
+    return {'id':identifier,'tool':tool,'clip':clip,'seq':seq}
 
 def valid_inventory_storage(value):
     if value is None:return True
@@ -3888,7 +3903,7 @@ def valid_basic_furniture(value):
     if not isinstance(value,dict):return False
     if len(value)>200:return False
     variant=value.get('variant')
-    if variant not in ('table','chair','officeChair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box','tv','monitor','miniComputer','keyboard','trackpad','mouse','printer','laptop','fridge','shovel','axe','rake','stick','broom','mop','saw','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker','tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch','infrastructure'):return False
+    if variant not in ('table','chair','officeChair','stool','armchair','sofa','bed','cabinet','plate','mug','glass','bowl','bottle','can','flowerpot','box','tv','monitor','miniComputer','keyboard','trackpad','mouse','printer','laptop','fridge','shovel','axe','rake','stick','broom','mop','saw','bin','backpack','sunbed','deckChair','beachUmbrella','lamp','speaker','tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch','excavation','infrastructure'):return False
     numeric={'width':(.06,8),'depth':(.06,8),'height':(.025,4),'topThickness':(.025,.3),
              'legRadius':(.025,.3),'topRadius':(.15,4),'corners':(3,8),'seatHeight':(.25,.9),
              'backHeight':(.2,1.3),'shelves':(0,16),'seats':(1,4),'cushionThickness':(.05,.35),
@@ -4512,6 +4527,16 @@ def websocket(ws):
                 if not attacker or not victim or not may_edit(uid,attacker,room_policy(room_id),ws_admin_enabled()):continue
                 publish({'type':'robot-impact','room':room_id,'by':uid,'id':identifier,
                          'target':target,'kind':kind,'force':round(strength,2),'seq':seq},except_id=uid,room_id=room_id)
+            elif msg.get('type')=='robot-tool-use':
+                now_action=time.monotonic()
+                if now_action-last_action<.28:continue
+                with db() as con:
+                    row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+                    objects=json.loads(row['payload']) if row else []
+                event=valid_robot_tool_use_message(msg,objects,uid,room_policy(room_id),ws_admin_enabled())
+                if not event:continue
+                last_action=now_action
+                publish({'type':'robot-tool-use','room':room_id,'by':uid,**event},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-action':
                 now_action=time.monotonic()
                 if now_action-last_action<.28:continue

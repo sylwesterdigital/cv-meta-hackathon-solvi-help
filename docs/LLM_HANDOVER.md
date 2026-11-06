@@ -1,3 +1,23 @@
+# SOLVI.help Master LLM Handover — v0.2.205
+
+## Latest work: Tool use, shovel digging and animation selection
+
+**v0.2.205 verification status (local, not deployed):** 989/989 JavaScript tests passed in the source workspace; all six standalone backend checks passed; Python AST/syntax and Mac/Ubuntu deployment script syntax passed. The JavaScript suite was rerun after the final exclusion of other avatars from dig targets. Full Flask HTTP integration is not available locally (`No module named flask`); the Mac watcher must verify authorization and scene persistence end-to-end. The final ZIP is independently re-extracted and re-tested before delivery; local verification is not proof of deployment.
+
+The preceding v0.2.204 fixed tool grip and hand bone calibration, but its Inventory → Held → Use did nothing. v0.2.205 connects actual `Dig ahead`, `Aim dig`, and `U` actions to an owned held shovel. **Drop** remains available from B → Held and releases the same scene object. Other tools have optional configured or auto-detected GLB action animations. A per-item `inventory.actionClip` is sanitized, persisted and server-validated.
+
+Shovel Dig generates a **persistent excavation surface mark** using a new procedural `furniture.variant='excavation'` with earth rim, dark soil and small clods. Ground target validation bounds reach to 0.55–2.8m and blocks terrain covered by existing walls/furniture/floors or excavation marks. Aimed digging consumes one ground click or Esc to cancel, and cannot move unrelated room objects. New scene entries use the existing object-level save/revision protocol; no SQLite migration.
+
+Use matching GLB clips (`Digging`, `Sawing`, etc.) when available, with a per-item override via Tool grip details. The original bundled avatar has 24 animation clips and **no Digging clip**, so a short procedural arm/spine motion is the default fallback. Held tools follow the updated bone pose; their configured grip and offsets remain intact. Animation is a transient, validated `robot-tool-use` WebSocket relay. The backend checks the sender's right to control both the robot and the matching tool already held by that robot; the packet never edits terrain or applies avatar damage.
+
+**Important limitation:** This is a surface-level *excavation mark* rather than a real hole in the flat shared ground geometry or Rapier collider. Chopping, sawing, sweeping, raking and mopping only play an optional authored animation; they do not change targets yet. No tool-driven avatar attack was added.
+
+Files: `js/tool-activities.js`, `js/robot-inventory.js`, `js/editor.js`, `js/robots.js`, `js/primitive-properties.js`, `js/live.js`, `js/robot-shortcut-help.js`, `backend/server.py`, `index.html`, `tests/release-205-tool-use-digging.test.mjs`. Details and manual acceptance cases: `docs/RELEASE_0.2.205_SPEC.md`.
+
+Use the complete release ZIP with `manifest.json` SHA256 entries for the existing Mac `updates/` watcher. Do not assume production deployment from local tests. v0.2.202 watcher FAILED authorization test; v0.2.203 and v0.2.204 production deployment not confirmed in context. Always back up production SQLite before source deployments. No profile, scene or avatar resets are authorized.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.204
 
 ## Current change: configurable tool grips

@@ -11,7 +11,7 @@ test('Held tab and action wiring for Hold, Store, Drop and non-destructive Use',
  assert.match(inventory,/action\('Hold',this\.hold\)/);
  assert.match(inventory,/action\('Store',this\.stow\)/);
  assert.match(inventory,/action\('Drop',this\.drop\)/);
- assert.match(inventory,/Tool actions are not yet available/);
+ assert.match(inventory,/this\.editor\.performToolUse\?\.\(robot,obj\)/);
  assert.match(inventory,/this\.editor\.queueSave\(obj\)/);
 });
 test('held equipment stays a scene-backed item, follows animation and removes its collider',()=>{

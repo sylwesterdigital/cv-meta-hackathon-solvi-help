@@ -37,7 +37,7 @@ export function buildPrimitive(kind,values){
 // Basic furniture is built from individually collidable, editable primitive parts.
 // Keeping it here avoids a new module and preserves the deployment watcher's file budget.
 export const BASIC_PROP_TYPES=['plate','mug','glass','bowl','bottle','can','flowerpot','box'];
-export const FURNITURE_TYPES=['table','chair','officeChair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...TOOL_TYPES,...EQUIPMENT_TYPES,...VEGETATION_TYPES,'infrastructure'];
+export const FURNITURE_TYPES=['table','chair','officeChair','stool','bed','armchair','sofa','cabinet',...BASIC_PROP_TYPES,...TOOL_TYPES,...EQUIPMENT_TYPES,...VEGETATION_TYPES,'excavation','infrastructure'];
 export const FURNITURE_NUMERIC={
  width:[1.2,.06,8],depth:[.75,.06,8],height:[.76,.025,4],
  topThickness:[.07,.025,.3],topRadius:[.55,.15,4],legRadius:[.04,.025,.3],
@@ -86,6 +86,7 @@ const furniturePreset={
  groundPlot:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
  cropBed:{width:4,depth:2.5,height:.02,legStyle:'none',color:'#66503a',fabricColor:'#4a9254'},
  waterPatch:{width:4.4,depth:3.2,height:.02,legStyle:'none',color:'#5f513f',fabricColor:'#4aa3d8'},
+ excavation:{width:1.02,depth:1.02,height:.10,legStyle:'none',color:'#3a2418',fabricColor:'#8e6340'},
  infrastructure:{width:4,depth:2,height:.02,legStyle:'none',color:'#5f6467',fabricColor:'#728d77'}
 };
 export function sanitiseFurniture(raw={}){
@@ -204,6 +205,19 @@ export function rebuildFurniture(group,raw={}){
   box(p.width,t,p.depth,0,t/2,0);box(p.width,t,p.depth,0,p.height-t/2,0);
   box(p.width-2*t,p.height-2*t,t,0,p.height/2,p.depth/2-t/2);
   for(let i=1;i<=p.shelves;i++)box(p.width-2*t,t,p.depth-t,0,t+(p.height-2*t)*i/(p.shelves+1),-t/2);
+ }else if(p.variant==='excavation'){
+  // Surface-level excavation marker with sloping earth rim; the base ground
+  // plane remains intact (no false claim of physical terrain deformation).
+  const radius=Math.min(p.width,p.depth)*.5;
+  const dark=new THREE.MeshStandardMaterial({color:p.color,roughness:1,side:THREE.DoubleSide});
+  const soil=new THREE.MeshStandardMaterial({color:p.fabricColor,roughness:1});
+  cylinder(radius*.80,.013,0,.013,0,dark,40);
+  const rim=add(new THREE.TorusGeometry(radius*.86,Math.max(.022,Math.min(.07,p.height*.45)),7,40),0,.052,0,soil);
+  rim.rotation.x=-Math.PI/2;rim.castShadow=false;rim.userData.excavationRim=true;
+  for(let i=0;i<8;i++){
+   const angle=i*Math.PI/4,chunk=add(new THREE.DodecahedronGeometry(radius*(.065+i%3*.01),0),Math.sin(angle)*radius*.89,.054,Math.cos(angle)*radius*.89,soil);
+   chunk.rotation.y=angle;chunk.castShadow=false;
+  }
  }else if(TOOL_TYPES.includes(p.variant)){
   buildTool(p,{add,box,cylinder});
  }else if(EQUIPMENT_TYPES.includes(p.variant)){

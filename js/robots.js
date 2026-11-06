@@ -338,6 +338,12 @@ export function animateRobots(items,dt,onImpact=()=>{}){
       if(shot.elapsed<shot.duration){mode=shot.clip;}
       else{data.robotOneShot=null;mode=data.robotMode||'idle';}
     }
+    if(data.robotToolAction&&!shot){
+      const action=data.robotToolAction;action.elapsed+=Math.max(0,dt);
+      if(action.elapsed<action.duration&&!data.robotJumpActive&&!data.robotMission&&!data.robotGoal){
+        if(action.clip)mode=action.clip;
+      }else{data.robotToolAction=null;data.robotPlaying=null;}
+    }
     if(data.robotCarry){
       const carry=data.robotCarry;
       // A held object is not an animation state: preserve Idle/Walk/Run.
@@ -406,7 +412,9 @@ export function animateRobots(items,dt,onImpact=()=>{}){
     }
     if(mode==='climbLadder')animator?.setClimbDescending?.(data.robotLadderSpeed<0);
     if(data.robotPlaying!==mode){
-      if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){
+      if(data.robotToolAction&&mode===data.robotToolAction.clip){
+        animator?.playOnce(mode);
+      }else if(shot&&mode===shot.clip&&shot.elapsed<shot.duration){
         animator?.playOnce(mode,shot.timing);
       }else if(data.robotReaction&&mode===landingClipFor(data.robotReaction.clip,[...animator?.actions?.keys?.()||[]])){
         const clipSeconds=animator?.clipDuration?.(mode)||data.robotReaction.duration;
@@ -434,6 +442,21 @@ export function animateRobots(items,dt,onImpact=()=>{}){
       animator?.setPlaybackSpeed(Math.max(.35,Math.min(2.5,(animator?.clipDuration(mode)||.87)/flight*tune.jump)));
     }else animator?.setPlaybackSpeed(1);
     animator?.update(dt);
+    // The bundled GLB does not contain a Digging clip. Procedural arm/torso
+    // movement provides a short honest fallback without adding asset files;
+    // animated avatar bones are evaluated first, then held grip follows them.
+    if(data.robotToolAction?.mode==='procedural-dig'){
+      const phase=Math.min(1,data.robotToolAction.elapsed/data.robotToolAction.duration);
+      const bend=Math.sin(phase*Math.PI)**2;
+      const holder=robot.children.find(c=>c.userData.robotVisual);
+      holder?.traverse?.(bone=>{
+        if(!bone.isBone)return;
+        const n=String(bone.name).toLowerCase().replace(/[^a-z0-9]/g,'');
+        if(/(?:leftarm|rightarm|leftupperarm|rightupperarm)$/.test(n))bone.rotation.x+=.29*bend;
+        else if(/(?:leftforearm|rightforearm|leftlowerarm|rightlowerarm)$/.test(n))bone.rotation.x+=-.16*bend;
+        else if(/(?:spine1|spine2)$/.test(n))bone.rotation.x+=-.095*bend;
+      });
+    }
     const visual=robot.children.find(c=>c.userData.robotVisual);
     if(visual){
       const lean=data.robotLadderRide?0:(data.robotLateral||0)*-.075;

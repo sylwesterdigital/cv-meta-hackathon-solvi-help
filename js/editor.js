@@ -41,6 +41,7 @@ import {physicsOptions} from './physics-options.js';
 import {canBeClimbable} from './climbable-surfaces.js';
 import {RobotInventory,cleanInventory,cleanStorage,cleanWearAttachment} from './robot-inventory.js';
 import {isToolObject,cleanToolGripProfile,toolGripProfile,toolRigBones,GRIP_BONES} from './held-equipment.js';
+import {TOOL_ACTIVITIES,resolveToolAnimation,cleanToolAnimationName,digAheadPoint,validDigTarget} from './tool-activities.js';
 import {bindRobotShortcutHelp,ROBOT_KEY_ACTIONS} from './robot-shortcut-help.js';
 import {seatPlan,takeSeat,standUp,followFurnitureSeats,restoreSeatedRobots,repairLoadedRobotElevation} from './robot-seating.js';
 import {canBePickable,ObjectCarry,cleanThrowSettings,editThrowSetting,pickableTarget} from './object-carry.js';
@@ -299,6 +300,12 @@ export class SceneEditor{
    const clean=cleanToolGripProfile(grip,cfg.variant,cfg.handleLength,hand);
    obj.userData.inventory=cleanInventory({...obj.userData.inventory,grip:{...obj.userData.inventory?.grip,[hand]:clean}});
    this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.inventory.tick();this.renderToolGripControls(obj);
+  });
+  byId('toolActionClip')?.addEventListener('change',e=>{
+   const obj=this.selected;if(!obj||!isToolObject(obj)||!this.canEdit(obj))return;
+   const before=this.snapshot(obj),value=cleanToolAnimationName(e.target.value);
+   obj.userData.inventory=cleanInventory({...obj.userData.inventory,actionClip:value});
+   this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.renderToolGripControls(obj);
   });
   byId('toolGripReset')?.addEventListener('click',()=>{
    const obj=this.selected,hand=this.toolGripEditingHand==='left'?'left':'right';
@@ -1215,6 +1222,24 @@ export class SceneEditor{
    };
   canvas.addEventListener('pointerup',e=>{
    if(this.transform.dragging||this.transform.axis||Math.hypot(e.clientX-startX,e.clientY-startY)>4||this.world.renderer.xr.isPresenting)return;
+   if(this.toolAim){
+    const aimed=this.toolAim;this.toolAim=null;canvas.style.cursor='';
+    this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
+    this.raycaster.setFromCamera(this.pointer,this.world.camera);
+    const ground=this.raycaster.intersectObject(this.world.floor)[0];
+    const robot=this.items.find(x=>x.userData.editorId===aimed.robotId);
+    const tool=this.items.find(x=>x.userData.editorId===aimed.toolId);
+    if(!ground){this.toast('Click visible ground to dig');}
+    else{
+     const front=this.raycaster.intersectObjects(this.items,true).find(hit=>{
+      let node=hit.object;while(node.parent&&!this.items.includes(node))node=node.parent;
+      return node!==robot&&node!==tool;
+     });
+     if(front&&front.distance<ground.distance-.05)this.toast('Ground is hidden by another object; choose an unobstructed spot');
+     else this.performToolUse(robot,tool,ground.point);
+    }
+    e.solviObjectPicked=true;e.preventDefault();e.stopImmediatePropagation();return;
+   }
    this.pointer.set(e.clientX/innerWidth*2-1,1-e.clientY/innerHeight*2);
    this.raycaster.setFromCamera(this.pointer,this.world.camera);
    const smart=this.hitSmartScreen(this.raycaster);if(smart&&this.activateSmartScreen(smart)){e.solviObjectPicked=true;return;}
@@ -1227,6 +1252,7 @@ export class SceneEditor{
     const ground=this.raycaster.intersectObject(this.world.floor)[0];if(ground){setRobotDestination(this.selected,ground.point);this.queueSave(this.selected);}}
   },true);
   window.addEventListener('keydown',e=>{
+   if(e.key==='Escape'&&this.toolAim){this.toolAim=null;canvas.style.cursor='';this.toast('Dig target cancelled');e.preventDefault();return;}
    if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)||document.activeElement?.isContentEditable)return;
    if(e.shiftKey&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.repeat&&e.code==='KeyI'&&this.controlMode==='robot'&&this.controlledRobot()){
     e.preventDefault();const bot=this.controlledRobot();
@@ -1245,6 +1271,7 @@ export class SceneEditor{
      }
     }else if(e.code==='KeyO'){if(!this.carry.throw(bot))this.toast('Pick up an object with I before pressing O');}
     else if(e.code==='KeyB')this.inventory.show(bot);
+    else if(e.code==='KeyU'){const held=this.inventory.heldFor(bot,'right')||this.inventory.heldFor(bot,'left');if(!held||!this.inventory.useHeldTool(bot,held))this.toast('Hold a usable tool first (B → Held)');}
     else if(e.code==='KeyJ'){
      if(!standUp(bot,this)){
       const target=this.items.filter(o=>o!==bot).map(o=>({o,plan:seatPlan(o,bot.position)})).filter(x=>x.plan).sort((a,b)=>a.plan.spot.distanceToSquared(bot.position)-b.plan.spot.distanceToSquared(bot.position))[0]?.o;
@@ -1549,6 +1576,18 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
    if(field==='bone')element.value=grip.bone;
    else if(field==='followRotation')element.checked=grip.followRotation;
    else element.value=grip[field][Number(element.dataset.axis)];
+  }
+  const animSelect=byId('toolActionClip');
+  if(animSelect){
+   for(const item of [...animSelect.querySelectorAll('option[data-animation]')])item.remove();
+   const current=cleanToolAnimationName(obj.userData.inventory?.actionClip||'');
+   for(const name of (robot?.userData?.robotAvailableActions||[]).filter(n=>typeof n==='string'&&/^[\w .:-]{1,100}$/.test(n)).slice(0,140)){
+    const option=document.createElement('option');option.value=name;option.textContent='GLB · '+name;option.dataset.animation='1';animSelect.append(option);
+   }
+   if(current&&![...animSelect.options].some(o=>o.value===current)){
+    const opt=document.createElement('option');opt.value=current;opt.textContent='Saved unavailable clip · '+current;opt.dataset.animation='1';animSelect.append(opt);
+   }
+   animSelect.value=current;animSelect.disabled=!this.canEdit(obj);
   }
   byId('toolGripReset').disabled=!this.canEdit(obj);
  }
@@ -2581,6 +2620,77 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     for(const item of this.items){if(item.userData.editorKind!=='robot')continue;
       if(item.userData.robotTelemetry&&item.userData.robotMission)sampleMovementTelemetry(item.userData.robotTelemetry,item);
       if(item.userData.robotMission&&this.robotPathDebugVisible(item))trackRobotPathDebug(this.world,item);}
+  }
+  aimHeldTool(robot,tool){
+    if(!this.canEdit(robot)||!this.canEdit(tool)||tool?.userData?.storage?.type!=='held'||tool.userData.storage.holderId!==robot?.userData?.editorId||tool.userData?.furniture?.variant!=='shovel')return false;
+    this.toolAim={robotId:robot.userData.editorId,toolId:tool.userData.editorId};
+    this.world.renderer.domElement.style.cursor='crosshair';
+    const panel=byId('robotInventoryPanel');if(panel)panel.hidden=true;
+    this.toast('Click bare ground within 2.8 m of the avatar to dig; Esc cancels.');return true;
+  }
+  startToolActionAnimation(robot,variant,chosen=''){
+    const clip=resolveToolAnimation(variant,robot.userData.robotAvailableActions||[],chosen);
+    if(!clip||!robot.userData.robotAnimator?.actions?.has('clip:'+clip)){
+      if(variant==='shovel'&&chosen!=='none'){
+        robot.userData.robotToolAction={mode:'procedural-dig',elapsed:0,duration:1.35};
+        robot.userData.robotPlaying=null;
+        window.solviRoomSocket?.send({type:'robot-tool-use',id:robot.userData.editorId,tool:variant,clip:'procedural:digging',seq:++this.robotActionSeq});
+        return true;
+      }
+      return false;
+    }
+    const duration=Math.min(8,Math.max(.3,robot.userData.robotAnimator.clipDuration('clip:'+clip)||1.3));
+    robot.userData.robotToolAction={clip:'clip:'+clip,elapsed:0,duration};
+    robot.userData.robotPlaying=null;
+    window.solviRoomSocket?.send({type:'robot-tool-use',id:robot.userData.editorId,tool:variant,clip,seq:++this.robotActionSeq});
+    return true;
+  }
+  applyRemoteRobotToolUse(packet){
+    const robot=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===packet?.id);
+    if(!robot||!TOOL_TYPES.includes(packet?.tool))return;
+    const stored=this.items.find(o=>o.userData.storage?.type==='held'&&o.userData.storage.holderId===packet.id&&o.userData.furniture?.variant===packet.tool);
+    if(!stored)return;
+    if(packet.clip==='procedural:digging'&&packet.tool==='shovel'){
+      robot.userData.robotToolAction={mode:'procedural-dig',elapsed:0,duration:1.35};
+      robot.userData.robotPlaying=null;return;
+    }
+    const clip=resolveToolAnimation(packet.tool,robot.userData.robotAvailableActions||[],packet.clip||'');
+    if(!clip||!robot.userData.robotAnimator?.actions?.has('clip:'+clip))return;
+    robot.userData.robotToolAction={clip:'clip:'+clip,elapsed:0,duration:Math.min(8,Math.max(.3,robot.userData.robotAnimator.clipDuration('clip:'+clip)||1.3))};
+    robot.userData.robotPlaying=null;
+  }
+  performToolUse(robot,tool,target=null){
+    if(!robot||!tool||!this.items.includes(robot)||!this.items.includes(tool)||!this.canEdit(robot)||!this.canEdit(tool)||tool.userData.storage?.type!=='held'||tool.userData.storage.holderId!==robot.userData.editorId)return false;
+    const variant=tool.userData.furniture?.variant;
+    if(!TOOL_TYPES.includes(variant)){this.toast('This item does not have a tool action');return false;}
+    if(variant!=='shovel'){
+      const animated=this.startToolActionAnimation(robot,variant,tool.userData.inventory?.actionClip);
+      this.toast(animated?`${TOOL_ACTIVITIES[variant]?.label||'Tool animation'} played (no world effect configured)`:`No matching ${TOOL_ACTIVITIES[variant]?.label||'tool'} animation in this avatar. Choose a clip in Tool grip settings.`);
+      return animated;
+    }
+    const point=target||digAheadPoint(robot);
+    if(!point){this.toast('Unable to find a digging position');return false;}
+    const ray=new THREE.Raycaster(new THREE.Vector3(point.x,30,point.z),new THREE.Vector3(0,-1,0),0,100);
+    const ground=ray.intersectObject(this.world.floor)[0];
+    if(!ground){this.toast('The dig location is outside the ground');return false;}
+    const candidates=this.items.map(o=>{
+      if(o===robot||o===tool||o.userData?.storage||!o.visible)return o;
+      // Other avatars occupy a small feet-centred capsule, not their animated
+      // GLB's potentially huge mesh bounds. Digging at someone's feet is blocked.
+      const b=o.userData.editorKind==='robot'?{min:{x:o.position.x-.42,y:o.position.y,z:o.position.z-.42},max:{x:o.position.x+.42,y:o.position.y+1.8,z:o.position.z+.42}}:new THREE.Box3().setFromObject(o);
+      return {name:o.name,visible:o.visible,userData:o.userData,boundingBox:b};
+    });
+    const check=validDigTarget(robot,ground.point,candidates);
+    if(!check.ok){this.toast(check.reason);return false;}
+    const site=objectFor('furniture');rebuildFurniture(site,{variant:'excavation'});
+    site.name=`${robot.name} · dig site`;
+    site.position.set(ground.point.x,ground.point.y+.012,ground.point.z);
+    site.userData.physics={mode:'off'};site.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
+    this.items.push(site);this.world.scene.add(site);this.physics.sync(site);
+    this.recordEdit(null,this.snapshot(site));this.queueSave(site);this.refreshList();
+    const animated=this.startToolActionAnimation(robot,variant,tool.userData.inventory?.actionClip);
+    this.toast(animated?'Digging · persistent excavation mark created':'Excavation mark created without animation (disabled in tool settings)');
+    return true;
   }
   triggerRobotCombat(robot,action){
     if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot))return false;

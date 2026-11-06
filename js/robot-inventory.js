@@ -8,6 +8,7 @@ import {makeFurniture} from './primitive-properties.js';
 import {fridgeSlotPose} from './interactive-props.js';
 import {applyEditMode,isEditMode} from './edit-mode.js';
 import {HANDS,isToolObject,updateHeldPose,cleanToolGripProfile} from './held-equipment.js';
+import {TOOL_ACTIVITIES,cleanToolAnimationName} from './tool-activities.js';
 
 export const INVENTORY_CATEGORIES=Object.freeze(['world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable']);
 export const INVENTORY_SIZES=Object.freeze(['pocket','bag']);
@@ -23,6 +24,7 @@ export function cleanInventory(raw){
  if(!raw||typeof raw!=='object')return {category:'world',size:'pocket',consumable:false};
  const category=INVENTORY_CATEGORIES.includes(raw.category)?raw.category:'world';
  return {...{category,size:INVENTORY_SIZES.includes(raw.size)?raw.size:'pocket',consumable:raw.consumable===true},...(raw.attachment?{attachment:cleanWearAttachment(raw.attachment)}:{}),
+  ...(raw.actionClip?{actionClip:cleanToolAnimationName(raw.actionClip)}:{}),
   ...(raw.grip&&typeof raw.grip==='object'&&['left','right'].some(h=>raw.grip[h])?{grip:Object.fromEntries(['left','right'].filter(h=>raw.grip[h]).map(h=>[h,cleanToolGripProfile(raw.grip[h])]))}:{})};
 }
 export function cleanStorage(raw){
@@ -273,10 +275,13 @@ export class RobotInventory{
   if(details){details.open=true;details.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
   return true;
  }
+ aimHeldTool(robot,obj){
+  if(!this.owned(robot,obj)||obj.userData.storage?.type!=='held'||obj.userData.storage.holderId!==stableId(robot)||obj.userData.furniture?.variant!=='shovel')return false;
+  return this.editor.aimHeldTool?.(robot,obj)===true;
+ }
  useHeldTool(robot,obj){
   if(!this.owned(robot,obj)||obj.userData.storage?.type!=='held'||obj.userData.storage.holderId!==stableId(robot))return false;
-  // No tool operation is claimed until a real digging/sawing/sweeping action exists.
-  this.editor.toast?.(`${obj.name} is equipped. Tool actions are not yet available.`);return false;
+  return this.editor.performToolUse?.(robot,obj)===true;
  }
  show(robot){if(!robot||robot.userData.editorKind!=='robot')return;this.activeRobot=robot;const panel=document.getElementById('robotInventoryPanel');if(panel)panel.hidden=false;this.render();}
  updatePortrait(robot){
@@ -333,7 +338,11 @@ export class RobotInventory{
    if(item.userData.storage?.type==='worn'){action('Front / Back',this.moveBag);action('Take off',this.drop);}
    else if(item.userData.storage?.type==='held'){action('Store',this.stow);if(isToolObject(item))action('Grip',this.configureGrip);action('Switch hand',this.swapHand);}
    else {action('Hold',this.hold);action(item.userData.storage.type==='pocket'?'To bag':'To pocket',this.transfer);}
-   if(item.userData.storage?.type==='held'&&isToolObject(item))action('Use',this.useHeldTool);
+   if(item.userData.storage?.type==='held'&&isToolObject(item)){
+    const variant=item.userData.furniture?.variant,activity=TOOL_ACTIVITIES[variant];
+    action(variant==='shovel'?'Dig ahead':activity?.label||'Use',this.useHeldTool);
+    if(variant==='shovel')action('Aim dig',this.aimHeldTool);
+   }
    if(cleanInventory(item.userData.inventory).consumable)action(cleanInventory(item.userData.inventory).category==='food'?'Eat':'Use',this.use);
    action('Drop',this.drop);rows.append(line);
   }

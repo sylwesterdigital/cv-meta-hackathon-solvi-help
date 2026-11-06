@@ -1,3 +1,12 @@
+# v0.2.205 — Shovel digging, per-tool animations and world effects (2026-11-06)
+
+- `Inventory → Held` retains Drop, Store, Switch hand, Grip. Shovel adds **Dig ahead** and **Aim dig**; keyboard **U** uses the held tool.
+- One-click digging within reach or click-to-aim creates a saved excavation *surface mark* with an earth rim. Invalid distant or obstructed sites are rejected before a scene write.
+- Each tool may select a GLB clip via Tool grip settings. Authored Digging/Chopping/Raking/Sweeping/Mopping/Sawing clips play when supplied. The bundled GLB has no Digging clip; a short procedural digging pose is available automatically.
+- World footprint sync uses the normal object scene persistence; tool motion events use verified owner + held-tool WebSocket relaying.
+- The base terrain is a flat non-deformable floor: this release does **not** cut a collision-enabled hole, excavate a soil volume or provide functional chopping/sawing/sweeping, and tools are not weapons in this workflow.
+- No database migration; existing rooms, media assets, avatars, original tool grips and earlier release history are preserved.
+
 # v0.2.204 — Editable animated tool grip and bone attachment (2026-11-05)
 
 - Add per-tool, per-hand Grip settings: actual avatar rig bone, follow bone rotation, hand-space X/Y/Z position, rotation degrees, and tool-local grip point. This replaces the one-tilt-fits-all approach from v0.2.200.

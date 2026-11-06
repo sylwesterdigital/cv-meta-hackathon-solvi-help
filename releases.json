@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.204",
+  "currentVersion": "0.2.205",
   "releases": [
+    {
+      "version": "0.2.205",
+      "publishedAt": "2026-11-06T01:06:19Z",
+      "changes": [
+        "Shovel Use now performs digging at open ground directly ahead or at a clicked target within reach, creating a persistent excavation footprint with owner and room revision.",
+        "An authored Digging clip is selected when the avatar GLB provides one; the bundled avatar has no Digging clip, so a lightweight procedural arm-and-spine motion is used by default.",
+        "Add configurable per-tool action clip choices, an authenticated WebSocket pose relay, and strict shared realm validation for excavation and held-tool animation events.",
+        "Retain B \u2192 Held \u2192 Drop, Store, Switch hand, Grip, all previous changes and original media assets. Excavation is a visual ground marker, not physical ground cutting; other tool actions are optional animation only."
+      ]
+    },
     {
       "version": "0.2.204",
       "publishedAt": "2026-11-06T00:16:01Z",
@@ -319,17 +329,6 @@
         "Create plank, mesh and metal-rod fence presets, editable plant hedges and solid perimeter walls with configurable spacing and dimensions.",
         "Persist each infrastructure path as one scene furniture object with inspector controls, preset compatibility, multiplayer sync, undo and a static collider for structural surfaces.",
         "Validate all new options and path coordinates in the backend, preserve original avatar assets and run syntax, checksum, version and regression tests before release."
-      ]
-    },
-    {
-      "version": "0.2.172",
-      "publishedAt": "2026-11-03T19:46:30Z",
-      "changes": [
-        "Fix an uncommented note in js/editor.js that caused node --check to reject the full v0.2.171 deployment before tests could run.",
-        "Repair TV and monitor HLS startup: attach MediaSource before requesting the playlist, wait for HLS manifest and media metadata, and start playback only once ready.",
-        "Retry muted playback when browser autoplay rules block remote audio; preserve spatial audio and existing screen controls.",
-        "Surface failed stream playback in the in-world menu instead of leaving a black/blank monitor, and apply the same readiness handling to smart speakers.",
-        "Add a release regression that checks JavaScript syntax for every shipped JS/MJS file and tests HLS event ordering, media readiness, and playback fallback."
       ]
     }
   ]
