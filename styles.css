@@ -2783,3 +2783,6 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #propertiesPanel #toolGripDetails .tool-grip-advanced>summary{font-size:11px!important;font-weight:500!important;padding:2px 0!important}
 #propertiesPanel #toolGripDetails .tool-grip-advanced[open]{display:grid!important;gap:4px!important}
 @media(max-width:375px){#propertiesPanel #toolGripDetails .tool-grip-line{grid-template-columns:59px minmax(0,1fr)!important}#propertiesPanel #toolGripDetails .tool-grip-angle-line{grid-template-columns:59px minmax(0,1fr) 27px!important}#propertiesPanel #toolGripDetails .tool-grip-attach{grid-template-columns:minmax(0,.75fr) minmax(0,1.25fr) auto!important}}
+
+/* v0.2.208: short functional-backpack / beverage action bar, consistent with the existing compact inventory styling. */
+#robotInventoryPanel #inventoryStowBag:not([hidden]),#robotInventoryPanel #inventoryAvatarBackpack:not([hidden]){display:inline-flex;align-items:center;min-height:30px}

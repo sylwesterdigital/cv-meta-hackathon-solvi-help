@@ -61,8 +61,8 @@ test('the add menu, inspector and renderer share the same persisted vegetation v
  const editor=read('js/editor.js'),furniture=read('js/primitive-properties.js'),html=read('index.html');
  for(const kind of v.VEGETATION_TYPES){assert.ok(editor.includes(kind));assert.ok(furniture.includes('VEGETATION_TYPES'));}
  assert.match(editor,/startVegetationPlot/);assert.match(html,/id="vegetationDrawPanel"/);
- assert.match(html,/procedural-vegetation\.js\?v=0\.2\.207/);
- assert.match(html,/vegetation-drawing\.js\?v=0\.2\.207/);
+ assert.match(html,/procedural-vegetation\.js\?v=0\.2\.209/);
+ assert.match(html,/vegetation-drawing\.js\?v=0\.2\.209/);
 });
 test('backend validates new bounded plant settings and stores nature presets',()=>{
  const server=read('backend/server.py'),preset=read('js/object-preset-data.js'),gallery=read('js/object-presets.js');

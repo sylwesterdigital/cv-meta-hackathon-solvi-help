@@ -1,3 +1,18 @@
+# v0.2.209 — Opt-in active exploration and robot-to-robot visits (2026-11-06)
+
+- Add a separately enabled six-second **life loop** for idle, editable robots. The loop plans a real 11–19m exploration route or a novel object/peer approach, using existing A* collision checks and locomotion.
+- Preserve human task priority and saved work orders, and add a bounded server-side 22s lease so different tabs cannot initiate the same robot activity at once.
+- Persist rate-limited, one-time, client-reported movement results to existing robot memory without claiming camera proof; optionally collect raw local head-camera frames on arrival.
+- Allow one evidence-seeking peer conversation after an actual visit, subject to the existing robot speech cooldown and proactive-conversation setting.
+- Does **not** enable unrestricted scene building, billed Meta calls on each tick or unattended server execution. No schema migration or original assets edited.
+
+# v0.2.208 — Functional avatar backpacks and drinking (2026-11-06)
+
+- I pickup/drop, Shift+I direct backpack storage, U drinking for cans/bottles, B inventory. Newly spawned drinks are pickable and consumable by default.
+- An avatar-integrated backpack can be explicitly enabled through Inventory → Backpack when an actual `worn` backpack scene object does not already exist; this enables persistent storage in the visible backpack without duplicating geometry.
+- Drinking leaves an empty can/bottle, rather than deleting the item. Legacy temporarily carried drinks can be converted to Held.
+- Server validates backpack flag, permissions, and bag references; deleting the holder releases bag contents. No SQLite migration.
+
 # v0.2.207 — I-key pickup/drop and Transform-style grip editor (2026-11-06)
 
 - Press **I** to pick up a nearby tool or **drop the equipped tool**; never attempt backpack storage from I. Right hand takes priority, then left. **B** toggles Inventory; **U** uses the equipped tool, Shift+I handles a backpack and O throws transient carried objects.

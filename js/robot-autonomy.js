@@ -594,5 +594,5 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
  window.addEventListener('solvi:room-changed',()=>{restoreSequence++;stopAll(false);});
  window.addEventListener('solvi:session-lost',()=>{restoreSequence++;stopAll(false);});
  window.addEventListener('pagehide',()=>{restoreSequence++;stopAll(false);});
- refresh();return {stopAll,refresh,loadSaved};
+ refresh();return {stopAll,refresh,loadSaved,isActive:id=>runs.has(id)};
 }

@@ -1,3 +1,28 @@
+# SOLVI.help Master LLM Handover — v0.2.209
+
+## v0.2.209 — bounded active robot life
+
+Built from full v0.2.208 application. New `js/robot-life.js` and `js/robot-life-core.js` connect an opt-in six-second, free/local decision scheduler to actual collision-checked movement. `brain.initiativeMove` is a separately saved boolean, false by default. Camera analysis billing and work-order goal planning remain separate; robots may ask peers one practical question only after a confirmed arrival and if Proactive conversation is also enabled.
+
+`/api/robots/life/lease` checks server room scene, permissions, brain toggle, active human commands and enabled work orders, and reserves a one-controller 22s lease. `/api/robots/life/record` validates the one-time lease token and stores explicitly **client-reported** movement outcomes in existing robot memory (not falsely inferred camera knowledge). No world edit authorization is relaxed. All physics/editor routes remain authoritative. No database migration, no media/GLB changes. See `docs/RELEASE_0.2.209_SPEC.md`. Verify actual movement, no manual-task preemption and robot discussions in a live two-client session after the Mac watcher succeeds.
+
+---
+
+# SOLVI.help Master LLM Handover — v0.2.208
+
+## v0.2.208: hand → backpack → drink consistency
+
+**Verification:** 1,006/1,006 JavaScript regression tests passed from the extracted watcher ZIP; 488/488 manifest SHA-256 file hashes match, and all 111 original assets match v0.2.207 byte-for-byte. All six standalone backend checks, 13 Python syntax checks, and installer syntax passed. Flask HTTP integration and live two-client behaviour are unverified; no production deployment is claimed.
+
+
+**Base:** full v0.2.207 release (486 app files). `js/robot-inventory.js` previously recognised only separate worn backpack scene objects. This caused the user-visible mismatch when a backpack is integrated into the avatar GLB; the new Backpack tab offers **Enable avatar backpack** so there is an explicit, persistent functional bag without pretending a GLB texture is automatically a container. `robot.userData.backpackEnabled` is saved in `js/editor.js` as a boolean on the robot scene object. `type:bag` can reference either a real worn backpack item ID or an activated robot ID. Backend `valid_held_scene`, `/api/scene/object` ownership checks, and robot deletion cleanup cover these references. No SQLite schema migration.
+
+**Controls:** I remains pick-up/drop; Shift+I stores a held item into a functional backpack and opens Backpack when hands are empty; B toggles Inventory; U uses a tool or drinks a can/bottle in the hand. `js/editor.js` now creates cans/bottles as pickable, `category=food`, `size=pocket`, `consumable=true`; inventory `pickupNearest` holds them rather than secretly putting them in pockets. When an existing can/bottle is in transient `robotCarry`, U or Shift+I releases the transient attachment via its normal network path and promotes the same object ID to persistent `held` before applying the requested action. `drink()` changes its name to Empty Can/Bottle and `consumable=false`, retains the physical object and queues object-level scene save. It is a consumable state change, not a simulated fluid or authored drinking animation.
+
+**Compatibility:** real scene `worn` backpacks retain original logic; built-in activation is explicit, not inferred by unlabelled model meshes. `stowToBag` checks bag owner permissions and capacity, `setAvatarBackpack` blocks disabling it with contents, and `reconcile` does not destructively erase temporarily unresolved bag claims during room-delta ordering. All original GLB/media assets must remain byte-for-byte unchanged. No new browser dependencies. Full Flask HTTP and live two-client tests must be executed via Mac watcher / production; no deployment claim before its success. Preserves v0.2.207 fixes and preceding releases.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.207
 
 ## v0.2.207 — I-key toggle and compact tool grip inspector

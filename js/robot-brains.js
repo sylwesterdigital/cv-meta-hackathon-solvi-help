@@ -170,8 +170,9 @@ export function initRobotBrains(world,api,getRoom,toast){
    $('brainsGender').value=['female','male','nonbinary'].includes(robot.userData.robotBrain?.gender)?robot.userData.robotBrain.gender:'unspecified';
    $('brainsGender').disabled=!window.solviEditor.canEdit(robot);
    $('brainsInitiative').checked=Boolean(robot.userData.robotBrain?.initiative);
+   $('brainsInitiativeMove').checked=robot.userData.robotBrain?.initiativeMove===true;
    $('brainsInitiativeVision').checked=robot.userData.robotBrain?.initiativeVision!==false;
-   $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);$('brainsInitiativeVision').disabled=!window.solviEditor.canEdit(robot);
+   $('brainsInitiative').disabled=!window.solviEditor.canEdit(robot);$('brainsInitiativeMove').disabled=!window.solviEditor.canEdit(robot);$('brainsInitiativeVision').disabled=!window.solviEditor.canEdit(robot);
    $('saveRobotBrains').disabled=!window.solviEditor.canEdit(robot);$('saveRobotChatPortrait').disabled=!window.solviEditor.canEdit(robot);
    $('brainsVisionResult').textContent='Capture eyes, then Describe scene with Muse Spark or Find object with SAM 3.1.';
    const previous=latestFrames.get(robot.userData.editorId);
@@ -195,7 +196,7 @@ export function initRobotBrains(world,api,getRoom,toast){
  $('saveRobotBrains').onclick=()=>{
    if(!activeRobot||!window.solviEditor.canEdit(activeRobot)){toast('Robot is read-only');return;}
    const before=window.solviEditor.snapshot(activeRobot);
-   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),gender:$('brainsGender').value,initiative:$('brainsInitiative').checked,initiativeVision:$('brainsInitiativeVision').checked};
+   activeRobot.userData.robotBrain={...activeRobot.userData.robotBrain,...Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,$(id).value.trim()])),gender:$('brainsGender').value,initiative:$('brainsInitiative').checked,initiativeMove:$('brainsInitiativeMove').checked,initiativeVision:$('brainsInitiativeVision').checked};
    window.solviEditor.recordEdit(before,window.solviEditor.snapshot(activeRobot));
    window.solviEditor.queueSave(activeRobot);
    toast(activeRobot.name+' identity saved');

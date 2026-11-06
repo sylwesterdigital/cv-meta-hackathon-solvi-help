@@ -232,7 +232,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.207',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.209',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -2682,6 +2682,88 @@ ROBOT_PERCEPTION_USER_LAST={}
 ROBOT_PERCEPTION_PENDING={}
 ROBOT_PERCEPTION_DAILY={}
 
+# Browser-only roaming lease: one authorised controller per robot per 22s.
+# No model calls, no unattended server-side scene edits.
+ROBOT_LIFE_LEASES={}
+ROBOT_LIFE_RECORD_LAST={}
+
+@app.post('/api/robots/life/lease')
+def robot_life_lease():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    rid=str(data.get('robot_id',''))[:100]
+    with db() as con:
+        row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+        work=con.execute('SELECT enabled FROM robot_work_orders WHERE room_id=? AND robot_id=?',(room_id,rid)).fetchone()
+    objects=json.loads(row['payload']) if row else []
+    robot=next((o for o in objects if o.get('kind')=='robot' and o.get('id')==rid),None)
+    if not robot:return json_error('Robot missing',404)
+    if not may_edit(user['id'],robot,room_policy(room_id)):return json_error('Robot controller permission required',403)
+    brain=robot.get('brain') if isinstance(robot.get('brain'),dict) else {}
+    if brain.get('initiativeMove') is not True:return jsonify(granted=False,reason='Autonomous roaming is disabled')
+    if work and work['enabled']:return jsonify(granted=False,reason='Saved autonomous work order has priority',retry_after_seconds=20)
+    stamp=time.time();key=(room_id,rid)
+    with robot_task_lock:
+        if any(t['robot_id']==rid and t['room']==room_id and not t['done']
+               and stamp-t['created']<900 for t in ROBOT_TASKS.values()):
+            return jsonify(granted=False,reason='Explicit human robot task has priority',retry_after_seconds=20)
+        last=ROBOT_LIFE_LEASES.get(key)
+        if last and stamp-last[0]<22:return jsonify(granted=False,reason='Another life tick owns the current lease',
+                                      retry_after_seconds=max(1,int(22-(stamp-last[0]))))
+        token=secrets.token_hex(12)
+        ROBOT_LIFE_LEASES[key]=(stamp,token,user['id'],False)
+        for old,issued in list(ROBOT_LIFE_LEASES.items()):
+            if stamp-issued[0]>180:ROBOT_LIFE_LEASES.pop(old,None)
+    return jsonify(granted=True,token=token,lease_seconds=22,execution='visible browser only')
+
+@app.post('/api/robots/life/record')
+def robot_life_record():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    rid=str(data.get('robot_id',''))[:100]
+    task_id=str(data.get('task_id',''))
+    if not re.fullmatch(r'life-[0-9a-f]{24}',task_id):return json_error('Invalid life task receipt',400)
+    status_value=str(data.get('status',''))
+    if status_value not in ('arrived','blocked','failed','partial','stopped'):return json_error('Invalid route outcome',400)
+    metres=data.get('metres')
+    if isinstance(metres,bool) or not isinstance(metres,(int,float)) or not math.isfinite(metres) or not 0<=metres<=600:
+        return json_error('Invalid movement distance',400)
+    target_id=str(data.get('target_id',''))[:100]
+    with db() as con:
+        row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+    objects=json.loads(row['payload']) if row else []
+    bot=next((o for o in objects if o.get('kind')=='robot' and o.get('id')==rid),None)
+    if not bot:return json_error('Robot missing',404)
+    if not may_edit(user['id'],bot,room_policy(room_id)):return json_error('Robot permission required',403)
+    brain=bot.get('brain') if isinstance(bot.get('brain'),dict) else {}
+    if brain.get('initiativeMove') is not True:return json_error('Autonomous roaming is disabled',403)
+    if target_id and not any(o.get('id')==target_id for o in objects):target_id=''
+    target=next((o for o in objects if o.get('id')==target_id),None)
+    label=(str(target.get('name',''))[:70] if target else 'new ground')
+    stamp=time.time();key=(room_id,rid)
+    with robot_task_lock:
+        lease=ROBOT_LIFE_LEASES.get(key)
+        if (not lease or lease[2]!=user['id'] or lease[3] or stamp-lease[0]>180 or
+                not hmac.compare_digest(lease[1],task_id[5:])):
+            return json_error('Life task receipt has no active authorised lease',403)
+        # Mark the receipt consumed before any persistence to forbid replay.
+        ROBOT_LIFE_LEASES[key]=(lease[0],lease[1],lease[2],True)
+        if stamp-ROBOT_LIFE_RECORD_LAST.get(key,0)<25:
+            return jsonify(saved=False,reason='Memory consolidation cooldown')
+        ROBOT_LIFE_RECORD_LAST[key]=stamp
+    event=f'Life activity (client-reported): {status_value} near {label}; measured displacement {metres:.1f} m. This does not prove visual identification.'
+    with db() as con:
+        con.execute('INSERT INTO robot_memories VALUES (?,?,?,?,?)',(str(uuid.uuid4()),room_id,rid,event,now()))
+        con.execute('DELETE FROM robot_memories WHERE room_id=? AND robot_id=? AND id NOT IN (SELECT id FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 30)',(room_id,rid,room_id,rid))
+    return jsonify(saved=True,event=event)
+
+
 def latest_robot_visual_memory(room_id,robot_id):
     with db() as con:
         row=con.execute('SELECT event,created FROM robot_memories WHERE room_id=? AND robot_id=? AND event LIKE ? ORDER BY created DESC LIMIT 1',
@@ -3875,6 +3957,11 @@ def valid_held_scene(objects):
         key=(storage['holderId'],storage['hand'])
         if key in seen:return False
         seen.add(key)
+    for obj in objects:
+        storage=obj.get('storage') if isinstance(obj,dict) else None
+        if not isinstance(storage,dict) or storage.get('type')!='bag':continue
+        reference=ids.get(storage.get('bagId'))
+        if reference and reference.get('kind')=='robot' and reference.get('backpackEnabled') is not True:return False
     return True
 
 def valid_smart_channels(value):
@@ -4110,6 +4197,7 @@ def set_scene():
             if 'mount' in media and not valid_surface_mount(media['mount']):return json_error('Invalid media surface mount')
         if 'seating' in o and (o['kind']!='robot' or not valid_robot_seating(o['seating'])):return json_error('Invalid seating anchor')
         if o['kind']=='robot':
+            if 'backpackEnabled' in o and type(o['backpackEnabled']) is not bool:return json_error('Invalid avatar backpack')
             if 'combat' in o and not valid_robot_combat(o['combat']):return json_error('Invalid robot combat controls')
             if 'animationSpeed' in o and not valid_robot_animation_speed(o['animationSpeed']):return json_error('Invalid robot animation speed')
             if 'throwSettings' in o and not valid_robot_throw_settings(o['throwSettings']):return json_error('Invalid throw settings')
@@ -4117,7 +4205,7 @@ def set_scene():
             if 'runMultiplier' in o and (not isinstance(o['runMultiplier'],(float,int)) or isinstance(o['runMultiplier'],bool) or not math.isfinite(o['runMultiplier']) or not 1<=o['runMultiplier']<=5):return json_error('Invalid run multiplier')
             if 'climbSpeed' in o and (not isinstance(o['climbSpeed'],(float,int)) or isinstance(o['climbSpeed'],bool) or not math.isfinite(o['climbSpeed']) or not .2<=o['climbSpeed']<=4):return json_error('Invalid robot climb speed')
             brain=o.get('brain',{})
-            if not isinstance(brain,dict) or any((k in ('initiative','initiativeVision') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision') and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch','gender','voiceGender','comicEnabled','comicShape','comicFont','comicThought','comicCaps'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8,'gender':12,'voiceGender':12,'comicEnabled':8,'comicShape':12,'comicFont':12,'comicThought':8,'comicCaps':8}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
+            if not isinstance(brain,dict) or any((k in ('initiative','initiativeVision','initiativeMove') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision','initiativeMove') and (k not in {'personality','history','beliefs','triggers','scenario','portrait','voiceProvider','voiceId','voiceName','voiceLang','voiceRate','voicePitch','gender','voiceGender','comicEnabled','comicShape','comicFont','comicThought','comicCaps'} or not isinstance(v,str) or len(v)>{'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8,'gender':12,'voiceGender':12,'comicEnabled':8,'comicShape':12,'comicFont':12,'comicThought':8,'comicCaps':8}[k])) for k,v in brain.items()):return json_error('Invalid robot brain')
             if any(brain.get(k,v) not in values for k,v,values in [('comicEnabled','on',('on','off')),('comicThought','on',('on','off')),('comicShape','rounded',('rounded','oval','cloud')),('comicFont','digital',('digital','comic','sans')),('comicCaps','auto',('auto','upper'))]):return json_error('Invalid comic bubble settings')
             if brain.get('portrait') and not re.fullmatch(r'[0-9a-f-]{36}',brain['portrait']):return json_error('Invalid portrait reference')
             if brain.get('portrait'):
@@ -4194,8 +4282,9 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','combat','animationSpeed','throwSettings','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','followHandRotation','inventory','storage','transformLocked','seating') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','backpackEnabled','combat','animationSpeed','throwSettings','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','followHandRotation','inventory','storage','transformLocked','seating') if key in obj}
         if 'seating' in obj and (obj['kind']!='robot' or not valid_robot_seating(obj['seating'])):return json_error('Invalid seating anchor')
+        if 'backpackEnabled' in obj and (obj['kind']!='robot' or type(obj['backpackEnabled']) is not bool):return json_error('Invalid avatar backpack')
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')
         if obj['kind']=='robot' and 'animationSpeed' in obj and not valid_robot_animation_speed(obj['animationSpeed']):return json_error('Invalid robot animation speed')
         if 'curve' in obj and (obj['kind']!='curve' or not valid_curve_geometry(obj.get('curve'))):return json_error('Invalid curve geometry')
@@ -4239,7 +4328,7 @@ def patch_scene_object():
         if 'brain' in obj:
             if obj['kind']!='robot' or not isinstance(obj['brain'],dict):return json_error('Invalid robot brain')
             limits={'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8,'gender':12,'voiceGender':12}
-            if any((k in ('initiative','initiativeVision') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision') and (k not in limits or not isinstance(v,str) or len(v)>limits[k])) for k,v in obj['brain'].items()):return json_error('Invalid robot brain fields')
+            if any((k in ('initiative','initiativeVision','initiativeMove') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision','initiativeMove') and (k not in limits or not isinstance(v,str) or len(v)>limits[k])) for k,v in obj['brain'].items()):return json_error('Invalid robot brain fields')
             if obj['brain'].get('portrait') and not re.fullmatch(r'[0-9a-f-]{36}',obj['brain']['portrait']):return json_error('Invalid portrait reference')
             if obj['brain'].get('portrait'):
                 with db() as con:portrait=con.execute('SELECT mime FROM media WHERE id=?',(obj['brain']['portrait'],)).fetchone()
@@ -4268,6 +4357,17 @@ def patch_scene_object():
         existing=next((item for item in items if item.get('id')==obj_id),None)
         if existing and not may_edit(user['id'],existing,policy):
             return json_error('Object is owned by another user',403)
+        if action=='upsert' and obj.get('kind')=='robot' and obj.get('backpackEnabled') is False:
+            # The integrated bag is a real persistent container. Reject bypasses
+            # of the client-side empty-before-disable guard.
+            if any(isinstance(item.get('storage'),dict) and item['storage'].get('type')=='bag' and item['storage'].get('bagId')==obj_id for item in items):
+                return json_error('Empty avatar backpack before disabling',409)
+        if action=='upsert' and isinstance(obj.get('storage'),dict) and obj['storage'].get('type')=='bag':
+            bag=next((item for item in items if item.get('id')==obj['storage']['bagId']),None)
+            if not bag:return json_error('Storage backpack is missing',409)
+            if bag.get('kind')=='robot' and bag.get('backpackEnabled') is not True:return json_error('Avatar backpack is not enabled',409)
+            if bag.get('kind')!='robot' and (bag.get('inventory') or {}).get('category')!='backpack':return json_error('Not a backpack',409)
+            if not may_edit(user['id'],bag,policy):return json_error('Backpack belongs to another user',403)
         if action=='upsert' and isinstance(obj.get('storage'),dict) and obj['storage'].get('type')=='held':
             held=obj['storage'];holder=next((item for item in items if item.get('id')==held['holderId'] and item.get('kind')=='robot'),None)
             if not holder:return json_error('Equipment holder is missing',409)
@@ -4282,7 +4382,7 @@ def patch_scene_object():
                 anchor=existing.get('position',[0,0,0])
                 for candidate in items:
                     storage=candidate.get('storage')
-                    if candidate.get('id')==obj_id or not isinstance(storage,dict) or storage.get('holderId')!=obj_id or storage.get('type') not in ('held','pocket','worn'):continue
+                    if candidate.get('id')==obj_id or not isinstance(storage,dict) or not (storage.get('holderId')==obj_id and storage.get('type') in ('held','pocket','worn') or storage.get('type')=='bag' and storage.get('bagId')==obj_id):continue
                     candidate.pop('storage',None)
                     offset=len(released)*.18
                     candidate['position']=[float(anchor[0])+offset, float(anchor[1])+.1, float(anchor[2])+.65+offset]

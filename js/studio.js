@@ -25,6 +25,7 @@ import {initCameraBookmarks} from './camera-bookmarks.js';
 import {initExtendedSettings} from './settings-extended.js';
 import {initRobotRoutines} from './robot-routines.js';
 import {initRobotAutonomy} from './robot-autonomy.js';
+import {initRobotLife} from './robot-life.js';
 import {ROBOT_PATH_ALL_KEY,robotPathVisible,setRobotPath,readPathSelection} from './robot-debug.js';
 
 const $=id=>document.getElementById(id);
@@ -1533,10 +1534,20 @@ function bindUI(world){
  initRobotRoutines({editor,room:()=>activeRoom,toast,
   captureObservation:async(robot,target)=>{const frame=await captureRobotView(world,robot);if(frame?.size)rememberRobotObservationFrame(robot.userData.editorId,frame,`Routine observation of ${target.name} · local frame, no model analysis`);},
   postDiscussion:async(robot,target,subject)=>{if(target.userData.editorKind!=='robot')return;const message=`@${robot.name} @${target.name} discuss ${subject}; compare evidence, pros and cons and respond to each other.`;const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:message,media:[]})});await bubble(response.message);await reactToRobotMessage(response.message);}});
- initRobotAutonomy({editor,api,room:()=>activeRoom,toast,
+ const activeAutonomy=initRobotAutonomy({editor,api,room:()=>activeRoom,toast,
   postDiscussion:async(robot,target,subject)=>{
    if(target.userData.editorKind!=='robot')throw Error('Colleague is not a robot');
    const response=await api.req('/api/robots/autonomy/speak',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:robot.userData.editorId,target_id:target.userData.editorId,text:subject.slice(0,240)})});
+   await bubble(response.message);await reactToRobotMessage(response.message);
+  }});
+
+ // Fast, unbilled exploratory activity is separately opt-in per robot.
+ // Human tasks, saved work orders and direct control always take priority.
+ initRobotLife({editor,api,room:()=>activeRoom,workOrderActive:id=>activeAutonomy?.isActive(id)===true,
+  canRun:()=>document.visibilityState==='visible'&&online&&auth&&me&&window.solviRoom===activeRoom,
+  postDiscussion:async(robot,target,text)=>{
+   const response=await api.req('/api/robots/autonomy/speak',{method:'POST',body:JSON.stringify({
+    room:activeRoom,robot_id:robot.userData.editorId,target_id:target.userData.editorId,text:text.slice(0,240)})});
    await bubble(response.message);await reactToRobotMessage(response.message);
   }});
 

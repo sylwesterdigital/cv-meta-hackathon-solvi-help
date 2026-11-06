@@ -61,13 +61,21 @@ export class RobotInventory{
   const id=stableId(robot),items=this.editor.items;
   const bags=items.filter(o=>cleanInventory(o.userData?.inventory).category==='backpack'&&o.userData?.storage?.type==='worn'&&o.userData.storage.holderId===id);
   const bagIds=new Set(bags.map(stableId));
+  if(robot.userData.backpackEnabled===true)bagIds.add(id);
   return items.filter(o=>o.userData?.storage?.holderId===id||o.userData?.storage?.type==='bag'&&bagIds.has(o.userData.storage.bagId));
  }
  slot(robot,preferred='back'){
   const used=this.entries(robot).filter(o=>o.userData.storage?.type==='worn').map(o=>o.userData.storage.slot);
   return [preferred,preferred==='back'?'front':'back'].find(slot=>!used.includes(slot))||null;
  }
- bagFor(robot){return this.entries(robot).find(o=>o.userData.storage?.type==='worn'&&cleanInventory(o.userData.inventory).category==='backpack')||null;}
+ bagFor(robot){return this.entries(robot).find(o=>o.userData.storage?.type==='worn'&&cleanInventory(o.userData.inventory).category==='backpack')||(robot.userData.backpackEnabled===true?robot:null);}
+ backpackReady(robot){return Boolean(this.bagFor(robot));}
+ setAvatarBackpack(robot,enabled){
+  if(!robot||!this.editor.canEdit(robot))return false;
+  if(!enabled&&this.editor.items.some(o=>o.userData?.storage?.type==='bag'&&o.userData.storage.bagId===stableId(robot))){this.editor.toast?.('Empty the avatar backpack before disabling it');return false;}
+  robot.userData.backpackEnabled=enabled===true;this.editor.queueSave(robot);this.render();
+  this.editor.toast?.(enabled?'Avatar backpack is ready for storage':'Avatar backpack storage disabled');return true;
+ }
  heldFor(robot,hand='right'){return this.entries(robot).find(o=>o.userData.storage?.type==='held'&&o.userData.storage.hand===hand)||null;}
  freeHand(robot,preferred='right'){return [preferred,preferred==='right'?'left':'right'].find(hand=>!this.heldFor(robot,hand))||null;}
  hold(robot,obj,preferred='right'){
@@ -75,13 +83,25 @@ export class RobotInventory{
   const storage=cleanStorage(obj.userData.storage);
   if(storage&&!this.entries(robot).includes(obj))return false;
   if(storage?.type==='worn'||storage?.type==='container')return false;
-  if(!storage&&!this.editor.physics?.enabled){this.editor.toast?.('Enable room Physics to pick up a tool');return false;}
   const hand=this.freeHand(robot,preferred);if(!hand){this.editor.toast?.('Both hands are occupied');return false;}
-  const cfg=cleanInventory(obj.userData.inventory);
+  let cfg=cleanInventory(obj.userData.inventory);
+  const drinkVariant=obj.userData.furniture?.variant;
+  if(cfg.category==='world'&&['can','bottle'].includes(drinkVariant)){
+   cfg=cleanInventory({category:'food',size:'pocket',consumable:!/^Empty /i.test(obj.name)});obj.userData.inventory=cfg;
+  }
   if(cfg.category==='world'||['backpack','wearable','jetpack','parachute'].includes(cfg.category))return false;
   obj.userData.storage={type:'held',holderId:stableId(robot),hand};
   this.applyState(obj);updateHeldPose(robot,obj,hand);this.editor.queueSave(obj);this.render();
   this.editor.toast?.(`${obj.name} held in ${hand} hand`);return true;
+ }
+ stowToBag(robot,obj){
+  if(!this.owned(robot,obj)||!this.entries(robot).includes(obj)||obj.userData.storage?.type!=='held')return false;
+  const bag=this.bagFor(robot);
+  if(!bag){this.editor.toast?.('No functional backpack. Open B → Backpack to activate the avatar backpack.');return false;}
+  if(!this.editor.canEdit(bag)){this.editor.toast?.('Backpack belongs to another participant');return false;}
+  if(this.entries(robot).filter(o=>o.userData.storage?.type==='bag'&&o.userData.storage.bagId===stableId(bag)).length>=24){this.editor.toast?.('Backpack is full');return false;}
+  obj.userData.storage={type:'bag',bagId:stableId(bag)};this.applyState(obj);this.editor.queueSave(obj);this.render();
+  this.editor.toast?.(`${obj.name} → backpack`);return true;
  }
  stow(robot,obj){
   if(!this.owned(robot,obj)||!this.entries(robot).includes(obj)||obj.userData.storage?.type!=='held')return false;
@@ -92,7 +112,7 @@ export class RobotInventory{
   obj.userData.storage=storage;this.applyState(obj);this.editor.queueSave(obj);this.render();return true;
  }
  collect(robot,obj){
-  if(!this.owned(robot,obj)||obj.userData.storage||robot.userData.robotCarry||!this.editor.physics?.enabled)return false;
+  if(!this.owned(robot,obj)||obj.userData.storage||robot.userData.robotCarry)return false;
   const setting=cleanInventory(obj.userData.inventory);if(setting.category==='world')return false;
   const owned=this.entries(robot),id=stableId(robot);
   let storage;
@@ -126,9 +146,20 @@ export class RobotInventory{
   const bag=worn.find(o=>o.userData.storage.slot==='back')||worn[0];
   return bag?this.drop(robot,bag):false;
  }
+ promoteCarriedDrink(robot){
+  const carried=robot?.userData?.robotCarry;
+  if(!carried?.objectId)return null;
+  const obj=this.editor.items.find(o=>stableId(o)===carried.objectId);
+  if(!obj||!['can','bottle'].includes(obj.userData?.furniture?.variant)||!this.owned(robot,obj))return null;
+  // Release the legacy transient hand state through its normal multiplayer
+  // path before using the persistent Held/Backpack protocol.
+  if(!this.editor.carry?.drop?.(robot))return null;
+  if(!this.hold(robot,obj))return null;
+  return obj;
+ }
  pickupNearest(robot){
   const obj=pickableTarget(robot,this.editor.items);
-  return obj&&cleanInventory(obj.userData.inventory).category!=='world'?(isToolObject(obj)?this.hold(robot,obj):this.collect(robot,obj)):false;
+  return obj&&cleanInventory(obj.userData.inventory).category!=='world'?(isToolObject(obj)||cleanInventory(obj.userData.inventory).category==='food'?this.hold(robot,obj):this.collect(robot,obj)):false;
  }
  applyState(obj){
   const storage=cleanStorage(obj.userData?.storage);
@@ -147,8 +178,8 @@ export class RobotInventory{
     obj.visible=false;this.editor.sceneDiagnostic?.('equipment-hand-conflict',{id:stableId(obj),holderId:storage.holderId,hand:storage.hand});continue;
    }claimedHands.add(slot);}
    const ref=storage.type==='bag'?ids.get(storage.bagId):storage.type==='container'?ids.get(storage.containerId):ids.get(storage.holderId);
-   const valid=ref&&(storage.type==='bag'?cleanInventory(ref.userData?.inventory).category==='backpack':storage.type==='container'?ref.userData?.furniture?.variant==='fridge'&&Boolean(fridgeSlotPose(ref.userData.furniture,storage.slot)):ref.userData?.editorKind==='robot');
-   if(!valid&&storage.type==='held'){obj.visible=false;continue;} // Delta ordering: never erase an equipment claim while its holder is loading.
+   const valid=ref&&(storage.type==='bag'?(cleanInventory(ref.userData?.inventory).category==='backpack'||ref.userData?.editorKind==='robot'&&ref.userData.backpackEnabled===true):storage.type==='container'?ref.userData?.furniture?.variant==='fridge'&&Boolean(fridgeSlotPose(ref.userData.furniture,storage.slot)):ref.userData?.editorKind==='robot');
+   if(!valid&&['held','bag'].includes(storage.type)){obj.visible=false;continue;} // Delta ordering: never erase an equipment claim while its owner is loading.
    if(!valid){delete obj.userData.storage;obj.visible=true;this.editor.physics?.sync?.(obj);this.editor.queueSave?.(obj);}
    else this.applyState(obj);
   }
@@ -242,6 +273,20 @@ export class RobotInventory{
   if(!free||free===storage.slot)return false;
   obj.userData.storage={...storage,slot:free};this.editor.queueSave(obj);this.render();return true;
  }
+ drink(robot,obj){
+  const variant=obj?.userData?.furniture?.variant;
+  if(!['can','bottle'].includes(variant)||!this.owned(robot,obj)||obj.userData.storage?.type!=='held'||obj.userData.storage.holderId!==stableId(robot))return false;
+  if(!cleanInventory(obj.userData.inventory).consumable){this.editor.toast?.(`${obj.name} is empty`);return false;}
+  // Drink the contents, do not delete the physical can/bottle. It can still be dropped or recycled.
+  obj.userData.inventory=cleanInventory({...obj.userData.inventory,category:'food',consumable:false});
+  obj.name='Empty '+(variant==='can'?'Can':'Bottle');
+  this.editor.queueSave(obj);this.render();
+  this.editor.toast?.(`Drank ${variant}. Empty ${variant} remains in hand (I to drop, Shift+I to bag).`);return true;
+ }
+ useHeldItem(robot,obj){
+  if(obj?.userData?.furniture&&['can','bottle'].includes(obj.userData.furniture.variant))return this.drink(robot,obj);
+  return this.useHeldTool(robot,obj);
+ }
  use(robot,obj){
   if(!this.entries(robot).includes(obj)||!this.editor.canEdit(obj))return false;
   const cfg=cleanInventory(obj.userData.inventory);
@@ -328,14 +373,19 @@ export class RobotInventory{
    button.disabled=!held||!this.editor.canEdit(robot)||!this.editor.canEdit(held);
    button.textContent=held?`Drop ${held.name} (${hand}) · I`:`Drop ${hand}-hand tool · I`;
   }
+  const firstHeld=this.heldFor(robot,'right')||this.heldFor(robot,'left');
+  const storeBtn=document.getElementById('inventoryStowBag');
+  if(storeBtn){storeBtn.hidden=this.tab!=='held'||!firstHeld;storeBtn.disabled=!this.editor.canEdit(robot)||!this.editor.canEdit(firstHeld);}
+  const avatarBagBtn=document.getElementById('inventoryAvatarBackpack');
+  if(avatarBagBtn){const worn=this.entries(robot).some(o=>o.userData.storage?.type==='worn'&&cleanInventory(o.userData.inventory).category==='backpack');avatarBagBtn.hidden=this.tab!=='bag'||worn;avatarBagBtn.disabled=!this.editor.canEdit(robot);avatarBagBtn.textContent=robot.userData.backpackEnabled?'Disable avatar backpack':'Enable avatar backpack';}
   const hint=document.getElementById('inventoryActionHint');
-  if(hint)hint.textContent=this.tab==='held'?'I · pick up / drop     U · use tool     B · close inventory':'I · pick up / drop     B · close inventory';
+  if(hint)hint.textContent=this.tab==='held'?'I · pick up / drop   Shift+I · backpack   U · use / drink   B · close':this.tab==='bag'?(this.backpackReady(robot)?'Backpack ready · Shift+I stores an item held in hand':'Visible avatar outfit is not automatically storage. Enable avatar backpack here.'):'I · hold / drop   B · close';
   const rows=document.getElementById('robotInventoryItems');rows.replaceChildren();
   const items=this.entries(robot).filter(obj=>{
    const storage=obj.userData.storage;
    return this.tab==='held'?storage.type==='held':this.tab==='pocket'?storage.type==='pocket':this.tab==='wearable'?storage.type==='worn':storage.type==='bag';
   });
-  if(!items.length){const empty=document.createElement('p');empty.className='small-note';empty.textContent='No items in this category';rows.append(empty);return;}
+  if(!items.length){const empty=document.createElement('p');empty.className='small-note';empty.textContent=this.tab==='bag'?(this.backpackReady(robot)?'Backpack empty':'No active backpack storage'):'No items in this category';rows.append(empty);return;}
   for(const item of items){
    const line=document.createElement('article');line.className='robot-inventory-item';line.setAttribute('role','listitem');if(item.userData.storage?.type==='held')line.classList.add('is-held');
    const picture=document.createElement('div');picture.className='inventory-item-thumb';
@@ -347,14 +397,15 @@ export class RobotInventory{
    const detail=document.createElement('small');detail.textContent=cleanInventory(item.userData.inventory).category+(item.userData.storage?.slot?' · '+item.userData.storage.slot:'');info.className='inventory-item-info';info.append(name,detail);line.append(info);const actions=document.createElement('div');actions.className='inventory-item-actions';line.append(actions);
    const action=(text,fn)=>{const button=document.createElement('button');button.type='button';button.textContent=text;button.disabled=!this.editor.canEdit(item)||!this.editor.canEdit(robot);button.onclick=()=>fn.call(this,robot,item);actions.append(button);};
    if(item.userData.storage?.type==='worn'){action('Front / Back',this.moveBag);action('Take off',this.drop);}
-   else if(item.userData.storage?.type==='held'){action('Store',this.stow);if(isToolObject(item))action('Grip',this.configureGrip);action('Switch hand',this.swapHand);}
+   else if(item.userData.storage?.type==='held'){action('Store',this.stow);action('To backpack · Shift+I',this.stowToBag);if(isToolObject(item))action('Grip',this.configureGrip);action('Switch hand',this.swapHand);}
    else {action('Hold',this.hold);action(item.userData.storage.type==='pocket'?'To bag':'To pocket',this.transfer);}
    if(item.userData.storage?.type==='held'&&isToolObject(item)){
     const variant=item.userData.furniture?.variant,activity=TOOL_ACTIVITIES[variant];
     action(variant==='shovel'?'Dig · U':activity?.label||'Use · U',this.useHeldTool);
     if(variant==='shovel')action('Aim · click',this.aimHeldTool);
    }
-   if(cleanInventory(item.userData.inventory).consumable)action(cleanInventory(item.userData.inventory).category==='food'?'Eat':'Use',this.use);
+   if(item.userData.storage?.type==='held'&&['can','bottle'].includes(item.userData.furniture?.variant))action(cleanInventory(item.userData.inventory).consumable?'Drink · U':'Empty',this.drink);
+   else if(cleanInventory(item.userData.inventory).consumable)action(cleanInventory(item.userData.inventory).category==='food'?'Eat':'Use',this.use);
    if(item.userData.storage?.type!=='held')action('Drop',this.drop); // Held has one explicit Drop action above this list.
    rows.append(line);
   }
@@ -363,6 +414,8 @@ export class RobotInventory{
   const panel=document.getElementById('robotInventoryPanel');if(!panel)return;
   panel.querySelector('[data-inventory-close]')?.addEventListener('click',()=>panel.hidden=true);
   for(const button of panel.querySelectorAll('[data-inventory-tab]'))button.addEventListener('click',()=>{this.tab=button.dataset.inventoryTab;this.render();});
+  document.getElementById('inventoryStowBag')?.addEventListener('click',()=>{const robot=this.activeRobot,held=robot&&(this.heldFor(robot,'right')||this.heldFor(robot,'left'));if(held)this.stowToBag(robot,held);});
+  document.getElementById('inventoryAvatarBackpack')?.addEventListener('click',()=>{const robot=this.activeRobot;if(robot)this.setAvatarBackpack(robot,robot.userData.backpackEnabled!==true);});
   document.getElementById('inventoryHoldNearby')?.addEventListener('click',()=>{const robot=this.activeRobot;if(!robot)return;const object=pickableTarget(robot,this.editor.items);if(!object||!this.hold(robot,object))this.editor.toast?.('Face a nearby portable item and make sure a hand is free');});
   for(const hand of ['right','left'])document.getElementById(hand==='right'?'inventoryDropRight':'inventoryDropLeft')?.addEventListener('click',()=>{
    const robot=this.activeRobot,held=robot&&this.heldFor(robot,hand);

@@ -86,8 +86,8 @@ test('hand attachment follows the moving robot and keeps a procedural handle ali
 });
 
 test('avatar deletion releases held, pocket and worn items without deleting their scene identities',()=>{
- assert.match(server,/storage\.get\('holderId'\)!=obj_id/);
- assert.match(server,/storage\.get\('type'\) not in \('held','pocket','worn'\)/);
+ assert.match(server,/storage\.get\('bagId'\)==obj_id/);
+ assert.match(server,/storage\.get\('type'\) in \('held','pocket','worn'\)/);
  assert.match(server,/candidate\.pop\('storage',None\)/);
  assert.match(server,/action':'bulk' if released else action/);
  assert.match(server,/not may_edit\(user\['id'\],all_ids\[storage\['holderId'\]\],policy\)/);

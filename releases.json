@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.207",
+  "currentVersion": "0.2.209",
   "releases": [
+    {
+      "version": "0.2.209",
+      "publishedAt": "2026-11-06T04:28:17Z",
+      "changes": [
+        "Separate opt-in Autonomous roaming & peer visits in Brains: visible signed-in browser explores using collision-checked A* paths (typically 11\u201319m) and visits new scene points instead of repeated 2\u20133m walks.",
+        "Every 6 seconds the local robot life loop considers new activity without billing Meta. The server grants a 22-second ownership lease, defers to explicit human tasks and saved work orders, and rejects unauthorized or replayed movement receipts.",
+        "Arrival or collision outcomes, including measured actual displacement, are traced and consolidated as explicitly client-reported experience in existing robot memory; real camera frames can be captured after exploration and existing Meta visual analysis remains separate.",
+        "Upon an actual arrival beside another robot, optionally ask a bounded evidence-based question using the existing authorised robot-to-robot communication route, subject to cooldowns; no uncontrolled world edits or object mutations."
+      ]
+    },
     {
       "version": "0.2.207",
       "publishedAt": "2026-11-06T03:01:30Z",
@@ -316,17 +326,6 @@
         "Remove the exposed arbitrary texture/variation seed from infrastructure Properties; add actual selectable Wood, Concrete, Brick, Metal, Plaster, Marble and Granite finishes for solid walls and fences using SOLVI\u2019s existing procedural texture generator.",
         "Keep the deterministic internal material seed for asphalt/paving texture generation, but make roads use named surface presets and walls/fences use visible named finishes; validate infraTexture on the backend with legacy defaults.",
         "Retain unsaved 3D live previews, single-line, polyline and freehand modes, existing scene persistence, undo/cancel restoration, multiplayer and avatar GLBs; test focused UI, sanitizer, backend and archive watcher consistency."
-      ]
-    },
-    {
-      "version": "0.2.175",
-      "publishedAt": "2026-11-03T23:23:02Z",
-      "changes": [
-        "Show real generated 3D infrastructure geometry immediately after two committed ground points: textured walls, plank/mesh/rod fences, hedges, curbs, continuous paved footpaths and roads including lane markings and streetlights.",
-        "Rebuild the live construction preview when Properties values change, so dimensions, height, textures, fence spacing, road settings and smoothing are visible before saving; no pointer-following phantom line.",
-        "Keep preview geometry isolated from the saved scene and collider world; dispose temporary geometry, textures and materials between updates, and throttle freehand preview construction for WebXR.",
-        "Single-line drawing remains editable until the user chooses Finish; Cancel restores original infrastructure furniture properties and appearance, and no draft is saved or transmitted.",
-        "Add runtime-mocked drawing and preview regression tests, verify all JavaScript syntax and watcher-compatible versioned ZIP with SHA-256 for each application file."
       ]
     }
   ]
