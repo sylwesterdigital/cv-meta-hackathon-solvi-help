@@ -1,3 +1,11 @@
+# SOLVI.help Master LLM Handover — v0.2.216
+
+## Remote avatar height and production observability
+
+Remote clients were running their own character physics immediately after interpolating another robot’s real XYZ pose. v0.2.216 treats fresh remote poses as authoritative for kinematic bodies; manual controller now streams the same XYZ snapshots as autonomous navigation. See docs/RELEASE_0.2.216_SPEC.md. HLS source did not change in 0.2.208–0.2.215 and Rantlist CORS remains an external media-server configuration. A read-only diagnostic is included. No deployment claim.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.215
 
 ## Upper-storey furniture placement

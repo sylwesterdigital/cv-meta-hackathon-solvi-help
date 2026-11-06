@@ -2694,9 +2694,15 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       const id=bot.userData.editorId;
       const manual=this.controlMode==='robot'&&this.controlledRobot?.()===bot&&
         (active(input)||Math.abs(bot.userData.robotVelocity||0)>.04);
-      const moving=Boolean(bot.userData.robotGoal||bot.userData.robotMission);
+      // Manual keyboard input is still relayed for responsive prediction, but
+      // remote clients also need the owner's Y coordinate on upper floors.
+      // Otherwise each browser's independent Rapier gravity can select a
+      // different slab and show the same robot on different storeys.
+      const moving=manual||Boolean(bot.userData.robotGoal||bot.userData.robotMission);
       const previous=this.sentRobotMotion.get(id);
-      if(manual){this.sentRobotMotion.delete(id);continue;}
+      // A remote client must never echo another controller's motion snapshots
+      // or keyboard input as an additional authoritative sender.
+      if(this.remoteRobotMotion.has(id)||this.remoteInput.has(id))continue;
       if(!moving&&!previous)continue;
       if(previous&&now-previous.at<110&&moving)continue;
       const origin=previousRobotPositions.get(id);

@@ -1,3 +1,9 @@
+# v0.2.216 — Robot height authority and transparent production diagnostics (2026-11-06)
+
+- Remote robots use the sender’s live three-dimensional pose for kinematic playback; receiver gravity no longer forces avatars onto another building level. Manual motion now broadcasts XYZ snapshots in addition to existing predictive keyboard packets.
+- Include read-only production diagnostic script and a precise media-host CORS repair guide for the existing Rantlist playlist; do not invent a CORS fix inside SOLVI that cannot alter remote HTTP headers.
+- No account, room, media, GLB or database migration; live two-client and remote-media checks remain outstanding.
+
 # v0.2.215 — Furniture placement on elevated procedural building floors (2026-11-06)
 
 - Recognize the actual walkable top of each generated procedural wall-ceiling slab and flat roof, including vertically repeated Room Array storeys, as a support for furniture and saved presets.

@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.215",
+  "currentVersion": "0.2.216",
   "releases": [
+    {
+      "version": "0.2.216",
+      "publishedAt": "2026-11-06T19:27:19Z",
+      "changes": [
+        "Use the live sender XYZ pose for remote robot physics on upper floors; prevent receiving clients re-simulating gravity that selects a different storey.",
+        "Stream owner XYZ poses during manual keyboard walking as well as autonomous navigation, preserving the existing robot-input predictive path and avoiding rebroadcast loops.",
+        "Ship read-only API 502/429/CORS diagnostics and Rantlist media-host origin repair guidance, preserving existing external CORS and SOLVI-only Nginx boundaries.",
+        "Preserve rooms, 3D assets, robot work orders, scene persistence and permissions; no schema migration."
+      ]
+    },
     {
       "version": "0.2.215",
       "publishedAt": "2026-11-06T18:59:08Z",
@@ -311,17 +321,6 @@
         "Capture six real 60\u00b0 robot-eye JPEG views for optional Meta Muse Spark 1.3 decision proposals, with existing SAM 3.1 visual search for object detection.",
         "Restrict AI decisions to a validated action vocabulary and real scene identifiers; bound decisions to three-minute robot cooldowns and daily account quotas; never let models call arbitrary tools.",
         "Preserve prior multiplayer, GitHub HTTPS watcher, original avatar GLBs, and existing manually configured routines; autonomous loops stop with the tab, room or session."
-      ]
-    },
-    {
-      "version": "0.2.181",
-      "publishedAt": "2026-11-04T14:33:32Z",
-      "changes": [
-        "Fix Brave/Safari inconsistent room counts by resolving the signed-in profile\u2019s saved realm before starting its authenticated WebSocket connection.",
-        "Treat the server room snapshot as join confirmation, refresh authoritative presence every 15 seconds, and reconcile late movement packets when a presence notification was missed.",
-        "Reconnect sockets with bounded backoff rather than permanently stopping after two failures; replace lingering same-user WebSocket sessions safely without removing the active replacement.",
-        "Make per-browser room and application debugging visible to regular users in the existing Dev log via a Live diagnostics tab, including room, participant count, socket/JS errors and robot event summaries, with Copy/Clear and credential filtering.",
-        "Add multi-client and disconnect regression tests and preserve all existing browser/scene, avatar, GitHub HTTPS and watcher deployment contracts."
       ]
     }
   ]

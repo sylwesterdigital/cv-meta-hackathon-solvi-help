@@ -787,7 +787,25 @@ export class ScenePhysics{
   // Kinematic avatars are evaluated AFTER local and remote movement intent for this frame.
   for(const object of this.editor.items){
    const id=object.userData.editorId,body=this.bodies.get(id);if(!body)continue;
-   if(object.userData.editorKind==='robot'){this.driveRobot(object,step);continue;}
+   if(object.userData.editorKind==='robot'){
+    // A peer's snapshot is authoritative in ALL THREE dimensions. Do not
+    // recompute gravity/collision against the receiver's potentially stale
+    // floor and lift meshes; doing so can move a third-floor robot down one
+    // storey after its remote pose was correctly interpolated by the editor.
+    const stream=this.editor.remoteRobotMotion?.get(id);
+    const remotePose=stream&&now-stream.received<2600;
+    if(remotePose||(!this.owns(object)&&!(this.editor.controlMode==='robot'&&this.editor.controlledRobot?.()===object))){
+     const pose={x:object.position.x,y:object.position.y,z:object.position.z};
+     if([pose.x,pose.y,pose.z].every(Number.isFinite)){
+      body.setTranslation(pose,true);body.setNextKinematicTranslation(pose);
+      body.setNextKinematicRotation({x:object.quaternion.x,y:object.quaternion.y,z:object.quaternion.z,w:object.quaternion.w});
+      const state=this.characters.get(id);
+      if(state){state.verticalSpeed=0;state.wedgedFor=0;state.airStartY=null;state.airStartAt=0;}
+     }
+     continue;
+    }
+    this.driveRobot(object,step);continue;
+   }
    if(this.editor.selected===object&&this.editor.world.editorDragging){
     body.setTranslation(object.position,true);body.setRotation(object.quaternion,true);
     if(body.isDynamic?.()){body.setLinvel({x:0,y:0,z:0},true);body.setAngvel({x:0,y:0,z:0},true);}
