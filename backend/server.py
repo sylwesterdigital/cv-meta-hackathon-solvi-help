@@ -233,7 +233,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.218',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.219',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1828,7 +1828,7 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped'}
+    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
@@ -1840,6 +1840,9 @@ def valid_robot_work_order(order,state):
        not isinstance(it['reason'],str) or len(it['reason'])>110 or
        type(it['attempts']) is not int or not 1<=it['attempts']<=20 or
        type(it['retryAt']) not in (int,float) or not math.isfinite(it['retryAt']) or not 0<=it['retryAt']<=9999999999999 for it in skipped):return None
+    tried=stored.get('cleanupThrowTried',[])
+    if (not isinstance(tried,list) or len(tried)>32 or
+        any(not isinstance(ident,str) or not 1<=len(ident)<=100 for ident in tried)):return None
     projects=stored.get('projectPlaced',[])
     if (not isinstance(projects,list) or len(projects)>6 or
         any(not isinstance(p,dict) or not isinstance(p.get('id'),str) or len(p['id'])>100 or

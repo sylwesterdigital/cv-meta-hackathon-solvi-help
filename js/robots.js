@@ -5,6 +5,7 @@ import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MotionController,computeMode} from './animations.js';
 import {pathBlocked} from './robot-pathfinding.js';
 import {checkRobotWalkingProgress} from './robot-progress-watchdog.js';
+import {shouldJogCargoLeg} from './robot-transfer-decisions.js';
 import {footfallRate,combatPhase} from './robot-combat.js';
 import {permittedRobotLocomotion} from './robot-contact.js';
 import {animationSpeedSettings,jumpAnimationKind,landingClipFor,gaitCadence,continuousGaitMode,jumpResumeMode} from './animation-tuning.js';
@@ -144,6 +145,12 @@ export function tickRobots(items,dt,onMove=()=>{}){
     if(mode==='wave'&&performance.now()>(robot.userData.waveEnd||0)){mode='idle';robot.userData.robotMode='idle';}
     if((mode==='walk'||mode==='run')&&robot.userData.robotGoal){
       const delta=robot.userData.robotGoal.clone().sub(robot.position);delta.y=0;
+      if(robot.userData.robotMission?.autonomousRun){
+       const jog=shouldJogCargoLeg({allowed:true,start:robot.position,end:robot.userData.robotGoal,
+        obstacles:robot.userData.robotPathObstacles||[],floorY:robot.position.y,
+        colleagues:items.filter(o=>o!==robot&&o.userData.editorKind==='robot').map(o=>o.position)});
+       mode=jog?'run':'walk';robot.userData.robotMode=mode;
+      }
       const distance=delta.length();
       // Detect a real-world stall (Rapier/contact holding the body still)
       // even when the planned route looks clear and the walk clip is playing.

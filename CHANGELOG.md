@@ -1,3 +1,11 @@
+## v0.2.219 — Scene-grounded cargo efficiency and discrimination
+
+- Autonomous cargo movement can jog only on long, demonstrably clear legs, reverting to walking near colleagues, obstacles and turns. The owner remains authoritative for multiplayer motion.
+- Play an avatar's authored Lifting/Pickup action for floor-level props, while retaining the actual inventory API as the authority for a held item.
+- Evaluate physical throws only when the receiving bin has a sufficiently large unobstructed opening and the throw corridor is clear of robots. Perform a real throw, verify the physical landing, then store and persist. A miss is not a delivery: record it and revert to normal carrying.
+- Restrict box cleanup and single-object transfers to verified colour/content/name descriptors. Unknown contents do not permit a guess. Preserve original scene object IDs, access restrictions and per-item skip/retry state.
+- No database schema migration and no modification to the original avatars/media. Verify browser physics, throw accuracy and two-client rendering after the watcher deploys.
+
 # v0.2.218 — Reliable named object transfer and box collection (2026-11-06)
 
 - Parse box-cleaning commands accurately instead of treating “can you” as a can object. Real boxes can go into the named junk bin through owner-validated inventory storage and server acknowledgements.

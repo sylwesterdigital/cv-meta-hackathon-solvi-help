@@ -11,6 +11,8 @@ import {metaRetryDelay,workRecoveryPlan,projectOutcome,localProjectSequence,requ
 import {visibleWorkFields,workModeHelp} from './robot-workorder-ui.js';
 import {cityTeamIntent,cityRoles,cityRoleGoal,cityRoleTarget,cityTeamState,cityMilestoneCount} from './robot-city-team.js';
 import {chatSingleObjectTransfer} from './robot-object-intent.js';
+import {cargoConstraints,groundedBoxMatch,safeThrowCandidate} from './robot-transfer-decisions.js';
+import {predictThrowPath,cleanThrowSettings,pickUpClip} from './object-carry.js';
 const $=id=>document.getElementById(id);
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const MAX_TRAVEL=90;
@@ -106,7 +108,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   return {house,step:run.step,completed:run.completed,last:run.last,metaFailures:run.metaFailures,
    nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,contacted:run.contacted,
    placedSupplies:run.placedSupplies,projectPlaced:run.projectPlaced,completedHouses:run.completedHouses,
-   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,team:run.team,teamBuilt:run.teamBuilt};
+   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,cleanupThrowTried:run.cleanupThrowTried,team:run.team,teamBuilt:run.teamBuilt};
  }
  function restoreHouse(state){
   if(!state||typeof state!=='object')return null;
@@ -134,7 +136,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    completedHouses:Array.isArray(state.completedHouses)?state.completedHouses.filter(id=>typeof id==='string').slice(0,3):[],
    team:cityTeamState(state.team),teamBuilt:Array.isArray(state.teamBuilt)?state.teamBuilt.filter(x=>x&&['road','footpath'].includes(x.variant)&&typeof x.id==='string').slice(0,8):[],
    cleanupBinId:String(state.cleanupBinId||'').slice(0,100),cleanupHomeId:String(state.cleanupHomeId||'').slice(0,100),cleanupDone:Array.isArray(state.cleanupDone)?state.cleanupDone.filter(id=>typeof id==='string').slice(0,48):[],
-   cleanupSkipped:Array.isArray(state.cleanupSkipped)?state.cleanupSkipped.filter(v=>v&&typeof v.id==='string'&&typeof v.reason==='string'&&Number.isInteger(v.attempts)&&Number.isFinite(v.retryAt)).slice(0,32):[]};
+   cleanupSkipped:Array.isArray(state.cleanupSkipped)?state.cleanupSkipped.filter(v=>v&&typeof v.id==='string'&&typeof v.reason==='string'&&Number.isInteger(v.attempts)&&Number.isFinite(v.retryAt)).slice(0,32):[],
+   cleanupThrowTried:Array.isArray(state.cleanupThrowTried)?state.cleanupThrowTried.filter(id=>typeof id==='string'&&id.length<101).slice(0,32):[]};
   return run;
  }
  function presentSaved(order){
@@ -275,6 +278,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    trace(bot,'NAVIGATE',`Collision-checked route to ${target.name}; mission ${taskId}`);
    const accepted=editor.receiveRobotCommand({room:run.room,id:taskId,robot_id:run.id,kind:'go_to',target_id:target.userData.editorId,target_name:target.name});
    if(!accepted)throw Error(`No safe route to ${target.name}`);
+   if(bot.userData.robotMission?.taskId===taskId)bot.userData.robotMission.autonomousRun=true;
    // Movement completion is an observed robot-task-update, not a model assertion.
    const deadline=Date.now()+Math.min(165000,Math.max(20000,Math.hypot(bot.position.x-target.position.x,bot.position.z-target.position.z)/1.1*2000+18000));
    let status;
@@ -311,10 +315,30 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    trace(bot,'CARRY NEEDS HELP','Still holding '+target.name+': '+error.message);throw error;
   }
  }
+ // Show a genuine authored lifting gesture for a small object on the floor.
+ // Never call robotAction here: that command interrupts the active mission.
+ async function liftFloorObject(run,bot,source){
+  const animator=bot.userData.robotAnimator;
+  if(!animator?.actions)return false;
+  const bounds=new THREE.Box3().setFromObject(source);
+  if(bounds.isEmpty()||Math.abs(bounds.min.y-bot.position.y)>.43)return false;
+  const clip=pickUpClip(bot.userData.robotAvailableActions||[],'liftCarry')||
+    pickUpClip(bot.userData.robotAvailableActions||[],'pickUp');
+  if(!clip||!animator.actions.has(clip))return false;
+  bot.userData.robotToolAction={clip,elapsed:0,duration:Math.min(1.35,Math.max(.45,animator.clipDuration(clip)||.8))};
+  trace(bot,'LIFTING',`Playing ${clip} for floor-level ${source.name}; inventory transfer still requires tool acknowledgement`);
+  await wait(Math.min(1000,bot.userData.robotToolAction.duration*1000));
+  requireActive(run,bot);
+  return true;
+ }
  async function deliverNamedObject(run,bot,source,target){
   if(!run.order.allowChanges)throw Error('Scene edits not authorised for this transfer');
   if(!source||!target||source===target||!editor.canEdit(source)||!editor.canEdit(target))throw Error('Named source/target missing or not editable');
   if(source.userData.transformLocked===true)throw Error('Source transform is locked');
+  if(source.userData.furniture?.variant==='box'&&run.order.goal){
+   const requirement=cargoConstraints(run.order.goal),match=groundedBoxMatch(source,requirement);
+   if(!match.ok)throw Error('Source does not satisfy the requested description: '+match.reason);
+  }
   if(!['furniture','cube','sphere','cylinder','torus','model'].includes(source.userData.editorKind))throw Error('Source type cannot be moved by this tool');
   const held=source.userData.storage;
   if(held&&!(held.type==='held'&&held.holderId===run.id))throw Error('Source is already held or stored elsewhere');
@@ -330,6 +354,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
     source.userData.inventory={category:'general',size:'bag',consumable:false};
    editor.queueSave(source);
    if(!editor.inventory.hold(bot,source))throw Error('Scene inventory refused pickup');
+   if(bot.userData.robotAnimator)await liftFloorObject(run,bot,source);
    trace(bot,'OBJECT HELD',`Picked up ${source.name} (${source.userData.editorId})`);
   }
   await approachTransferTarget(run,bot,target,1.35);requireActive(run,bot);
@@ -431,6 +456,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    window.addEventListener('solvi:robot-task-update',listener);
    try{
     if(!editor.routeRobotToWorksite?.(bot,at,taskId,'box/bin approach'))continue;
+    if(bot.userData.robotMission?.taskId===taskId)bot.userData.robotMission.autonomousRun=true;
     trace(bot,'TRANSFER DETOUR',`Trying a checked approach to the open side of ${target.name}; keeping the same object-transfer goal`);
     const deadline=Date.now()+Math.min(80000,Math.max(15000,Math.hypot(at.x-bot.position.x,at.z-bot.position.z)*2200+12000));
     let status;
@@ -441,6 +467,83 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    }finally{window.removeEventListener('solvi:robot-task-update',listener);}
   }
   throw Error(primaryError+'; four collision-checked side approaches also failed');
+ }
+ // Optional, genuinely physical throw. It is never counted as delivery until
+ // physics places the prop inside the opening AND the scene server saves its
+ // container state. Any miss becomes a one-time experiment with hand carry
+ // as the next strategy; the robot never repeats the same bad throw forever.
+ async function tryThrowBox(run,bot,box,bin){
+  const id=box.userData.editorId;
+  if(cargoConstraints(run.order.goal).content||!editor.carry?.pickup||!editor.carry?.throw||!editor.physics?.owns?.(box)||
+     !bot.userData.robotAnimator?.actions||!pickUpClip(bot.userData.robotAvailableActions||[],'throwObject'))return false;
+  const peers=editor.items.filter(o=>o.userData.editorKind==='robot'&&o!==bot);
+  const advice=safeThrowCandidate({source:box,bin,robot:bot,people:peers,
+   obstacles:editor.navigationObstacles?.(bot)||bot.userData.robotPathObstacles||[],physics:editor.physics.enabled,
+   alreadyTried:run.cleanupThrowTried?.includes(id)});
+  if(!advice.ok)return false;
+  if(editor.inventory.heldFor(bot,'right')||editor.inventory.heldFor(bot,'left'))return false;
+  if(bot.userData.robotCarry)return false;
+  if(editor.items.filter(o=>o.userData.storage?.type==='container'&&o.userData.storage.containerId===bin.userData.editorId).length>=24)return false;
+  const delta=new THREE.Vector3(bin.position.x-bot.position.x,0,bin.position.z-bot.position.z);
+  const distance=delta.length();
+  // The real right-hand attachment point can vary by avatar. A throw is
+  // attempted only when a predicted palm trajectory intersects the opening.
+  const hand=bot.getWorldPosition?.(new THREE.Vector3())||bot.position.clone();
+  const start={x:hand.x+.12*delta.x/distance,y:Math.max(bot.position.y+.95,hand.y+1.1),z:hand.z+.12*delta.z/distance};
+  const h=Number(bin.userData.furniture.height)||.5,top=bin.position.y+h;
+  const yaw=Math.atan2(delta.x,delta.z),angle=12*Math.PI/180;
+  const horizontal=Math.hypot(bin.position.x-start.x,bin.position.z-start.z);
+  const denominator=2*Math.cos(angle)**2*(start.y-top+horizontal*Math.tan(angle));
+  if(denominator<=0||horizontal<=0)return false;
+  const force=Math.sqrt(9.81*horizontal**2/denominator);
+  if(!Number.isFinite(force)||force<2||force>8.5)return false;
+  const settings=cleanThrowSettings({...bot.userData.robotThrowSettings,angle:12,height:0,direction:0,force});
+  const path=predictThrowPath(start,yaw,settings);
+  const aperture=Math.min(Number(bin.userData.furniture.width)||0,Number(bin.userData.furniture.depth)||0)*.39;
+  let intersects=false;
+  for(let i=1;i<path.length;i++){
+   const a=path[i-1],b=path[i];if(a.y<top||b.y>top||Math.abs(a.y-b.y)<1e-8)continue;
+   const t=(a.y-top)/(a.y-b.y),x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;
+   if(Math.hypot(x-bin.position.x,z-bin.position.z)<aperture){intersects=true;break;}
+  }
+  if(!intersects)return false;
+  box.userData.pickable=true;
+  box.userData.inventory={category:'general',size:'bag',consumable:false};
+  editor.queueSave(box);
+  // A failed pickup is not a throw attempt: ordinary pickup can proceed.
+  bot.rotation.y=yaw;editor.queueSave(bot);
+  if(!editor.carry.pickup(bot,false,id))return false;
+  run.cleanupThrowTried=[...new Set([...(run.cleanupThrowTried||[]),id])].slice(-32);
+  const previousSettings=bot.userData.robotThrowSettings;
+  try{
+   const deadline=Date.now()+3800;
+   while(bot.userData.robotCarry?.stage==='pickup'&&Date.now()<deadline){requireActive(run,bot);await wait(80);}
+   if(bot.userData.robotCarry?.stage!=='hold')throw Error('lifting did not finish before physics throw');
+   bot.userData.robotThrowSettings=settings;
+   if(!editor.carry.throw(bot))throw Error('physical Throw tool refused launch');
+   trace(bot,'THROW LAUNCHED',`${box.name} aimed at the open ${bin.name}; awaiting physics landing, no storage claim yet`);
+   const settle=Date.now()+3700;
+   while(Date.now()<settle){requireActive(run,bot);await wait(90);}
+   if(bot.userData.robotCarry)throw Error('throw animation has not released the box');
+   const within=Math.hypot(box.position.x-bin.position.x,box.position.z-bin.position.z)<aperture;
+   const inside=within&&box.position.y>=bin.position.y-.08&&box.position.y<=top+.12;
+   if(!inside)throw Error('physics did not land the box inside the container');
+   // Only after a real inside-bin landing does the ordinary inventory API
+   // adopt and persist the item. Server validation remains authoritative.
+   if(!editor.inventory.hold(bot,box))throw Error('cannot adopt the landed box into inventory');
+   if(!editor.inventory.storeInBin(bot,box,bin))throw Error('bin rejected the landed box');
+   if(!await editor.persistObject(box,run.room))throw Error('throw landing not acknowledged by scene server');
+   if(!run.cleanupDone.includes(id))run.cleanupDone.push(id);
+   run.cleanupSkipped=run.cleanupSkipped.filter(e=>e.id!==id);
+   trace(bot,'THROW VERIFIED',`${box.name} physically landed inside ${bin.name} and scene save acknowledged`);
+   return true;
+  }catch(error){
+   trace(bot,'THROW MISSED',`${box.name}: ${error.message}; switching to collision-checked manual carrying`);
+   // If the pickup clip succeeded but the launch did not, release held cargo
+   // before the next ordinary pickup attempt; do not force a teleport.
+   if(bot.userData.robotCarry?.stage==='hold')editor.carry.drop?.(bot);
+   return false;
+  }finally{bot.userData.robotThrowSettings=previousSettings;}
  }
  // Bounded, server-persisted box transfer. A failed item is deferred, not
  // allowed to abort the entire task or become a fabricated completion.
@@ -455,8 +558,14 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   run.cleanupBinId=bin.userData.editorId;
   // Retain receipts only while the same object is still in the requested bin.
   run.cleanupDone=run.cleanupDone.filter(id=>editor.items.some(o=>o.userData.editorId===id&&o.userData.storage?.type==='container'&&o.userData.storage.containerId===bin.userData.editorId));
-  const boxes=editor.items.filter(o=>o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='box'&&/^Box copy\d+$/i.test(o.name));
-  if(!boxes.length)throw Error('No procedural Box copies exist in this room; nothing was moved');
+  const descriptors=cargoConstraints(run.order.goal);
+  const allBoxes=editor.items.filter(o=>o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='box'&&/^Box copy\d+$/i.test(o.name));
+  const boxes=allBoxes.filter(o=>groundedBoxMatch(o,descriptors).ok);
+  if(!boxes.length){
+   const description=[descriptors.colour,descriptors.content].filter(Boolean).join(' with ');
+   throw Error(allBoxes.length?`No Box copies can be verified against the requested ${description||'name'}; no unrelated boxes touched`:'No procedural Box copies exist in this room; nothing was moved');
+  }
+  if(descriptors.colour||descriptors.content)trace(bot,'CARGO FILTER',`Requested ${descriptors.colour||'any colour'}${descriptors.content?' containing '+descriptors.content:''}: ${boxes.length}/${allBoxes.length} boxes confirmed by scene metadata; others untouched`);
   const isStored=o=>o.userData.storage?.type==='container'&&o.userData.storage.containerId===bin.userData.editorId;
   // A successfully saved object can still need its work-order receipt if the
   // tab refreshed after the scene save but before the order-state save.
@@ -489,6 +598,16 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
     await approachTransferTarget(run,bot,box,1.85);
     requireActive(run,bot);
     if(!autonomyProximity(bot,box,2.4)||Math.abs(bot.position.y-box.position.y)>1.7)throw Error('Box remains outside physical pickup reach on this floor');
+    if(await tryThrowBox(run,bot,box,bin))return `Cleanup progress: ${run.cleanupDone.length}/${boxes.length} Box copies stored in ${bin.name} (verified throw)`;
+    // A missed physical throw may have moved the box: reacquire its CURRENT
+    // scene position before holding it. Inventory.hold alone does not check
+    // reach, so it must never become a remote telekinetic pickup.
+    if(run.cleanupThrowTried?.includes(id)){
+     await approachTransferTarget(run,bot,box,1.65);
+     requireActive(run,bot);
+     if(!autonomyProximity(bot,box,1.95)||Math.abs(bot.position.y-box.position.y)>1.7)
+      throw Error('Missed throw: box has not been physically reacquired');
+    }
     if(editor.inventory.heldFor(bot,'right')||editor.inventory.heldFor(bot,'left'))throw Error('Robot already holds an object; free a hand first');
     // The existing hand-inventory system needs an explicit pickable general
     // item, not an unpermitted bypass around scene mutation controls.
@@ -496,6 +615,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
     box.userData.inventory={category:'general',size:'bag',consumable:false};
     editor.queueSave(box);
     if(!editor.inventory.hold(bot,box))throw Error('Actual inventory pickup rejected by scene tool');
+    if(bot.userData.robotAnimator)await liftFloorObject(run,bot,box);
     trace(bot,'BOX HELD',`Picked up ${box.name} (${id}) with the functional inventory tool`);
    }
    await approachTransferTarget(run,bot,bin,2.35);
@@ -529,6 +649,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   try{
    trace(bot,'SITE FOUND',`${label} at X ${plan.site.x.toFixed(1)}, Z ${plan.site.z.toFixed(1)}; ${plan.meters} m walking route`);
    if(!editor.routeRobotToWorksite?.(bot,position,taskId,label))throw Error('Construction site is no longer reachable by A*');
+   if(bot.userData.robotMission?.taskId===taskId)bot.userData.robotMission.autonomousRun=true;
    const deadline=Date.now()+Math.min(150000,Math.max(20000,plan.meters/1.1*2000+18000));
    let status;
    while(status===undefined&&Date.now()<deadline){requireActive(run,bot);

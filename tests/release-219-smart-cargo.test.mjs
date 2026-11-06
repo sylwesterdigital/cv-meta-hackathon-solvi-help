@@ -1,0 +1,74 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {cargoConstraints,groundedBoxMatch,colourFamily,shouldJogCargoLeg,safeThrowCandidate} from '../js/robot-transfer-decisions.js';
+const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
+const box=(name,color,contents)=>({name,userData:{furniture:{variant:'box',color,...(contents?{contents}:{})}}});
+test('colour and content constraints exclude unrelated items; never guess opaque box contents',()=>{
+ const pink=cargoConstraints('@Lea collect Box copies but only those pink ones and put them into Bin - Big Junk');
+ assert.equal(pink.colour,'pink');
+ assert.equal(groundedBoxMatch(box('Box copy24','#ff89ad'),pink).ok,true);
+ assert.equal(groundedBoxMatch(box('Box copy23','#6688ee'),pink).ok,false);
+ assert.equal(cargoConstraints('@Lea move boxes into the pink bin').colour,null);
+ const content=cargoConstraints('@Lea collect boxes containing metal tools into Bin - Big Junk');
+ assert.equal(content.content,'metal tools');
+ assert.match(groundedBoxMatch(box('Box copy4','#ff89ad'),content).reason,/contents unknown/);
+ assert.equal(groundedBoxMatch(box('Box copy4','#ff89ad','metal tools'),content).ok,true);
+ assert.equal(groundedBoxMatch(box('Box copy4','#ff89ad','clothes'),content).ok,false);
+ const exclude=cargoConstraints('@Lea collect all boxes except pink into Bin - Big Junk');
+ assert.equal(exclude.excludeColour,'pink');
+ assert.equal(groundedBoxMatch(box('Box copy1','#ff89ad'),exclude).ok,false);
+ assert.equal(groundedBoxMatch(box('Box copy2','#6688ee'),exclude).ok,true);
+ assert.equal(colourFamily('#9b8068'),'brown');
+});
+test('long clear legs jog, but near colleague, obstacle, turns and short moves walk',()=>{
+ const base={allowed:true,start:{x:0,y:0,z:0},end:{x:0,z:22},floorY:0};
+ assert.equal(shouldJogCargoLeg(base),true);
+ assert.equal(shouldJogCargoLeg({...base,allowed:false}),false);
+ assert.equal(shouldJogCargoLeg({...base,end:{x:0,z:8.99}}),false);
+ assert.equal(shouldJogCargoLeg({...base,colleagues:[{x:0.9,y:0,z:2.4}]}),false);
+ assert.equal(shouldJogCargoLeg({...base,colleagues:[{x:0.9,y:8,z:2.4}]}),true);
+ assert.equal(shouldJogCargoLeg({...base,obstacles:[{minX:-1,maxX:1,minZ:2,maxZ:2.4}]}),false);
+ assert.equal(shouldJogCargoLeg({...base,obstacles:[{minX:3,maxX:4,minZ:2,maxZ:3}]}),true);
+});
+test('throw choice is conservative; narrow bin, bystander and blocked corridor veto it',()=>{
+ const robot={position:{x:0,y:0,z:0}},bin={position:{x:0,y:0,z:3.5},userData:{editorId:'bin-id',furniture:{variant:'bin',width:1.7,depth:1.6,lid:false}}};
+ const options={robot,source:box('Box copy1','#eeaacc'),bin,physics:true};
+ assert.equal(safeThrowCandidate(options).ok,true);
+ assert.equal(safeThrowCandidate({...options,alreadyTried:true}).ok,false);
+ assert.equal(safeThrowCandidate({...options,physics:false}).ok,false);
+ assert.equal(safeThrowCandidate({...options,people:[{position:{x:.5,y:0,z:1.8}}]}).ok,false);
+ assert.equal(safeThrowCandidate({...options,obstacles:[{minX:-.5,maxX:.5,minZ:1,maxZ:1.3}]}).ok,false);
+ assert.equal(safeThrowCandidate({...options,bin:{...bin,userData:{...bin.userData,furniture:{variant:'bin',width:.6,depth:.6}}}}).ok,false);
+});
+test('runtime uses real physics, verified landing, animation, and saver for optional throw; no fabricated success',()=>{
+ const autonomy=read('js/robot-autonomy.js'),robots=read('js/robots.js'),backend=read('backend/server.py');
+ for(const token of ['safeThrowCandidate','predictThrowPath','editor.carry.pickup(bot,false,id)','editor.carry.throw(bot)',"'THROW MISSED'","'THROW VERIFIED'",'await editor.persistObject(box,run.room)',"robotToolAction={clip",'groundedBoxMatch(o,descriptors)',"bot.userData.robotMission.autonomousRun=true"])assert.ok(autonomy.includes(token),token);
+ assert.ok(robots.includes('shouldJogCargoLeg('));
+ assert.ok(backend.includes("'cleanupThrowTried'"));
+});
+test('full collection executor saves only pink items; unmatched blue and unknown-content items remain untouched',async()=>{
+ const source=read('js/robot-autonomy.js');
+ const segment=source.slice(source.indexOf(' // Recover a failed direct object route'),source.indexOf(' async function walkToWorksite('));
+ const create=new Function('editor','requireActive','autonomyProximity','moveTo','trace','MAX_TRAVEL','wait','window','cargoConstraints','groundedBoxMatch','tryThrowBox',segment+'\nreturn cleanBoxes;');
+ const make=(id,name,variant,color)=>({name,position:{x:.3,y:0,z:0,distanceToSquared(){return 0;}},userData:{editorId:id,editorKind:'furniture',furniture:{variant,color}}});
+ const bot={name:'Lea',position:{x:0,y:0,z:0},userData:{editorId:'robot-12345678'}};
+ const bin=make('bin-12345678','Bin - Big Junk','bin','#888888');
+ const pink=make('pink-12345678','Box copy4','box','#ff89ad');
+ const blue=make('blue-12345678','Box copy9','box','#6688ee');
+ const saved=[];
+ const editor={items:[bin,pink,blue],canEdit:()=>true,queueSave(){},async persistObject(obj){saved.push(obj.name);return true;},inventory:{heldFor(){return null;},hold(robot,obj){obj.userData.storage={type:'held',holderId:robot.userData.editorId,hand:'right'};return true;},storeInBin(robot,obj,destination){obj.userData.storage={type:'container',containerId:destination.userData.editorId,slot:0};return true;}}};
+ const clean=create(editor,()=>{},()=>true,async()=>{},()=>{},90,()=>Promise.resolve(),{},cargoConstraints,groundedBoxMatch,async()=>false);
+ const run={id:bot.userData.editorId,room:'loft-16',order:{allowChanges:true,goal:'@Lea collect only pink Box copies into Bin - Big Junk'},cleanupDone:[],cleanupSkipped:[],cleanupThrowTried:[],cleanupBinId:''};
+ assert.match(await clean(run,bot),/1\/1 Box copies stored/);
+ assert.equal(blue.userData.storage,undefined);
+ assert.deepEqual(saved,['Box copy4']);
+ assert.match(await clean(run,bot),/All 1 Box copies verified/);
+ const unknown={...run,cleanupDone:[],order:{allowChanges:true,goal:'@Lea collect Box copies containing gold coins into Bin - Big Junk'}};
+ await assert.rejects(()=>clean(unknown,bot),/can be verified/);
+ assert.equal(blue.userData.storage,undefined);
+});
+test('new cargo module is versioned in the browser import map',()=>{
+ const html=read('index.html');
+ assert.ok(html.includes('"./js/robot-transfer-decisions.js":"./js/robot-transfer-decisions.js?v=0.2.219"'));
+});

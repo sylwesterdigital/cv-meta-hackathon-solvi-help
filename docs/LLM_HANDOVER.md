@@ -1,8 +1,14 @@
-# SOLVI.help Master LLM Handover — v0.2.218
+# SOLVI.help Master LLM Handover — v0.2.219
 
-## v0.2.218 — Object transfer resilience
+## v0.2.219 — Cargo efficiency with explicit grounding
 
-Box-copy cleanup now has its own verified, saved work-order executor; the older can-specific routine is not used for boxes. `js/robot-object-intent.js` handles unambiguous single-object transfers from explicit addressed human chat; the actual pickup, delivery, scene save and alternate approach are in `js/robot-autonomy.js`. Empty drink and small general boxes are accepted inside persistent bins by both `js/robot-inventory.js` and backend `bin_item_permitted`, with server-side ownership/capacity constraints retained. Skipped attempts are server-durable. Read `docs/RELEASE_0.2.218_SPEC.md` for verification/limitations. No schema migration.
+The new `js/robot-transfer-decisions.js` provides pure cargo colour/content filtering, long-clear-leg jogging decisions, and conservative physics throw eligibility. The actual throw path in `js/robot-autonomy.js` uses existing `editor.carry` physics, waits for a real landing inside a large bin, then calls the existing inventory and scene save APIs; missed throws are recorded and later attempted by hand. Floor-level lift animations use authored avatar clips. `backend/server.py` validates saved attempted-throw IDs. Existing owner checks, box skip ledger, scene IDs and 24-slot bin capacity remain. Do not claim physics success before the watcher and live two-client tests.
+
+# SOLVI.help Master LLM Handover — v0.2.219
+
+## v0.2.219 — Object transfer resilience
+
+Box-copy cleanup now has its own verified, saved work-order executor; the older can-specific routine is not used for boxes. `js/robot-object-intent.js` handles unambiguous single-object transfers from explicit addressed human chat; the actual pickup, delivery, scene save and alternate approach are in `js/robot-autonomy.js`. Empty drink and small general boxes are accepted inside persistent bins by both `js/robot-inventory.js` and backend `bin_item_permitted`, with server-side ownership/capacity constraints retained. Skipped attempts are server-durable. Read `docs/RELEASE_0.2.219_SPEC.md` for verification/limitations. No schema migration.
 
 ---
 
