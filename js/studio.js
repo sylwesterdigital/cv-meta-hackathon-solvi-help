@@ -1152,7 +1152,7 @@ function configureDragging(){
  const save=(id,panel)=>{
    const rect=panel.getBoundingClientRect();
    const data={left:rect.left,top:rect.top,minimized:panel.classList.contains('minimized'),windowed:panel.classList.contains('windowed')};
-   if(id==='chatPanel'){data.width=panel.offsetWidth;data.height=panel.offsetHeight;}
+   if(id==='chatPanel'||id==='robotBrainsPanel'){data.width=panel.offsetWidth;data.height=panel.offsetHeight;}
    localStorage.setItem('solvi-window-'+id,JSON.stringify(data));
  };
  window.solviSaveWindow=save;
@@ -1160,6 +1160,7 @@ function configureDragging(){
   const panel=$(id),handle=panel?.querySelector('.drag-handle');if(!panel||!handle)continue;
   try{const stored=JSON.parse(localStorage.getItem('solvi-window-'+id)||'null');if(stored){
     if(stored.minimized!==undefined&&id!=='scenePanel')panel.classList.toggle('minimized',stored.minimized);
+    if(id==='robotBrainsPanel'&&Number(stored.width)>=350){panel.style.width=Math.min(innerWidth-24,stored.width)+'px';if(Number(stored.height)>=340)panel.style.height=Math.min(innerHeight-24,stored.height)+'px';}
     if(id==='chatPanel'&&stored.windowed){panel.classList.add('windowed');panel.style.setProperty('--chat-width',stored.width+'px');panel.style.setProperty('--chat-height',stored.height+'px');$('chatModeButton').textContent='Hide chat';$('chatModeButton').setAttribute('aria-label','Chat window · hide chat');}
     if(id!=='chatPanel'||stored.windowed){
       const x=Math.max(4,Math.min(innerWidth-100,Number(stored.left)||0)),y=Math.max(45,Math.min(innerHeight-60,Number(stored.top)||70));
@@ -1182,6 +1183,7 @@ function configureDragging(){
     else{panel.style.left=x+'px';panel.style.top=y+'px';panel.style.right='auto';panel.style.bottom='auto';}
   });
   const release=()=>{if(delta)save(id,panel);delta=null;};handle.addEventListener('pointerup',release);handle.addEventListener('pointercancel',release);
+  if(id==='robotBrainsPanel'&&typeof ResizeObserver!=='undefined'){const ro=new ResizeObserver(()=>{if(!panel.hidden)save(id,panel);});ro.observe(panel);}
   panel.addEventListener('click',event=>{if(event.target.closest('#toolboxMinimize,#minimizeScenePanel,#closeScenePanel,#closeProperties'))requestAnimationFrame(()=>save(id,panel));});
   const opened=new MutationObserver(()=>{if(!panel.hidden&&(id!=='chatPanel'||panel.classList.contains('windowed')))toFront(panel);});
   opened.observe(panel,{attributes:true,attributeFilter:['hidden']});

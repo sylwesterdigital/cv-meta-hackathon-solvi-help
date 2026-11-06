@@ -1,3 +1,9 @@
+# SOLVI.help Master LLM Handover — v0.2.220
+
+## v0.2.220 — Persistent character traits and observed peer relationships
+
+The 30-category / 96-trait schema is in `robot-character-schema.json` and mirrors into `backend/robot-character-schema.json` and `js/robot-character-schema.js`; `robot-character-policy.json` similarly defines advisory action weighting. `robot-character-core.js` includes presets and validation; `robot-character-editor.js` exposes compact Brain sliders, JSON import/export and Save through the existing room scene. The backend `robot_character.py` validates saved nested `brain.character` and provides all 96 numeric values to Meta chat and autonomy planning. `robot_relationships` SQLite stores observed actual peer messages, not inferred emotional states. `POST /api/robots/character/evaluate` gives permission-scoped advisory preferences only; it does not execute tasks. Existing physical tools and scene permissions remain authoritative.
+
 # SOLVI.help Master LLM Handover — v0.2.219
 
 ## v0.2.219 — Cargo efficiency with explicit grounding

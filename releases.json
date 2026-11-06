@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.219",
+  "currentVersion": "0.2.220",
   "releases": [
+    {
+      "version": "0.2.220",
+      "publishedAt": "2026-11-06T23:40:56Z",
+      "changes": [
+        "Persist a versioned 30-category, 96-trait bipolar personality in each robot brain with strict backend validation and existing scene edit permissions.",
+        "Add a tabbed character editor with colour-gradient sliders, descriptive poles, six presets, summary, JSON import/export and remembered draggable-window size.",
+        "Use saved fictional traits as bounded action preferences for Meta planning, exploration, task pacing and retry attempts without bypassing the real tool validator.",
+        "Record real robot-to-robot messages in an additive SQLite relationship ledger; display observed peer exchanges rather than invented sentiment.",
+        "Expose an authenticated read-only character-action evaluation API and deploy supporting schema/policy modules with Ubuntu installer and rollback safeguards."
+      ]
+    },
     {
       "version": "0.2.219",
       "publishedAt": "2026-11-06T22:53:46Z",
@@ -304,17 +315,6 @@
         "Exclude out-of-height office wall sections, roof accessories and elevated stair treads from ground-level navigation obstacles, without removing actual wall collisions at the robot height.",
         "Add geometry-level regression tests for 5\u00d74 m house detours, long/diagonal routes, robot stand-off approach, and impossible barrier rejection; preserve route debug, real walking and strict arrival proof.",
         "No changes to deployment watcher, server persistence or original model assets; unchanged authenticated mission and scene permissions."
-      ]
-    },
-    {
-      "version": "0.2.186",
-      "publishedAt": "2026-11-04T18:20:30Z",
-      "changes": [
-        "Simplify autonomous Work orders to context-sensitive settings: hide unrelated object, destination, preset, variant, goal, cadence and vision inputs by selected work mode; direct building is one-shot and does not repeat spawning furniture in loops.",
-        "Give robots a geometry-based reachable worksite discovery planner that scans several nearby candidate spaces, checks complete object/room footprints against current scene obstacles, and validates A* routes to an exterior staging point without asking the human to relocate the robot.",
-        "Before any direct furniture or house creation, animate the robot walking to its reserved staging point via the existing route controller and verify its actual client position and arrived event; show a brief construction gesture before authorizing scene Add, never teleport geometry to the actor.",
-        "Recheck the selected building footprint at commit time; reject occupied sites rather than placing through another object; retain normal ownership, physics colliders, Undo and persistence. No automatic destruction or edits to original avatar files.",
-        "Add unit and integration-source tests for workspace search, entire rectangular clearance, unreachable site, contextual work modes, and move-before-build sequencing; preserve existing watcher packaging and version metadata."
       ]
     }
   ]

@@ -1,3 +1,4 @@
+import {characterPolicy} from './robot-character-core.js';
 // v0.2.192: server-durable work orders with browser-controlled scene execution. Never simulates keyboard events:
 // the same checked editor/physics tools used by human keys are invoked directly.
 import * as THREE from 'three';
@@ -211,7 +212,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
     existingHouse:!!existingRobotHouse(run),peerId:peer?.userData.editorId||'',attempts:run.recoveryAttempts,hasSeat,
     invitationTargets:remaining.map(o=>({id:o.userData.editorId,name:o.name})),
     contactTargets:contacts.map(o=>({id:o.userData.editorId,name:o.name})),placedSupplies:run.placedSupplies,
-    projectPlaced:run.projectPlaced,completedHouses:run.completedHouses});
+    projectPlaced:run.projectPlaced,completedHouses:run.completedHouses,
+    retryBudget:bot.userData.robotBrain?.character?characterPolicy(bot.userData.robotBrain.character).retryBudget:8});
   if(run.order.sourceId&&run.order.destinationId&&run.order.mode==='local_project')return {action:'named_transfer',target_id:run.order.sourceId,destination_id:run.order.destinationId,recovery:true};
   const role=run.team?.role;
   if(['road','footpath'].includes(role)&&run.teamBuilt.length<cityRoleTarget(role)){

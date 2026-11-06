@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {initCharacterEditor} from './robot-character-editor.js';
 import {captureRobotView,captureRobotPortrait,robotHeadCameraPose} from './robots.js';
 import {observationPlan,scanSummary} from './robot-observation.js';
 import {stitchRobotPanorama,panoramaMode} from './robot-panorama.js';
@@ -120,6 +121,9 @@ function showBoxes(boxes){
 }
 export function initRobotBrains(world,api,getRoom,toast){
  const panel=$('robotBrainsPanel');
+ const characterEditor=initCharacterEditor({getRobot:()=>activeRobot,canEdit:robot=>window.solviEditor?.canEdit(robot),
+  save:character=>{const before=window.solviEditor.snapshot(activeRobot);activeRobot.userData.robotBrain={...(activeRobot.userData.robotBrain||{}),character};window.solviEditor.recordEdit(before,window.solviEditor.snapshot(activeRobot));window.solviEditor.queueSave(activeRobot);emitBrainTrace(activeRobot.userData.editorId,activeRobot.name,'CHARACTER SAVED','Persistent 95-trait fictional profile saved; no new tool permissions.');},
+  toast,api,room:getRoom});
  const selectPage=name=>{
   for(const page of panel.querySelectorAll('[data-brain-page]'))page.hidden=page.dataset.brainPage!==name;
   for(const button of panel.querySelectorAll('[data-brain-tab]')){
@@ -127,6 +131,7 @@ export function initRobotBrains(world,api,getRoom,toast){
    button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;
   }
   for(const details of panel.querySelectorAll('details[data-brain-page]'))details.open=true;
+  if(name==='relationships')void characterEditor.refreshRelationships();
  };
  panel.querySelectorAll('[data-brain-tab]').forEach(button=>button.addEventListener('click',()=>selectPage(button.dataset.brainTab)));
  $('brainsCopyTop').onclick=()=>$('brainsCopyLog').click();
@@ -177,7 +182,7 @@ export function initRobotBrains(world,api,getRoom,toast){
    $('brainsVisionResult').textContent='Capture eyes, then Describe scene with Muse Spark or Find object with SAM 3.1.';
    const previous=latestFrames.get(robot.userData.editorId);
    if(previous)showFrame(previous.blob,previous.label,previous.boxes);
-   renderFrameGallery();$('brainsIdentityDetails').open=true;renderTaskTrace();
+   characterEditor.setRobot(robot);renderFrameGallery();$('brainsIdentityDetails').open=true;renderTaskTrace();
    $('brainsTraceDetails').open=true;panel.hidden=false;selectPage('vision');refreshMemory();
  }
  window.addEventListener('solvi:open-brains',open);

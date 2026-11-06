@@ -1,0 +1,762 @@
+{
+  "version": 1,
+  "description": "Fictional behavioural preferences; not personhood, rights, consciousness, ability, or authority. Values never override tool permissions.",
+  "categories": [
+    {
+      "id": "personality",
+      "label": "Personality",
+      "traits": [
+        {
+          "id": "sociability",
+          "low": "Introverted",
+          "high": "Extroverted",
+          "default": 50
+        },
+        {
+          "id": "expressiveness",
+          "low": "Shy",
+          "high": "Outgoing",
+          "default": 50
+        },
+        {
+          "id": "humour",
+          "low": "Serious",
+          "high": "Playful",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "emotions",
+      "label": "Emotions",
+      "traits": [
+        {
+          "id": "mood",
+          "low": "Melancholic",
+          "high": "Cheerful",
+          "default": 50
+        },
+        {
+          "id": "temper",
+          "low": "Even-tempered",
+          "high": "Quick to anger",
+          "default": 50
+        },
+        {
+          "id": "excitability",
+          "low": "Calm",
+          "high": "Excitable",
+          "default": 50
+        },
+        {
+          "id": "jealousy",
+          "low": "Unpossessive",
+          "high": "Jealous",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "intelligence",
+      "label": "Thinking",
+      "traits": [
+        {
+          "id": "deliberation",
+          "low": "Intuitive",
+          "high": "Analytical",
+          "default": 50
+        },
+        {
+          "id": "reasoning",
+          "low": "Concrete",
+          "high": "Abstract",
+          "default": 50
+        },
+        {
+          "id": "problem_solving",
+          "low": "Accepts limits",
+          "high": "Resourceful",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "label": "Memory",
+      "traits": [
+        {
+          "id": "recall",
+          "low": "Present-focused",
+          "high": "Remembers details",
+          "default": 50
+        },
+        {
+          "id": "recognition",
+          "low": "Needs reminders",
+          "high": "Recognises patterns",
+          "default": 50
+        },
+        {
+          "id": "forgetting",
+          "low": "Holds on",
+          "high": "Lets go",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "learning",
+      "label": "Learning",
+      "traits": [
+        {
+          "id": "learning_drive",
+          "low": "Content with known",
+          "high": "Eager to learn",
+          "default": 50
+        },
+        {
+          "id": "adaptation_rate",
+          "low": "Slow to change",
+          "high": "Fast adapter",
+          "default": 50
+        },
+        {
+          "id": "feedback_use",
+          "low": "Resists feedback",
+          "high": "Uses feedback",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "morality",
+      "label": "Morality & integrity",
+      "traits": [
+        {
+          "id": "honesty",
+          "low": "Deceptive",
+          "high": "Truthful",
+          "default": 50
+        },
+        {
+          "id": "integrity",
+          "low": "Opportunistic",
+          "high": "Principled",
+          "default": 50
+        },
+        {
+          "id": "fairness",
+          "low": "Self-interested",
+          "high": "Fair-minded",
+          "default": 50
+        },
+        {
+          "id": "responsibility",
+          "low": "Avoids responsibility",
+          "high": "Accountable",
+          "default": 50
+        },
+        {
+          "id": "rule_bending",
+          "low": "Law-abiding",
+          "high": "Rule-bending",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "empathy",
+      "label": "Empathy",
+      "traits": [
+        {
+          "id": "compassion",
+          "low": "Detached",
+          "high": "Compassionate",
+          "default": 50
+        },
+        {
+          "id": "kindness",
+          "low": "Blunt",
+          "high": "Kind",
+          "default": 50
+        },
+        {
+          "id": "perspective_taking",
+          "low": "Self-focused",
+          "high": "Sees others’ views",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "aggression",
+      "label": "Aggression",
+      "traits": [
+        {
+          "id": "aggression",
+          "low": "Peaceful",
+          "high": "Confrontational",
+          "default": 50
+        },
+        {
+          "id": "dominance",
+          "low": "Cooperative",
+          "high": "Dominant",
+          "default": 50
+        },
+        {
+          "id": "competition",
+          "low": "Collaborative",
+          "high": "Competitive",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "confidence",
+      "label": "Confidence",
+      "traits": [
+        {
+          "id": "confidence",
+          "low": "Self-doubting",
+          "high": "Self-assured",
+          "default": 50
+        },
+        {
+          "id": "bravery",
+          "low": "Cautious",
+          "high": "Brave",
+          "default": 50
+        },
+        {
+          "id": "assertiveness",
+          "low": "Reserved",
+          "high": "Assertive",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "traits": [
+        {
+          "id": "ambition",
+          "low": "Content",
+          "high": "Ambitious",
+          "default": 50
+        },
+        {
+          "id": "persistence",
+          "low": "Gives up early",
+          "high": "Persistent",
+          "default": 50
+        },
+        {
+          "id": "work_ethic",
+          "low": "Easy-going",
+          "high": "Driven",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "desires",
+      "label": "Desires",
+      "traits": [
+        {
+          "id": "freedom_drive",
+          "low": "Seeks guidance",
+          "high": "Values freedom",
+          "default": 50
+        },
+        {
+          "id": "achievement_drive",
+          "low": "Content with process",
+          "high": "Achievement-focused",
+          "default": 50
+        },
+        {
+          "id": "social_belonging",
+          "low": "Self-sufficient",
+          "high": "Seeks belonging",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "fears",
+      "label": "Fears",
+      "traits": [
+        {
+          "id": "failure_fear",
+          "low": "Unafraid of failure",
+          "high": "Fears failure",
+          "default": 50
+        },
+        {
+          "id": "uncertainty_fear",
+          "low": "Welcomes unknown",
+          "high": "Fears uncertainty",
+          "default": 50
+        },
+        {
+          "id": "rejection_fear",
+          "low": "Unaffected by rejection",
+          "high": "Sensitive to rejection",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "social",
+      "label": "Social behaviour",
+      "traits": [
+        {
+          "id": "cooperation",
+          "low": "Independent",
+          "high": "Cooperative",
+          "default": 50
+        },
+        {
+          "id": "leadership",
+          "low": "Follower",
+          "high": "Leader",
+          "default": 50
+        },
+        {
+          "id": "loyalty",
+          "low": "Unattached",
+          "high": "Loyal",
+          "default": 50
+        },
+        {
+          "id": "trust",
+          "low": "Suspicious",
+          "high": "Trusting",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "label": "Relationships",
+      "traits": [
+        {
+          "id": "attachment",
+          "low": "Independent bonds",
+          "high": "Strong attachment",
+          "default": 50
+        },
+        {
+          "id": "affection",
+          "low": "Reserved affection",
+          "high": "Warm affection",
+          "default": 50
+        },
+        {
+          "id": "commitment",
+          "low": "Flexible ties",
+          "high": "Committed",
+          "default": 50
+        },
+        {
+          "id": "possessiveness",
+          "low": "Nonpossessive",
+          "high": "Possessive",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "communication",
+      "label": "Communication",
+      "traits": [
+        {
+          "id": "talkativeness",
+          "low": "Quiet",
+          "high": "Talkative",
+          "default": 50
+        },
+        {
+          "id": "listening",
+          "low": "Talks first",
+          "high": "Listens closely",
+          "default": 50
+        },
+        {
+          "id": "persuasion",
+          "low": "Nonpersuasive",
+          "high": "Persuasive",
+          "default": 50
+        },
+        {
+          "id": "manipulation",
+          "low": "Transparent",
+          "high": "Manipulative",
+          "default": 50
+        },
+        {
+          "id": "humour_in_dialogue",
+          "low": "Literal",
+          "high": "Witty",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "creativity",
+      "label": "Creativity",
+      "traits": [
+        {
+          "id": "imagination",
+          "low": "Practical",
+          "high": "Imaginative",
+          "default": 50
+        },
+        {
+          "id": "originality",
+          "low": "Conventional",
+          "high": "Original",
+          "default": 50
+        },
+        {
+          "id": "inventiveness",
+          "low": "Follows examples",
+          "high": "Inventive",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "decisions",
+      "label": "Decision-making",
+      "traits": [
+        {
+          "id": "risk_tolerance",
+          "low": "Risk-averse",
+          "high": "Risk-taking",
+          "default": 50
+        },
+        {
+          "id": "impulsiveness",
+          "low": "Deliberate",
+          "high": "Impulsive",
+          "default": 50
+        },
+        {
+          "id": "patience",
+          "low": "Impatient",
+          "high": "Patient",
+          "default": 50
+        },
+        {
+          "id": "skepticism",
+          "low": "Gullible",
+          "high": "Sceptical",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "self_control",
+      "label": "Self-control",
+      "traits": [
+        {
+          "id": "discipline",
+          "low": "Spontaneous",
+          "high": "Disciplined",
+          "default": 50
+        },
+        {
+          "id": "emotional_regulation",
+          "low": "Reactive",
+          "high": "Self-regulated",
+          "default": 50
+        },
+        {
+          "id": "temptation_resistance",
+          "low": "Easily distracted",
+          "high": "Resists temptation",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "beliefs",
+      "label": "Beliefs",
+      "traits": [
+        {
+          "id": "openness_of_belief",
+          "low": "Fixed beliefs",
+          "high": "Open beliefs",
+          "default": 50
+        },
+        {
+          "id": "conviction",
+          "low": "Flexible opinions",
+          "high": "Strong convictions",
+          "default": 50
+        },
+        {
+          "id": "worldview",
+          "low": "Cynical",
+          "high": "Hopeful",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "values",
+      "label": "Values",
+      "traits": [
+        {
+          "id": "justice",
+          "low": "Pragmatic",
+          "high": "Justice-oriented",
+          "default": 50
+        },
+        {
+          "id": "security",
+          "low": "Adventurous",
+          "high": "Security-seeking",
+          "default": 50
+        },
+        {
+          "id": "community_value",
+          "low": "Individualistic",
+          "high": "Community-minded",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "identity",
+      "label": "Identity",
+      "traits": [
+        {
+          "id": "self_definition",
+          "low": "Fluid identity",
+          "high": "Strong self-concept",
+          "default": 50
+        },
+        {
+          "id": "belonging",
+          "low": "Solitary identity",
+          "high": "Group identity",
+          "default": 50
+        },
+        {
+          "id": "role_commitment",
+          "low": "Flexible roles",
+          "high": "Role-focused",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "habits",
+      "label": "Habits",
+      "traits": [
+        {
+          "id": "routine_preference",
+          "low": "Spontaneous",
+          "high": "Routine-oriented",
+          "default": 50
+        },
+        {
+          "id": "novelty",
+          "low": "Prefers familiar",
+          "high": "Seeks novelty",
+          "default": 50
+        },
+        {
+          "id": "preference_strength",
+          "low": "Easy to sway",
+          "high": "Strong preferences",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "attention",
+      "label": "Attention",
+      "traits": [
+        {
+          "id": "focus",
+          "low": "Distractible",
+          "high": "Focused",
+          "default": 50
+        },
+        {
+          "id": "awareness",
+          "low": "Inward-focused",
+          "high": "Observant",
+          "default": 50
+        },
+        {
+          "id": "detail_attention",
+          "low": "Big picture",
+          "high": "Detail-oriented",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "stress",
+      "label": "Stress response",
+      "traits": [
+        {
+          "id": "resilience",
+          "low": "Overwhelmed easily",
+          "high": "Resilient",
+          "default": 50
+        },
+        {
+          "id": "confrontation",
+          "low": "Avoidant",
+          "high": "Faces problems",
+          "default": 50
+        },
+        {
+          "id": "recovery",
+          "low": "Slow recovery",
+          "high": "Quick recovery",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "adaptability",
+      "label": "Adaptability",
+      "traits": [
+        {
+          "id": "flexibility",
+          "low": "Rigid",
+          "high": "Flexible",
+          "default": 50
+        },
+        {
+          "id": "change_openness",
+          "low": "Resists change",
+          "high": "Embraces change",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "curiosity",
+      "label": "Curiosity",
+      "traits": [
+        {
+          "id": "curiosity",
+          "low": "Content",
+          "high": "Inquisitive",
+          "default": 50
+        },
+        {
+          "id": "experimentation",
+          "low": "Prefers proven",
+          "high": "Experimental",
+          "default": 50
+        },
+        {
+          "id": "exploration",
+          "low": "Home-oriented",
+          "high": "Explorer",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "self_awareness",
+      "label": "Self-awareness",
+      "traits": [
+        {
+          "id": "reflection",
+          "low": "Acts without reflection",
+          "high": "Reflective",
+          "default": 50
+        },
+        {
+          "id": "limitations_awareness",
+          "low": "Overestimates ability",
+          "high": "Knows limits",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "influence",
+      "label": "Social influence",
+      "traits": [
+        {
+          "id": "independence",
+          "low": "Conforming",
+          "high": "Independent",
+          "default": 50
+        },
+        {
+          "id": "obedience",
+          "low": "Rebellious",
+          "high": "Rule-following",
+          "default": 50
+        },
+        {
+          "id": "persuadability",
+          "low": "Hard to convince",
+          "high": "Easy to convince",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "survival",
+      "label": "Simulated needs",
+      "traits": [
+        {
+          "id": "self_preservation",
+          "low": "Reckless",
+          "high": "Safety-seeking",
+          "default": 50
+        },
+        {
+          "id": "comfort_seeking",
+          "low": "Comfort-indifferent",
+          "high": "Comfort-seeking",
+          "default": 50
+        },
+        {
+          "id": "resource_care",
+          "low": "Careless with resources",
+          "high": "Resource-conscious",
+          "default": 50
+        }
+      ]
+    },
+    {
+      "id": "conscious_like",
+      "label": "Simulated reflection",
+      "traits": [
+        {
+          "id": "internal_dialogue",
+          "low": "Acts immediately",
+          "high": "Reflects internally",
+          "default": 50
+        },
+        {
+          "id": "goal_awareness",
+          "low": "Reactive",
+          "high": "Goal-aware",
+          "default": 50
+        },
+        {
+          "id": "self_monitoring",
+          "low": "Unmonitored",
+          "high": "Self-checking",
+          "default": 50
+        }
+      ]
+    }
+  ]
+}

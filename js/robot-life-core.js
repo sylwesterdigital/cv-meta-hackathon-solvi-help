@@ -1,3 +1,4 @@
+import {characterPolicy} from './robot-character-core.js';
 // v0.2.210: pure, bounded local exploration policy. Never treats the scene
 // index as visual evidence; all movement is checked by the existing A* router.
 export const LIFE_TICK_MS=6000;
@@ -13,6 +14,7 @@ export function lifeCandidates(robot,objects=[],history=[],step=0){
  const here=robot?.position;
  if(!here||![here.x,here.z].every(Number.isFinite))return [];
  const past=new Set(history.slice(-36).map(h=>String(h.targetId||'')));
+ const preferences=robot?.userData?.robotBrain?.character?characterPolicy(robot.userData.robotBrain.character):null;
  const nearby=(objects||[]).filter(o=>o!==robot&&o?.userData?.editorId&&
    o.visible!==false&&o.position&&[o.position.x,o.position.z].every(Number.isFinite)&&
    !['light','floor','ceiling','wall'].includes(o.userData.editorKind)&&
@@ -27,7 +29,7 @@ export function lifeCandidates(robot,objects=[],history=[],step=0){
   const point={x:object.position.x+dx/d*separation,z:object.position.z+dz/d*separation};
   const novelty=kind==='robot'?3:2;
   choices.push({targetId:id,targetName:String(object.name||kind).slice(0,90),kind,point,
-   score:novelty+Math.min(d,25)/25+(kind==='robot'&&step%4===0?1.5:0)});
+   score:novelty+Math.min(d,25)/25+(kind==='robot'&&step%4===0?1.5:0)+(preferences?(kind==='robot'?preferences.peerWeight:preferences.explorationWeight)-1:0)});
  }
  choices.sort((a,b)=>b.score-a.score||a.targetId.localeCompare(b.targetId));
  // Rotate the heading after every attempt to explore genuinely new ground.

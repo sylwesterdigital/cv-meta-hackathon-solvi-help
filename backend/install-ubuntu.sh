@@ -9,7 +9,7 @@ SERVICE=/etc/systemd/system/solvi-help.service
 TARGET=/opt/solvi-help
 STATE=/var/lib/solvi-help
 PORT=18765
-EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.219}
+EXPECTED_VERSION=${SOLVI_EXPECTED_VERSION:-0.2.220}
 export SOLVI_EXPECTED_VERSION="$EXPECTED_VERSION"
 BACKUP=$(mktemp -d /root/solvi-backend-backup-XXXXXXXX)
 CHANGED=0
@@ -21,7 +21,7 @@ RESTORE_SERVER=0
 RESTORE_REQUIREMENTS=0
 RESTORE_PY_MODULES=0
 # Keep these local Python modules together with server.py in /opt/solvi-help.
-BACKEND_PY_MODULES=(realm_archives.py prune_removed_avatars.py scene_recovery.py)
+BACKEND_PY_MODULES=(realm_archives.py prune_removed_avatars.py scene_recovery.py robot_character.py robot-character-schema.json robot-character-policy.json)
 DEPLOY_PHASE='initial checks'
 # A failed SSH deployment previously reported only `Command failed (1): ssh -o`.
 # Report the failure phase without printing credentials from the environment.

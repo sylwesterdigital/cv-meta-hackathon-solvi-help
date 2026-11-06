@@ -52,7 +52,7 @@ export function chatConstructionInstruction(text=''){
    /\b(?:build|construct|create|make)\s+(?:some\s+|new\s+|more\s+|a\s+|an\s+)?(?:homes?|houses?|cabins?|parks?|picnic\s+(?:area|spot))\b/i.test(message);
  return direct?message:null;
 }
-export function workRecoveryPlan({goal='',allowChanges=false,house=null,existingHouse=false,peerId='',attempts={},hasSeat=false,invitationTargets=[],contactTargets=[],placedSupplies=0,projectPlaced=[],completedHouses=[]}={}){
+export function workRecoveryPlan({goal='',allowChanges=false,house=null,existingHouse=false,peerId='',attempts={},hasSeat=false,invitationTargets=[],contactTargets=[],placedSupplies=0,projectPlaced=[],completedHouses=[],retryBudget=8}={}){
  if(boxCleanupGoal(goal))return {action:'cleanup_boxes',reason:'Collect explicitly named procedural boxes into the matching junk bin; skip blocked objects and retry them later'};
  if(canCleanupGoal(goal))return {action:'cleanup_cans',reason:'Perform the assigned can collection using the existing inventory and bin tools'};
  const construction=houseGoal(goal);
@@ -78,9 +78,9 @@ export function workRecoveryPlan({goal='',allowChanges=false,house=null,existing
    message:'I was asked to meet you about a shared project. Here is the goal: '+goal.slice(0,150)+'. Can you take a concrete next step in your own authorised work order?',
    reason:'Meet the named colleague and communicate the assigned project before building'};
  // Reuse an existing house first; run the same tool to rehydrate its scene IDs.
- if(construction&&allowChanges&&!house&&completedHouses.length<homeTarget&&count('build_house')<8)
+ if(construction&&allowChanges&&!house&&completedHouses.length<homeTarget&&count('build_house')<Math.max(2,Math.min(8,retryBudget)))
   return {action:'build_house',reason:existingHouse?'Resume the existing building before doing more work':'Construct the explicitly requested building before optional research or chat'};
- if(construction&&allowChanges&&house?.missing?.length&&count('build_house')<8)
+ if(construction&&allowChanges&&house?.missing?.length&&count('build_house')<Math.max(2,Math.min(8,retryBudget)))
   return {action:'build_house',reason:'Finish missing furniture inside the existing structure'};
  if(construction&&house?.inspectionFailed&&count('site_check')<3)
   return {action:'site_check',reason:'Make one alternative exterior visit before reporting the navigation blocker'};
@@ -90,7 +90,7 @@ export function workRecoveryPlan({goal='',allowChanges=false,house=null,existing
   return {action:'ask',target_id:invitationTargets[0].id,message:'The building is ready for inspection. Would you like to visit the opening? Here is what remains unfinished.',reason:'Invite the next named colleague to see the work'};
  // Build small community areas in verified, bounded steps even when Meta
  // cannot answer. No playground equipment or landscaping is fabricated.
- if(!construction&&allowChanges&&remainingProject.length&&count('build')<8)
+ if(!construction&&allowChanges&&remainingProject.length&&count('build')<Math.max(2,Math.min(8,retryBudget)))
   return {action:'build',variant:remainingProject[0],project:true,
    reason:`Place ${remainingProject[0]} (${installed.size+1}/${sequence.length}) for the requested community area`};
  // Research is optional and never replaces an authorized build. Lookups do

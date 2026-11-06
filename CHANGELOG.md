@@ -1,3 +1,9 @@
+## v0.2.220 — Persistent character brain and observed robot relationships (2026-11-06)
+- Add 96 versioned 0–100 bipolar traits in 30 categories, compact editable Brain tab, presets and JSON import/export.
+- Persist all editable character traits inside existing robot identity; add observed peer-exchange ledger to SQLite and a read-only advisory action-rule API.
+- Meta conversation and planner receive saved preferences; bounded autonomy heuristics adapt without bypassing scene permissions.
+- No claim of complete independent cognition or newly generated procedural tools.
+
 ## v0.2.219 — Scene-grounded cargo efficiency and discrimination
 
 - Autonomous cargo movement can jog only on long, demonstrably clear legs, reverting to walking near colleagues, obstacles and turns. The owner remains authoritative for multiplayer motion.

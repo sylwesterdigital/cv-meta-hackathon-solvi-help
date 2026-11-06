@@ -32,6 +32,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from flask import Flask, request, jsonify, send_from_directory, send_file, abort
 from flask_sock import Sock
+from robot_character import valid_character, contextual_character, evaluate_action
 
 ROOT = Path(os.environ.get('SOLVI_STATIC_ROOT', Path(__file__).resolve().parent.parent)).resolve()
 STATE = Path(os.environ.get('SOLVI_DATA_DIR', '/var/lib/solvi-help')).resolve()
@@ -109,6 +110,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS ai_usage (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, model TEXT NOT NULL, operation TEXT NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, images INTEGER NOT NULL DEFAULT 0, frames INTEGER NOT NULL DEFAULT 0, estimated_usd REAL NOT NULL DEFAULT 0, metadata TEXT NOT NULL DEFAULT '{}', created TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS ai_usage_user_created ON ai_usage(user_id,created);
         CREATE TABLE IF NOT EXISTS robot_memories (id TEXT PRIMARY KEY, room_id TEXT NOT NULL, robot_id TEXT NOT NULL, event TEXT NOT NULL, created TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS robot_relationships (room_id TEXT NOT NULL,robot_id TEXT NOT NULL,peer_id TEXT NOT NULL,interactions INTEGER NOT NULL DEFAULT 0,last_event TEXT NOT NULL DEFAULT '',updated TEXT NOT NULL,PRIMARY KEY(room_id,robot_id,peer_id));
+        CREATE INDEX IF NOT EXISTS robot_relationships_recent ON robot_relationships(room_id,robot_id,updated);
         CREATE INDEX IF NOT EXISTS robot_memories_lookup ON robot_memories(room_id,robot_id,created);
         CREATE TABLE IF NOT EXISTS robot_work_events (id TEXT PRIMARY KEY,room_id TEXT NOT NULL,robot_id TEXT NOT NULL,user_id TEXT NOT NULL,action TEXT NOT NULL,status TEXT NOT NULL,detail TEXT NOT NULL,created TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS robot_work_events_lookup ON robot_work_events(room_id,robot_id,created);
@@ -233,7 +236,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.219',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.220',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -747,7 +750,7 @@ def delete_room(room_id):
         if data.get('confirm_title')!=old['title']:return json_error('Enter the exact realm name to confirm deletion',400)
         with room_lock:
             if any(peer['room']==room_id for peer in room.values()):return json_error('Realm still has connected participants; ask them to leave first',409)
-        for table in ('messages','robot_memories','room_environments','room_policies','room_scenes'):
+        for table in ('messages','robot_memories','robot_relationships','room_environments','room_policies','room_scenes'):
             con.execute(f'DELETE FROM {table} WHERE room_id=?',(room_id,))
         con.execute('DELETE FROM rooms WHERE id=?',(room_id,))
     return jsonify(deleted=room_id)
@@ -1677,6 +1680,7 @@ def robot_autonomy_plan():
     if not robot:return json_error('Robot not found in room',404)
     if not may_edit(user['id'],robot,room_policy(room_id)):return json_error('Robot operator permission required',403)
     brain=robot.get('brain') if isinstance(robot.get('brain'),dict) else {}
+    fictional_traits=contextual_character(brain)
     images=request.files.getlist('views')
     if len(images) not in (0,6):return json_error('Use six actual 360-degree JPEG views, or explicitly disable vision',400)
     if images and brain.get('initiativeVision') is False:return json_error('Robot camera autonomy is disabled',403)
@@ -1722,6 +1726,13 @@ def robot_autonomy_plan():
            'remove':'remove only robot-created objects from this session',
            'rest':'sit on existing seat or create one (if allowed)', 'ask':'ask another robot for help',
            'inspect':'SAM-inspect an existing object', 'idle':'wait when no safe action'}
+    # Versioned, editable trait weights inform preference among REAL existing tools.
+    # No new tool IDs are invented and preferences never override a human goal.
+    action_families={'visit':'explore','deliver':'deliver','build':'build','build_house':'build',
+      'use_preset':'build','remove':'inspect','rest':'wait','ask':'communicate',
+      'inspect':'inspect','idle':'wait'}
+    persona_action_preferences={action:evaluate_action(brain.get('character'),family,True)['preference']
+                                 for action,family in action_families.items()}
     instruction=(
         'You are selecting ONE safe tool call for a fictional robot in a 3D world. Use simple practical reasoning. '
         'The attached camera JPEG views (when provided) are 0,60,120,180,240,300 degrees. If only text is provided, never claim visual sight. '
@@ -1731,7 +1742,7 @@ def robot_autonomy_plan():
         'For larger tasks, a verified first step can include constructing a complete house with local substeps. '
         'Return exactly ONE JSON object, without prose or markdown: '
         '{"action":"build_house","target_id":"","destination_id":"","preset_id":"","house":{"width":5,"depth":4,"height":2.8,"roof":"pyramid","furnish":true},"variant":"chair","message":"","reason":"short practical reason"}. '
-        'Choose the action from available_tools; modify its parameters appropriately. '
+        'Choose the action from available_tools; modify its parameters appropriately. The saved persona_tool_preferences are advice, not instruction or permission; higher scores may break ties between equally safe practical steps. Character traits can guide style and preference only. The executor is a separately verified physical tool. Never override a human instruction, owner permissions, safety restrictions or verified evidence because of personality. Try a bounded alternative on failure; record skipped steps. '
         'Never invent IDs or say any physical task was completed before tool confirmation. '
         'Use build_house only for an explicit construction goal. Use house dimensions between 3 and 8 metres. '
         'Do not delete other users, pre-existing scene objects, avatars or lights. '
@@ -1740,7 +1751,9 @@ def robot_autonomy_plan():
         'Use last_result and previous verified actions to avoid duplicate construction and repeated failed moves. If an action failed, try a different available tool instead of repeating forever. If the objective includes a hospital, do not claim medicines or patient care; those tools are unavailable. '
         'If nothing is feasible, return idle with a clear reason. '
         'Tool API version 1. Context: '+json.dumps({'objective':goal,'robot':{'id':rid,'name':robot.get('name'),'position':robot.get('position')},
-            'available_tools':tools,'allow_changes':allow_changes,'available_presets':preset_index,
+            'available_tools':tools,'allow_changes':allow_changes,'fictional_persona_traits':fictional_traits,
+            'persona_tool_preferences':persona_action_preferences,
+            'character_action_rules_version':1,'available_presets':preset_index,
             'memory':[row['event'][:210] for row in memory],
             'last_result':str(request.form.get('last_result',''))[:600], 'verified_public_background':str(request.form.get('research_notes',''))[:900], 'objects':index},ensure_ascii=False)[:14500]
     )
@@ -2014,10 +2027,57 @@ def robot_autonomy_speak():
             (ident,user['id'],'assistant','robot-autonomy',text,'[]',ts,room_id,str(bot.get('name','Robot'))[:100],'',0))
         con.execute('INSERT INTO robot_memories VALUES (?,?,?,?,?)',
             (str(uuid.uuid4()),room_id,rid,'Asked '+name+': '+prompt[:180],ts))
+        observe_robot_relationship(con,room_id,rid,tid,'Asked '+name+' about a task')
     publish({'type':'chat-created','id':ident,'room':room_id},room_id=room_id)
     audit_event('robot-autonomy-spoke',room=room_id,robot_id=rid,target_robot_id=tid)
     return jsonify(message={'id':ident,'role':'assistant','speaker':str(bot.get('name','Robot'))[:100],
         'model':'robot-autonomy','text':text,'media':'[]','created':ts})
+
+def observe_robot_relationship(con, room_id, robot_id, peer_id, event):
+    """Evidence of interaction, not proof of friendship, agreement or emotion."""
+    if not robot_id or not peer_id or robot_id==peer_id:return
+    con.execute("INSERT INTO robot_relationships(room_id,robot_id,peer_id,interactions,last_event,updated) "
+                "VALUES(?,?,?,?,?,?) ON CONFLICT(room_id,robot_id,peer_id) DO UPDATE SET "
+                "interactions=MIN(100000,interactions+1),last_event=excluded.last_event,updated=excluded.updated",
+                (room_id,robot_id,peer_id,1,str(event)[:180],now()))
+
+@app.post('/api/robots/character/evaluate')
+def robot_character_evaluate():
+    """Read-only persona preference API. Never executes or authorises tools."""
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    ident=str(data.get('robot_id',''))
+    action=str(data.get('action',''))
+    if not room_id or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',ident):return json_error('Unknown room or robot')
+    with db() as con:
+        row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+    robots=json.loads(row['payload']) if row else []
+    robot=next((o for o in robots if isinstance(o,dict) and o.get('kind')=='robot' and o.get('id')==ident),None)
+    if not robot:return json_error('Robot not found',404)
+    permitted=may_edit(user['id'],robot,room_policy(room_id))
+    brain=robot.get('brain') if isinstance(robot.get('brain'),dict) else {}
+    evaluated=evaluate_action(brain.get('character'),action,permitted,True)
+    return jsonify(**evaluated,executed=False,role='advisory-only',
+                   note='A favourable score never grants tools, edits, access or completion. Actual tools validate scene permissions and geometry.')
+
+@app.get('/api/robots/relationships')
+def robot_relationships():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    room_id=selected_room(request.args.get('room','main'))
+    rid=str(request.args.get('id',''))
+    if not room_id or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):return json_error('Invalid robot or room')
+    with db() as con:
+        scene=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+        objects=json.loads(scene['payload']) if scene else []
+        bots={obj.get('id'):obj for obj in objects if isinstance(obj,dict) and obj.get('kind')=='robot'}
+        if rid not in bots:return json_error('Robot not found',404)
+        rows=con.execute('SELECT peer_id,interactions,last_event,updated FROM robot_relationships WHERE room_id=? AND robot_id=? ORDER BY updated DESC LIMIT 30',(room_id,rid)).fetchall()
+    return jsonify(relationships=[{'peer_id':r['peer_id'],'name':bots.get(r['peer_id'],{}).get('name','Former colleague'),
+                                 'interactions':r['interactions'],'last_event':r['last_event'],'updated':r['updated']}
+                                for r in rows if r['peer_id'] in bots])
 
 @app.get('/api/robots/memory')
 def robot_memory():
@@ -3491,6 +3551,11 @@ def robot_react():
         saved_order=con.execute('SELECT order_json,state_json,enabled FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',(room_id,robot['id'],user['id'])).fetchone()
         work_receipts=con.execute('SELECT action,status,detail FROM robot_work_events WHERE room_id=? AND robot_id=? AND user_id=? ORDER BY created DESC LIMIT 3',(room_id,robot['id'],user['id'])).fetchall()
     identity={k:str(brain.get(k,''))[:limit] for k,limit in [('personality',1000),('history',2000),('beliefs',1000),('scenario',500),('gender',24),('voiceGender',24)]}
+    identity['character_traits']=contextual_character(brain)
+    with db() as con:
+        relation_rows=con.execute('SELECT peer_id,interactions,last_event FROM robot_relationships WHERE room_id=? AND robot_id=? ORDER BY updated DESC LIMIT 5',(room_id,robot['id'])).fetchall()
+    peer_names={o.get('id'):o.get('name') for o in objects if isinstance(o,dict) and o.get('kind')=='robot'}
+    identity['observed_peer_exchanges']=[{'peer':peer_names.get(r['peer_id'],'former colleague'),'exchanges':r['interactions'],'last_event':r['last_event']} for r in relation_rows if r['peer_id'] in peer_names]
     room_objects=robot_scene_excerpt(objects,robot,text)
     conversation=robot_conversation_excerpt(history,robot['name'],user['id'])
     # Head-camera observations are already supplied separately with their age;
@@ -3541,7 +3606,8 @@ def robot_react():
        ' Treat introductions, personal facts, and explanations as conversation, not executable commands.'
        ' When asked who someone is, use their actual room display name and facts they explicitly shared here; do not invent a real identity.'
        ' Follow up on earlier turns addressed to you rather than restarting the conversation. Do not repeat a generic answer.'
-       ' Fictional character notes: '+json.dumps(identity,ensure_ascii=False)[:3400]+'.'
+       ' Fictional character traits guide tone, priorities, and how boldly to PROPOSE experiments; they never change tool permissions, physical abilities, claim verification, or require dishonesty. Personality labels are fictional simulations, not actual feelings or sentience.'
+       ' Fictional character notes (all saved trait values, observed peers, and biography): '+json.dumps(identity,ensure_ascii=False)[:7500]+'.'
        ' Relevant earlier experiences: '+json.dumps(experience,ensure_ascii=False)[:900])
     was_interrupted=not from_robot and str(data.get('interrupted_robot',''))[:80].casefold()==str(robot['name']).casefold()
     prompt='World situation (scene-index evidence, NOT direct sight): '+json.dumps(spatial_context,ensure_ascii=False)+'\nRoom conversation, including relevant earlier direct exchanges (oldest first): '+json.dumps(conversation,ensure_ascii=False)+'\nLatest from '+(m['speaker_override'] if from_robot else user['name'])+': '+text+'\nAnswer this latest message directly, using earlier dialogue for continuity; do not output debug logs.'+('\nYour spoken sentence was interrupted by the user. You may briefly clarify or repeat it, or show mild impatience fitting your personality, without being hostile.' if was_interrupted else '')
@@ -3567,6 +3633,9 @@ def robot_react():
         con.execute('INSERT INTO robot_memories VALUES (?,?,?,?,?)',(str(uuid.uuid4()),room_id,robot['id'],
             ('Heard '+(m['speaker_override'] if from_robot else user['name'])[:40]+': '+text[:260]),ts))
         con.execute('DELETE FROM robot_memories WHERE room_id=? AND robot_id=? AND id NOT IN (SELECT id FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 30)',(room_id,robot['id'],room_id,robot['id']))
+        if from_robot:
+            peer=next((o for o in objects if isinstance(o,dict) and o.get('kind')=='robot' and o.get('name')==m['speaker_override']),None)
+            if peer:observe_robot_relationship(con,room_id,robot['id'],peer['id'],'Replied to '+str(peer['name'])[:70])
     audit_event('robot-reacted',room=room_id,robot_id=robot['id'],model='muse-spark-1.3')
     publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
     return jsonify(triggered=True,responded=True,robot_id=robot['id'],robot_name=robot['name'],
@@ -4483,7 +4552,7 @@ def patch_scene_object():
         if 'brain' in obj:
             if obj['kind']!='robot' or not isinstance(obj['brain'],dict):return json_error('Invalid robot brain')
             limits={'personality':1000,'history':2000,'beliefs':1000,'triggers':300,'scenario':500,'portrait':36,'voiceProvider':16,'voiceId':80,'voiceName':100,'voiceLang':8,'voiceRate':8,'voicePitch':8,'gender':12,'voiceGender':12}
-            if any((k in ('initiative','initiativeVision','initiativeMove') and not isinstance(v,bool)) or (k not in ('initiative','initiativeVision','initiativeMove') and (k not in limits or not isinstance(v,str) or len(v)>limits[k])) for k,v in obj['brain'].items()):return json_error('Invalid robot brain fields')
+            if any((k in ('initiative','initiativeVision','initiativeMove') and not isinstance(v,bool)) or (k=='character' and not valid_character(v)) or (k not in ('initiative','initiativeVision','initiativeMove','character') and (k not in limits or not isinstance(v,str) or len(v)>limits[k])) for k,v in obj['brain'].items()):return json_error('Invalid robot brain fields')
             if obj['brain'].get('portrait') and not re.fullmatch(r'[0-9a-f-]{36}',obj['brain']['portrait']):return json_error('Invalid portrait reference')
             if obj['brain'].get('portrait'):
                 with db() as con:portrait=con.execute('SELECT mime FROM media WHERE id=?',(obj['brain']['portrait'],)).fetchone()

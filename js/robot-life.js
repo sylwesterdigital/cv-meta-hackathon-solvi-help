@@ -1,3 +1,4 @@
+import {characterPolicy} from './robot-character-core.js';
 // v0.2.210: owner-authorised, browser-only idle life and long-route renewals. Inference is NOT invoked
 // every six seconds; Meta visual perception and social initiative retain their
 // existing billing/cooldown paths. This module executes real checked routes.
@@ -16,7 +17,8 @@ export function initRobotLife({editor,api,room,canRun,workOrderActive=()=>false,
   const result=lifeResult(status.status,mission.start,bot.position);
   life.history.push({targetId:mission.candidate.targetId,point:mission.candidate.point,status:result.status});
   life.history=life.history.slice(-60);
-  life.nextAt=Date.now()+(result.moved?6000:22000);
+  const character=bot.userData.robotBrain?.character;const preference=character?characterPolicy(character):null;
+  life.nextAt=Date.now()+Math.round((result.moved?6000:22000)*(preference?.decisionDelayFactor||1));
   const detail=`${result.status} · ${result.metres}m actual displacement · ${mission.candidate.targetName}`;
   trace(bot,result.moved?'TRAVELLED':'ROUTE RESULT',detail);
   // Owner-reported movement is expressly labelled as such; the server does
@@ -129,7 +131,7 @@ export function initRobotLife({editor,api,room,canRun,workOrderActive=()=>false,
     bot.userData.robotMission=null;
     life.history.push({targetId:candidate.targetId,point:candidate.point,status:'blocked'});
    }
-   life.history=life.history.slice(-60);life.nextAt=Date.now()+22000;
+   life.history=life.history.slice(-60);life.nextAt=Date.now()+Math.round(22000*(bot.userData.robotBrain?.character?characterPolicy(bot.userData.robotBrain.character).decisionDelayFactor:1));
    trace(bot,'BLOCKED','No reachable novel destination from the current surroundings; retrying after a pause.');
   }catch(error){life.nextAt=Date.now()+30000;trace(bot,'UNAVAILABLE',error.message);}
   finally{busy=false;}
