@@ -1,3 +1,11 @@
+# v0.2.213 — Observable robot execution, user-tunable Meta retry and spatial UI (2026-11-06)
+
+- Expose per-account Meta retry, maximum backoff, and planning cooldown settings with server persistence and a credential-source diagnostic; clear stale missing-key timers when credentials become available.
+- Convert explicitly addressed can-clearing requests into saved executable orders: identify home and table cans, hold and drink, create a procedural bin, store verified empty cans as persistent container inventory and repeat.
+- Increase in-world comic bubble capacity and readability; show real speaker activity on controlled robot portraits using a subtle border-only animation and microphone overlay.
+- Make minimap translucent, draw world-object footprints and flash a grounded object marker when a robot mentions that named scene object; encourage landmark-based spatial language rather than raw coordinates.
+- Maintain owner permissions, scene object IDs, existing Meta usage caps, physics, and prior navigation/multiplayer changes. No live deployment claimed.
+
 # v0.2.212 — Executable local robot projects and sustained recovery (2026-11-06)
 
 - Fix the "Meta unavailable → no safe step → idle" dead end for expressly authorised construction. Add a server-durable Local project mode using real scene-generation and collision-checked navigation without Meta calls.

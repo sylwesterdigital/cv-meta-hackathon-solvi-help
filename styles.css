@@ -2786,3 +2786,30 @@ body>#inspectorValueSlider #inspectorActiveRange{
 
 /* v0.2.208: short functional-backpack / beverage action bar, consistent with the existing compact inventory styling. */
 #robotInventoryPanel #inventoryStowBag:not([hidden]),#robotInventoryPanel #inventoryAvatarBackpack:not([hidden]){display:inline-flex;align-items:center;min-height:30px}
+
+/* v0.2.213: readable in-world dialogue; proportional to message length. */
+#solviComicBubbles .solvi-comic-balloon{max-width:min(420px,78vw);min-width:145px;padding:13px 18px 15px;font-size:16px;line-height:1.42;box-shadow:2px 4px 0 #151515,0 8px 20px #0007;}
+#solviComicBubbles .solvi-comic-text{overflow-wrap:break-word;white-space:normal;}
+@media(max-width:600px){#solviComicBubbles .solvi-comic-balloon{max-width:80vw;font-size:13.5px;padding:10px 12px;}}
+/* Animate only the outer portrait border, never the photograph or roundel. */
+#controlSwitcher .robot-face-choice.robot-face-speaking{overflow:visible!important;}
+#controlSwitcher .robot-face-choice.robot-face-speaking::after{content:'';position:absolute;inset:-3px;border:3px solid #8ddae9;border-radius:50%;pointer-events:none;z-index:9;box-shadow:0 0 7px #66d6ff;animation:solviSpeakingEdge 2.8s ease-in-out infinite;}
+#controlSwitcher .robot-face-choice.robot-face-speaking::before{content:'';position:absolute;inset:0;background:url('./assets/ui-icons/mic.svg') center 48% / 28% no-repeat,url('./assets/ui-icons/mic.svg') center 93% / 14% no-repeat,linear-gradient(transparent 65%,rgba(0,0,0,.35));border-radius:50%;pointer-events:none;z-index:8;filter:drop-shadow(0 0 2px black);}
+@keyframes solviSpeakingEdge{0%,100%{border-color:#8ddae9;box-shadow:0 0 3px #73dffb}50%{border-color:#f9a9dc;box-shadow:0 0 13px #ed8ecb}}
+@media(prefers-reduced-motion:reduce){#controlSwitcher .robot-face-choice.robot-face-speaking::after{animation:none!important;}}
+/* Map has a 25% translucent surface, while building footprints are fully legible. */
+.minimap-panel{background:rgba(16,37,54,.25)!important;backdrop-filter:none!important;}
+.minimap-header{background:rgba(16,37,54,.82)!important;}
+.minimap-body{background:rgba(16,37,54,.20)!important;}
+#minimapCanvas{background:rgba(16,30,45,.25)!important;}
+.minimap-foot{background:rgba(16,37,54,.72);border-radius:5px;padding:3px 5px;}
+.autonomy-model-settings{border:1px solid var(--ui-border,#647c8d);border-radius:9px;margin:9px 0;padding:9px;display:grid;gap:6px;}
+.autonomy-model-settings legend{font-weight:700;font-size:13px;}
+.autonomy-model-settings .field-label{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.autonomy-model-settings input{width:90px;max-width:35%;}
+#autonomyModelStatus.model-key-unavailable{color:#ffd59a;font-weight:700;}
+
+#autonomyStatus{white-space:pre-wrap!important;overflow-wrap:anywhere;line-height:1.5;}
+#controlSwitcher .robot-face-options{padding:4px!important;}
+#controlSwitcher .robot-face-choice[data-work-status="failed"]:not(.robot-face-speaking)::after,
+#controlSwitcher .robot-face-choice[data-work-status="blocked"]:not(.robot-face-speaking)::after{content:"";position:absolute;inset:1px;border:2px dashed #e9ac73;border-radius:50%;pointer-events:none;z-index:6;}

@@ -113,6 +113,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS robot_work_events (id TEXT PRIMARY KEY,room_id TEXT NOT NULL,robot_id TEXT NOT NULL,user_id TEXT NOT NULL,action TEXT NOT NULL,status TEXT NOT NULL,detail TEXT NOT NULL,created TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS robot_work_events_lookup ON robot_work_events(room_id,robot_id,created);
         CREATE TABLE IF NOT EXISTS robot_work_orders (room_id TEXT NOT NULL,robot_id TEXT NOT NULL,user_id TEXT NOT NULL,order_json TEXT NOT NULL,state_json TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,updated TEXT NOT NULL,PRIMARY KEY(room_id,robot_id));
+        CREATE TABLE IF NOT EXISTS robot_autonomy_preferences (user_id TEXT PRIMARY KEY, retry_seconds INTEGER NOT NULL DEFAULT 30, max_retry_seconds INTEGER NOT NULL DEFAULT 120, planner_cooldown_seconds INTEGER NOT NULL DEFAULT 175);
         CREATE INDEX IF NOT EXISTS robot_work_orders_owner ON robot_work_orders(user_id,room_id);
         CREATE TABLE IF NOT EXISTS scene (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, payload TEXT NOT NULL);
         INSERT OR IGNORE INTO scene VALUES(1,0,'[]');
@@ -232,7 +233,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.212',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.213',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1620,6 +1621,43 @@ def parse_autonomy_decision(text,objects,robot_id,allow_changes=False,presets=No
     except (ValueError,TypeError):return None
     return validate_autonomy_decision(data,objects,robot_id,allow_changes,presets)
 
+def autonomy_preferences(uid):
+    with db() as con:
+        row=con.execute('SELECT retry_seconds,max_retry_seconds,planner_cooldown_seconds FROM robot_autonomy_preferences WHERE user_id=?',(uid,)).fetchone()
+    return dict(row) if row else {'retry_seconds':30,'max_retry_seconds':120,'planner_cooldown_seconds':175}
+
+@app.route('/api/robots/autonomy/preferences',methods=['GET','PUT'])
+def robot_autonomy_preferences():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    if request.method=='GET':return jsonify(preferences=autonomy_preferences(user['id']))
+    body=request.get_json(silent=True) or {}
+    try:
+        values=[body[k] for k in ('retry_seconds','max_retry_seconds','planner_cooldown_seconds')]
+        if not all(type(v) is int for v in values):raise ValueError()
+        retry,maximum,cooldown=values
+        if not (15<=retry<=600 and retry<=maximum<=600 and 20<=cooldown<=600):raise ValueError()
+    except (ValueError,KeyError,TypeError):return json_error('Retry must be 15–600s, maximum >= retry, planner cooldown 20–600s',400)
+    with db() as con:
+        con.execute('INSERT INTO robot_autonomy_preferences(user_id,retry_seconds,max_retry_seconds,planner_cooldown_seconds) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET retry_seconds=excluded.retry_seconds,max_retry_seconds=excluded.max_retry_seconds,planner_cooldown_seconds=excluded.planner_cooldown_seconds',(user['id'],retry,maximum,cooldown))
+    return jsonify(ok=True,preferences=autonomy_preferences(user['id']))
+
+@app.get('/api/ai/key-status')
+def ai_key_status():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    # Never return the key itself. This check uses exactly the planner's active_model_key().
+    try:
+        session=bool(request.headers.get('X-Solvi-Model-Key','').strip())
+        ready=bool(active_model_key())
+    except ValueError:
+        return jsonify(configured=False,source='invalid-session',planning_ready=False,vision_ready=False,chat_ready=False,detail='Session key format invalid in this browser tab')
+    source='session' if session else 'server' if configured_model_key() else 'missing'
+    detail={'session':'A session key is present in this tab for planning, vision and chat (provider acceptance not yet verified). Other tabs do not inherit it.',
+            'server':'A server key is present for all authenticated model routes (provider acceptance not yet verified).',
+            'missing':'No Meta key reaches this browser request. Planning, vision and chat will require a server key or a session key in this tab.'}[source]
+    return jsonify(configured=ready,source=source,planning_ready=ready,vision_ready=ready,chat_ready=ready,detail=detail)
+
 @app.post('/api/robots/autonomy/plan')
 def robot_autonomy_plan():
     user,msg,status=actor()
@@ -1629,7 +1667,7 @@ def robot_autonomy_plan():
     rid=str(request.form.get('robot_id',''))[:100]
     goal=str(request.form.get('objective','')).strip()[:1800]
     if not goal:return json_error('Objective required',400)
-    if not active_model_key():return json_error('Configure a Meta model API key for autonomous decisions',503)
+    if not active_model_key():return jsonify(error='No Meta key available to autonomous planning in this browser tab or on the server',failure_code='meta-key-missing',remedy='Settings → Meta AI: configure a server key or a session key in this tab. Local authorised tasks remain enabled.'),503
     with db() as con:
         scene=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
         memory=con.execute('SELECT event FROM robot_memories WHERE room_id=? AND robot_id=? ORDER BY created DESC LIMIT 5',(room_id,rid)).fetchall()
@@ -1651,9 +1689,10 @@ def robot_autonomy_plan():
             return json_error('Malformed or oversized JPEG camera frame',400)
         image_parts.append({'type':'input_image','image_url':'data:image/jpeg;base64,'+base64.b64encode(jpeg).decode('ascii')})
     stamp=time.time();day=dt.datetime.now(dt.timezone.utc).date().isoformat()
+    cooldown=autonomy_preferences(user['id'])['planner_cooldown_seconds']
     with robot_task_lock:
         last=ROBOT_AUTONOMY_LAST.get((room_id,rid),0)
-        if stamp-last<175:return jsonify(error='Autonomy decision cooldown: wait at least three minutes',failure_code='rate-limited',retry_after_seconds=max(1,int(175-(stamp-last)))),429
+        if stamp-last<cooldown:return jsonify(error='Autonomy planning cooldown active (configured in Settings → Meta AI)',failure_code='rate-limited',retry_after_seconds=max(1,int(cooldown-(stamp-last)))),429
         used=ROBOT_AUTONOMY_DAILY.get((user['id'],day),0)
         if used>=36:return json_error('Daily autonomous decision budget reached',429)
         ROBOT_AUTONOMY_LAST[(room_id,rid)]=stamp
@@ -1844,7 +1883,7 @@ def robot_work_order_save():
 
 # Autonomous work receipts are explicit client reports, not new commands. They
 # let robot discussions reference concrete recent project work without fabricating success.
-ROBOT_WORK_ACTIONS={'build_house','build','deliver','visit','rest','ask','inspect','use_preset','remove','research','idle','task'}
+ROBOT_WORK_ACTIONS={'build_house','build','deliver','visit','rest','ask','inspect','use_preset','remove','research','idle','task','cleanup_cans'}
 @app.post('/api/robots/autonomy/report')
 def robot_autonomy_report():
     user,msg,status=actor()
@@ -3474,6 +3513,7 @@ def robot_react():
        ' Answer the actual person first. If it adds something, include ONE brief casual aside about what caught your attention or your next practical move, in your own voice and everyday jargon. This is a character remark, not a report of hidden reasoning. Skip the aside when it would be filler.'
        ' Prefer real task receipts and recent actions over old camera descriptions. If last_client_reported_exploration exists, do not claim the robot has only made an older short walk; distinguish a completed client-reported exploration from an active mission.'
        ' When invited to improve or build the world, name a specific achievable next step or a saved work order. A friendly reply or broad group invitation is NOT scene construction, and must never be described as completed world edits.'
+       ' Describe places naturally with distinctive objects, buildings, paths, entrances and landmarks rather than raw X/Z coordinates unless the human explicitly asks for measurements. Do not invent landmarks or claim a place was seen in camera when only the scene index lists it.'
        ' Avoid repetitive sky/tiles reports, formal evidence-debate wording, generic self-assessment, and [S1] reference labels unless explicitly requested.'
        ' Do not claim to be walking, moving, rerouting, or executing a mission unless the server provided an actual scene command. A chat reply alone does not move the avatar.'
        ' Never state a movement happened unless confirmed in the task record. Do not ask permission to turn, angle, step back or replan: those are autonomous navigation decisions. Ask a short question only when the objective truly cannot be determined. If the objective is complete, stay idle or suggest a grounded next activity without claiming to have started it.'
@@ -4029,6 +4069,19 @@ def valid_held_scene(objects):
         if not isinstance(storage,dict) or storage.get('type')!='bag':continue
         reference=ids.get(storage.get('bagId'))
         if reference and reference.get('kind')=='robot' and reference.get('backpackEnabled') is not True:return False
+    # Container references must name actual fridges or bins, with unique slots.
+    bins=set()
+    for obj in objects:
+        storage=obj.get('storage') if isinstance(obj,dict) else None
+        if not isinstance(storage,dict) or storage.get('type')!='container':continue
+        container=ids.get(storage.get('containerId'))
+        if not container or container.get('kind')!='furniture':return False
+        variant=(container.get('furniture') or {}).get('variant')
+        if variant not in ('fridge','bin'):return False
+        if variant=='bin' and (storage.get('slot',-1)>=24 or (obj.get('furniture') or {}).get('variant') not in ('can','bottle') or (obj.get('inventory') or {}).get('consumable') is not False):return False
+        key=(storage['containerId'],storage['slot'])
+        if key in bins:return False
+        bins.add(key)
     return True
 
 def valid_smart_channels(value):
@@ -4435,6 +4488,14 @@ def patch_scene_object():
             if bag.get('kind')=='robot' and bag.get('backpackEnabled') is not True:return json_error('Avatar backpack is not enabled',409)
             if bag.get('kind')!='robot' and (bag.get('inventory') or {}).get('category')!='backpack':return json_error('Not a backpack',409)
             if not may_edit(user['id'],bag,policy):return json_error('Backpack belongs to another user',403)
+        if action=='upsert' and isinstance(obj.get('storage'),dict) and obj['storage'].get('type')=='container':
+            claim=obj['storage'];container=next((item for item in items if item.get('id')==claim['containerId']),None)
+            if not container:return json_error('Storage container missing',409)
+            variant=(container.get('furniture') or {}).get('variant')
+            if variant not in ('fridge','bin'):return json_error('Unsupported storage container',409)
+            if variant=='bin' and (claim['slot']>=24 or (obj.get('furniture') or {}).get('variant') not in ('can','bottle') or (obj.get('inventory') or {}).get('consumable') is not False):return json_error('Only empty cans or bottles can be placed inside bins',409)
+            if not may_edit(user['id'],container,policy):return json_error('Storage container belongs to another user',403)
+            if any(item.get('id')!=obj_id and (item.get('storage') or {}).get('type')=='container' and (item.get('storage') or {}).get('containerId')==claim['containerId'] and (item.get('storage') or {}).get('slot')==claim['slot'] for item in items):return json_error('Container slot occupied',409)
         if action=='upsert' and isinstance(obj.get('storage'),dict) and obj['storage'].get('type')=='held':
             held=obj['storage'];holder=next((item for item in items if item.get('id')==held['holderId'] and item.get('kind')=='robot'),None)
             if not holder:return json_error('Equipment holder is missing',409)

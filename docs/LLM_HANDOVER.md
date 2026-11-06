@@ -1,3 +1,9 @@
+# SOLVI.help Master LLM Handover — v0.2.213
+
+## v0.2.213 — Honest execution, model configuration, speech/map controls
+
+Source patch from complete v0.2.212. No deployment claim. Run the Mac watcher and a two-client can-to-bin test. See docs/RELEASE_0.2.213_SPEC.md.
+
 # SOLVI.help Master LLM Handover — v0.2.212
 
 # v0.2.212 — Executable local robot projects and sustained recovery (2026-11-06)

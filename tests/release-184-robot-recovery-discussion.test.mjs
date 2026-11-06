@@ -4,10 +4,10 @@ import {readFileSync} from 'node:fs';
 import {metaRetryDelay,workRecoveryPlan,projectOutcome} from '../js/robot-autonomy-policy.js';
 const src=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 test('Meta error backoff is bounded and avoids charging repeatedly every loop',()=>{
- assert.equal(metaRetryDelay(1),180000);
- assert.equal(metaRetryDelay(2),360000);
- assert.equal(metaRetryDelay(3),720000);
- assert.equal(metaRetryDelay(9),1800000);
+ assert.equal(metaRetryDelay(1),30000);
+ assert.equal(metaRetryDelay(2),60000);
+ assert.equal(metaRetryDelay(3),120000);
+ assert.equal(metaRetryDelay(9),120000);
 });
 test('house recovery prioritises actual work, bounded site checks, and never substitutes idle peer chatter for construction',()=>{
  const goal='Jess, construct a small house';

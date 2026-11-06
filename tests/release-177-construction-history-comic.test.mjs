@@ -75,8 +75,8 @@ test('one dashed temporary guide and one Properties panel are used',()=>{
 test('comic bubbles use supplied SVG, safe text and bounded time and no bundled proprietary font',async()=>{
  const {comicBubbleDuration,comicBubbleText}=await import('../js/robot-comic-bubbles.js');
  assert.equal(comicBubbleText('  HELLO   WORLD  '),'HELLO WORLD');
- assert.equal(comicBubbleText('x'.repeat(300)).length,148);
- assert.ok(comicBubbleDuration('abc')<=11500);
+ assert.equal(comicBubbleText('x'.repeat(300)).length,300);
+ assert.ok(comicBubbleDuration('abc')<=23000);
  for(let i=1;i<=3;i++)assert.ok(fs.existsSync(new URL(`../assets/ui-icons/speech-bubble-${i}.svg`,import.meta.url)));
  assert.match(read('js/studio.js'),/installRobotComicBubbles\(world\)/);
  assert.match(read('styles.css'),/solvi-comic-balloon/);

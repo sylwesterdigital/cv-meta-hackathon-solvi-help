@@ -178,8 +178,8 @@ export class RobotInventory{
     obj.visible=false;this.editor.sceneDiagnostic?.('equipment-hand-conflict',{id:stableId(obj),holderId:storage.holderId,hand:storage.hand});continue;
    }claimedHands.add(slot);}
    const ref=storage.type==='bag'?ids.get(storage.bagId):storage.type==='container'?ids.get(storage.containerId):ids.get(storage.holderId);
-   const valid=ref&&(storage.type==='bag'?(cleanInventory(ref.userData?.inventory).category==='backpack'||ref.userData?.editorKind==='robot'&&ref.userData.backpackEnabled===true):storage.type==='container'?ref.userData?.furniture?.variant==='fridge'&&Boolean(fridgeSlotPose(ref.userData.furniture,storage.slot)):ref.userData?.editorKind==='robot');
-   if(!valid&&['held','bag'].includes(storage.type)){obj.visible=false;continue;} // Delta ordering: never erase an equipment claim while its owner is loading.
+   const valid=ref&&(storage.type==='bag'?(cleanInventory(ref.userData?.inventory).category==='backpack'||ref.userData?.editorKind==='robot'&&ref.userData.backpackEnabled===true):storage.type==='container'?ref.userData?.furniture?.variant==='bin'&&storage.slot<24||ref.userData?.furniture?.variant==='fridge'&&Boolean(fridgeSlotPose(ref.userData.furniture,storage.slot)):ref.userData?.editorKind==='robot');
+   if(!valid&&(['held','bag'].includes(storage.type)||storage.type==='container'&&!ref)){obj.visible=false;continue;} // Delta ordering: never erase an equipment claim while its owner is loading.
    if(!valid){delete obj.userData.storage;obj.visible=true;this.editor.physics?.sync?.(obj);this.editor.queueSave?.(obj);}
    else this.applyState(obj);
   }
@@ -205,8 +205,9 @@ export class RobotInventory{
   obj.position.copy(obj.parent?.worldToLocal?.(worldPos.clone())||worldPos);
  }
  placeInContainer(obj,storage){
-  const container=this.editor.items.find(o=>stableId(o)===storage.containerId&&o.userData?.furniture?.variant==='fridge');
+  const container=this.editor.items.find(o=>stableId(o)===storage.containerId&&['fridge','bin'].includes(o.userData?.furniture?.variant));
   if(!container)return false;
+  if(container.userData.furniture.variant==='bin')return false; // Empty cans are stored invisibly inside the opaque bin.
   const slot=fridgeSlotPose(container.userData.furniture,storage.slot);if(!slot)return false;
   container.updateWorldMatrix(true,false);
   const pos=container.localToWorld(new THREE.Vector3(slot.x,slot.y,slot.z));
@@ -214,7 +215,7 @@ export class RobotInventory{
   return container.userData.furniture.open===true;
  }
  releaseContainer(container){
-  if(container?.userData?.furniture?.variant!=='fridge')return;
+  if(!['fridge','bin'].includes(container?.userData?.furniture?.variant))return;
   for(const obj of this.editor.items){if(obj.userData?.storage?.type!=='container'||obj.userData.storage.containerId!==stableId(container))continue;
    delete obj.userData.storage;obj.visible=true;
    const pos=container.localToWorld(new THREE.Vector3(0,.3,container.userData.furniture.depth/2+.5));
@@ -232,6 +233,19 @@ export class RobotInventory{
    }else if(storage.type==='container')obj.visible=this.placeInContainer(obj,storage);
    else obj.visible=false;
   }
+ }
+ storeInBin(robot,obj,bin){
+  if(!robot||!obj||!bin||bin.userData?.furniture?.variant!=='bin'||
+   !this.editor.canEdit(robot)||!this.editor.canEdit(obj)||!this.editor.canEdit(bin)||
+   !this.owned(robot,obj)||obj.userData.storage?.type!=='held'||obj.userData.storage.holderId!==stableId(robot)||
+   !['can','bottle'].includes(obj.userData.furniture?.variant)||obj.userData.inventory?.consumable===true)return false;
+  const count=this.editor.items.filter(o=>o.userData.storage?.type==='container'&&o.userData.storage.containerId===stableId(bin));
+  if(count.length>=24)return false;
+  const occupied=new Set(count.map(o=>o.userData.storage.slot));
+  const slot=Array.from({length:24},(_,i)=>i).find(i=>!occupied.has(i));
+  if(slot===undefined)return false;
+  obj.userData.storage={type:'container',containerId:stableId(bin),slot};
+  this.applyState(obj);this.editor.queueSave(obj);this.render();return true;
  }
  drop(robot,obj){
   const storage=cleanStorage(obj.userData.storage);

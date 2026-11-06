@@ -1,10 +1,22 @@
 // v0.2.192: bounded, deterministic recovery strategy. A model can propose
 // tools, but the runtime owns actual state, retries and completion evidence.
 import {houseGoal} from './robot-construction-api.js';
-export const META_RECOVERY_MIN_MS=180000;
-export const META_RECOVERY_MAX_MS=1800000;
-export function metaRetryDelay(failures=1){
- return Math.min(META_RECOVERY_MAX_MS,META_RECOVERY_MIN_MS*2**Math.min(4,Math.max(0,Math.floor(failures)-1)));
+// Per-account settings are fetched from the authenticated server, not buried in a retry loop.
+// Defaults are intentionally short; only the failing model call backs off.
+export const META_RECOVERY_MIN_MS=30000;
+export const META_RECOVERY_MAX_MS=120000;
+export function metaRetryDelay(failures=1,settings={}){
+ const base=Math.max(15000,Math.min(600000,Number(settings.retrySeconds)||30)*1000);
+ const cap=Math.max(base,Math.min(600000,Number(settings.maxRetrySeconds)||120)*1000);
+ return Math.min(cap,base*2**Math.min(5,Math.max(0,Math.floor(failures)-1)));
+}
+export function canCleanupGoal(text=''){
+ return /\b(?:can|cans)\b/i.test(text)&&/\b(?:clear|clean|empty|dispose|pick\s*up|drink|recycl|bin)\b/i.test(text)&&/\b(?:table|home|house|bin)\b/i.test(text);
+}
+export function chatCanCleanupInstruction(text='',robotName=''){
+ const message=String(text||'').trim().slice(0,1800);
+ if(!robotName||!message.toLowerCase().startsWith('@'+robotName.toLowerCase()+' '))return null;
+ return canCleanupGoal(message)?message:null;
 }
 // Small, grounded construction sequences when planning is offline. These are
 // proposals only: the editor still validates the worksite and every scene edit.
@@ -28,6 +40,7 @@ export function chatConstructionInstruction(text=''){
  return direct?message:null;
 }
 export function workRecoveryPlan({goal='',allowChanges=false,house=null,existingHouse=false,peerId='',attempts={},hasSeat=false,invitationTargets=[],contactTargets=[],placedSupplies=0,projectPlaced=[],completedHouses=[]}={}){
+ if(canCleanupGoal(goal))return {action:'cleanup_cans',reason:'Perform the assigned can collection using the existing inventory and bin tools'};
  const construction=houseGoal(goal);
  const hospital=/\b(hospital|clinic)\b/i.test(goal);
  const party=/\b(invite|invitation|opening party|celebrat)\b/i.test(goal);

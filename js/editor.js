@@ -405,6 +405,16 @@ export class SceneEditor{
   const modeButton=byId('controlModeButton'),robotSelect=byId('controlledRobotSelect'),robotFaces=byId('controlledRobotFaces');
   attachControlSwitcherDrag(byId('controlSwitcher'));
   const switcher=byId('controlSwitcher');
+  const speakingPortrait=e=>{
+   const name=String(e.detail?.name||'').toLocaleLowerCase();
+   for(const button of robotFaces.children){const bot=this.items.find(o=>o.userData.editorId===button.dataset.robotId);
+    const active=e.detail?.active===true&&bot?.name.toLocaleLowerCase()===name;
+    button.classList.toggle('robot-face-speaking',active);button.setAttribute('data-speaking',String(active));
+    if(active)button.title=bot.name+' is speaking';
+   }
+  };
+  window.addEventListener('solvi:robot-speaking',speakingPortrait);
+  window.addEventListener('solvi:room-changed',()=>{for(const button of robotFaces.children)button.classList.remove('robot-face-speaking');});
   const faceSizeKey='solvi-robot-face-size-v1';
   let faceSize=50;
   try{faceSize=Math.max(32,Math.min(84,Number(localStorage.getItem(faceSizeKey))||50));}catch{}
@@ -1399,7 +1409,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  }
  createRobotFurniture(robot,variant='chair',options={}){
   if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot)||
-     !['chair','officeChair','stool','bed','armchair','sofa','table','cabinet','bottle','can'].includes(variant))return null;
+     !['chair','officeChair','stool','bed','armchair','sofa','table','cabinet','bottle','can','bin'].includes(variant))return null;
   const obj=objectFor('furniture');rebuildFurniture(obj,{variant});obj.userData.physics={mode:'static'};
   const bb=new THREE.Box3().setFromObject(obj),size=bb.getSize(new THREE.Vector3());
   const margin=Math.max(1.05,size.x*.6,size.z*.6);
@@ -2138,7 +2148,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
  async remove(skipConfirmation=false){if(!this.selected)return;
   const deleting=this.selected;
   if(!skipConfirmation&&readDeleteConfirmation()&&!await confirmAction(`Delete object "${deleting.name}" from the shared scene?`,{title:'Delete scene object',confirmLabel:'Delete',danger:true}))return;
-  if(this.selected!==deleting||!this.items.includes(deleting))return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);if(o.userData.furniture?.variant==='fridge')this.inventory.releaseContainer(o);for(const bot of this.items){if(bot.userData.robotSeatedTarget===o.userData.editorId)standUp(bot,this);}if(this.infrastructureDrawing?.editTarget===o)cancelInfrastructureDrawing(this,{keepTarget:true});if(this.wallEditTarget===o)this.endWallDrawing();this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
+  if(this.selected!==deleting||!this.items.includes(deleting))return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);if(['fridge','bin'].includes(o.userData.furniture?.variant))this.inventory.releaseContainer(o);for(const bot of this.items){if(bot.userData.robotSeatedTarget===o.userData.editorId)standUp(bot,this);}if(this.infrastructureDrawing?.editTarget===o)cancelInfrastructureDrawing(this,{keepTarget:true});if(this.wallEditTarget===o)this.endWallDrawing();this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
  texture(name){if(!this.selected||this.selected.userData.editorKind==='robot'||!this.canEdit(this.selected))return;
   const obj=this.selected;
   if(obj.userData.editorKind==='stairs'){

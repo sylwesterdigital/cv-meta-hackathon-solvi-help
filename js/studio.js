@@ -136,7 +136,7 @@ const api={
   const sessionAdmin=activeAdminToken();
   if(sessionAdmin&&url.startsWith('/api/'))headers['X-Solvi-Admin']=sessionAdmin;
   headers['X-Solvi-Tab']=tab;
-  if(['/api/models','/api/chat','/api/robots/react','/api/robots/discussion/step','/api/robots/discussion/start','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/robots/autonomy/plan','/api/ai/vision','/api/ai/analyze-logs'].includes(url.split('?')[0])){
+  if(['/api/models','/api/chat','/api/robots/react','/api/robots/discussion/step','/api/robots/discussion/start','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/robots/autonomy/plan','/api/ai/vision','/api/ai/analyze-logs','/api/ai/key-status'].includes(url.split('?')[0])){
     const key=sessionStorage.getItem('solvi-meta-session-key');if(key)headers['X-Solvi-Model-Key']=key;
   }
   const res=await fetch(url,{...options,headers,cache:'no-store'});
@@ -1330,15 +1330,15 @@ function setupSettings(){
     $('metaKeyStatus').textContent=`Meta key verified · ${verified.models?.length||0} models accessible. Account balance unavailable.`;
    }catch(error){$('metaKeyStatus').textContent='Key not saved: '+error.message;return;}
    if($('metaKeyStorage').value==='session'){
-     sessionStorage.setItem('solvi-meta-session-key',key);$('metaApiKey').value='';$('metaKeyStatus').textContent+=' Session-only key stored in this browser tab.';
+     sessionStorage.setItem('solvi-meta-session-key',key);window.dispatchEvent(new Event('solvi:meta-key-updated'));$('metaApiKey').value='';$('metaKeyStatus').textContent+=' Session-only key stored in this browser tab.';
    }else{
      try{const response=await api.req('/api/ai/config',{method:'POST',headers:{'X-Solvi-Admin':activeAdminToken()||''},body:JSON.stringify({key})});
-       $('metaApiKey').value='';$('metaKeyStatus').textContent=response.notice;
+       $('metaApiKey').value='';$('metaKeyStatus').textContent=response.notice;window.dispatchEvent(new Event('solvi:meta-key-updated'));
      }catch(e){$('metaKeyStatus').textContent=e.message;return;}
    }
    if(online&&auth){const result=await api.req('/api/models');modelIds=result.models||[];const select=$('modelSelect');select.replaceChildren(new Option('World chat · people',''),...modelIds.map(id=>new Option('Ask AI · '+id,id)));select.hidden=true;}
  };
- $('clearMetaKey').onclick=()=>{sessionStorage.removeItem('solvi-meta-session-key');$('metaApiKey').value='';$('metaKeyStatus').textContent='Browser session key cleared. Server-side key, if present, is unchanged.';};
+ $('clearMetaKey').onclick=()=>{sessionStorage.removeItem('solvi-meta-session-key');window.dispatchEvent(new Event('solvi:meta-key-updated'));$('metaApiKey').value='';$('metaKeyStatus').textContent='Browser session key cleared. Server-side key, if present, is unchanged.';};
  $('refreshMetaUsage').onclick=async()=>{
    if(!online||!auth){$('metaUsageStatus').textContent='Sign in to view server-recorded AI usage';return;}
    try{const u=(await api.req('/api/ai/usage')).usage.totals;const budget=Math.max(0,Number($('metaBudget').value)||0);

@@ -1,9 +1,9 @@
 // SOLVI v0.2.177 — lightweight screen-space comic balloons for in-world robots.
 // Source SVG outlines supplied by the room author. Text remains HTML, not a texture.
 export function comicBubbleDuration(text,thinking=false){
- return thinking?4400:Math.max(4200,Math.min(11500,3200+String(text||'').length*55));
+ return thinking?6200:Math.max(7000,Math.min(23000,4800+String(text||'').length*65));
 }
-export function comicBubbleText(text,max=148){
+export function comicBubbleText(text,max=370){
  return String(text||'').replace(/\s+/g,' ').trim().slice(0,max);
 }
 export function installRobotComicBubbles(world){
@@ -18,6 +18,12 @@ export function installRobotComicBubbles(world){
   const robot=window.solviEditor?.items?.find(o=>o.userData.editorKind==='robot'&&o.name===name);
   if(!robot)return;
   const cfg=robot.userData.robotBrain||{};
+  if(d.kind==='speech'){
+   const mentioned=window.solviEditor?.items?.filter(o=>o!==robot&&o.userData?.editorKind!=='robot'&&o.visible&&o.name?.trim().length>=4)
+    .filter(o=>new RegExp('(^|[^\\p{L}\\p{N}])'+o.name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?=$|[^\\p{L}\\p{N}])','iu').test(text))||[];
+   const target=mentioned.sort((a,b)=>b.name.length-a.name.length).find(o=>mentioned.filter(other=>other.name.toLocaleLowerCase()===o.name.toLocaleLowerCase()).length===1);
+   if(target)window.dispatchEvent(new CustomEvent('solvi:realm-object-mentioned',{detail:{id:target.userData.editorId,name:target.name,robot:name}}));
+  }
   if(cfg.comicEnabled==='off'||d.kind==='thought'&&cfg.comicThought==='off')return;
   entries.get(name)?.node.remove();
   const node=document.createElement('div');

@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.212",
+  "currentVersion": "0.2.213",
   "releases": [
+    {
+      "version": "0.2.213",
+      "publishedAt": "2026-11-06T17:34:40Z",
+      "changes": [
+        "Expose per-account Meta retry, maximum backoff, and planning cooldown settings with server persistence and a credential-source diagnostic; clear stale missing-key timers when credentials become available.",
+        "Convert explicitly addressed can-clearing requests into saved executable orders: identify home and table cans, hold and drink, create a procedural bin, store verified empty cans as persistent container inventory and repeat.",
+        "Increase in-world comic bubble capacity and readability; show real speaker activity on controlled robot portraits using a subtle border-only animation and microphone overlay.",
+        "Make minimap translucent, draw world-object footprints and flash a grounded object marker when a robot mentions that named scene object; encourage landmark-based spatial language rather than raw coordinates.",
+        "Maintain owner permissions, scene object IDs, existing Meta usage caps, physics, and prior navigation/multiplayer changes. No live deployment claimed."
+      ]
+    },
     {
       "version": "0.2.212",
       "publishedAt": "2026-11-06T14:13:54Z",
@@ -311,17 +322,6 @@
         "Prevent WebXR darkness from THREE.Sprite.raycast by setting the XR raycaster camera before traversing scenes with sprite labels, and avoid expensive full-room smart-screen raycasts on every headset frame.",
         "Prevent WebGLRenderer.setSize while XR is presenting, ignore billboard labels as smart-screen occluders, and reconnect multiplayer after Back-Forward Cache restoration.",
         "Add six focused regression tests covering vertical and lateral roof ownership, roof accessories, correct XR camera setup, XR-safe resizing and BFCache reconnect; retain all nine original avatar assets."
-      ]
-    },
-    {
-      "version": "0.2.179",
-      "publishedAt": "2026-11-04T12:06:20Z",
-      "changes": [
-        "Unify Control Switcher actions into one compact draggable row: scene/robot name, local control icon, camera mode icon and short label, contextual follow-distance slider, and small consistent white floppy Save icon.",
-        "Remove persistent Start entry/last/saved dropdown. Show three compact start-location actions only when Save is opened; keep per-room choice, signed-off saved position, Shift+P, keyboard Escape and accessible labels.",
-        "Use seven user-provided vector UI icons locally with forced consistent monochrome icon treatment; preserve the existing robot portrait strip and camera mode cycling.",
-        "Add precise GitHub push diagnostics and explicit remote/pending/HTTP error classification to the optional installed deployment-watcher patch, without treating HTTPS authentication as successful publication.",
-        "Add focused UI/regression tests, version all browser assets, retain avatar bytes and watcher-safe hashed release ZIP."
       ]
     }
   ]

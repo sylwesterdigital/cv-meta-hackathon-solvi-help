@@ -7,7 +7,7 @@ import {emitBrainTrace,rememberRobotObservationFrame,runRobotVisualSearch} from 
 import {cleanAutonomyOrder,cleanAutonomyDecision,autonomyProximity,autonomyResult,AUTONOMY_FURNITURE} from './robot-autonomy-core.js';
 import {confirmAction} from './app-dialogs.js';
 import {houseBlueprint,houseGoal,operatorFailure,publicPresetIndex,ROBOT_TOOL_DESCRIPTIONS} from './robot-construction-api.js';
-import {metaRetryDelay,workRecoveryPlan,projectOutcome,localProjectSequence,requestedHomeCount,chatConstructionInstruction} from './robot-autonomy-policy.js';
+import {metaRetryDelay,workRecoveryPlan,projectOutcome,localProjectSequence,requestedHomeCount,chatConstructionInstruction,canCleanupGoal,chatCanCleanupInstruction} from './robot-autonomy-policy.js';
 import {visibleWorkFields,workModeHelp} from './robot-workorder-ui.js';
 const $=id=>document.getElementById(id);
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -15,6 +15,35 @@ const MAX_TRAVEL=90;
 export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
  const panel=$('robotRoutinePanel');if(!panel||!$('autonomyRobot'))return null;
  const runs=new Map(),created=new Map();
+ let metaPrefs={retry_seconds:30,max_retry_seconds:120,planner_cooldown_seconds:175};
+ const modelStatus=$('autonomyModelStatus');
+ async function checkMetaStatus(){
+  if(!api.auth()){if(modelStatus)modelStatus.textContent='Sign in to check model availability';return;}
+  try{const status=await api.req('/api/ai/key-status');
+   if(modelStatus)modelStatus.textContent=(status.planning_ready?'CREDENTIAL PRESENT · ':'KEY MISSING · ')+status.detail;
+   modelStatus?.classList.toggle('model-key-unavailable',!status.planning_ready);
+   if(status.planning_ready)for(const run of runs.values())if(/key|configur/i.test(run.metaFailure||'')){
+    run.nextMetaAt=0;run.metaFailure=null;run.metaFailures=0;
+    trace(robotFor(run.id),'MODEL KEY RESTORED','Configured credential is now present; old missing-key retry timer cleared. Provider request still needs verification.');
+    if(!run.busy)void cycle(run);
+   }
+   return status;
+  }catch(error){if(modelStatus)modelStatus.textContent='Cannot verify Meta planning credentials: '+error.message;return null;}
+ }
+ async function loadMetaPrefs(){
+  if(!api.auth())return;
+  try{const response=await api.req('/api/robots/autonomy/preferences');metaPrefs=response.preferences||metaPrefs;
+   for(const [id,key] of [['autonomyRetrySeconds','retry_seconds'],['autonomyMaxRetrySeconds','max_retry_seconds'],['autonomyPlannerCooldown','planner_cooldown_seconds']])$(id).value=String(metaPrefs[key]);
+  }catch(error){if(modelStatus)modelStatus.textContent='Cannot load account planning preferences: '+error.message;}
+  await checkMetaStatus();
+ }
+ $('autonomyCheckKey').onclick=()=>void checkMetaStatus();
+ $('autonomySavePreferences').onclick=async()=>{
+  const settings={retry_seconds:Number($('autonomyRetrySeconds').value),max_retry_seconds:Number($('autonomyMaxRetrySeconds').value),planner_cooldown_seconds:Number($('autonomyPlannerCooldown').value)};
+  try{const result=await api.req('/api/robots/autonomy/preferences',{method:'PUT',body:JSON.stringify(settings)});
+   metaPrefs=result.preferences;toast('Robot planning settings saved to your account');await checkMetaStatus();
+  }catch(error){modelStatus.textContent='Settings not saved: '+error.message;}
+ };
  let restoreSequence=0;const savedOrders=new Map();
  let presets=[];const log=[];
  const emitLog=(robot,step,detail)=>{
@@ -75,7 +104,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   return {house,step:run.step,completed:run.completed,last:run.last,metaFailures:run.metaFailures,
    nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,contacted:run.contacted,
    placedSupplies:run.placedSupplies,projectPlaced:run.projectPlaced,completedHouses:run.completedHouses,
-   researchNotes:run.researchNotes,pendingAction:run.pendingAction};
+   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId};
  }
  function restoreHouse(state){
   if(!state||typeof state!=='object')return null;
@@ -100,7 +129,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    invitations:Array.isArray(state.invitations)?state.invitations.slice(0,20):[],
    contacted:Array.isArray(state.contacted)?state.contacted.slice(0,20):[],placedSupplies:Number(state.placedSupplies)||0,
    projectPlaced:Array.isArray(state.projectPlaced)?state.projectPlaced.filter(p=>p&&typeof p.id==='string'&&typeof p.variant==='string').slice(0,6):[],
-   completedHouses:Array.isArray(state.completedHouses)?state.completedHouses.filter(id=>typeof id==='string').slice(0,3):[]};
+   completedHouses:Array.isArray(state.completedHouses)?state.completedHouses.filter(id=>typeof id==='string').slice(0,3):[],
+   cleanupBinId:String(state.cleanupBinId||'').slice(0,100),cleanupHomeId:String(state.cleanupHomeId||'').slice(0,100),cleanupDone:Array.isArray(state.cleanupDone)?state.cleanupDone.filter(id=>typeof id==='string').slice(0,48):[]};
   return run;
  }
  function presentSaved(order){
@@ -188,8 +218,19 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
  }
  const usable=run=>!run.cancelled&&run.room===room()&&api.online&&api.auth()&&document.visibilityState==='visible'&&!editor.world.renderer.xr.isPresenting;
  function update(){
-  const entries=[...runs.values()].map(r=>`${r.name}: ${r.order.mode} · ${r.busy?'working':r.last?.status||'ready'} · ${r.completed} cycle(s)`);
-  $('autonomyStatus').textContent=entries.join(' | ')||'No autonomous work orders running.';
+  const entries=[...runs.values()].map(r=>{
+   const state=r.busy?'working':r.last?.status||'ready';
+   const blocker=r.metaFailure?' · Meta: '+r.metaFailure:r.last?.status==='failed'||r.last?.status==='blocked'?' · '+String(r.last.detail||'').slice(0,160):'';
+   const retry=r.nextMetaAt>Date.now()?' · model retry '+new Date(r.nextMetaAt).toLocaleTimeString():'';
+   return `${r.name}: ${r.order.mode} · ${state} · ${r.completed} verified step(s)${blocker}${retry}`;
+  });
+  $('autonomyStatus').textContent=entries.join('\n')||'No active work orders. Autonomous roaming is a separate opt-in setting; recent chat alone does not assign work.';
+  for(const b of $('controlledRobotFaces')?.children||[]){
+   const r=runs.get(b.dataset.robotId);const state=r?r.busy?'working':r.last?.status||'ready':'no-order';
+   b.dataset.workStatus=state;
+   const name=robotFor(b.dataset.robotId)?.name||'Robot';
+   b.title=name+' · '+(r?`${state}${r.last?.detail?' · '+String(r.last.detail).slice(0,170):''}`:'No current saved work order');
+  }
  }
  function refresh(){
   const robotSelect=$('autonomyRobot'),from=$('autonomySource'),to=$('autonomyDestination');
@@ -259,6 +300,71 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    // Never silently abandon cargo; leave it in the hand for manual recovery.
    trace(bot,'CARRY NEEDS HELP','Still holding '+target.name+': '+error.message);throw error;
   }
+ }
+ // One verified can per cycle, preserving ID and receipts across refresh.
+ // Do not claim success when the robot cannot reach a real item or store it.
+ async function cleanCans(run,bot){
+  requireActive(run,bot);
+  if(!run.order.allowChanges)throw Error('Can cleanup requires scene-change permission for the bin and inventory objects');
+  let home=objectFor(run.cleanupHomeId);
+  if(!home){
+   home=editor.items.find(o=>o.userData.editorKind==='wall'&&/home|house/i.test(o.name)&&o.name.toLowerCase().includes(bot.name.toLowerCase()))||
+    editor.items.filter(o=>o.userData.editorKind==='wall'&&/home|house/i.test(o.name)).sort((a,b)=>a.position.distanceToSquared(bot.position)-b.position.distanceToSquared(bot.position))[0];
+   if(!home)throw Error('Cannot identify a saved home; cannot safely select an unrelated table');
+   run.cleanupHomeId=home.userData.editorId;
+   trace(bot,'CLEANUP HOME',`Identified ${home.name}; can selection remains scoped to its nearby tables`);
+  }
+  const candidates=editor.items.filter(o=>o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='can'&&
+   !run.cleanupDone.includes(o.userData.editorId)&&!o.userData.storage&&
+   Math.hypot(o.position.x-home.position.x,o.position.z-home.position.z)<12&&
+   editor.items.some(t=>t.userData.furniture?.variant==='table'&&Math.hypot(t.position.x-o.position.x,t.position.z-o.position.z)<2.3));
+  if(!candidates.length){trace(bot,'CLEANUP VERIFIED',`No remaining loose cans on tables around ${home.name}; ${run.cleanupDone.length} stored empties recorded`);
+   return 'All detected table cans cleared near '+home.name;
+  }
+  candidates.sort((a,b)=>a.position.distanceToSquared(bot.position)-b.position.distanceToSquared(bot.position));
+  const can=candidates[0];
+  if(!editor.canEdit(can))throw Error('Can belongs to another owner; no permission to pick up '+can.name);
+  let bin=objectFor(run.cleanupBinId)||editor.items.find(o=>o.userData.furniture?.variant==='bin'&&Math.hypot(o.position.x-home.position.x,o.position.z-home.position.z)<13&&editor.canEdit(o));
+  if(Math.hypot(bot.position.x-can.position.x,bot.position.z-can.position.z)>1.9)await moveTo(run,bot,can);
+  requireActive(run,bot);
+  if(!bin){
+   // The existing editor place tool applies actual collisions and ownership checks.
+   const span=robotHouseSpan(home);
+   const corners=span.width>2&&span.depth>2?[[.36,.36],[-.36,.36],[.36,-.36],[-.36,-.36]]:[];
+   for(const [sx,sz] of corners){
+    const at={x:home.position.x+sx*span.width,z:home.position.z+sz*span.depth};
+    if(Math.hypot(at.x-bot.position.x,at.z-bot.position.z)>6)continue;
+    bin=editor.createRobotFurniture(bot,'bin',{at});if(bin)break;
+   }
+   // If every corner is obstructed, prefer an honestly reported reachable bin
+   // near the robot to falsely claiming an inaccessible corner placement.
+   bin||=editor.createRobotFurniture(bot,'bin');
+   if(!bin)throw Error('No collision-free bin location near the table; cleanup requires a clear work position');
+   trace(bot,'BIN CREATED',`Created ${bin.name} using the normal persistent furniture tool near ${home.name}`);
+  }
+  run.cleanupBinId=bin.userData.editorId;
+  if(Math.hypot(bot.position.x-can.position.x,bot.position.z-can.position.z)>1.9)await moveTo(run,bot,can);
+  requireActive(run,bot);
+  if(!autonomyProximity(bot,can,2.4))throw Error('Can is still out of verified reach');
+  const dx=can.position.x-bot.position.x,dz=can.position.z-bot.position.z;
+  bot.rotation.y=Math.atan2(dx,dz);
+  if(!can.userData.pickable){can.userData.pickable=true;editor.queueSave(can);}
+  if(!editor.inventory.hold(bot,can))throw Error('Inventory pickup refused '+can.name);
+  trace(bot,'CAN HELD',`${can.name} now held in hand; persistent scene item ID ${can.userData.editorId}`);
+  // Do not fake drinking already empty cans.
+  if(can.userData.inventory?.consumable){
+   if(!editor.inventory.drink(bot,can))throw Error('Drink action failed while can was held');
+   trace(bot,'CAN USED',`Consumed contents of ${can.userData.editorId}; physical empty can remains`);
+  }
+  try{
+   if(Math.hypot(bot.position.x-bin.position.x,bot.position.z-bin.position.z)>2.2)await moveTo(run,bot,bin);
+   requireActive(run,bot);
+   if(!autonomyProximity(bot,bin,2.6))throw Error('Bin is out of reach');
+   if(!editor.inventory.storeInBin(bot,can,bin))throw Error('Bin rejected empty can');
+   run.cleanupDone.push(can.userData.editorId);
+   trace(bot,'CAN DISPOSED',`Empty can ${can.userData.editorId} stored in ${bin.name}; ${run.cleanupDone.length} item(s) finished`);
+   return `Stored empty can in ${bin.name}; ${run.cleanupDone.length} table cans completed`;
+  }catch(error){trace(bot,'CLEANUP PAUSED','Can is still held; no fictitious disposal. '+error.message);throw error;}
  }
  async function walkToWorksite(run,bot,plan,label){
   requireActive(run,bot);
@@ -434,8 +540,11 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   try{answer=await api.req('/api/robots/autonomy/plan',{method:'POST',body:form});}
   catch(error){
    run.metaFailure=error.message;run.metaFailures++;
-   run.nextMetaAt=Date.now()+metaRetryDelay(run.metaFailures);
-   trace(bot,'META FAILED',`${error.message} · retry after ${Math.ceil((run.nextMetaAt-Date.now())/60000)} minute(s); local safe tools remain available`);
+   if(/meta.*key|key.*meta|configured|not configured/i.test(error.message)){trace(bot,'MODEL KEY UNAVAILABLE','Planning cannot authenticate on this browser tab; check Settings → Meta AI. Other model routes may have succeeded from different sessions.');void checkMetaStatus();}
+   const retryAfter=Number(/Retry after (\d+)s/i.exec(error.message)?.[1]||0);
+   const cooldownMs=Math.min(600000,Math.max(0,retryAfter)*1000);
+   run.nextMetaAt=Date.now()+Math.max(cooldownMs,metaRetryDelay(run.metaFailures,{retrySeconds:metaPrefs.retry_seconds,maxRetrySeconds:metaPrefs.max_retry_seconds}));
+   trace(bot,'META FAILED',`${error.message} · next model retry ${Math.ceil((run.nextMetaAt-Date.now())/1000)}s (your account setting); autonomous local tools remain active`);
    return recovery(run,bot,'Meta planning failure');
   }
   requireActive(run,bot);
@@ -443,19 +552,20 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   if(answer.validated===false){
    run.metaFailure=answer.decision?.reason||'Invalid model JSON';trace(bot,'MODEL OUTPUT REJECTED',answer.decision?.reason||'Unsupported planning output');
    run.metaFailures++;
-   run.nextMetaAt=Date.now()+metaRetryDelay(run.metaFailures);
+   run.nextMetaAt=Date.now()+metaRetryDelay(run.metaFailures,{retrySeconds:metaPrefs.retry_seconds,maxRetrySeconds:metaPrefs.max_retry_seconds});
    return recovery(run,bot,'Invalid Meta tool call');
   }
   if(answer.decision?.action==='use_preset')await refreshPresets();
   const decision=cleanAutonomyDecision(answer.decision,editor.items.map(o=>({id:o.userData.editorId,kind:o.userData.editorKind})),run.id,publicPresetIndex(presets));
   if(!decision)throw Error('Model response had no valid scene-grounded action');
   trace(bot,'META PROPOSAL',`${decision.action}: ${decision.reason||'(no reason)'} · Meta usage ~US$${Number(answer.usage?.estimated_usd||0).toFixed(6)}`);
-  run.metaFailures=0;run.nextMetaAt=0;
+  run.metaFailures=0;run.nextMetaAt=0;run.metaFailure=null;
   if(decision.action==='idle'&&run.loop)return recovery(run,bot,'Model suggested waiting without resolving the work order');
   return decision;
  }
  async function execute(run,bot,plan){
   const obj=objectFor(plan.target_id),dest=objectFor(plan.destination_id);
+  if(plan.action==='cleanup_cans')return cleanCans(run,bot);
   if(plan.action==='site_check'){
    if(!run.house?.wall||!editor.items.includes(run.house.wall))throw Error('House to inspect is no longer available');
    await moveTo(run,bot,run.house.wall);
@@ -511,7 +621,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    run.projectPlaced=run.projectPlaced.filter(p=>editor.items.some(o=>o.userData.editorId===p.id));
    run.completedHouses=run.completedHouses.filter(id=>editor.items.some(o=>o.userData.editorId===id&&o.userData.editorKind==='wall'));
    let plan;
-   if(run.order.mode==='local_project'&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
+   if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
      (localProjectSequence(run.order.goal).length>0&&run.projectPlaced.length>=localProjectSequence(run.order.goal).length))){
     trace(bot,'PROJECT FINISHED','Already completed in saved scene history; no duplicate buildings or props will be placed.');
     stop(run.id,'verified project already complete');return;
@@ -532,7 +642,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    else if(run.order.mode==='rest')plan={action:'rest',target_id:run.order.destinationId};
    else plan={action:'ask',target_id:run.order.destinationId,message:run.order.goal};
    requireActive(run,bot);
-   run.pendingAction=plan.action;
+   run.pendingAction=plan.action;run.lastPlanAction=plan.action;
    if(plan.recovery)run.recoveryAttempts[plan.action]=(run.recoveryAttempts[plan.action]||0)+1;
    // Missing objects are not evidence of completion after a reload or delete.
    run.projectPlaced=run.projectPlaced.filter(p=>editor.items.some(o=>o.userData.editorId===p.id));
@@ -566,21 +676,29 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    trace(bot,run.last.status==='completed'&&run.order.mode==='agent'?'STEP VERIFIED':run.last.status==='completed'?'COMPLETED':run.last.status.toUpperCase(),detail+(run.house&&remaining?' · Remaining: '+remaining:''));
    report(run,bot,plan,run.last.status,detail+(run.house&&remaining?' · Remaining: '+remaining:''));
    $('autonomyFailure').textContent=(run.metaFailure?'Meta planning unavailable: '+run.metaFailure+'\nVerified local action: ':'Work order: ')+detail+(run.house&&remaining?'\nUNFINISHED: '+remaining:'')+(!run.house&&run.order.mode==='agent'&&houseGoal(run.order.goal)?'\nUNFINISHED: no confirmed house yet':'');
-   if(run.order.mode==='local_project'&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
+   if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
       (localProjectSequence(run.order.goal).length>0&&run.projectPlaced.length>=localProjectSequence(run.order.goal).length))){
     trace(bot,'PROJECT FINISHED','All bounded local construction milestones have verified scene object IDs; the work order is stopping.');
     stop(run.id,'verified project milestones completed');
    }
+   if(plan.action==='cleanup_cans'&&detail.startsWith('All detected table cans cleared')){trace(bot,'CLEANUP FINISHED','Table clear per current scene objects; work order stopped.');stop(run.id,'verified table can cleanup');}
    if(run.last.status==='blocked'&&run.loop)trace(bot,'AWAITING NEW CAPABILITY','No safe untried tool within current permissions. The objective is preserved for a later model retry or a new instruction.');
    // While Meta is unavailable, continue actual verified local building steps
    // rather than taking another 180-second silence after placing one object.
    // This bounded burst does not invoke the model or bypass an edit check.
-   if(!run.cancelled&&run.loop&&plan.recovery&&plan.action!=='idle'&&run.localBurst<10){
+   if(!run.cancelled&&run.loop&&plan.recovery&&plan.action!=='idle'&&run.localBurst<(canCleanupGoal(run.order.goal)?48:10)){
     run.localBurst++;
     clearTimeout(run.localTimer);
     run.localTimer=setTimeout(()=>void cycle(run),12000);
    }
-   run.metaFailure=null;
+   // Account-configured model retry must not be stretched to a 180s work-order tick.
+   // Only a blocked model request waits; unrelated local actions continue above.
+   else if(!run.cancelled&&run.loop&&run.order.mode==='agent'&&run.metaFailure&&run.lastPlanAction==='idle'&&run.nextMetaAt>Date.now()){
+    clearTimeout(run.localTimer);
+    run.localTimer=setTimeout(()=>void cycle(run),Math.max(1000,run.nextMetaAt-Date.now()+100));
+    trace(bot,'NEXT MODEL ATTEMPT',`Retry scheduled for ${new Date(run.nextMetaAt).toLocaleTimeString()} (user-configured backoff; not a robot-wide idle order)`);
+   }
+   // Keep the last model failure visible until a model call really succeeds.
   }catch(error){
    const diagnosis=operatorFailure(error);run.last={...autonomyResult('task',false,error.message),diagnosis};
    $('autonomyFailure').textContent=`FAILED · ${diagnosis.code}\n${diagnosis.reason}\nNEXT: ${diagnosis.remedy}`;
@@ -616,7 +734,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   if(order.mode==='preset'&&!order.presetId){toast('Choose an account-owned saved preset');return;}
   if(order.mode==='agent'&&!order.goal){toast('Describe a goal for the autonomous agent');return;}
   if(order.mode==='local_project'&&!requestedHomeCount(order.goal)&&!localProjectSequence(order.goal).length){
-   toast('Describe building homes, a park, a playground corner or a picnic site');return;
+   if(!canCleanupGoal(order.goal)){toast('Describe homes, a park, picnic area, or clearing cans from a table');return;}
   }
   const billable=order.mode==='agent'||order.mode==='assist';
   if(billable&&!await confirmAction(`This ${loop?'loop':'task'} will send billable Meta API requests${order.vision?' with six real head-camera images per decision':''}. ${loop?'Each decision repeats no more frequently than every '+order.interval+' seconds; this opted-in loop is saved on the server and resumes after browser refresh when the signed-in visible 3D scene loads. It does not run while the browser is closed.':'Only one cycle runs and will not auto-resume.'} Scene changes are ${order.allowChanges?'enabled for robot-built objects':'disabled'}.`,{title:'Enable autonomous robot operator?',confirmLabel:'Enable autonomy'}))return;
@@ -631,6 +749,22 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
  };
  const handledChatMessages=new Set();
  async function startChatProjects(message){
+  if(!message?.id||handledChatMessages.has(message.id)||!api.online||!api.auth())return 0;
+  const assigned=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&chatCanCleanupInstruction(message.text,o.name));
+  if(assigned){
+   handledChatMessages.add(message.id);
+   const id=assigned.userData.editorId,goal=chatCanCleanupInstruction(message.text,assigned.name);
+   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
+   // An explicit named human instruction supersedes an unrelated old task.
+   const old=runs.get(id);if(old)stop(id,'new explicit can-cleanup instruction',false);
+   const run=newRun(order,true,assigned);
+   try{await saveOrder(run,true);}catch(error){trace(assigned,'CLEANUP NOT STARTED',error.message);return 0;}
+   savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});
+   runs.set(id,run);run.timer=setInterval(()=>void cycle(run),order.interval*1000);
+   trace(assigned,'CLEANUP ASSIGNED',`Human request became an executable, persistent can-clearing order; older ${old?.order.mode||'idle'} work was superseded`);
+   toast(`${assigned.name}: can cleanup saved; the action log will show actual pickup, drinking and disposal.`);
+   void cycle(run);update();return 1;
+  }
   const instruction=chatConstructionInstruction(message?.text);
   if(!instruction||!message?.id||handledChatMessages.has(message.id)||!api.online||!api.auth())return 0;
   handledChatMessages.add(message.id);
@@ -658,7 +792,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
  $('autonomyRefresh').onclick=refresh;
  $('routineToolButton').addEventListener('click',refresh);
  $('autonomyRobot').addEventListener('change',()=>{const saved=savedOrders.get($('autonomyRobot').value);if(saved)presentSaved(saved.order);});
- window.addEventListener('solvi:autonomy-ready',()=>void loadSaved());
+ window.addEventListener('solvi:autonomy-ready',()=>{void loadMetaPrefs();void loadSaved();});
+ window.addEventListener('solvi:meta-key-updated',()=>void checkMetaStatus());
  window.addEventListener('solvi:room-changed',()=>{restoreSequence++;stopAll(false);});
  window.addEventListener('solvi:session-lost',()=>{restoreSequence++;stopAll(false);});
  window.addEventListener('pagehide',()=>{restoreSequence++;stopAll(false);});
