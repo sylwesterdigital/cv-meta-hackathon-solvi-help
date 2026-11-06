@@ -1,3 +1,13 @@
+# SOLVI.help Master LLM Handover — v0.2.206
+
+## v0.2.206 — Visible Held Drop & Compact Tool Grip (2026-11-06)
+
+**Local verification:** 993/993 JavaScript tests passed; six standalone backend Python checks passed; 13 Python sources passed syntax checking; Ubuntu installer script syntax passed. Full Flask HTTP integration and live browser layout/multiplayer remain unverified until Mac watcher and two-client browser test.
+
+**Starting point:** Complete verified v0.2.205 app ZIP. **Issue:** tall inventory item cards hide action buttons; grip editor is too large for the narrow properties inspector. **Changes:** `index.html`, `styles.css`, `js/robot-inventory.js` and release/test metadata. The quick Drop controls are **outside** the scrollable item grid, labelled with item and hand and disabled if ownership prohibits changes; they call `RobotInventory.drop` (no new protocol). CSS constrains item thumbnails and prevents generic flex rules from stretching actions. Grip editor keeps hand, rig bone, angle and action clip in a compact group; Advanced collapses the local position and anchor offsets without removing configuration capability. No data migration. Run all Node tests and the Mac watcher, and visually verify with Lemox holding a shovel in two clients. No deployment is implied by source tests alone.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.205
 
 ## Latest work: Tool use, shovel digging and animation selection

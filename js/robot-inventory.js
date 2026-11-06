@@ -272,7 +272,7 @@ export class RobotInventory{
   this.editor.select(obj);
   const panel=document.getElementById('robotInventoryPanel');if(panel)panel.hidden=true;
   const details=document.getElementById('toolGripDetails');
-  if(details){details.open=true;details.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
+  if(details){details.open=true;const advanced=document.getElementById('toolGripAdvanced');if(advanced)advanced.open=false;details.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
   return true;
  }
  aimHeldTool(robot,obj){
@@ -319,6 +319,17 @@ export class RobotInventory{
    tab.classList.toggle('active',tab.dataset.inventoryTab===this.tab);
    tab.setAttribute('aria-selected',String(tab.dataset.inventoryTab===this.tab));
   }
+  // Emergency-access controls are independent of the card image and scroll area.
+  for(const hand of ['right','left']){
+   const button=document.getElementById(hand==='right'?'inventoryDropRight':'inventoryDropLeft');
+   if(!button)continue;
+   const held=this.heldFor(robot,hand);
+   button.hidden=this.tab!=='held'||!held;
+   button.disabled=!held||!this.editor.canEdit(robot)||!this.editor.canEdit(held);
+   button.textContent=held?`Drop ${held.name} (${hand})`:`Drop ${hand}-hand tool`;
+  }
+  const hint=document.getElementById('inventoryActionHint');
+  if(hint)hint.textContent=this.tab==='held'?'Use Drop above to put an equipped tool back into the world. Use Grip to adjust its pose.':'Select Held to drop equipped tools; other items can be moved or dropped from their cards.';
   const rows=document.getElementById('robotInventoryItems');rows.replaceChildren();
   const items=this.entries(robot).filter(obj=>{
    const storage=obj.userData.storage;
@@ -326,7 +337,7 @@ export class RobotInventory{
   });
   if(!items.length){const empty=document.createElement('p');empty.className='small-note';empty.textContent='No items in this category';rows.append(empty);return;}
   for(const item of items){
-   const line=document.createElement('article');line.className='robot-inventory-item';line.setAttribute('role','listitem');
+   const line=document.createElement('article');line.className='robot-inventory-item';line.setAttribute('role','listitem');if(item.userData.storage?.type==='held')line.classList.add('is-held');
    const picture=document.createElement('div');picture.className='inventory-item-thumb';
    const thumbnail=this.itemThumbnail(item);
    if(thumbnail){const img=document.createElement('img');img.src=thumbnail;img.alt='';picture.append(img);}
@@ -352,6 +363,11 @@ export class RobotInventory{
   panel.querySelector('[data-inventory-close]')?.addEventListener('click',()=>panel.hidden=true);
   for(const button of panel.querySelectorAll('[data-inventory-tab]'))button.addEventListener('click',()=>{this.tab=button.dataset.inventoryTab;this.render();});
   document.getElementById('inventoryHoldNearby')?.addEventListener('click',()=>{const robot=this.activeRobot;if(!robot)return;const object=pickableTarget(robot,this.editor.items);if(!object||!this.hold(robot,object))this.editor.toast?.('Face a nearby portable item and make sure a hand is free');});
+  for(const hand of ['right','left'])document.getElementById(hand==='right'?'inventoryDropRight':'inventoryDropLeft')?.addEventListener('click',()=>{
+   const robot=this.activeRobot,held=robot&&this.heldFor(robot,hand);
+   if(!held){this.editor.toast?.(`No tool is held in the ${hand} hand`);this.render();return;}
+   if(!this.drop(robot,held))this.editor.toast?.(`Could not drop ${held.name}. Check edit permission and scene connection.`);
+  });
   document.getElementById('robotInventoryOpen')?.addEventListener('click',()=>this.show(this.editor.controlledRobot()||this.editor.robot()));
  }
 }

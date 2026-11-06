@@ -1,3 +1,10 @@
+# v0.2.206 — Visible Drop and compact tool grip calibration (2026-11-06)
+
+- **Critical inventory usability fix:** the previous inventory item card could stretch beyond the visible panel and hide Store, Drop, and Dig. All inventory cards now use bounded preview sizes and content-sized rows, with action buttons aligned next to the preview.
+- **Always-visible quick Drop:** Held tab shows `Drop Shovel (right)` and/or a separately labelled left-hand Drop button above the inventory's scroll area. Clicking Drop uses the existing authoritative scene-backed release, physics and queue-save path; ownership permissions are respected.
+- **Grip layout:** common Hand, Bone, Angle, and Action animation fields fit inside a compact inspector group. Advanced hand-position and tool-handle contact offsets are collapsed until explicitly opened; independent left/right profiles, live calibration and stored values remain intact.
+- Add regression tests for real one-click drop, two-hand controls, permissions, card layout, and compact advanced grip. No DB migration, no changes to existing scene objects, no tool/action changes beyond UI accessibility.
+
 # v0.2.205 — Shovel digging, per-tool animations and world effects (2026-11-06)
 
 - `Inventory → Held` retains Drop, Store, Switch hand, Grip. Shovel adds **Dig ahead** and **Aim dig**; keyboard **U** uses the held tool.
