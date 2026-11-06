@@ -695,6 +695,10 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    // A verified tool action is not the same as completing a complex goal.
    if(run.order.mode==='agent'&&houseGoal(run.order.goal)&&(!run.house||!evidence.done)&&run.last.status==='completed')run.last.status='partial';
    const remaining=evidence.blockers.join('; ');
+   // Share actual, recent construction receipts with visiting teammates; do
+   // not turn random exploration or a chat reply into proof of scene edits.
+   if(run.last.status==='completed'&&['build_house','build_infrastructure','build','use_preset'].includes(plan.action))
+    bot.userData.robotLastVerifiedWork={status:'completed',detail:String(detail).slice(0,240),at:Date.now()};
    trace(bot,run.last.status==='completed'&&run.order.mode==='agent'?'STEP VERIFIED':run.last.status==='completed'?'COMPLETED':run.last.status.toUpperCase(),detail+(run.house&&remaining?' · Remaining: '+remaining:''));
    report(run,bot,plan,run.last.status,detail+(run.house&&remaining?' · Remaining: '+remaining:''));
    $('autonomyFailure').textContent=(run.metaFailure?'Meta planning unavailable: '+run.metaFailure+'\nVerified local action: ':'Work order: ')+detail+(run.house&&remaining?'\nUNFINISHED: '+remaining:'')+(!run.house&&run.order.mode==='agent'&&houseGoal(run.order.goal)?'\nUNFINISHED: no confirmed house yet':'');

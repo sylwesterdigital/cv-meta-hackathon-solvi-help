@@ -21,7 +21,7 @@ export function lifeCandidates(robot,objects=[],history=[],step=0){
  for(const object of nearby){
   const kind=object.userData.editorKind,id=object.userData.editorId;
   const d=distance(here,object.position);
-  if(d<7||d>35||past.has(id))continue;
+  if(d<7||d>35||past.has(id)||kind==='robot'&&Math.abs((here.y||0)-(object.position.y||0))>1.25)continue;
   const dx=here.x-object.position.x,dz=here.z-object.position.z;
   const separation=kind==='robot'?2.1:3.1;
   const point={x:object.position.x+dx/d*separation,z:object.position.z+dz/d*separation};

@@ -154,6 +154,82 @@ export function standClearancePosition(robot,target,margin=.72){
   current.y,footprint.min.z-clearance));
  return new THREE.Vector3(exit.x,robot.position.y,exit.z);
 }
+// A seat can leave a standing avatar trapped within its capsule collider.
+// Test all four sides, starting with the ordinary cushion-front exit. Do not
+// jump across other objects or change floor levels to escape.
+export function seatEscapeOptions(robot,target,margin=.72){
+ if(!robot||!target)return [];
+ const normal=standClearancePosition(robot,target,margin);
+ target.updateWorldMatrix?.(true,true);
+ const local=new THREE.Box3();
+ target.traverse?.(part=>{
+  if(!part.geometry?.boundingBox)part.geometry?.computeBoundingBox?.();
+  if(!part.geometry?.boundingBox)return;
+  const matrix=new THREE.Matrix4().copy(target.matrixWorld).invert().multiply(part.matrixWorld);
+  local.union(part.geometry.boundingBox.clone().applyMatrix4(matrix));
+ });
+ if(local.isEmpty())return normal?[normal]:[];
+ const here=target.worldToLocal(robot.position.clone());
+ const scale=target.getWorldScale?.(new THREE.Vector3(1,1,1))||{x:1,z:1};
+ const dx=margin/Math.max(.01,Math.abs(scale.x)),dz=margin/Math.max(.01,Math.abs(scale.z));
+ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+ const candidates=[normal];
+ // The closest side is tried first after the furniture-front exit. A sofa may
+ // have a wall in front but a clear end, while chairs may need to exit backwards.
+ const side=[
+  new THREE.Vector3(local.min.x-dx,here.y,clamp(here.z,local.min.z,local.max.z)),
+  new THREE.Vector3(local.max.x+dx,here.y,clamp(here.z,local.min.z,local.max.z)),
+  new THREE.Vector3(clamp(here.x,local.min.x,local.max.x),here.y,local.max.z+dz)
+ ].map(point=>{
+  const world=(target.localToWorld||((p)=>p)).call(target,point);return new THREE.Vector3(world.x,robot.position.y,world.z);
+ }).sort((a,b)=>Math.hypot(a.x-robot.position.x,a.z-robot.position.z)-Math.hypot(b.x-robot.position.x,b.z-robot.position.z));
+ return [...candidates,...side].filter(Boolean);
+}
+export function safeSeatEscape(editor,robot,target,destination){
+ if(!destination||!Number.isFinite(destination.x)||!Number.isFinite(destination.z))return false;
+ if(!editor?.items)return true;
+ const source=robot.position,footY=floorSupportY(editor,source,target)??source.y,steps=Math.max(4,Math.ceil(Math.hypot(destination.x-source.x,destination.z-source.z)/.13));
+ // Check actual nearby 3-D geometry rather than a global 2-D footprint:
+ // a wall on a different floor must not prevent upper-storey seat release.
+ for(const object of editor.items){
+  if(object===target||object===robot||object.visible===false||object.userData?.storage||object.userData?.carriedBy||
+      ['light','media','points','curve','plane'].includes(object.userData?.editorKind))continue;
+  const wallPieces=['wall','stairs'].includes(object.userData?.editorKind)?
+   (object.children||[]).filter(part=>part.userData?.wallSegment||part.userData?.stairTread||part.userData?.stairRiser):[];
+  const parts=wallPieces.length?wallPieces:[object];
+  for(const part of parts){
+   const box=new THREE.Box3().setFromObject(part);
+   if(box.isEmpty()||box.max.y<footY+.24||box.min.y>footY+1.65)continue;
+   for(let j=1;j<=steps;j++){
+    const t=j/steps,x=source.x+(destination.x-source.x)*t,z=source.z+(destination.z-source.z)*t;
+    if(x>=box.min.x-.27&&x<=box.max.x+.27&&z>=box.min.z-.27&&z<=box.max.z+.27)return false;
+   }
+  }
+ }
+ return true;
+}
+export function recoverStandingSeatTrap(robot,editor){
+ if(!robot||!editor?.canEdit?.(robot)||robot.userData?.robotSeated||robot.userData?.liftRide||robot.userData?.robotLadderRide)return false;
+ for(const item of editor.items||[]){
+  if(item===robot||item.userData?.editorKind!=='furniture'||
+   !['chair','officeChair','armchair','sofa','stool','bed','sunbed','deckChair'].includes(item.userData?.furniture?.variant))continue;
+  item.updateWorldMatrix?.(true,true);
+  const box=new THREE.Box3().setFromObject(item);
+  if(box.isEmpty()||robot.position.y<box.min.y-.12||robot.position.y>box.max.y+.45||
+    robot.position.x<=box.min.x+.10||robot.position.x>=box.max.x-.10||
+    robot.position.z<=box.min.z+.10||robot.position.z>=box.max.z-.10)continue;
+  for(const candidate of seatEscapeOptions(robot,item)){
+   if(!safeSeatEscape(editor,robot,item,candidate))continue;
+   const support=floorSupportY(editor,candidate,item);
+   if(editor.physics?.enabled&&support===null)continue;
+   robot.position.x=candidate.x;robot.position.z=candidate.z;
+   if(support!==null)robot.position.y=support+.035;
+   editor.physics?.applyEditedPose?.(robot);editor.queueSave?.(robot);
+   return true;
+  }
+ }
+ return false;
+}
 // Probe real geometry under the new standing position, excluding the seat
 // itself. Prefer the nearest upward-facing floor and preserve upper storeys.
 export function floorSupportY(editor,position,excluded=null){
@@ -220,9 +296,19 @@ export function repairLoadedRobotElevation(editor){
 export function standUp(robot,editor){
  if(!robot?.userData?.robotSeated)return false;
  const target=editor?.items?.find(o=>o.userData.editorId===robot.userData.robotSeatedTarget);
- const clearPosition=standClearancePosition(robot,target);
+ const options=target?seatEscapeOptions(robot,target):[];
+ // Do not release a seated avatar into another solid collider. A blocked
+ // front exit should fall back to the back or either end of the seat.
+ let clearPosition=null,support=null;
+ for(const candidate of options){
+  if(!safeSeatEscape(editor,robot,target,candidate))continue;
+  const floor=floorSupportY(editor,candidate,target);
+  if(editor?.physics?.enabled&&floor===null)continue;
+  clearPosition=candidate;support=floor;break;
+ }
+ if(target&&!clearPosition)return false;
  if(clearPosition){robot.position.x=clearPosition.x;robot.position.z=clearPosition.z;}
- const support=floorSupportY(editor,robot.position,target);
+ if(support===null)support=floorSupportY(editor,robot.position,target);
  if(support!==null)robot.position.y=support+.035;
  else if(editor?.world?.floor&&!editor?.physics?.enabled){
   const y=Number(editor.world.floor.position?.y)||0;

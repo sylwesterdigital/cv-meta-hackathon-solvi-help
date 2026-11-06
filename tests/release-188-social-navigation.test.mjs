@@ -56,7 +56,7 @@ test('path can be invalidated when a door closes or furniture is moved into its 
 });
 test('avatar motion and editor use dynamic avoidance, new scene checks and physically visible meetings',()=>{
  const editor=source('js/editor.js'),robots=source('js/robots.js'),backend=source('backend/server.py');
- assert.match(editor,/planRobotMeeting\(start,\{x:target\.position\.x,z:target\.position\.z\},obstacles\)/);
+ assert.match(editor,/planRobotMeeting\(\{\.\.\.start,y:robot\.position\.y\},\{x:target\.position\.x,y:target\.position\.y,z:target\.position\.z\},obstacles\)/);
  assert.match(editor,/canMeetRobot\(/);
  assert.match(editor,/refreshRobotRoute\(robot\)/);
  assert.match(editor,/avoidMovingRobot\(robot,other\)/);

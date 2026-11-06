@@ -30,7 +30,7 @@ import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach,robotRouteCheckpoints} from './robot-pathfinding.js';
 import {robotPosePacket,appendRobotPose,sampleRobotPose} from './robot-motion-sync.js';
-import {planRobotMeeting,canMeetRobot,remainingRouteBlocked} from './robot-social-navigation.js';
+import {planRobotMeeting,canMeetRobot,sameRobotFloor,remainingRouteBlocked} from './robot-social-navigation.js';
 import {findRobotWorksite,footprintClear} from './robot-worksite.js';
 import {infrastructureSegments} from './procedural-infrastructure.js';
 import {infrastructureNavigationFootprints} from './robot-infrastructure-obstacles.js';
@@ -44,7 +44,7 @@ import {RobotInventory,cleanInventory,cleanStorage,cleanWearAttachment} from './
 import {isToolObject,cleanToolGripProfile,toolGripProfile,toolRigBones,GRIP_BONES} from './held-equipment.js';
 import {TOOL_ACTIVITIES,resolveToolAnimation,cleanToolAnimationName,digAheadPoint,validDigTarget} from './tool-activities.js';
 import {bindRobotShortcutHelp,ROBOT_KEY_ACTIONS} from './robot-shortcut-help.js';
-import {seatPlan,takeSeat,standUp,followFurnitureSeats,restoreSeatedRobots,repairLoadedRobotElevation} from './robot-seating.js';
+import {seatPlan,takeSeat,standUp,recoverStandingSeatTrap,followFurnitureSeats,restoreSeatedRobots,repairLoadedRobotElevation} from './robot-seating.js';
 import {canBePickable,ObjectCarry,cleanThrowSettings,editThrowSetting,pickableTarget} from './object-carry.js';
 import {combatSettings,combatForKey,combatClip,combatTimeline,COMBAT_ACTIONS} from './robot-combat.js';
 import {animationSpeedSettings} from './animation-tuning.js';
@@ -1292,7 +1292,8 @@ export class SceneEditor{
     else if(e.code==='KeyB'){const panel=byId('robotInventoryPanel');if(panel&&!panel.hidden)panel.hidden=true;else this.inventory.show(bot);}
     else if(e.code==='KeyU'){const held=this.inventory.heldFor(bot,'right')||this.inventory.heldFor(bot,'left')||this.inventory.promoteCarriedDrink(bot);if(!held)this.toast('Hold a tool or drink first (I)');else this.inventory.useHeldItem(bot,held);}
     else if(e.code==='KeyJ'){
-     if(!standUp(bot,this)){
+     if(bot.userData.robotSeated){if(!standUp(bot,this))this.toast('All seat exits blocked; clear the nearby furniture or make more room');}
+     else{
       const target=this.items.filter(o=>o!==bot).map(o=>({o,plan:seatPlan(o,bot.position)})).filter(x=>x.plan).sort((a,b)=>a.plan.spot.distanceToSquared(bot.position)-b.plan.spot.distanceToSquared(bot.position))[0]?.o;
       if(!target||!takeSeat(bot,target,this))this.toast('Approach a flat seat surface, then press J');
      }
@@ -2599,9 +2600,16 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     const robot=this.controlledRobot?.(),canControl=this.controlMode==='robot'&&robot&&this.canEdit(robot);
     const rawIntent=intent(this.robotKeys);
     const now=performance.now();
+    if(canControl&&rawIntent.f&&robot.userData.robotSeated)standUp(robot,this);
+    // Retry only on an actual movement attempt, not continuously each frame.
+    if(canControl&&rawIntent.f&&!robot.userData.robotSeated&&now-(robot.userData.lastSeatEscapeAttempt||0)>1800){
+      robot.userData.lastSeatEscapeAttempt=now;
+      if(recoverStandingSeatTrap(robot,this))this.toast('Released avatar from furniture; movement restored');
+    }
     if(canControl&&rawIntent.f>0){this.walkHeldSince??=now;}else this.walkHeldSince=null;
     const autoRun=autoRunAfterHold(this.walkHeldSince===null?0:now-this.walkHeldSince,{walking:rawIntent.f>0,airborne:!!(robot?.userData.robotJumpActive||robot?.userData.physicsAirborne),shift:!!rawIntent.r});
     const input=canControl?{...rawIntent,r:Number(autoRun),runMultiplier:robot.userData.robotRunMultiplier??2.8,s:robot.userData.robotSpeed??1.8,q:robot.userData.robotStrafeSpeed??2.5,u:robot.userData.robotTurnSpeed??4,j:Number(this.robotKeys.has('Space'))}:{f:0,t:0,r:0,b:0,s:1.8,q:2.5,u:4,j:0};
+    if(canControl&&robot.userData.robotSeated){input.f=0;input.b=0;} // An obstructed stand-up must not walk through the seat collider.
     // Motion intent belongs to a particular robot, not every avatar in the room.
     for(const item of this.items){if(item.userData.editorKind==='robot')item.userData.robotLocalMotion=false;}
     if(canControl){
@@ -2912,6 +2920,11 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   routeRobot(robot,point){
     const {preserveMission=false,quiet=false,wholePath=false}=arguments[2]||{};
     if(!robot||!point)return false;
+    // A work route must first release its avatar from a seating collider.
+    // Try the seat front and three other exits, never cutting through walls;
+    // keep the current storey rather than silently falling to ground level.
+    if(robot.userData.robotSeated&&!standUp(robot,this))return false;
+    if(!robot.userData.robotSeated&&typeof recoverStandingSeatTrap==='function')recoverStandingSeatTrap(robot,this);
     const allObstacles=this.navigationObstacles(robot);
     // A robot already standing within another robot's clearance zone must be
     // allowed to depart. Runtime collision still prevents moving further into
@@ -3005,7 +3018,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     const staticObstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
     const start={x:robot.position.x,z:robot.position.z};
     if(mission.kind==='go_to'&&mission.targetId===other.userData.editorId&&
-      canMeetRobot(start,{x:other.position.x,z:other.position.z},staticObstacles,{minimum:.53})){
+      canMeetRobot({...start,y:robot.position.y},{x:other.position.x,y:other.position.y,z:other.position.z},staticObstacles,{minimum:.53})){
       robot.userData.robotWaypoints=[];setRobotDestination(robot,start);return true;
     }
     const count=Number(mission.dynamicDetours||0);
@@ -3049,8 +3062,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       if(Math.hypot(target.position.x-original.x,target.position.z-original.z)>.90){
         mission.retargets=Number(mission.retargets||0)+1;
         if(mission.retargets>12)return false; // the ordinary route/recovery remains authoritative
-        const approach=planRobotMeeting({x:robot.position.x,z:robot.position.z},
-          {x:target.position.x,z:target.position.z},obstacles);
+        const approach=planRobotMeeting({x:robot.position.x,y:robot.position.y,z:robot.position.z},
+          {x:target.position.x,y:target.position.y,z:target.position.z},obstacles);
         if(approach?.alreadyNear){
           robot.userData.robotWaypoints=[];
           setRobotDestination(robot,{x:robot.position.x,z:robot.position.z});return true;
@@ -3078,7 +3091,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     const dx=robot.position.x-target.position.x,dz=robot.position.z-target.position.z;
     const distance=Math.hypot(dx,dz);
     const staticObstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
-    if(canMeetRobot({x:robot.position.x,z:robot.position.z},{x:target.position.x,z:target.position.z},staticObstacles))return false;
+    if(canMeetRobot({x:robot.position.x,y:robot.position.y,z:robot.position.z},{x:target.position.x,y:target.position.y,z:target.position.z},staticObstacles))return false;
     const reroutes=Number(mission.retargets||0);
     if(reroutes>=4){
       robot.userData.robotMission=null;robot.userData.robotGoal=null;robot.userData.robotMode='idle';
@@ -3087,7 +3100,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     mission.retargets=reroutes+1;
     const start={x:robot.position.x,z:robot.position.z};
     const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
-    const approach=planRobotMeeting(start,{x:target.position.x,z:target.position.z},obstacles);
+    const approach=planRobotMeeting({...start,y:robot.position.y},{x:target.position.x,y:target.position.y,z:target.position.z},obstacles);
     if(approach?.alreadyNear)return false;
     if(approach&&this.routeRobot(robot,approach.point,{preserveMission:true})){
       mission.targetPlanPosition={x:target.position.x,z:target.position.z};return true;
@@ -3271,10 +3284,11 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       const world=target.localToWorld(new THREE.Vector3(p.x,0,p.z));
       return {x:world.x,z:world.z};
     };
+    const differentFloor=target.userData.editorKind==='robot'&&!sameRobotFloor(robot.position,target.position);
     const approach=isStairEntrance?
       planRobotLowStairApproach(start,target.userData.stairs,obstacles,projectStairPoint):
       target.userData.editorKind==='robot'?
-        planRobotMeeting(start,{x:target.position.x,z:target.position.z},obstacles):
+        planRobotMeeting({...start,y:robot.position.y},{x:target.position.x,y:target.position.y,z:target.position.z},obstacles):
         planRobotApproach(start,bounds2d,obstacles);
     // An intermediate stop outside the wall must never count as meeting a
     // robot inside. For social tasks, a blocked door is a genuine blocked route.
@@ -3294,11 +3308,11 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       const nearby=obstacles.map(o=>({name:o.name||'Unknown object',kind:o.kind||'object',distance:+Math.hypot((o.minX+o.maxX)/2-start.x,(o.minZ+o.maxZ)/2-start.z).toFixed(2)})).sort((a,b)=>a.distance-b.distance).slice(0,8);
       robot.userData.robotDebugRoute={start,waypoints:[],obstacles,destination:{x:center.x,z:center.z},blocked:true};
       if(this.robotPathDebugVisible(robot))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
-      window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'blocked',target:target.name,reason:isStairEntrance?'Low stair entrance inaccessible; no route through high/side faces':'No reachable safe approach from any tested side',nearby_obstacles:nearby,obstacles:obstacles.length,waypoints:0,start,destination:{x:center.x,z:center.z},taskId:command.id}}));
+      window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'blocked',target:target.name,reason:differentFloor?'Colleague on another storey; a vertical lift/stair route is required':isStairEntrance?'Low stair entrance inaccessible; no route through high/side faces':'No reachable safe approach from any tested side',nearby_obstacles:nearby,obstacles:obstacles.length,waypoints:0,start,destination:{x:center.x,z:center.z},taskId:command.id}}));
       const mission=robot.userData.robotMission;robot.userData.robotMission=null;
       robot.userData.robotGoal=null;robot.userData.robotMode='idle';
-      window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked',reason:isStairEntrance?'Low stair entrance inaccessible':'No reachable approach point'}}));
-      this.toast(robot.name+': no safe route to any side of '+target.name);return false;
+      window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked',reason:differentFloor?'Colleague is on another floor; a lift/stair journey is required':isStairEntrance?'Low stair entrance inaccessible':'No reachable approach point'}}));
+      this.toast(differentFloor?robot.name+': '+target.name+' is on another floor; use lift/stairs first':robot.name+': no safe route to any side of '+target.name);return false;
     }
     if(partial){
       const straight=Math.hypot(center.x-start.x,center.z-start.z);

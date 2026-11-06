@@ -1,3 +1,11 @@
+# SOLVI.help Master LLM Handover — v0.2.217
+
+## v0.2.217 — Seat escape and floor-aware social arrivals
+
+Based on the complete v0.2.216 archive. `js/robot-seating.js` now probes front/side/back release points, ensures that unrelated colliders are not crossed, and reuses the actual floor Y for the resulting capsule; it also attempts recovery when a *standing* robot remains within a seating footprint. Keyboard movement and autonomous routing trigger this recovery. `js/robot-social-navigation.js`, `js/editor.js`, `js/robot-life-core.js` and `js/robots.js` reject false 2D meetings when robots are on different levels. `js/robot-life.js` no longer starts repetitive generic social questions on ordinary roaming; only recent verified project receipts can initiate a purposeful colleague update. `js/robot-autonomy.js` records those receipts after actual successful work. **No autonomous lift trip is claimed.** All scenes/assets/persistence remain unchanged. Live browser, Rapier and two-client tests still needed. See `docs/RELEASE_0.2.217_SPEC.md`.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.216
 
 ## Remote avatar height and production observability

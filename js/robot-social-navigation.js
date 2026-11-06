@@ -3,8 +3,11 @@
 // Scene geometry is the source of physical truth; the Meta model is not a path planner.
 import {pathBlocked,planRobotTravelRoute,plannedPathLength} from './robot-pathfinding.js';
 const finite=p=>Number.isFinite(p?.x)&&Number.isFinite(p?.z);
+export function sameRobotFloor(from,to,tolerance=1.25){
+ return !Number.isFinite(from?.y)||!Number.isFinite(to?.y)||Math.abs(from.y-to.y)<=tolerance;
+}
 export function socialLineClear(from,to,staticObstacles=[],clearance=.045){
- if(!finite(from)||!finite(to))return false;
+ if(!finite(from)||!finite(to)||!sameRobotFloor(from,to))return false;
  const distance=Math.hypot(from.x-to.x,from.z-to.z);
  // Both ends and each intermediate crossing must be traversable at avatar height.
  const steps=Math.max(1,Math.ceil(distance/.065));
@@ -16,10 +19,10 @@ export function socialLineClear(from,to,staticObstacles=[],clearance=.045){
 }
 export function canMeetRobot(from,to,staticObstacles=[],{minimum=.70,maximum=1.95}={}){
  const distance=Math.hypot(from.x-to.x,from.z-to.z);
- return Number.isFinite(distance)&&distance>=minimum&&distance<=maximum&&socialLineClear(from,to,staticObstacles);
+ return sameRobotFloor(from,to)&&Number.isFinite(distance)&&distance>=minimum&&distance<=maximum&&socialLineClear(from,to,staticObstacles);
 }
 export function planRobotMeeting(start,target,staticObstacles=[],options={}){
- if(!finite(start)||!finite(target))return null;
+ if(!finite(start)||!finite(target)||!sameRobotFloor(start,target))return null;
  // A moving avatar is not a permanent navmesh obstacle: only stationary
  // scene geometry is used for planning. Runtime checks still avoid collisions.
  const solid=staticObstacles.filter(o=>o.kind!=='robot');

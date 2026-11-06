@@ -1,3 +1,11 @@
+# v0.2.217 — Seat escape and real floor-aware robot encounters (2026-11-06)
+
+- Seated avatar exit now checks alternate furniture edges if the normal exit is obstructed, including sofas and office chairs; never cross a wall, never change storey, and preserve a seated pose if all exits are blocked.
+- Stand-mode avatars trapped inside furniture can escape on movement requests; robot navigation attempts the same recovery before path planning. Saved position and physics are updated via the existing owner-checked flow.
+- Robot peer visits require compatible elevation as well as physical 2D proximity; no more claiming a ground-floor wall visit as a third-floor encounter. Full autonomous lift rides are **not implemented** by this patch.
+- Replace repetitive generic colleague questions with communication based on recent, verified scene-construction receipts. Existing permissions and user goals remain intact.
+- Regression tests added for multi-storey meetings, seat escapes, blocked wall exits, source hooks. No data migration. Live two-client acceptance required.
+
 # v0.2.216 — Robot height authority and transparent production diagnostics (2026-11-06)
 
 - Remote robots use the sender’s live three-dimensional pose for kinematic playback; receiver gravity no longer forces avatars onto another building level. Manual motion now broadcasts XYZ snapshots in addition to existing predictive keyboard packets.

@@ -223,6 +223,17 @@ export function tickRobots(items,dt,onMove=()=>{}){
               status:'partial',progress:partial.progress,remainingMeters:partial.remainingMeters}}));
             continue;
           }
+          // Revalidate a social arrival against the colleague's CURRENT
+          // elevation. A planar destination outside a third-floor window is
+          // not a meeting, even when the horizontal route has completed.
+          if(mission.kind==='go_to'&&mission.targetId){
+           const peer=items.find(item=>item.userData.editorId===mission.targetId&&item.userData.editorKind==='robot');
+           if(peer&&Math.abs(peer.position.y-robot.position.y)>1.25){
+            robot.userData.robotMission=null;
+            window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName,status:'blocked',reason:'Target on another floor; lift or stairs required'}}));
+            continue;
+           }
+          }
           let seated=false;
           if(mission.kind==='go_sit'){
             // A path finishing beside an object is not yet a successful sit.

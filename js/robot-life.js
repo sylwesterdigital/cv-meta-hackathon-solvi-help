@@ -4,6 +4,7 @@
 import {lifeCanStart,lifeCandidates,lifeResult,LIFE_TICK_MS} from './robot-life-core.js';
 import {emitBrainTrace,rememberRobotObservationFrame} from './robot-brains.js';
 import {captureRobotView,interruptRobotMission} from './robots.js';
+import {canMeetRobot} from './robot-social-navigation.js';
 export function initRobotLife({editor,api,room,canRun,workOrderActive=()=>false,postDiscussion}){
  const state=new Map();let cursor=0,busy=false;
  const current=bot=>state.get(bot.userData.editorId)||{step:0,history:[],nextAt:0,active:null,contacts:new Map()};
@@ -32,12 +33,18 @@ export function initRobotLife({editor,api,room,canRun,workOrderActive=()=>false,
    if(frame?.size)rememberRobotObservationFrame(bot.userData.editorId,frame,'Life arrival · raw head-camera frame (not model-analysed)');
   }catch{ /* camera failure never blocks exploration */ }}
   const peer=editor.items.find(o=>o.userData.editorId===mission.candidate.targetId&&o.userData.editorKind==='robot');
-  if(peer&&bot.userData.robotBrain?.initiative&&peer!==bot&&editor.canEdit(bot)&&
-     Math.hypot(peer.position.x-bot.position.x,peer.position.z-bot.position.z)<=4&&
+  const workReceipt=bot.userData.robotLastVerifiedWork;
+  const nearPeer=peer&&canMeetRobot({x:bot.position.x,y:bot.position.y,z:bot.position.z},
+    {x:peer.position.x,y:peer.position.y,z:peer.position.z},
+    editor.navigationObstacles(bot).filter(o=>o.kind!=='robot'));
+  // Random exploration and a generic "what have you discovered?" should not
+  // create endless AI conversations. Contact requires a real project receipt.
+  if(nearPeer&&workReceipt?.status==='completed'&&workReceipt?.detail&&Date.now()-Number(workReceipt.at||0)<600000&&
+     bot.userData.robotBrain?.initiative&&peer!==bot&&editor.canEdit(bot)&&
      Date.now()-(life.contacts.get(peer.userData.editorId)||0)>5400000){
    life.contacts.set(peer.userData.editorId,Date.now());
-   try{await postDiscussion(bot,peer,`I reached the area near ${peer.name}. Do you have a specific verified project task or actual scene edit to report? If not, we should continue our separate work rather than repeating checks.`);
-     trace(bot,'PEER CONTACT',`Asked ${peer.name} about a concrete observation or experiment; no work was assigned without permission.`);
+   try{await postDiscussion(bot,peer,`I completed a verified project step: ${String(workReceipt.detail).slice(0,160)}. Please check whether your assigned construction task needs this result.`);
+     trace(bot,'PEER CONTACT',`Shared an actual project receipt with ${peer.name}; not a proximity-only greeting.`);
    }catch(error){trace(bot,'CONTACT UNAVAILABLE',error.message);}
   }
  }
