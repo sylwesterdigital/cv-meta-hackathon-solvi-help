@@ -32,7 +32,7 @@ export function houseWallSettings(input={}){
 }
 export function houseGoal(goal=''){
  // No autonomous construction based on an unrelated casual conversational phrase.
- return /\b(build|construct|make|prepare|create|set up|furnish)\b/i.test(goal)&&/\b(house|home|cabin|small room|hospital|clinic)\b/i.test(goal);
+ return /\b(build|building|construct|constructing|make|prepare|create|set up|furnish)\b/i.test(goal)&&/\b(houses?|homes?|cabins?|small rooms?|hospitals?|clinics?)\b/i.test(goal);
 }
 export function operatorFailure(error){
  const reason=String(error?.message||error||'Unknown error');

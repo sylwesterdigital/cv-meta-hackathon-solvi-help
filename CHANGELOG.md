@@ -1,3 +1,15 @@
+# v0.2.212 — Executable local robot projects and sustained recovery (2026-11-06)
+
+- Fix the "Meta unavailable → no safe step → idle" dead end for expressly authorised construction. Add a server-durable Local project mode using real scene-generation and collision-checked navigation without Meta calls.
+- Explicit human `@all start building more homes` / `@all please build a picnic area` can initiate at most three local robot work orders; generic aspirational conversation and robot replies never authorise scene mutations.
+- Bound a plural homes goal to two furnished houses per assigned robot and a basic picnic/park corner to four real props. Store and revalidate object IDs; do not build duplicates after refresh or claim an empty scene as completed.
+- Honour 1-hour patrol requests with repeated checked routes; honour a back-15m / random turn / restart instruction as multi-stage movement, without teleporting or defaulting to 90 degrees.
+- All 0.2.211 smooth multiplayer motion, 0.2.210 fence routing, object owners, inventory, media and model binaries remain preserved. No SQLite migration. Live Flask, provider and two-client verification still required.
+
+See `docs/RELEASE_0.2.212_SPEC.md` for exact constraints, manual acceptance steps and non-goals.
+
+---
+
 # v0.2.211 — Smooth autonomous robot walking across multiplayer clients (2026-11-06)
 
 - Stream actual autonomous navigation positions, heading and gait state at roughly 9Hz to other signed-in clients; render between snapshots instead of jumping between infrequent scene saves.

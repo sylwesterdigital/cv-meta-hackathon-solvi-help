@@ -1,6 +1,6 @@
 // v0.2.192: one work mode determines the relevant operator controls.
 const FIELDS=Object.freeze({
- agent:['goal','allow','vision','interval'],deliver:['source','destination'],build:['variant','allow'],
+ agent:['goal','allow','vision','interval'],local_project:['goal','allow','interval'],deliver:['source','destination'],build:['variant','allow'],
  house:['goal','allow'],preset:['preset','allow'],assist:['destination','goal'],rest:['destination','allow']
 });
 export function visibleWorkFields(mode,loop=false){

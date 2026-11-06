@@ -615,7 +615,7 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
   $('chatStatus').textContent=response.answer?`${response.answer.model} · ${response.latency_ms} ms`:'Delivered to world chat';
   if(response.usage?.totals)$('metaUsageStatus').textContent=`Recorded ${response.usage.totals.requests} requests · ~US$${Number(response.usage.totals.usd).toFixed(4)} estimated`;
   if(response.message?.id && text){
-    try{const eyes=/@([^\n@]+?)\s+\/eyes(?:\s+(180|360))?\s*$/i.exec(text);if(eyes){const name=eyes[1].trim().toLowerCase();const robot=window.solviEditor?.items.find(o=>o.userData.editorKind==='robot'&&o.name.toLowerCase()===name);if(robot)await window.solviPublishRobotEyes?.(Number(eyes[2]||180),robot);else toast('Robot for /eyes not found');}else await reactToRobotMessage(response.message,0,interruptedRobot);}
+    try{await window.solviStartChatProjects?.(response.message);const eyes=/@([^\n@]+?)\s+\/eyes(?:\s+(180|360))?\s*$/i.exec(text);if(eyes){const name=eyes[1].trim().toLowerCase();const robot=window.solviEditor?.items.find(o=>o.userData.editorKind==='robot'&&o.name.toLowerCase()===name);if(robot)await window.solviPublishRobotEyes?.(Number(eyes[2]||180),robot);else toast('Robot for /eyes not found');}else await reactToRobotMessage(response.message,0,interruptedRobot);}
     catch(error){$('chatStatus').textContent='Message delivered; robot reaction failed: '+error.message;}
   }
  }catch(e){playCue('error');$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}
@@ -1541,6 +1541,7 @@ function bindUI(world){
    await bubble(response.message);await reactToRobotMessage(response.message);
   }});
 
+ window.solviStartChatProjects=message=>activeAutonomy?.startChatProjects(message);
  // Fast, unbilled exploratory activity is separately opt-in per robot.
  // Human tasks, saved work orders and direct control always take priority.
  initRobotLife({editor,api,room:()=>activeRoom,workOrderActive:id=>activeAutonomy?.isActive(id)===true,

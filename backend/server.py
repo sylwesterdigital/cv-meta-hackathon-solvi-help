@@ -232,7 +232,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.211',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.212',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1774,7 +1774,7 @@ def robot_work_order_robot(user,room_id,rid):
 
 def valid_robot_work_order(order,state):
     if not isinstance(order,dict) or not isinstance(state,dict):return None
-    if order.get('mode') not in ('agent','deliver','build','house','preset','assist','rest'):return None
+    if order.get('mode') not in ('agent','local_project','deliver','build','house','preset','assist','rest'):return None
     goal=order.get('goal','')
     if not isinstance(goal,str) or len(goal)>1800:return None
     try:interval=int(order.get('interval',300))
@@ -1789,12 +1789,19 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction'}
+    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
     if not isinstance(stored.get('invitations',[]),list) or len(stored.get('invitations',[]))>20:return None
     if not isinstance(stored.get('contacted',[]),list) or len(stored.get('contacted',[]))>20:return None
+    projects=stored.get('projectPlaced',[])
+    if (not isinstance(projects,list) or len(projects)>6 or
+        any(not isinstance(p,dict) or not isinstance(p.get('id'),str) or len(p['id'])>100 or
+            p.get('variant') not in ('chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can') for p in projects)):
+        return None
+    houses=stored.get('completedHouses',[])
+    if not isinstance(houses,list) or len(houses)>3 or any(not isinstance(id,str) or len(id)>100 for id in houses):return None
     return cleaned,stored
 
 @app.get('/api/robots/autonomy/orders')
@@ -2421,6 +2428,31 @@ def plan_robot_command(text,robot,objects):
     if re.search(r'^(?:please\s+)?(?:stop(?!\s+by\b)|halt|freeze)\b',words) or re.search(
         r'^(?:can|could|would) you (?:please )?(?:stop|halt|freeze)\b',words):
         return {'kind':'stop'},'Stopping.'
+    # Recover from a blocked corridor with a REAL checked reverse/side route,
+    # followed by a non-fixed random turn and a short new exploration leg.
+    retreat=re.search(r'\b(?:step|walk|move|go)\s+back(?:wards?)?\s+(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b',words)
+    if retreat and re.search(r'\bturn\b.{0,35}\brandom\b|\brandom\b.{0,35}\bturn\b',words):
+        metres=float(retreat.group(1))
+        if not .5<=metres<=30:return None,'A recovery step must be between 0.5 and 30 m.'
+        return {'kind':'recover_route','distance':metres,'target_name':'retreat, turn randomly and explore'},(
+            f'I will seek a collision-checked retreat up to {metres:g} m, rotate by a genuinely random angle, then try a new safe route.')
+    if re.match(r'^(?:please\s+)?turn\s+(?:at\s+)?(?:a\s+)?random\b',words):
+        direction='left' if secrets.randbelow(2)==0 else 'right'
+        angle=15+secrets.randbelow(166)
+        return {'kind':'turn','direction':direction,'degrees':angle,'target_name':f'random {direction} {angle}°'},(
+            f'I will turn {direction} {angle}°.')
+    # An explicit *timed* roaming assignment is not a single 2 m wander.
+    # Limit its lifetime, let the physical client continue safe legs, and keep
+    # STOP effective. The route does not continue with the browser closed.
+    timed_roam=re.search(r'\b(?:walk|wander|wonder|roam|patrol|explore)\b',words)
+    time_match=re.search(r'\b(?:for\s+)?(\d{1,2}|one|an?)\s*(hours?|hrs?|minutes?|mins?)\b',words)
+    if timed_roam and time_match:
+        quantity={'one':1,'a':1,'an':1}.get(time_match.group(1),None)
+        if quantity is None:quantity=int(time_match.group(1))
+        minutes=quantity*(60 if time_match.group(2).startswith(('h','hr')) else 1)
+        minutes=max(1,min(60,minutes))
+        return {'kind':'patrol','duration_seconds':minutes*60,'target_name':f'{minutes} minute autonomous patrol'},(
+            f'I will patrol using successive collision-checked routes for up to {minutes} minute(s), while this browser stays active. Say stop to interrupt.')
     # Bounded random patrol. Always stoppable; no unchecked animation or object pushing.
     if re.search(r'\b(?:do|try|perform|make|take|choose)\s+(?:something\s+)?random\b|\b(?:random|surprise)\s+(?:action|move|walk|cycle)s?\b',words):
         count_match=re.search(r'\b(?:repeat|cycle|loop)\s*(\d{1,2})\s*times?\b|\b(\d{1,2})\s*times?\b',words)
@@ -2524,6 +2556,8 @@ def plan_robot_command(text,robot,objects):
     relative_travel=bool(re.search(r'\b(?:go|move|walk|roll|drive|head|travel|proceed|continue)\s+(?:on\s+)?(?:further|farther|forward|ahead|another)\b|\b(?:keep going|carry on)\b',words))
     # An explicit turn can be performed independently of movement. Degrees and
     # metres are clamped server-side; 'for a while' means a short 3 m walk.
+    # A first-person comment about turning is not an imperative command.
+    if re.match(r'^(?:i|we|when i|you said|that)\b',words):return None,None
     has_turn=bool(re.search(r'\b(turn|rotate|pivot)\b',words))
     has_walk=bool(re.search(r'\b(walk|roll|drive|move|go forward|run)\b',words) or relative_travel)
     has_jump=bool(re.search(r'\b(jump|hop)\b',words))

@@ -2624,7 +2624,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       if(arrived||o.userData.robotMission&&now-(o.userData.lastMissionSave||0)>5000){
         o.userData.lastMissionSave=now;this.queueSave(o);
       }
-    },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),refreshRoute:robot=>this.refreshRobotRoute(robot),checkpoint:(robot,point)=>this.inspectRobotRouteCheckpoint(robot,point),avoidRobot:(robot,other)=>this.avoidMovingRobot(robot,other),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot),seat:(robot,id)=>{const target=this.items.find(o=>o.userData.editorId===id);return target?takeSeat(robot,target,this):false;}}));
+    },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),refreshRoute:robot=>this.refreshRobotRoute(robot),checkpoint:(robot,point)=>this.inspectRobotRouteCheckpoint(robot,point),avoidRobot:(robot,other)=>this.avoidMovingRobot(robot,other),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot),patrol:(robot,mission)=>this.continueRobotPatrol(robot,mission),restart:(robot,mission)=>this.continueRobotRecovery(robot,mission),seat:(robot,id)=>{const target=this.items.find(o=>o.userData.editorId===id);return target?takeSeat(robot,target,this):false;}}));
     // Move kinematic transport platforms and cabin riders before evaluating
     // character gravity, on both the lift operator and the robot owner's tab.
     tickStairTransport(this,dt);
@@ -3081,16 +3081,83 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     }
     return false;
   }
+  // Select successive physically reachable, novel heading/distance pairs.
+  // A failed candidate never becomes a displayed route or a claimed movement.
+  continueRobotPatrol(robot,mission){
+    if(!robot||!mission||mission.kind!=='patrol')return false;
+    if(Date.now()>=mission.expiresAt){mission.termination='duration-complete';return false;}
+    if(mission.leg>=500){mission.termination='step-budget';return false;}
+    const start={x:robot.position.x,z:robot.position.z};
+    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
+    const turn=(Math.random()*2-1)*Math.PI;
+    for(const range of [16,11,7,4])for(let i=0;i<12;i++){
+      const theta=robot.rotation.y+turn+i*Math.PI/6;
+      const candidate={x:start.x+Math.sin(theta)*range,z:start.z+Math.cos(theta)*range};
+      if(Math.abs(candidate.x)>490||Math.abs(candidate.z)>490)continue;
+      const path=planRobotTravelRoute(start,candidate,obstacles);
+      if(!path?.length||Math.hypot(path.at(-1).x-candidate.x,path.at(-1).z-candidate.z)>.22)continue;
+      if(this.routeRobot(robot,candidate,{preserveMission:true,quiet:true})){
+        mission.leg++;return true;
+      }
+    }
+    mission.termination='blocked';return false;
+  }
+  startRobotRecovery(robot,mission){
+    const origin={x:robot.position.x,z:robot.position.z};
+    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
+    const back=robot.rotation.y+Math.PI;
+    for(const radius of [mission.retreatMetres,Math.min(10,mission.retreatMetres),Math.min(5,mission.retreatMetres)]){
+      for(const offset of [0,Math.PI/6,-Math.PI/6,Math.PI/3,-Math.PI/3,Math.PI/2,-Math.PI/2]){
+        const angle=back+offset,candidate={x:origin.x+Math.sin(angle)*radius,z:origin.z+Math.cos(angle)*radius};
+        const route=planRobotTravelRoute(origin,candidate,obstacles);
+        if(!route?.length||Math.hypot(route.at(-1).x-candidate.x,route.at(-1).z-candidate.z)>.22)continue;
+        if(this.routeRobot(robot,candidate,{preserveMission:true,quiet:true}))return true;
+      }
+    }
+    return false;
+  }
+  continueRobotRecovery(robot,mission){
+    if(!robot||!mission||mission.kind!=='recover_route')return false;
+    const origin={x:robot.position.x,z:robot.position.z};
+    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
+    for(const radius of [9,6,3])for(const offset of [0,Math.PI/6,-Math.PI/6,Math.PI/3,-Math.PI/3]){
+      const angle=robot.rotation.y+offset,candidate={x:origin.x+Math.sin(angle)*radius,z:origin.z+Math.cos(angle)*radius};
+      const route=planRobotTravelRoute(origin,candidate,obstacles);
+      if(!route?.length||Math.hypot(route.at(-1).x-candidate.x,route.at(-1).z-candidate.z)>.22)continue;
+      if(this.routeRobot(robot,candidate,{preserveMission:true,quiet:true}))return true;
+    }
+    return false;
+  }
   receiveRobotCommand(command){
     if(!command||command.room!==(window.solviRoom||'main'))return false;
     const robot=this.items.find(x=>x.userData.editorKind==='robot'&&x.userData.editorId===command.robot_id);
     if(!robot||!this.canEdit(robot)){this.toast('Robot command rejected: robot not editable or missing');return false;}
-    if(!['stop','wander','random_action','go_to','go_sit','coffee_visit','walk_forward','turn','turn_walk','jump'].includes(command.kind))return false;
+    if(!['stop','wander','random_action','patrol','recover_route','go_to','go_sit','coffee_visit','walk_forward','turn','turn_walk','jump'].includes(command.kind))return false;
     // Explicit human commands always supersede ambient life; STOP also
     // temporarily suppresses a new autonomous route after the stop.
     robot.userData.robotLifePauseUntil=Date.now()+(command.kind==='stop'?120000:45000);
     interruptRobotMission(robot);
     if(command.kind==='stop'){clearRobotPathDebug(this.world,robot.userData.editorId);robot.userData.robotDebugRoute=null;this.updateRobotDebugStatus();robot.userData.robotMode='idle';this.queueSave(robot);this.toast(robot.name+' stopped');return true;}
+    if(command.kind==='recover_route'){
+      const metres=Number(command.distance);
+      if(!Number.isFinite(metres)||metres<.5||metres>30)return false;
+      const mission={kind:'recover_route',phase:'retreat',taskId:command.id,
+        targetName:command.target_name||'retreat and change heading',retreatMetres:metres};
+      robot.userData.robotMission=mission;
+      if(!this.startRobotRecovery(robot,mission)){
+        interruptRobotMission(robot);this.toast(robot.name+' cannot safely reverse; no teleport attempted');return false;
+      }
+      return true;
+    }
+    if(command.kind==='patrol'){
+      const seconds=Math.max(60,Math.min(3600,Number(command.duration_seconds)||300));
+      robot.userData.robotMission={kind:'patrol',taskId:command.id,targetName:command.target_name||'timed patrol',
+        startedAt:Date.now(),expiresAt:Date.now()+seconds*1000,leg:0};
+      if(!this.continueRobotPatrol(robot,robot.userData.robotMission)){
+        interruptRobotMission(robot);this.toast(robot.name+' has no safe patrol start');return false;
+      }
+      this.toast(robot.name+' started a timed patrol');return true;
+    }
     if(command.kind==='wander'||command.kind==='random_action'){
       const angle=robot.rotation.y+(command.kind==='random_action'?Math.random()*Math.PI*2:Math.PI/3);
       const length=command.kind==='random_action'?1.5+Math.random()*2:2;

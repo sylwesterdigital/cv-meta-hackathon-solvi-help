@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.211",
+  "currentVersion": "0.2.212",
   "releases": [
+    {
+      "version": "0.2.212",
+      "publishedAt": "2026-11-06T14:13:54Z",
+      "changes": [
+        "Allow an explicit human @all instruction to start up to three owner-authorized persistent local construction work orders; broad aspirational chat is not an authorization.",
+        "Use verified deterministic build-house and park/picnic furniture tool sequences even when Meta inference has no configured key, with saved stable object IDs and no uncontrolled scene edits.",
+        "Interpret requested plural homes as two bounded furnished house projects per assigned robot; never overwrite active robot work orders or invent playground equipment.",
+        "Parse one-hour wandering as a timed multi-leg patrol, and a 15m retreat with random turn as separate collision-checked motion stages; permit safe bounded fallbacks, no teleports.",
+        "Retain every prior 0.2.211 smooth multiplayer robot motion, fence navigation, object ownership, scene persistence, GLB assets, and no database schema migration."
+      ]
+    },
     {
       "version": "0.2.211",
       "publishedAt": "2026-11-06T05:24:38Z",
@@ -311,18 +322,6 @@
         "Use seven user-provided vector UI icons locally with forced consistent monochrome icon treatment; preserve the existing robot portrait strip and camera mode cycling.",
         "Add precise GitHub push diagnostics and explicit remote/pending/HTTP error classification to the optional installed deployment-watcher patch, without treating HTTPS authentication as successful publication.",
         "Add focused UI/regression tests, version all browser assets, retain avatar bytes and watcher-safe hashed release ZIP."
-      ]
-    },
-    {
-      "version": "0.2.178",
-      "publishedAt": "2026-11-04T11:05:46Z",
-      "changes": [
-        "Add individual full-height door openings to existing Office Space wall segments, selectable during the Closed Outline draft; preserve openings in saved wall objects and Architecture presets.",
-        "Generate saved single-slope roofs (4 orientations), flat overhang roofs and pyramid roofs, with optional chimney, solar-panel details and roof opening; validate and preview through the existing Office Space wall panel.",
-        "Restore saved seating anchors after furniture and robot scene hydration, stand clear of chair and sofa fronts, recover robot foot elevation from upper-storey supporting surfaces, and avoid stale procedural leg poses in authored walking animation.",
-        "Add entry/last/saved per-room camera start position, a one-click save-with-confirmation action in the shared Control Switcher beside follow/distance controls; save camera pose only, not world state.",
-        "Introduce per-robot comic speech/thought bubble options for shape (rounded/oval/cloud), Digital Strip or fallback font family, all-caps and visibility, without redistributing uploaded font binaries.",
-        "Unify the Office Space wall numeric slider with the shared active-field slider beneath the focused row; add backend and regression checks for new door/roof/preset, camera, seating and comic settings."
       ]
     }
   ]

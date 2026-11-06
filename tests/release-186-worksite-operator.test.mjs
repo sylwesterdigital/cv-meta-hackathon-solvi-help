@@ -32,7 +32,7 @@ test('only relevant operator selectors appear for each work mode',()=>{
  const html=src('index.html'),app=src('js/robot-autonomy.js');
  for(const field of ['source','destination','preset','variant','goal','interval','vision','allow'])assert.ok(html.includes('data-autonomy-field="'+field+'"'),field);
  assert.match(app,/workMode.addEventListener\('change',updateWorkFields\)/);
- assert.match(app,/\$\('autonomyStart'\)\.hidden=mode!=='agent'/);
+ assert.match(app,/\$\('autonomyStart'\)\.hidden=!\['agent','local_project'\]\.includes\(mode\)/);
 });
 test('robot moves by real A* task and only builds after measured arrival',()=>{
  const app=src('js/robot-autonomy.js'),ed=src('js/editor.js');

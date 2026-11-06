@@ -9,16 +9,13 @@ test('Meta error backoff is bounded and avoids charging repeatedly every loop',(
  assert.equal(metaRetryDelay(3),720000);
  assert.equal(metaRetryDelay(9),1800000);
 });
-test('house recovery is a sequence: build once, resume, check site, research, help, rest, then stop falsely claiming completion',()=>{
+test('house recovery prioritises actual work, bounded site checks, and never substitutes idle peer chatter for construction',()=>{
  const goal='Jess, construct a small house';
  assert.equal(workRecoveryPlan({goal,allowChanges:true}).action,'build_house');
  assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:1},house:{missing:['bed'],inspectionFailed:''}}).action,'build_house');
- assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:4},house:{missing:['bed'],inspectionFailed:'blocked'}}).action,'site_check');
- assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:4,site_check:2},house:{missing:[],inspectionFailed:'blocked'}}).action,'rest');
- assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:4,site_check:2,research:1},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2'}).action,'ask');
- assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:3,site_check:2,research:1,ask:1},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2',hasSeat:true}).action,'rest');
- assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:3,site_check:2,research:1,ask:1},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2',hasSeat:false}).action,'rest');
- assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:3,site_check:2,research:1,ask:1,rest:1},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2',hasSeat:true}).action,'idle');
+ assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:8},house:{missing:['bed'],inspectionFailed:'blocked'}}).action,'site_check');
+ assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:8,site_check:3},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2'}).action,'idle');
+ assert.equal(workRecoveryPlan({goal,allowChanges:true,attempts:{build_house:8,site_check:3,research:1,ask:1},house:{missing:[],inspectionFailed:'blocked'},peerId:'bot2',hasSeat:true}).action,'idle');
  assert.equal(workRecoveryPlan({goal,allowChanges:true,existingHouse:true}).action,'build_house');
 });
 test('hospital project never claims medication, patient care or blocked site inspection completed',()=>{

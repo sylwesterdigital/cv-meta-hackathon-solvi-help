@@ -95,14 +95,24 @@ export function tickRobots(items,dt,onMove=()=>{}){
     if(robot.userData.editorKind!=='robot')continue;
     let mode=robot.userData.robotMode||'idle';
     const turning=robot.userData.robotMission;
-    if(turning?.phase==='turn'&&['turn','turn_walk'].includes(turning.kind)){
+    if(turning?.phase==='turn'&&['turn','turn_walk','recover_route'].includes(turning.kind)){
       const delta=Math.atan2(Math.sin(turning.targetYaw-robot.rotation.y),Math.cos(turning.targetYaw-robot.rotation.y));
       const step=Math.max(0,Math.min(10,Number(robot.userData.robotTurnSpeed??4)))*2.2*Math.max(0,dt);
       robot.rotation.y+=Math.sign(delta)*Math.min(Math.abs(delta),step);
       robot.userData.robotMode='idle';mode='idle';
       if(Math.abs(delta)<=step+.00001){
         robot.rotation.y=turning.targetYaw;
-        if(turning.kind==='turn_walk'){
+        if(turning.kind==='recover_route'){
+          turning.phase='restart';
+          if(onMove.restart?.(robot,turning)){
+            turning.phase='walk';mode='walk';
+          }else{
+            robot.userData.robotMission=null;robot.userData.robotMode='idle';
+            window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,
+              robotId:robot.userData.editorId,taskId:turning.taskId,target:turning.targetName,
+              status:'partial',reason:'Retreated and turned; no safe onward route'}}));
+          }
+        }else if(turning.kind==='turn_walk'){
           turning.phase='walk';
           const target={x:robot.position.x+Math.sin(robot.rotation.y)*turning.distance,
             z:robot.position.z+Math.cos(robot.rotation.y)*turning.distance};
@@ -172,6 +182,15 @@ export function tickRobots(items,dt,onMove=()=>{}){
         const mission=robot.userData.robotMission;
         if(mission){
           // Count a cycle only after both the outward and return legs arrive.
+          if(mission.kind==='recover_route'&&mission.phase==='retreat'){
+            mission.phase='turn';
+            mission.targetYaw=robot.rotation.y+(Math.random()<.5?-1:1)*(.32+Math.random()*2.65);
+            robot.userData.robotMode='idle';robot.userData.robotArrived=false;
+            onMove(robot,false);continue;
+          }
+          if(mission.kind==='patrol'&&onMove.patrol?.(robot,mission)){
+            robot.userData.robotArrived=false;onMove(robot,false);continue;
+          }
           if(mission.kind==='coffee_visit'&&mission.leg===0){
             mission.leg=1;
             if(onMove.navigate?.(robot,mission.origin)!==false){robot.userData.robotArrived=false;onMove(robot,false);}continue;
@@ -213,7 +232,7 @@ export function tickRobots(items,dt,onMove=()=>{}){
           }
           robot.userData.robotMission=null;
           window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,target:mission.targetName||'',
-            status:mission.kind==='go_sit'?(seated?(robot.userData.robotSitPose==='clip'?'sitting':'procedural-sitting'):'blocked'):mission.kind==='coffee_visit'?'coffee-visit':'arrived',
+            status:mission.kind==='go_sit'?(seated?(robot.userData.robotSitPose==='clip'?'sitting':'procedural-sitting'):'blocked'):mission.kind==='coffee_visit'?'coffee-visit':mission.kind==='patrol'&&mission.termination!=='duration-complete'?'blocked':'arrived',
             ...(mission.destinationPart?{destinationPart:mission.destinationPart}:{})}}));
         }
       }
