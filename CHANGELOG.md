@@ -1,3 +1,18 @@
+# v0.2.215 — Furniture placement on elevated procedural building floors (2026-11-06)
+
+- Recognize the actual walkable top of each generated procedural wall-ceiling slab and flat roof, including vertically repeated Room Array storeys, as a support for furniture and saved presets.
+- Validate the entire footprint against real upper-face triangles, preserving polygon outlines and lift/roof openings; never place furniture suspended over an unsupported hole.
+- Ignore only the candidate's supporting slab collider while retaining all walls, other ceiling slabs, fences and furniture as obstacles. Camera visibility and proximity remain mandatory.
+- When the camera is above an elevated structural floor, reject unsafe furniture placement instead of silently using the ground far below. Keep the original room and object identities, physics, scene history, uploads and multiplayer protocol. No backend or database migration.
+- Targeted upper-storey tests cover real placement, walls, lift holes, blocked floors, and no invented steep roof supports. Run full JavaScript and backend regressions; a live three-floor browser acceptance test is still required after deployment.
+
+# v0.2.214 — City builders and speaker portrait refinement (2026-11-06)
+
+- Add owner-approved collaborative city-team project roles for homes, roads, pedestrian paths and community furnishings, with a shared site anchor, bounded stage counts and persistent receipts.
+- Route procedural public infrastructure through the existing renderer, obstacle checks and object-level scene persistence. Explicit @all construction commands assign only idle editable robots; the opt-in City team control may reassign an existing generic construction order without touching named cleanup.
+- Replace oversized black mic image over speaker faces with a small pink icon near the portrait base; retain border-only animation and reduced-motion support.
+- Slow low-information automatic peer prompts; no claims of autonomous round-the-clock work or live verification.
+
 # v0.2.213 — Observable robot execution, user-tunable Meta retry and spatial UI (2026-11-06)
 
 - Expose per-account Meta retry, maximum backoff, and planning cooldown settings with server persistence and a credential-source diagnostic; clear stale missing-key timers when credentials become available.

@@ -1,5 +1,5 @@
 import {groundIntersection} from './scene-placement-math.js';
-import {chooseSmartPlacement,chooseSurfacePlacement} from './smart-placement-math.js';
+import {chooseSmartPlacement,chooseSurfacePlacement,placementFitsTriangulatedSurface} from './smart-placement-math.js';
 import {infrastructureSegments} from './procedural-infrastructure.js';
 import {infrastructureNavigationFootprints} from './robot-infrastructure-obstacles.js';
 import * as THREE from 'three';
@@ -43,6 +43,26 @@ export function permitsTabletopPlacement(object,size){
   ['cube','sphere','cylinder','torus'].includes(kind);
 }
 
+// In a vertical Room Array the ceiling of one room is the usable floor of
+// the room above. Extract only the actual horizontal TOP triangles: these
+// preserve concave outlines and the real holes cut for lifts/skylights.
+function structuralTopTriangles(mesh,topY){
+ const geometry=mesh.geometry,position=geometry?.getAttribute?.('position'),indices=geometry?.index;
+ if(!position)return [];
+ const limit=Math.min(indices?.count??position.count,24000),triangles=[];
+ const pt=i=>new THREE.Vector3(position.getX(i),position.getY(i),position.getZ(i)).applyMatrix4(mesh.matrixWorld);
+ for(let i=0;i+2<limit;i+=3){
+  const a=pt(indices?indices.getX(i):i),b=pt(indices?indices.getX(i+1):i+1),c=pt(indices?indices.getX(i+2):i+2);
+  if(Math.max(Math.abs(a.y-topY),Math.abs(b.y-topY),Math.abs(c.y-topY))>.025)continue;
+  if(Math.abs((b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x))<.0001)continue;
+  const v=[a,b,c].map(p=>({x:p.x,z:p.z}));
+  triangles.push({points:v,minX:Math.min(a.x,b.x,c.x),maxX:Math.max(a.x,b.x,c.x),
+   minZ:Math.min(a.z,b.z,c.z),maxZ:Math.max(a.z,b.z,c.z)});
+ }
+ return triangles;
+}
+function structuralSurfaceId(sourceId,index){return `${sourceId}:structural-top:${index}`;}
+
 function supportOutline(object,width,depth,localY,shape='rectangle',radius=0){
  const count=shape==='rectangle'?4:24,pts=[];
  for(let i=0;i<count;i++){
@@ -66,8 +86,25 @@ export function smartPlacementSupports(items,exclude=null){
   const kind=object.userData?.editorKind,settings=object.userData?.furniture;
   const table=kind==='furniture'&&tabletopVariants.has(settings?.variant);
   const isPrimitiveFloor=['cube','plane'].includes(kind);
-  if(!table&&!isPrimitiveFloor)continue;
+  if(!table&&!isPrimitiveFloor&&kind!=='wall')continue;
   object.updateMatrixWorld?.(true);
+  if(kind==='wall'){
+   const sourceId=object.userData?.editorId||`placement-support-${index}`;
+   object.children.forEach((mesh,childIndex)=>{
+    if(!mesh.isMesh||!mesh.visible||mesh.userData?.wallCeiling!==true)return;
+    const box=worldBox(mesh);if(!box)return;
+    const width=box.max.x-box.min.x,depth=box.max.z-box.min.z,height=box.max.y-box.min.y;
+    // Pitched roofs, steeply rotated floors, masonry and tiny trim are not
+    // reliable supports. A broad horizontal ceiling/flat roof is.
+    if(width<1.2||depth<1.2||height>.65)return;
+    const triangles=structuralTopTriangles(mesh,box.max.y);
+    if(!triangles.length)return;
+    result.push({id:structuralSurfaceId(sourceId,childIndex),kind:'floor',topY:box.max.y,
+     polygon:[{x:box.min.x,z:box.min.z},{x:box.max.x,z:box.min.z},
+      {x:box.max.x,z:box.max.z},{x:box.min.x,z:box.max.z}],triangles});
+   });
+   continue;
+  }
   const box=worldBox(object);if(!box)continue;
   const width=box.max.x-box.min.x,depth=box.max.z-box.min.z,height=box.max.y-box.min.y;
   // A floor needs a meaningful walkable area and be nearly flat; wall and
@@ -130,9 +167,13 @@ export function smartPlacementObstacles(items,exclude=null){
    for(const seg of fp)boxes.push({sourceId,min:{x:seg.minX,y:minY,z:seg.minZ},max:{x:seg.maxX,y:maxY,z:seg.maxZ}});
    if(!fp.length){const box=worldBox(object);if(box)boxes.push({...box,sourceId});}
   }else if(kind==='wall'){
+   // A support ceiling must ignore only its own collider. Removing every
+   // collider from the same room group would permit furniture through walls.
    object.traverse(node=>{
     if(!node.isMesh||!node.visible||node.userData?.wallWindowButton||node.userData?.wallRoofPanel||node.userData?.wallRoofAccessory)return;
-    const box=worldBox(node);if(box)boxes.push({...box,sourceId});
+    const box=worldBox(node);
+    if(box)boxes.push({...box,sourceId:node.userData?.wallCeiling===true?
+     structuralSurfaceId(sourceId,object.children.indexOf(node)):sourceId});
    });
   }else{
    const box=worldBox(object);if(box)boxes.push({...box,sourceId});
@@ -183,9 +224,14 @@ export function positionNewSmartly(object,{camera,orbitTarget,items=[],anchor=nu
   supports:supports.filter(s=>s.kind==='tabletop'),allowTabletop:true}):null;
  const surface=tabletop||chooseSurfacePlacement({...options,
   supports:supports.filter(s=>s.kind==='floor')});
- const place=surface||chooseSmartPlacement({camera:camera.position,centre:point,forward,
+ // If the camera is standing over an elevated floor, never silently fall
+ // back to ground level when that floor has no safe visible candidate.
+ const elevatedUnderCamera=supports.some(s=>s.kind==='floor'&&s.topY>groundY+.5&&
+  camera.position.y-s.topY>.14&&camera.position.y-s.topY<6&&
+  placementFitsTriangulatedSurface(camera.position.x,camera.position.z,.12,.12,s));
+ const place=surface||(!elevatedUnderCamera&&chooseSmartPlacement({camera:camera.position,centre:point,forward,
   footprint,anchor:anchorData,obstacles,
-  maxCameraDistance:Math.max(13,Math.min(20,camera.position.y*1.3)),project});
+  maxCameraDistance:Math.max(13,Math.min(20,camera.position.y*1.3)),project}));
  if(!place)return false;
  positionNewOnGround(object,{x:place.x-offsetX,y:surface?.groundY??groundY,z:place.z-offsetZ});
  return true;

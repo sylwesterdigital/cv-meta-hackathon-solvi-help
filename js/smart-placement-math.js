@@ -120,6 +120,44 @@ export function placementFitsSurface(x,z,width,depth,polygon,edgeMargin=.018){
   .every(([px,pz])=>polygonContains({x:px,z:pz},polygon));
 }
 
+// An upper-floor slab can have concave edges and real holes for lifts.
+// Merely checking the four corners against its bounding rectangle would
+// allow an item to hover across an opening. Top-surface triangles are disjoint;
+// their intersection area with the footprint must cover the entire footprint.
+function clippedArea(triangle,minX,maxX,minZ,maxZ){
+ let polygon=triangle.points;
+ for(const [axis,bound,side] of [['x',minX,1],['x',maxX,-1],['z',minZ,1],['z',maxZ,-1]]){
+  if(!polygon.length)return 0;
+  const result=[];
+  for(let i=0;i<polygon.length;i++){
+   const a=polygon[i],b=polygon[(i+1)%polygon.length];
+   const av=(a[axis]-bound)*side,bv=(b[axis]-bound)*side;
+   const aIn=av>=-1e-9,bIn=bv>=-1e-9;
+   if(aIn)result.push(a);
+   if(aIn!==bIn){const t=(bound-a[axis])/(b[axis]-a[axis]);result.push({
+    x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t});}
+  }
+  polygon=result;
+ }
+ let twice=0;for(let i=0;i<polygon.length;i++){
+  const a=polygon[i],b=polygon[(i+1)%polygon.length];twice+=a.x*b.z-b.x*a.z;
+ }
+ return Math.abs(twice)*.5;
+}
+export function placementFitsTriangulatedSurface(x,z,width,depth,support,edgeMargin=.018){
+ if(!placementFitsSurface(x,z,width,depth,support.polygon,edgeMargin))return false;
+ if(!Array.isArray(support.triangles))return true;
+ const w=width/2+edgeMargin,d=depth/2+edgeMargin;
+ const minX=x-w,maxX=x+w,minZ=z-d,maxZ=z+d,target=4*w*d;
+ let covered=0;
+ for(const triangle of support.triangles){
+  if(triangle.maxX<minX||triangle.minX>maxX||triangle.maxZ<minZ||triangle.minZ>maxZ)continue;
+  covered+=clippedArea(triangle,minX,maxX,minZ,maxZ);
+  if(covered>=target-1e-5)return true;
+ }
+ return false;
+}
+
 /** Choose a visible, unoccupied horizontal supporting surface.
  * Supports have {id,kind,topY,polygon}; `kind` is tabletop or floor.
  * Non-support furniture continues to block collisions and sightlines.
@@ -144,7 +182,7 @@ export function chooseSurfacePlacement({camera,footprint,supports=[],obstacles=[
   const surfaceObstacles=safeObstacles.filter(b=>b.sourceId!==support.id);
   for(let ix=0;ix<steps;ix++)for(let iz=0;iz<steps;iz++){
    const x=minX+(ix+.5)*(maxX-minX)/steps,z=minZ+(iz+.5)*(maxZ-minZ)/steps;
-   if(!placementFitsSurface(x,z,width,depth,support.polygon))continue;
+   if(!placementFitsTriangulatedSurface(x,z,width,depth,support))continue;
    const dist=Math.hypot(camera.x-x,camera.z-z);
    if(dist>.6+maxCameraDistance||dist<.35)continue;
    const baseY=support.topY+.009;

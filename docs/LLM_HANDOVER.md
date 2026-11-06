@@ -1,3 +1,15 @@
+# SOLVI.help Master LLM Handover — v0.2.215
+
+## Upper-storey furniture placement
+
+Source release v0.2.215 based on complete v0.2.214. `js/scene-placement.js` now detects actual top triangles of `wallCeiling` structural meshes (including vertical Room Array storeys) and exposes these as upper-floor support surfaces. `js/smart-placement-math.js` verifies full footprint area against the non-overlapping surface triangles to respect lift openings and concave outlines. A structural support's obstacle ID is specific to that slab, so the rest of its room's walls still block overlap and sightlines. A camera over a generated upper floor must not silently place furniture on groundY=0 if the upper floor is full. No new assets, schemas, API endpoints or object protocols. Tests in `tests/release-215-upper-storey-furniture-placement.test.mjs`. Real browser and multiplayer scene persistence not yet live verified; do not claim deployed.
+
+# SOLVI.help Master LLM Handover — v0.2.214
+
+## Collaborative city roles and speaking icon
+
+Latest ZIP v0.2.214. Adds bounded house, road, footpath, commons team orders and persistent team state in existing robot_work_orders. A signed-in, visible browser must execute scene tools; scene ownership, physics, collision and object persistence unchanged. A generic chat reply is not evidence of an action. Robot portrait mic is tinted pink and positioned at base of roundel. Verify all live two-browser effects and watcher installation before claiming deployment. New tests in release-214-city-team-portrait.test.mjs.
+
 # SOLVI.help Master LLM Handover — v0.2.213
 
 ## v0.2.213 — Honest execution, model configuration, speech/map controls

@@ -1372,7 +1372,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  if(!['robot','model','media','light'].includes(kind)&&!explicitlyPositionedDraft){
   if(!this.placeSmartNewObject(object)){
    this.disposeObject(object);
-   this.toast('No visible, collision-free space. Look into an open part of the room or move the camera closer.');
+   this.toast('No visible, collision-free space. Aim at an open patch of this floor, away from walls and stair or lift openings.');
    return null; // Never publish an overlapping or wall-hidden item to multiplayer.
   }
  }else if(!explicitlyPositionedDraft){const near=this.cameraDropPosition(3.2);object.position.x=near.x;object.position.z=near.z;if(kind!=='robot')object.position.y=Math.max(.8,near.y);}
@@ -1385,6 +1385,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(!robot||!this.items.includes(robot)||!this.canEdit(robot)||Math.abs(robot.position.y)>.85)return null;
   let width,depth;
   if(kind==='house'){const spec=houseBlueprint(settings);width=spec.width;depth=spec.depth;}
+  else if(['road','footpath'].includes(kind)){width=8;depth=kind==='road'?3.6:1.8;}
   else{
    const candidate=objectFor('furniture');rebuildFurniture(candidate,{variant:settings.variant||'chair'});
    const dims=new THREE.Box3().setFromObject(candidate).getSize(new THREE.Vector3());
@@ -1392,7 +1393,24 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   }
   if(!Number.isFinite(width)||!Number.isFinite(depth)||width<.1||depth<.1)return null;
   const start={x:robot.position.x,z:robot.position.z};
-  return findRobotWorksite(start,this.navigationObstacles(robot),{width,depth},{yaw:robot.rotation.y});
+  const obstacles=this.navigationObstacles(robot);
+  // Roads and footpaths are walkable, but duplicate same-lane geometry should
+  // still be treated as occupied when selecting a NEW infrastructure site.
+  if(['road','footpath'].includes(kind))for(const obj of this.items){
+   if(obj.userData?.furniture?.variant!=='infrastructure'||obj.userData.furniture.infraType!==kind)continue;
+   const x=obj.position.x,z=obj.position.z;
+   obstacles.push({minX:x-4.4,maxX:x+4.4,minZ:z-2.4,maxZ:z+2.4});
+  }
+  const anchor=settings.anchor;
+  if(anchor&&Number.isFinite(anchor.x)&&Number.isFinite(anchor.z)&&
+      Math.hypot(anchor.x-start.x,anchor.z-start.z)<72){
+   const near=findRobotWorksite(anchor,obstacles,{width,depth},{yaw:0});
+   if(near){const route=planRobotPath(start,near.staging,obstacles);
+    if(route?.length&&Math.hypot(route.at(-1).x-near.staging.x,route.at(-1).z-near.staging.z)<.3)
+     return {...near,teamAnchor:true};
+   }
+  }
+  return findRobotWorksite(start,obstacles,{width,depth},{yaw:robot.rotation.y});
  }
  // Shares the movement controller, A* route and authoritative arrival event with
  // user-issued walk commands. It never teleports a robot or a construction item.
@@ -1480,6 +1498,29 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   this.refreshList();
   return {wall,floor,center:site,spec};
  }
+ // City-team roads are actual procedural infrastructure, not decorative props
+ // or chat claims. Each short route is independently validated and persisted.
+ createRobotInfrastructure(robot,type='road',options={}){
+  if(!robot||robot.userData.editorKind!=='robot'||!this.items.includes(robot)||
+    !this.canEdit(robot)||!['road','footpath'].includes(type))return null;
+  const at=options.at,length=8,width=type==='road'?3.6:1.8;
+  if(!at||![at.x,at.z].every(Number.isFinite)||Math.abs(at.x)>480||Math.abs(at.z)>480||
+    Math.hypot(robot.position.x-at.x,robot.position.z-at.z)>22)return null;
+  const obstacles=this.navigationObstacles(robot);
+  if(!footprintClear(at,{width:length,depth:width},obstacles,.65))return null;
+  const obj=objectFor('furniture');
+  rebuildFurniture(obj,{variant:'infrastructure',infraType:type,infraWidth:width,
+   infraPoints:[[-length/2,0],[length/2,0]],infraMarkings:type==='road',
+   infraSurface:type==='road'?'asphalt':'pavers',infraSidewalks:false,infraCurbs:false});
+  obj.position.set(at.x,0,at.z);obj.name=robot.name+' · '+(type==='road'?'city road':'pedestrian path');
+  obj.userData.physics={mode:'static'};
+  obj.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
+  obj.userData.autonomyCreatedBy=robot.userData.editorId;
+  obj.userData.autonomyCreatedRoom=window.solviRoom||'main';
+  this.items.push(obj);this.world.scene.add(obj);this.physics.sync(obj);
+  this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);this.refreshList();
+  return obj;
+ }
  // Saved presets are account-scoped. The caller must obtain them through the
  // authenticated /api/object-presets endpoint and revalidate the current user.
  createRobotPreset(robot,saved){
@@ -1557,7 +1598,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
    this.items=this.items.filter(item=>item!==obj);
    this.world.scene.remove(obj);this.physics.remove(obj.userData.editorId);
    this.disposeObject(obj);
-   this.toast('No visible, collision-free space for this preset. Move the camera inside the room and try again.');
+   this.toast('No visible, collision-free space for this preset. Aim at an open patch on this floor, away from walls and openings.');
    return null;
   }
   this.physics.applyEditedPose(obj);

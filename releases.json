@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.213",
+  "currentVersion": "0.2.215",
   "releases": [
+    {
+      "version": "0.2.215",
+      "publishedAt": "2026-11-06T18:59:08Z",
+      "changes": [
+        "Treat horizontal structural ceilings and flat roofs from procedural multi-storey wall arrays as usable furniture-placement floors at their actual elevation.",
+        "Use the top mesh triangles to preserve irregular structural outlines and lift/skylight holes; do not support furniture spanning missing floor areas.",
+        "Ignore only the supporting slab collider, not the remaining walls in its procedural room group; retain object visibility, clearance and ownership rules.",
+        "Do not fall back to ground-level placement when an elevated supporting floor exists under the camera but has no clear spot; keep scene and object ID persistence unchanged.",
+        "Preserve all prior robot autonomy, city teamwork, multiplayer, metadata, GLBs, media and persistent room contents; no schema migration."
+      ]
+    },
     {
       "version": "0.2.213",
       "publishedAt": "2026-11-06T17:34:40Z",
@@ -311,17 +322,6 @@
         "Reconnect sockets with bounded backoff rather than permanently stopping after two failures; replace lingering same-user WebSocket sessions safely without removing the active replacement.",
         "Make per-browser room and application debugging visible to regular users in the existing Dev log via a Live diagnostics tab, including room, participant count, socket/JS errors and robot event summaries, with Copy/Clear and credential filtering.",
         "Add multi-client and disconnect regression tests and preserve all existing browser/scene, avatar, GitHub HTTPS and watcher deployment contracts."
-      ]
-    },
-    {
-      "version": "0.2.180",
-      "publishedAt": "2026-11-04T13:40:07Z",
-      "changes": [
-        "Keep a single house roof on the highest floor of vertically stacked Office Space wall arrays (including reversed -Y arrays), with attached chimney, solar panels and skylight only on that level; preserve all independent intermediate ceiling/soffit meshes.",
-        "Preserve lateral room-array roofs for side-by-side buildings and support live geometry regeneration, saved wall settings and existing rooms without changing the backend wall schema.",
-        "Prevent WebXR darkness from THREE.Sprite.raycast by setting the XR raycaster camera before traversing scenes with sprite labels, and avoid expensive full-room smart-screen raycasts on every headset frame.",
-        "Prevent WebGLRenderer.setSize while XR is presenting, ignore billboard labels as smart-screen occluders, and reconnect multiplayer after Back-Forward Cache restoration.",
-        "Add six focused regression tests covering vertical and lateral roof ownership, roof accessories, correct XR camera setup, XR-safe resizing and BFCache reconnect; retain all nine original avatar assets."
       ]
     }
   ]

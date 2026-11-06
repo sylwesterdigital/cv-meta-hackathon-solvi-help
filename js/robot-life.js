@@ -34,9 +34,9 @@ export function initRobotLife({editor,api,room,canRun,workOrderActive=()=>false,
   const peer=editor.items.find(o=>o.userData.editorId===mission.candidate.targetId&&o.userData.editorKind==='robot');
   if(peer&&bot.userData.robotBrain?.initiative&&peer!==bot&&editor.canEdit(bot)&&
      Math.hypot(peer.position.x-bot.position.x,peer.position.z-bot.position.z)<=4&&
-     Date.now()-(life.contacts.get(peer.userData.editorId)||0)>600000){
+     Date.now()-(life.contacts.get(peer.userData.editorId)||0)>5400000){
    life.contacts.set(peer.userData.editorId,Date.now());
-   try{await postDiscussion(bot,peer,`I explored near ${peer.name}. What have you actually discovered or tried here? Suggest one safe experiment we can verify.`);
+   try{await postDiscussion(bot,peer,`I reached the area near ${peer.name}. Do you have a specific verified project task or actual scene edit to report? If not, we should continue our separate work rather than repeating checks.`);
      trace(bot,'PEER CONTACT',`Asked ${peer.name} about a concrete observation or experiment; no work was assigned without permission.`);
    }catch(error){trace(bot,'CONTACT UNAVAILABLE',error.message);}
   }

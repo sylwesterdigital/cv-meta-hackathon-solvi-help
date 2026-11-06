@@ -233,7 +233,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.213',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.215',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1828,7 +1828,7 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses'}
+    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
@@ -1839,6 +1839,17 @@ def valid_robot_work_order(order,state):
         any(not isinstance(p,dict) or not isinstance(p.get('id'),str) or len(p['id'])>100 or
             p.get('variant') not in ('chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can') for p in projects)):
         return None
+    team=stored.get('team')
+    if team is not None:
+        if not isinstance(team,dict) or set(team)-{'id','role','anchor','label'} or len(team)>4:return None
+        if team.get('role') not in ('housing','road','footpath','commons'):return None
+        if not isinstance(team.get('id'),str) or len(team['id'])>100:return None
+        if not isinstance(team.get('label',''),str) or len(team.get('label',''))>100:return None
+        anchor=team.get('anchor',{})
+        if not isinstance(anchor,dict) or set(anchor)!={'x','z'} or any(type(anchor[k]) not in (int,float) or not math.isfinite(anchor[k]) or abs(anchor[k])>450 for k in ('x','z')):return None
+    built=stored.get('teamBuilt',[])
+    if not isinstance(built,list) or len(built)>8 or any(not isinstance(p,dict) or set(p)!={'id','variant'} or
+         not isinstance(p['id'],str) or len(p['id'])>100 or p['variant'] not in ('road','footpath') for p in built):return None
     houses=stored.get('completedHouses',[])
     if not isinstance(houses,list) or len(houses)>3 or any(not isinstance(id,str) or len(id)>100 for id in houses):return None
     return cleaned,stored
@@ -1883,7 +1894,7 @@ def robot_work_order_save():
 
 # Autonomous work receipts are explicit client reports, not new commands. They
 # let robot discussions reference concrete recent project work without fabricating success.
-ROBOT_WORK_ACTIONS={'build_house','build','deliver','visit','rest','ask','inspect','use_preset','remove','research','idle','task','cleanup_cans'}
+ROBOT_WORK_ACTIONS={'build_house','build','deliver','visit','rest','ask','inspect','use_preset','remove','research','idle','task','cleanup_cans','build_infrastructure'}
 @app.post('/api/robots/autonomy/report')
 def robot_autonomy_report():
     user,msg,status=actor()

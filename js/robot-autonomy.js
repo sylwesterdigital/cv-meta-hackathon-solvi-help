@@ -9,6 +9,7 @@ import {confirmAction} from './app-dialogs.js';
 import {houseBlueprint,houseGoal,operatorFailure,publicPresetIndex,ROBOT_TOOL_DESCRIPTIONS} from './robot-construction-api.js';
 import {metaRetryDelay,workRecoveryPlan,projectOutcome,localProjectSequence,requestedHomeCount,chatConstructionInstruction,canCleanupGoal,chatCanCleanupInstruction} from './robot-autonomy-policy.js';
 import {visibleWorkFields,workModeHelp} from './robot-workorder-ui.js';
+import {cityTeamIntent,cityRoles,cityRoleGoal,cityRoleTarget,cityTeamState,cityMilestoneCount} from './robot-city-team.js';
 const $=id=>document.getElementById(id);
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const MAX_TRAVEL=90;
@@ -104,7 +105,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   return {house,step:run.step,completed:run.completed,last:run.last,metaFailures:run.metaFailures,
    nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,contacted:run.contacted,
    placedSupplies:run.placedSupplies,projectPlaced:run.projectPlaced,completedHouses:run.completedHouses,
-   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId};
+   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,team:run.team,teamBuilt:run.teamBuilt};
  }
  function restoreHouse(state){
   if(!state||typeof state!=='object')return null;
@@ -130,6 +131,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    contacted:Array.isArray(state.contacted)?state.contacted.slice(0,20):[],placedSupplies:Number(state.placedSupplies)||0,
    projectPlaced:Array.isArray(state.projectPlaced)?state.projectPlaced.filter(p=>p&&typeof p.id==='string'&&typeof p.variant==='string').slice(0,6):[],
    completedHouses:Array.isArray(state.completedHouses)?state.completedHouses.filter(id=>typeof id==='string').slice(0,3):[],
+   team:cityTeamState(state.team),teamBuilt:Array.isArray(state.teamBuilt)?state.teamBuilt.filter(x=>x&&['road','footpath'].includes(x.variant)&&typeof x.id==='string').slice(0,8):[],
    cleanupBinId:String(state.cleanupBinId||'').slice(0,100),cleanupHomeId:String(state.cleanupHomeId||'').slice(0,100),cleanupDone:Array.isArray(state.cleanupDone)?state.cleanupDone.filter(id=>typeof id==='string').slice(0,48):[]};
   return run;
  }
@@ -205,6 +207,11 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
     invitationTargets:remaining.map(o=>({id:o.userData.editorId,name:o.name})),
     contactTargets:contacts.map(o=>({id:o.userData.editorId,name:o.name})),placedSupplies:run.placedSupplies,
     projectPlaced:run.projectPlaced,completedHouses:run.completedHouses});
+  const role=run.team?.role;
+  if(['road','footpath'].includes(role)&&run.teamBuilt.length<cityRoleTarget(role)){
+   const plan={action:'build_infrastructure',variant:role,reason:`City team ${role}: build real public infrastructure (${run.teamBuilt.length+1}/${cityRoleTarget(role)})`,recovery:true};
+   trace(bot,'TEAM WORK',plan.reason);return plan;
+  }
   const chosen={...plan,recovery:true};
   if(chosen.action==='build_house')chosen.house=houseBlueprint(/\b(hospital|clinic)\b/i.test(run.order.goal)?{width:8,depth:8}:{})
   trace(bot,'RECOVERY CHOICE',`${source} · ${plan.action} · ${plan.reason}`);
@@ -222,7 +229,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    const state=r.busy?'working':r.last?.status||'ready';
    const blocker=r.metaFailure?' · Meta: '+r.metaFailure:r.last?.status==='failed'||r.last?.status==='blocked'?' · '+String(r.last.detail||'').slice(0,160):'';
    const retry=r.nextMetaAt>Date.now()?' · model retry '+new Date(r.nextMetaAt).toLocaleTimeString():'';
-   return `${r.name}: ${r.order.mode} · ${state} · ${r.completed} verified step(s)${blocker}${retry}`;
+   return `${r.name}: ${r.team?'CITY '+r.team.role:r.order.mode} · ${state} · ${r.team?cityMilestoneCount(r.team.role,r):r.completed}/${r.team?cityRoleTarget(r.team.role):'∞'} verified step(s)${blocker}${retry}`;
   });
   $('autonomyStatus').textContent=entries.join('\n')||'No active work orders. Autonomous roaming is a separate opt-in setting; recent chat alone does not assign work.';
   for(const b of $('controlledRobotFaces')?.children||[]){
@@ -396,7 +403,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   if(!run.order.allowChanges)throw Error('Scene creation must be enabled in the work order');
   requireActive(run,bot);
   const inside=run.house&&['bottle','can'].includes(variant);
-  const plan=inside?null:editor.planRobotBuildSite?.(bot,'furniture',{variant});
+  const plan=inside?null:editor.planRobotBuildSite?.(bot,'furniture',{variant,anchor:run.team?.anchor});
   const at=inside?{x:run.house.center.x+(run.placedSupplies%2?0.9:-0.9),z:run.house.center.z+(run.placedSupplies<2?0.8:-0.8)}:
    await walkToWorksite(run,bot,plan,variant+' worksite');
   requireActive(run,bot);
@@ -406,6 +413,19 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   if(['bottle','can'].includes(variant))run.placedSupplies++;
   trace(bot,'BUILD',`Constructed ${item.name} at a clear position; scene persisted using the human Add tool`);
   return item;
+ }
+ async function constructInfrastructure(run,bot,variant){
+  if(!run.order.allowChanges||!['road','footpath'].includes(variant))throw Error('City infrastructure requires authorised scene changes');
+  requireActive(run,bot);
+  const plan=editor.planRobotBuildSite?.(bot,variant,{anchor:run.team?.anchor});
+  trace(bot,'TEAM SITE',plan?.teamAnchor?'Using shared city neighbourhood anchor':'Shared anchor inaccessible; choosing individually verified reachable site');
+  const at=await walkToWorksite(run,bot,plan,variant+' construction site');
+  requireActive(run,bot);
+  const item=editor.createRobotInfrastructure?.(bot,variant,{at});
+  if(!item)throw Error('No permitted, collision-free road or footpath site remained after arrival');
+  run.teamBuilt.push({id:item.userData.editorId,variant});
+  trace(bot,'CITY INFRASTRUCTURE',`${variant} constructed and queued for persistent room save, object ID ${item.userData.editorId}; ${run.teamBuilt.length}/${cityRoleTarget(run.team?.role)} team segments`);
+  return `${variant} scene object ${item.name} created; ${run.teamBuilt.length}/${cityRoleTarget(run.team?.role)} segments`;
  }
  async function constructHouse(run,bot,input={}){
   if(!run.order.allowChanges)throw Error('House construction requires Allow scene changes');
@@ -436,7 +456,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   }
   const spec=houseBlueprint(input);
   if(!run.house){
-   const plan=editor.planRobotBuildSite?.(bot,'house',spec);
+   const plan=editor.planRobotBuildSite?.(bot,'house',{...spec,anchor:run.team?.anchor});
    const at=await walkToWorksite(run,bot,plan,'house construction site');
    const project=editor.createRobotHouse?.(bot,{...spec,at});
    if(!project)throw Error('House footprint became occupied after arrival; no building created');
@@ -566,6 +586,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
  async function execute(run,bot,plan){
   const obj=objectFor(plan.target_id),dest=objectFor(plan.destination_id);
   if(plan.action==='cleanup_cans')return cleanCans(run,bot);
+  if(plan.action==='build_infrastructure')return constructInfrastructure(run,bot,plan.variant);
   if(plan.action==='site_check'){
    if(!run.house?.wall||!editor.items.includes(run.house.wall))throw Error('House to inspect is no longer available');
    await moveTo(run,bot,run.house.wall);
@@ -619,10 +640,11 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   run.busy=true;update();
   try{
    run.projectPlaced=run.projectPlaced.filter(p=>editor.items.some(o=>o.userData.editorId===p.id));
+   run.teamBuilt=run.teamBuilt.filter(p=>editor.items.some(o=>o.userData.editorId===p.id));
    run.completedHouses=run.completedHouses.filter(id=>editor.items.some(o=>o.userData.editorId===id&&o.userData.editorKind==='wall'));
    let plan;
-   if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
-     (localProjectSequence(run.order.goal).length>0&&run.projectPlaced.length>=localProjectSequence(run.order.goal).length))){
+   if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&((run.team&&cityMilestoneCount(run.team.role,run)>=cityRoleTarget(run.team.role))||(!run.team&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
+     (localProjectSequence(run.order.goal).length>0&&run.projectPlaced.length>=localProjectSequence(run.order.goal).length))))){
     trace(bot,'PROJECT FINISHED','Already completed in saved scene history; no duplicate buildings or props will be placed.');
     stop(run.id,'verified project already complete');return;
    }
@@ -676,8 +698,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    trace(bot,run.last.status==='completed'&&run.order.mode==='agent'?'STEP VERIFIED':run.last.status==='completed'?'COMPLETED':run.last.status.toUpperCase(),detail+(run.house&&remaining?' · Remaining: '+remaining:''));
    report(run,bot,plan,run.last.status,detail+(run.house&&remaining?' · Remaining: '+remaining:''));
    $('autonomyFailure').textContent=(run.metaFailure?'Meta planning unavailable: '+run.metaFailure+'\nVerified local action: ':'Work order: ')+detail+(run.house&&remaining?'\nUNFINISHED: '+remaining:'')+(!run.house&&run.order.mode==='agent'&&houseGoal(run.order.goal)?'\nUNFINISHED: no confirmed house yet':'');
-   if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
-      (localProjectSequence(run.order.goal).length>0&&run.projectPlaced.length>=localProjectSequence(run.order.goal).length))){
+   if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&((run.team&&cityMilestoneCount(run.team.role,run)>=cityRoleTarget(run.team.role))||(!run.team&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
+      (localProjectSequence(run.order.goal).length>0&&run.projectPlaced.length>=localProjectSequence(run.order.goal).length))))){
     trace(bot,'PROJECT FINISHED','All bounded local construction milestones have verified scene object IDs; the work order is stopping.');
     stop(run.id,'verified project milestones completed');
    }
@@ -747,6 +769,38 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   trace(bot,'START',`${loop?'Loop':'Once'} · mode ${order.mode} · goal ${order.goal} · 360 vision ${order.vision} · scene changes ${order.allowChanges} · cadence ${order.interval}s`);
   void cycle(run);update();
  };
+ const startCityTeam=async(instruction,fromButton=false)=>{
+  const intent=cityTeamIntent(instruction);
+  if(!intent)return 0;
+  const available=editor.items.filter(o=>{
+   if(o.userData.editorKind!=='robot'||!editor.canEdit(o)||editor.controlledRobot?.()===o||o.userData.robotMission)return false;
+   const current=runs.get(o.userData.editorId);
+   return !current||(fromButton&&current.order.mode==='local_project'&&
+    !canCleanupGoal(current.order.goal)&&(requestedHomeCount(current.order.goal)>0||localProjectSequence(current.order.goal).length>0));
+  }).slice(0,8);
+  const roles=cityRoles(intent,available.length);
+  if(!roles.length){toast('City team: no idle authorised robots. Existing tasks have not been interrupted.');return 0;}
+  const anchor={x:+available[0].position.x.toFixed(2),z:+available[0].position.z.toFixed(2)};
+  const teamId='city-'+crypto.randomUUID(),label='City builders';let accepted=0;
+  for(let index=0;index<roles.length;index++){
+   const bot=available[index],id=bot.userData.editorId,role=roles[index];
+   if(runs.has(id))stop(id,'human-requested city-team reassignment of generic construction project',false);
+   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal:cityRoleGoal(role),allowChanges:true,vision:false,interval:180});
+   const run=newRun(order,true,bot,{team:{id:teamId,role,anchor,label}});
+   try{await saveOrder(run,true);}catch(error){trace(bot,'CITY ROLE REFUSED',error.message);continue;}
+   savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});
+   runs.set(id,run);run.timer=setInterval(()=>void cycle(run),order.interval*1000);
+   trace(bot,'CITY ROLE ASSIGNED',`${role}: ${order.goal}; team ${teamId}. Uses physical validated scene tools, not conversation promises.`);
+   void cycle(run);accepted++;
+  }
+  if(accepted)toast(`City team: ${accepted} robot(s) assigned housing / infrastructure / commons roles. See Work orders for scene receipts.`);
+  update();return accepted;
+ };
+ $('autonomyCityTeam').onclick=async()=>{
+  if(!api.online||!api.auth()){toast('Sign in to start city builders');return;}
+  const ok=await confirmAction('Assign available idle, editable robots to a shared city project with houses, roads, pedestrian paths and a community area. Each object is permission-checked and saved. Existing named cleanup and non-construction work orders are preserved; generic local construction orders may be reassigned. Robots execute only while the signed-in browser scene is running.',{title:'Start collaborative city builders?',confirmLabel:'Start city team'});
+  if(ok)void startCityTeam('@all start building a city with homes roads parks',true);
+ };
  const handledChatMessages=new Set();
  async function startChatProjects(message){
   if(!message?.id||handledChatMessages.has(message.id)||!api.online||!api.auth())return 0;
@@ -765,6 +819,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    toast(`${assigned.name}: can cleanup saved; the action log will show actual pickup, drinking and disposal.`);
    void cycle(run);update();return 1;
   }
+  if(cityTeamIntent(message?.text)){handledChatMessages.add(message.id);return startCityTeam(message.text);}
   const instruction=chatConstructionInstruction(message?.text);
   if(!instruction||!message?.id||handledChatMessages.has(message.id)||!api.online||!api.auth())return 0;
   handledChatMessages.add(message.id);

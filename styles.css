@@ -2813,3 +2813,18 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #controlSwitcher .robot-face-options{padding:4px!important;}
 #controlSwitcher .robot-face-choice[data-work-status="failed"]:not(.robot-face-speaking)::after,
 #controlSwitcher .robot-face-choice[data-work-status="blocked"]:not(.robot-face-speaking)::after{content:"";position:absolute;inset:1px;border:2px dashed #e9ac73;border-radius:50%;pointer-events:none;z-index:6;}
+
+/* v0.2.214 · One compact coloured mic near the bottom of the speaker portrait.
+   The mic uses an SVG mask rather than its original black file colour. */
+#controlSwitcher .robot-face-choice.robot-face-speaking::before{
+ content:""!important;position:absolute!important;inset:auto!important;
+ width:clamp(12px,calc(var(--robot-face-size,50px)*.22),18px)!important;
+ height:clamp(12px,calc(var(--robot-face-size,50px)*.22),18px)!important;
+ left:50%!important;bottom:5%!important;transform:translateX(-50%)!important;
+ background:#fb75c6!important;
+ -webkit-mask:url('./assets/ui-icons/mic.svg') center/contain no-repeat!important;
+ mask:url('./assets/ui-icons/mic.svg') center/contain no-repeat!important;
+ filter:none!important;pointer-events:none!important;z-index:10!important;
+}
+#controlSwitcher .robot-face-choice.robot-face-speaking::after{border-color:#f79aca!important;box-shadow:0 0 5px #e96db8!important;}
+@media(prefers-reduced-motion:reduce){#controlSwitcher .robot-face-choice.robot-face-speaking::after{animation:none!important;}}
