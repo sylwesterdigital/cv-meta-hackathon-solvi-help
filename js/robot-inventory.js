@@ -238,7 +238,13 @@ export class RobotInventory{
   if(!robot||!obj||!bin||bin.userData?.furniture?.variant!=='bin'||
    !this.editor.canEdit(robot)||!this.editor.canEdit(obj)||!this.editor.canEdit(bin)||
    !this.owned(robot,obj)||obj.userData.storage?.type!=='held'||obj.userData.storage.holderId!==stableId(robot)||
-   !['can','bottle'].includes(obj.userData.furniture?.variant)||obj.userData.inventory?.consumable===true)return false;
+   !(['can','bottle'].includes(obj.userData.furniture?.variant)&&obj.userData.inventory?.consumable===false||
+     obj.userData.furniture?.variant==='box'&&cleanInventory(obj.userData.inventory).category==='general'&&obj.userData.inventory?.consumable===false))return false;
+  // Do not let a renamed oversized box become hidden inside a normal small bin.
+  if(obj.userData.furniture?.variant==='box'){
+   const bounds=new THREE.Box3().setFromObject(obj);const size=bounds.getSize(new THREE.Vector3());
+   if(size.lengthSq()===0||Math.max(size.x,size.y,size.z)>1.55)return false;
+  }
   const count=this.editor.items.filter(o=>o.userData.storage?.type==='container'&&o.userData.storage.containerId===stableId(bin));
   if(count.length>=24)return false;
   const occupied=new Set(count.map(o=>o.userData.storage.slot));

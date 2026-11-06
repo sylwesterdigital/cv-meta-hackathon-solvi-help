@@ -78,10 +78,10 @@ test('real scene-worn backpack is detected without needing to activate a built-i
 });
 test('server validates virtual bag references and backpackEnabled bool; rejects missing functional backpack',()=>{
  const server=read('backend/server.py');
- const snippet=`import ast,re,sys
+ const snippet=`import ast,re,math,sys
 src=open(sys.argv[1]).read();tree=ast.parse(src)
-nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('valid_inventory_storage','valid_held_scene')]
-ns={'re':re};exec(compile(ast.Module(body=nodes,type_ignores=[]),'<tests>','exec'),ns)
+nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('valid_inventory_storage','valid_held_scene','bin_item_permitted')]
+ns={'re':re,'math':math};exec(compile(ast.Module(body=nodes,type_ignores=[]),'<tests>','exec'),ns)
 robot={'id':'robot-12345678','kind':'robot','backpackEnabled':True}
 can={'id':'can-12345678','kind':'furniture','inventory':{'category':'food'},'storage':{'type':'bag','bagId':'robot-12345678'}}
 assert ns['valid_held_scene']([robot,can])

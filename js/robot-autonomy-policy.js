@@ -10,8 +10,21 @@ export function metaRetryDelay(failures=1,settings={}){
  const cap=Math.max(base,Math.min(600000,Number(settings.maxRetrySeconds)||120)*1000);
  return Math.min(cap,base*2**Math.min(5,Math.max(0,Math.floor(failures)-1)));
 }
+// Collection of loose procedural boxes into one specifically named junk bin.
+// This is intentionally distinct from the drink-can/table cleanup operation.
+export function boxCleanupGoal(text=''){
+ const goal=String(text||'');
+ return /\b(?:boxes|box\s+copies)\b/i.test(goal)&&
+  /\b(?:bin|junk)\b/i.test(goal)&&
+  /\b(?:put|move|store|collect|clear|sweep|tidy|pick\s*up|dispose)\b/i.test(goal);
+}
+export function chatBoxCleanupInstruction(text='',robotName=''){
+ const message=String(text||'').trim().slice(0,1800);
+ if(!robotName||!message.toLowerCase().startsWith('@'+robotName.toLowerCase()+' '))return null;
+ return boxCleanupGoal(message)?message:null;
+}
 export function canCleanupGoal(text=''){
- return /\b(?:can|cans)\b/i.test(text)&&/\b(?:clear|clean|empty|dispose|pick\s*up|drink|recycl|bin)\b/i.test(text)&&/\b(?:table|home|house|bin)\b/i.test(text);
+ return /\b(?:cans|can(?!\s+(?:you|we|i|they|he|she|it)\b))\b/i.test(text)&&/\b(?:clear|clean|empty|dispose|pick\s*up|drink|recycl|bin)\b/i.test(text)&&/\b(?:table|home|house|bin)\b/i.test(text);
 }
 export function chatCanCleanupInstruction(text='',robotName=''){
  const message=String(text||'').trim().slice(0,1800);
@@ -40,6 +53,7 @@ export function chatConstructionInstruction(text=''){
  return direct?message:null;
 }
 export function workRecoveryPlan({goal='',allowChanges=false,house=null,existingHouse=false,peerId='',attempts={},hasSeat=false,invitationTargets=[],contactTargets=[],placedSupplies=0,projectPlaced=[],completedHouses=[]}={}){
+ if(boxCleanupGoal(goal))return {action:'cleanup_boxes',reason:'Collect explicitly named procedural boxes into the matching junk bin; skip blocked objects and retry them later'};
  if(canCleanupGoal(goal))return {action:'cleanup_cans',reason:'Perform the assigned can collection using the existing inventory and bin tools'};
  const construction=houseGoal(goal);
  const hospital=/\b(hospital|clinic)\b/i.test(goal);

@@ -34,12 +34,12 @@ test('server explicitly validates held owners, hand slot collisions and bulk rep
  assert.match(server,/if held_slot_conflict\(items,obj,obj_id\)/);
  assert.match(server,/may_edit\(user\['id'\],holder,policy\)/);
  assert.match(server,/if not valid_held_scene\(objects\):/);
- const snippet=`import ast,re,sys
+ const snippet=`import ast,re,math,sys
 source=open(sys.argv[1]).read();tree=ast.parse(source)
-names={'valid_inventory_storage','held_slot_conflict','valid_held_scene'}
+names={'valid_inventory_storage','held_slot_conflict','valid_held_scene','bin_item_permitted'}
 nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in names]
-assert len(nodes)==3
-scope={'re':re}
+assert len(nodes)==4
+scope={'re':re,'math':math}
 exec(compile(ast.Module(body=nodes,type_ignores=[]),'<held>', 'exec'),scope)
 valid=scope['valid_inventory_storage'];conflict=scope['held_slot_conflict'];full=scope['valid_held_scene']
 robot={'id':'robot-12345678','kind':'robot'}

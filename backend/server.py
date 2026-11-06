@@ -233,7 +233,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.217',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.218',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1828,12 +1828,18 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone'}
+    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
     if not isinstance(stored.get('invitations',[]),list) or len(stored.get('invitations',[]))>20:return None
     if not isinstance(stored.get('contacted',[]),list) or len(stored.get('contacted',[]))>20:return None
+    skipped=stored.get('cleanupSkipped',[])
+    if not isinstance(skipped,list) or len(skipped)>32 or any(not isinstance(it,dict) or set(it)!={'id','reason','attempts','retryAt'} or
+       not isinstance(it['id'],str) or not 1<=len(it['id'])<=100 or
+       not isinstance(it['reason'],str) or len(it['reason'])>110 or
+       type(it['attempts']) is not int or not 1<=it['attempts']<=20 or
+       type(it['retryAt']) not in (int,float) or not math.isfinite(it['retryAt']) or not 0<=it['retryAt']<=9999999999999 for it in skipped):return None
     projects=stored.get('projectPlaced',[])
     if (not isinstance(projects,list) or len(projects)>6 or
         any(not isinstance(p,dict) or not isinstance(p.get('id'),str) or len(p['id'])>100 or
@@ -1894,7 +1900,7 @@ def robot_work_order_save():
 
 # Autonomous work receipts are explicit client reports, not new commands. They
 # let robot discussions reference concrete recent project work without fabricating success.
-ROBOT_WORK_ACTIONS={'build_house','build','deliver','visit','rest','ask','inspect','use_preset','remove','research','idle','task','cleanup_cans','build_infrastructure'}
+ROBOT_WORK_ACTIONS={'build_house','build','deliver','visit','rest','ask','inspect','use_preset','remove','research','idle','task','cleanup_cans','cleanup_boxes','build_infrastructure'}
 @app.post('/api/robots/autonomy/report')
 def robot_autonomy_report():
     user,msg,status=actor()
@@ -4041,6 +4047,21 @@ def valid_robot_tool_use_message(value,objects,uid,policy,admin=False):
     if not actor or not held or not may_edit(uid,actor,policy,admin) or not may_edit(uid,held,policy,admin):return None
     return {'id':identifier,'tool':tool,'clip':clip,'seq':seq}
 
+def bin_item_permitted(obj):
+    """Do not allow arbitrary inventory or scene geometry into bins."""
+    if not isinstance(obj,dict) or obj.get('kind')!='furniture':return False
+    variant=(obj.get('furniture') or {}).get('variant')
+    item=obj.get('inventory') or {}
+    if item.get('consumable') is not False:return False
+    if variant in ('can','bottle'):return True
+    if variant!='box' or item.get('category')!='general':return False
+    props=obj.get('furniture') or {}
+    scale=obj.get('scale') or [1,1,1]
+    if not isinstance(scale,list) or len(scale)!=3:return False
+    return all(isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v) and 0<v<=3 for v in scale) and all(
+        isinstance(props.get(k),(int,float)) and not isinstance(props.get(k),bool) and 0<props[k]*scale[i]<=1.55
+        for k,i in (('width',0),('height',1),('depth',2)))
+
 def valid_inventory_storage(value):
     if value is None:return True
     if not isinstance(value,dict):return False
@@ -4089,7 +4110,7 @@ def valid_held_scene(objects):
         if not container or container.get('kind')!='furniture':return False
         variant=(container.get('furniture') or {}).get('variant')
         if variant not in ('fridge','bin'):return False
-        if variant=='bin' and (storage.get('slot',-1)>=24 or (obj.get('furniture') or {}).get('variant') not in ('can','bottle') or (obj.get('inventory') or {}).get('consumable') is not False):return False
+        if variant=='bin' and (storage.get('slot',-1)>=24 or not bin_item_permitted(obj)):return False
         key=(storage['containerId'],storage['slot'])
         if key in bins:return False
         bins.add(key)
@@ -4504,7 +4525,7 @@ def patch_scene_object():
             if not container:return json_error('Storage container missing',409)
             variant=(container.get('furniture') or {}).get('variant')
             if variant not in ('fridge','bin'):return json_error('Unsupported storage container',409)
-            if variant=='bin' and (claim['slot']>=24 or (obj.get('furniture') or {}).get('variant') not in ('can','bottle') or (obj.get('inventory') or {}).get('consumable') is not False):return json_error('Only empty cans or bottles can be placed inside bins',409)
+            if variant=='bin' and (claim['slot']>=24 or not bin_item_permitted(obj)):return json_error('Bin accepts empty cans, bottles or small general-item boxes',409)
             if not may_edit(user['id'],container,policy):return json_error('Storage container belongs to another user',403)
             if any(item.get('id')!=obj_id and (item.get('storage') or {}).get('type')=='container' and (item.get('storage') or {}).get('containerId')==claim['containerId'] and (item.get('storage') or {}).get('slot')==claim['slot'] for item in items):return json_error('Container slot occupied',409)
         if action=='upsert' and isinstance(obj.get('storage'),dict) and obj['storage'].get('type')=='held':

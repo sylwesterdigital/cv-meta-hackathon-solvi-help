@@ -7,9 +7,10 @@ import {emitBrainTrace,rememberRobotObservationFrame,runRobotVisualSearch} from 
 import {cleanAutonomyOrder,cleanAutonomyDecision,autonomyProximity,autonomyResult,AUTONOMY_FURNITURE} from './robot-autonomy-core.js';
 import {confirmAction} from './app-dialogs.js';
 import {houseBlueprint,houseGoal,operatorFailure,publicPresetIndex,ROBOT_TOOL_DESCRIPTIONS} from './robot-construction-api.js';
-import {metaRetryDelay,workRecoveryPlan,projectOutcome,localProjectSequence,requestedHomeCount,chatConstructionInstruction,canCleanupGoal,chatCanCleanupInstruction} from './robot-autonomy-policy.js';
+import {metaRetryDelay,workRecoveryPlan,projectOutcome,localProjectSequence,requestedHomeCount,chatConstructionInstruction,canCleanupGoal,chatCanCleanupInstruction,boxCleanupGoal,chatBoxCleanupInstruction} from './robot-autonomy-policy.js';
 import {visibleWorkFields,workModeHelp} from './robot-workorder-ui.js';
 import {cityTeamIntent,cityRoles,cityRoleGoal,cityRoleTarget,cityTeamState,cityMilestoneCount} from './robot-city-team.js';
+import {chatSingleObjectTransfer} from './robot-object-intent.js';
 const $=id=>document.getElementById(id);
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const MAX_TRAVEL=90;
@@ -105,7 +106,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   return {house,step:run.step,completed:run.completed,last:run.last,metaFailures:run.metaFailures,
    nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,contacted:run.contacted,
    placedSupplies:run.placedSupplies,projectPlaced:run.projectPlaced,completedHouses:run.completedHouses,
-   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,team:run.team,teamBuilt:run.teamBuilt};
+   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,team:run.team,teamBuilt:run.teamBuilt};
  }
  function restoreHouse(state){
   if(!state||typeof state!=='object')return null;
@@ -132,7 +133,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    projectPlaced:Array.isArray(state.projectPlaced)?state.projectPlaced.filter(p=>p&&typeof p.id==='string'&&typeof p.variant==='string').slice(0,6):[],
    completedHouses:Array.isArray(state.completedHouses)?state.completedHouses.filter(id=>typeof id==='string').slice(0,3):[],
    team:cityTeamState(state.team),teamBuilt:Array.isArray(state.teamBuilt)?state.teamBuilt.filter(x=>x&&['road','footpath'].includes(x.variant)&&typeof x.id==='string').slice(0,8):[],
-   cleanupBinId:String(state.cleanupBinId||'').slice(0,100),cleanupHomeId:String(state.cleanupHomeId||'').slice(0,100),cleanupDone:Array.isArray(state.cleanupDone)?state.cleanupDone.filter(id=>typeof id==='string').slice(0,48):[]};
+   cleanupBinId:String(state.cleanupBinId||'').slice(0,100),cleanupHomeId:String(state.cleanupHomeId||'').slice(0,100),cleanupDone:Array.isArray(state.cleanupDone)?state.cleanupDone.filter(id=>typeof id==='string').slice(0,48):[],
+   cleanupSkipped:Array.isArray(state.cleanupSkipped)?state.cleanupSkipped.filter(v=>v&&typeof v.id==='string'&&typeof v.reason==='string'&&Number.isInteger(v.attempts)&&Number.isFinite(v.retryAt)).slice(0,32):[]};
   return run;
  }
  function presentSaved(order){
@@ -207,6 +209,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
     invitationTargets:remaining.map(o=>({id:o.userData.editorId,name:o.name})),
     contactTargets:contacts.map(o=>({id:o.userData.editorId,name:o.name})),placedSupplies:run.placedSupplies,
     projectPlaced:run.projectPlaced,completedHouses:run.completedHouses});
+  if(run.order.sourceId&&run.order.destinationId&&run.order.mode==='local_project')return {action:'named_transfer',target_id:run.order.sourceId,destination_id:run.order.destinationId,recovery:true};
   const role=run.team?.role;
   if(['road','footpath'].includes(role)&&run.teamBuilt.length<cityRoleTarget(role)){
    const plan={action:'build_infrastructure',variant:role,reason:`City team ${role}: build real public infrastructure (${run.teamBuilt.length+1}/${cityRoleTarget(role)})`,recovery:true};
@@ -218,7 +221,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   return chosen;
  }
  function report(run,bot,plan,status,detail){
-  const payload={room:run.room,robot_id:run.id,action:plan?.action==='site_check'?'visit':plan?.action||'task',status,detail:String(detail).slice(0,440)};
+  const payload={room:run.room,robot_id:run.id,action:plan?.action==='site_check'?'visit':plan?.action==='named_transfer'?'deliver':plan?.action||'task',status,detail:String(detail).slice(0,440)};
   if(payload.action==='idle')payload.status='blocked';
   // Reporting is best-effort and never changes the result of the physical tool.
   void api.req('/api/robots/autonomy/report',{method:'POST',body:JSON.stringify(payload)}).catch(e=>emitLog(bot,'WORK RECEIPT UNAVAILABLE',e.message));
@@ -308,6 +311,36 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    trace(bot,'CARRY NEEDS HELP','Still holding '+target.name+': '+error.message);throw error;
   }
  }
+ async function deliverNamedObject(run,bot,source,target){
+  if(!run.order.allowChanges)throw Error('Scene edits not authorised for this transfer');
+  if(!source||!target||source===target||!editor.canEdit(source)||!editor.canEdit(target))throw Error('Named source/target missing or not editable');
+  if(source.userData.transformLocked===true)throw Error('Source transform is locked');
+  if(!['furniture','cube','sphere','cylinder','torus','model'].includes(source.userData.editorKind))throw Error('Source type cannot be moved by this tool');
+  const held=source.userData.storage;
+  if(held&&!(held.type==='held'&&held.holderId===run.id))throw Error('Source is already held or stored elsewhere');
+  if(!held){
+   await approachTransferTarget(run,bot,source,1.85);requireActive(run,bot);
+   if(!autonomyProximity(bot,source,2.35)||Math.abs(source.position.y-bot.position.y)>1.7)throw Error('Source outside actual pickup reach');
+   source.updateWorldMatrix(true,true);
+   const size=new THREE.Box3().setFromObject(source).getSize(new THREE.Vector3());
+   if(Math.max(size.x,size.y,size.z)>1.55||size.lengthSq()===0)throw Error('Source too large for hand inventory; use a supported object-moving tool');
+   if(editor.inventory.heldFor(bot,'left')||editor.inventory.heldFor(bot,'right'))throw Error('Both object-transfer hands must be free');
+   source.userData.pickable=true;
+   if(!['food','tool','general'].includes(source.userData.inventory?.category))
+    source.userData.inventory={category:'general',size:'bag',consumable:false};
+   editor.queueSave(source);
+   if(!editor.inventory.hold(bot,source))throw Error('Scene inventory refused pickup');
+   trace(bot,'OBJECT HELD',`Picked up ${source.name} (${source.userData.editorId})`);
+  }
+  await approachTransferTarget(run,bot,target,1.35);requireActive(run,bot);
+  if(!autonomyProximity(bot,target,2.65)||Math.abs(target.position.y-bot.position.y)>1.7)throw Error('Target is not physically reachable on this floor');
+  if(target.userData.furniture?.variant==='bin'){
+   if(!editor.inventory.storeInBin(bot,source,target))throw Error('Target bin rejected item, including capacity, item type or permission checks');
+  }else if(!editor.inventory.drop(bot,source))throw Error('Scene inventory refused physical drop');
+  if(!await editor.persistObject(source,run.room))throw Error('Scene did not acknowledge object delivery; retry pending');
+  trace(bot,'TRANSFER VERIFIED',`${source.name} saved ${target.userData.furniture?.variant==='bin'?'inside':'near'} ${target.name}; real scene object ID retained`);
+  return `Delivered ${source.name} ${target.userData.furniture?.variant==='bin'?'into':'beside'} ${target.name}; server acknowledged scene edit`;
+ }
  // One verified can per cycle, preserving ID and receipts across refresh.
  // Do not claim success when the robot cannot reach a real item or store it.
  async function cleanCans(run,bot){
@@ -372,6 +405,117 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    trace(bot,'CAN DISPOSED',`Empty can ${can.userData.editorId} stored in ${bin.name}; ${run.cleanupDone.length} item(s) finished`);
    return `Stored empty can in ${bin.name}; ${run.cleanupDone.length} table cans completed`;
   }catch(error){trace(bot,'CLEANUP PAUSED','Can is still held; no fictitious disposal. '+error.message);throw error;}
+ }
+ // Recover a failed direct object route by approaching its reachable side.
+ // Each attempt is an actual collision-checked robot route with an observed
+ // arrival event; no client-side position jump or object teleport is allowed.
+ async function approachTransferTarget(run,bot,target,reach){
+  const close=()=>Math.hypot(bot.position.x-target.position.x,bot.position.z-target.position.z)<=reach&&
+   Math.abs(bot.position.y-target.position.y)<=1.7;
+  if(close())return;
+  let primaryError='Direct route did not reach the interaction range';
+  try{await moveTo(run,bot,target);if(close())return;}
+  catch(error){primaryError=error.message;}
+  // Construction worksite routing currently supports ground-level actors;
+  // do not silently drop a robot down from an elevated storey.
+  if(Math.abs(bot.position.y)>.85)throw Error(primaryError+'; no ground-floor detour from upper storey');
+  const angle=Math.atan2(bot.position.x-target.position.x,bot.position.z-target.position.z);
+  for(const turn of [0,Math.PI/2,-Math.PI/2,Math.PI]){
+   requireActive(run,bot);
+   const at={x:target.position.x+Math.sin(angle+turn)*Math.min(reach,1.7),
+    z:target.position.z+Math.cos(angle+turn)*Math.min(reach,1.7)};
+   if(Math.hypot(at.x-bot.position.x,at.z-bot.position.z)>MAX_TRAVEL)continue;
+   const taskId=run.token+':'+(++run.step);let resolve;
+   const done=new Promise(r=>{resolve=r;});
+   const listener=e=>{if(e.detail?.robotId===run.id&&e.detail?.taskId===taskId)resolve(e.detail.status);};
+   window.addEventListener('solvi:robot-task-update',listener);
+   try{
+    if(!editor.routeRobotToWorksite?.(bot,at,taskId,'box/bin approach'))continue;
+    trace(bot,'TRANSFER DETOUR',`Trying a checked approach to the open side of ${target.name}; keeping the same object-transfer goal`);
+    const deadline=Date.now()+Math.min(80000,Math.max(15000,Math.hypot(at.x-bot.position.x,at.z-bot.position.z)*2200+12000));
+    let status;
+    while(status===undefined&&Date.now()<deadline){requireActive(run,bot);
+     status=await Promise.race([done.then(x=>({done:x})),wait(400).then(()=>({}))]).then(x=>x.done);
+    }
+    if(status==='arrived'&&close())return;
+   }finally{window.removeEventListener('solvi:robot-task-update',listener);}
+  }
+  throw Error(primaryError+'; four collision-checked side approaches also failed');
+ }
+ // Bounded, server-persisted box transfer. A failed item is deferred, not
+ // allowed to abort the entire task or become a fabricated completion.
+ async function cleanBoxes(run,bot){
+  requireActive(run,bot);
+  if(!run.order.allowChanges)throw Error('Object collection requires scene-change permission');
+  const goal=run.order.goal.toLowerCase();
+  const bins=editor.items.filter(o=>o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='bin'&&o.name&&goal.includes(o.name.toLowerCase())).sort((a,b)=>b.name.length-a.name.length);
+  if(!bins.length||bins.length>1&&bins[0].name.length===bins[1].name.length)throw Error('No unique explicitly named junk bin found; will not select an unrelated container');
+  const bin=bins[0];
+  if(!editor.canEdit(bin))throw Error(`${bin.name} is not editable by the current robot operator`);
+  run.cleanupBinId=bin.userData.editorId;
+  // Retain receipts only while the same object is still in the requested bin.
+  run.cleanupDone=run.cleanupDone.filter(id=>editor.items.some(o=>o.userData.editorId===id&&o.userData.storage?.type==='container'&&o.userData.storage.containerId===bin.userData.editorId));
+  const boxes=editor.items.filter(o=>o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='box'&&/^Box copy\d+$/i.test(o.name));
+  if(!boxes.length)throw Error('No procedural Box copies exist in this room; nothing was moved');
+  const isStored=o=>o.userData.storage?.type==='container'&&o.userData.storage.containerId===bin.userData.editorId;
+  // A successfully saved object can still need its work-order receipt if the
+  // tab refreshed after the scene save but before the order-state save.
+  for(const box of boxes.filter(isStored)){
+   if(!run.cleanupDone.includes(box.userData.editorId)){
+    const saved=await editor.persistObject(box,run.room);
+    if(saved){run.cleanupDone.push(box.userData.editorId);trace(bot,'DISPOSAL RECOVERED',`${box.name} is stored in ${bin.name}; save acknowledged`);}
+   }
+  }
+  const pending=boxes.filter(o=>!run.cleanupDone.includes(o.userData.editorId));
+  if(!pending.length)return `All ${boxes.length} Box copies verified in ${bin.name}`;
+  const now=Date.now(),skippedById=new Map(run.cleanupSkipped.map(e=>[e.id,e]));
+  // Finish anything already held before attempting a second pickup.
+  const held=pending.find(o=>o.userData.storage?.type==='held'&&o.userData.storage.holderId===run.id);
+  const ready=pending.filter(o=>!o.userData.storage||o.userData.storage?.type==='held'&&o.userData.storage.holderId===run.id)
+   .filter(o=>!skippedById.get(o.userData.editorId)||skippedById.get(o.userData.editorId).retryAt<=now)
+   .sort((a,b)=>a.position.distanceToSquared(bot.position)-b.position.distanceToSquared(bot.position));
+  const box=held?(ready.includes(held)?held:null):ready[0];
+  if(!box){
+   const due=run.cleanupSkipped.filter(e=>pending.some(o=>o.userData.editorId===e.id)).map(e=>e.retryAt);
+   trace(bot,'CLEANUP DEFERRED',`${run.cleanupDone.length}/${boxes.length} saved; ${pending.length} pending. Earlier failed boxes will be reconsidered, ${due.length?'next at '+new Date(Math.min(...due)).toLocaleTimeString():'check permissions and inventory'}`);
+   return `Cleanup deferred: ${pending.length} Box copies pending; ${run.cleanupDone.length} verified in ${bin.name}`;
+  }
+  const id=box.userData.editorId;
+  try{
+   if(!editor.canEdit(box))throw Error('Box is not editable by this robot operator');
+   const storage=box.userData.storage;
+   if(storage&&!(storage.type==='held'&&storage.holderId===run.id))throw Error('Box is held or stored by someone else');
+   if(!storage){
+    await approachTransferTarget(run,bot,box,1.85);
+    requireActive(run,bot);
+    if(!autonomyProximity(bot,box,2.4)||Math.abs(bot.position.y-box.position.y)>1.7)throw Error('Box remains outside physical pickup reach on this floor');
+    if(editor.inventory.heldFor(bot,'right')||editor.inventory.heldFor(bot,'left'))throw Error('Robot already holds an object; free a hand first');
+    // The existing hand-inventory system needs an explicit pickable general
+    // item, not an unpermitted bypass around scene mutation controls.
+    box.userData.pickable=true;
+    box.userData.inventory={category:'general',size:'bag',consumable:false};
+    editor.queueSave(box);
+    if(!editor.inventory.hold(bot,box))throw Error('Actual inventory pickup rejected by scene tool');
+    trace(bot,'BOX HELD',`Picked up ${box.name} (${id}) with the functional inventory tool`);
+   }
+   await approachTransferTarget(run,bot,bin,2.35);
+   requireActive(run,bot);
+   if(!autonomyProximity(bot,bin,2.65)||Math.abs(bot.position.y-bin.position.y)>1.7)throw Error('Junk bin remains out of reach on this floor');
+   if(!editor.inventory.storeInBin(bot,box,bin))throw Error('Bin refused the box (capacity, size or permissions)');
+   if(!isStored(box))throw Error('Storage receipt not reflected in scene state');
+   // A local draw state alone is not proof of a saved multiplayer edit.
+   if(!await editor.persistObject(box,run.room))throw Error('Scene server did not acknowledge the stored box; save pending retry');
+   if(!run.cleanupDone.includes(id))run.cleanupDone.push(id);
+   run.cleanupSkipped=run.cleanupSkipped.filter(e=>e.id!==id);
+   trace(bot,'BOX STORED',`${box.name} saved inside ${bin.name}; ${run.cleanupDone.length}/${boxes.length} verified items`);
+   return `Cleanup progress: ${run.cleanupDone.length}/${boxes.length} Box copies stored in ${bin.name}`;
+  }catch(error){
+   const old=skippedById.get(id),attempts=Math.min(20,(old?.attempts||0)+1);
+   const retryAt=Date.now()+Math.min(120000,12000*2**Math.min(attempts-1,3));
+   run.cleanupSkipped=[...run.cleanupSkipped.filter(e=>e.id!==id),{id,reason:String(error.message).slice(0,110),attempts,retryAt}].slice(-32);
+   trace(bot,'BOX SKIPPED',`${box.name}: ${error.message}; retry ${attempts} after ${new Date(retryAt).toLocaleTimeString()}; ${pending.length-1} other Box copies still eligible`);
+   return `Cleanup progress: skipped ${box.name} (${String(error.message).slice(0,120)}); will retry; ${run.cleanupDone.length}/${boxes.length} verified`;
+  }
  }
  async function walkToWorksite(run,bot,plan,label){
   requireActive(run,bot);
@@ -585,6 +729,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
  }
  async function execute(run,bot,plan){
   const obj=objectFor(plan.target_id),dest=objectFor(plan.destination_id);
+  if(plan.action==='named_transfer')return deliverNamedObject(run,bot,obj,dest);
+  if(plan.action==='cleanup_boxes')return cleanBoxes(run,bot);
   if(plan.action==='cleanup_cans')return cleanCans(run,bot);
   if(plan.action==='build_infrastructure')return constructInfrastructure(run,bot,plan.variant);
   if(plan.action==='site_check'){
@@ -643,7 +789,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    run.teamBuilt=run.teamBuilt.filter(p=>editor.items.some(o=>o.userData.editorId===p.id));
    run.completedHouses=run.completedHouses.filter(id=>editor.items.some(o=>o.userData.editorId===id&&o.userData.editorKind==='wall'));
    let plan;
-   if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&((run.team&&cityMilestoneCount(run.team.role,run)>=cityRoleTarget(run.team.role))||(!run.team&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
+   if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&!boxCleanupGoal(run.order.goal)&&((run.team&&cityMilestoneCount(run.team.role,run)>=cityRoleTarget(run.team.role))||(!run.team&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
      (localProjectSequence(run.order.goal).length>0&&run.projectPlaced.length>=localProjectSequence(run.order.goal).length))))){
     trace(bot,'PROJECT FINISHED','Already completed in saved scene history; no duplicate buildings or props will be placed.');
     stop(run.id,'verified project already complete');return;
@@ -687,6 +833,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    if(plan.action!=='idle')run.completed++;
    run.last=autonomyResult(plan.action,plan.action!=='idle',detail);
    if(plan.action==='idle')run.last.status='blocked';
+   if(plan.action==='cleanup_boxes'&&detail.startsWith('Cleanup '))run.last.status='partial';
    if(run.order.mode==='agent'&&requestedHomeCount(run.order.goal)&&run.completedHouses.length<requestedHomeCount(run.order.goal))run.last.status='partial';
    if(run.order.mode==='agent'&&localProjectSequence(run.order.goal).length&&run.projectPlaced.length<localProjectSequence(run.order.goal).length)run.last.status='partial';
    else if(run.house&&!evidence.done)run.last.status='partial';
@@ -702,17 +849,19 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
    trace(bot,run.last.status==='completed'&&run.order.mode==='agent'?'STEP VERIFIED':run.last.status==='completed'?'COMPLETED':run.last.status.toUpperCase(),detail+(run.house&&remaining?' · Remaining: '+remaining:''));
    report(run,bot,plan,run.last.status,detail+(run.house&&remaining?' · Remaining: '+remaining:''));
    $('autonomyFailure').textContent=(run.metaFailure?'Meta planning unavailable: '+run.metaFailure+'\nVerified local action: ':'Work order: ')+detail+(run.house&&remaining?'\nUNFINISHED: '+remaining:'')+(!run.house&&run.order.mode==='agent'&&houseGoal(run.order.goal)?'\nUNFINISHED: no confirmed house yet':'');
-   if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&((run.team&&cityMilestoneCount(run.team.role,run)>=cityRoleTarget(run.team.role))||(!run.team&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
+   if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&!boxCleanupGoal(run.order.goal)&&((run.team&&cityMilestoneCount(run.team.role,run)>=cityRoleTarget(run.team.role))||(!run.team&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
       (localProjectSequence(run.order.goal).length>0&&run.projectPlaced.length>=localProjectSequence(run.order.goal).length))))){
     trace(bot,'PROJECT FINISHED','All bounded local construction milestones have verified scene object IDs; the work order is stopping.');
     stop(run.id,'verified project milestones completed');
    }
+   if(plan.action==='named_transfer'&&run.order.mode==='local_project'&&detail.startsWith('Delivered ')){trace(bot,'TRANSFER FINISHED','Named target move has a saved scene receipt.');stop(run.id,'verified named object transfer');}
+   if(plan.action==='cleanup_boxes'&&detail.startsWith('All ')&&detail.includes(' Box copies verified in ')){trace(bot,'CLEANUP FINISHED','All Box copies have server-acknowledged storage receipts.');stop(run.id,'verified box collection');}
    if(plan.action==='cleanup_cans'&&detail.startsWith('All detected table cans cleared')){trace(bot,'CLEANUP FINISHED','Table clear per current scene objects; work order stopped.');stop(run.id,'verified table can cleanup');}
    if(run.last.status==='blocked'&&run.loop)trace(bot,'AWAITING NEW CAPABILITY','No safe untried tool within current permissions. The objective is preserved for a later model retry or a new instruction.');
    // While Meta is unavailable, continue actual verified local building steps
    // rather than taking another 180-second silence after placing one object.
    // This bounded burst does not invoke the model or bypass an edit check.
-   if(!run.cancelled&&run.loop&&plan.recovery&&plan.action!=='idle'&&run.localBurst<(canCleanupGoal(run.order.goal)?48:10)){
+   if(!run.cancelled&&run.loop&&plan.recovery&&plan.action!=='idle'&&run.localBurst<(canCleanupGoal(run.order.goal)||boxCleanupGoal(run.order.goal)?48:run.order.sourceId?3:10)){
     run.localBurst++;
     clearTimeout(run.localTimer);
     run.localTimer=setTimeout(()=>void cycle(run),12000);
@@ -760,7 +909,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
   if(order.mode==='preset'&&!order.presetId){toast('Choose an account-owned saved preset');return;}
   if(order.mode==='agent'&&!order.goal){toast('Describe a goal for the autonomous agent');return;}
   if(order.mode==='local_project'&&!requestedHomeCount(order.goal)&&!localProjectSequence(order.goal).length){
-   if(!canCleanupGoal(order.goal)){toast('Describe homes, a park, picnic area, or clearing cans from a table');return;}
+   if(!canCleanupGoal(order.goal)&&!boxCleanupGoal(order.goal)){toast('Describe homes, a park, picnic area, cans cleanup or collecting Box copies into a named bin');return;}
   }
   const billable=order.mode==='agent'||order.mode==='assist';
   if(billable&&!await confirmAction(`This ${loop?'loop':'task'} will send billable Meta API requests${order.vision?' with six real head-camera images per decision':''}. ${loop?'Each decision repeats no more frequently than every '+order.interval+' seconds; this opted-in loop is saved on the server and resumes after browser refresh when the signed-in visible 3D scene loads. It does not run while the browser is closed.':'Only one cycle runs and will not auto-resume.'} Scene changes are ${order.allowChanges?'enabled for robot-built objects':'disabled'}.`,{title:'Enable autonomous robot operator?',confirmLabel:'Enable autonomy'}))return;
@@ -808,19 +957,35 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion}){
  const handledChatMessages=new Set();
  async function startChatProjects(message){
   if(!message?.id||handledChatMessages.has(message.id)||!api.online||!api.auth())return 0;
-  const assigned=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&chatCanCleanupInstruction(message.text,o.name));
+  const assigned=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&(chatBoxCleanupInstruction(message.text,o.name)||chatCanCleanupInstruction(message.text,o.name)));
   if(assigned){
    handledChatMessages.add(message.id);
-   const id=assigned.userData.editorId,goal=chatCanCleanupInstruction(message.text,assigned.name);
+   const id=assigned.userData.editorId,goal=chatBoxCleanupInstruction(message.text,assigned.name)||chatCanCleanupInstruction(message.text,assigned.name);
+   const boxes=boxCleanupGoal(goal);
    const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
    // An explicit named human instruction supersedes an unrelated old task.
-   const old=runs.get(id);if(old)stop(id,'new explicit can-cleanup instruction',false);
+   const old=runs.get(id);if(old)stop(id,'new explicit object-cleanup instruction',false);
    const run=newRun(order,true,assigned);
    try{await saveOrder(run,true);}catch(error){trace(assigned,'CLEANUP NOT STARTED',error.message);return 0;}
    savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});
    runs.set(id,run);run.timer=setInterval(()=>void cycle(run),order.interval*1000);
-   trace(assigned,'CLEANUP ASSIGNED',`Human request became an executable, persistent can-clearing order; older ${old?.order.mode||'idle'} work was superseded`);
-   toast(`${assigned.name}: can cleanup saved; the action log will show actual pickup, drinking and disposal.`);
+   trace(assigned,'CLEANUP ASSIGNED',`Human request became an executable, persistent ${boxes?'box':'can'}-clearing order; older ${old?.order.mode||'idle'} work was superseded`);
+   toast(`${assigned.name}: ${boxes?'box':'can'} cleanup saved; the action log will show actual pickup and verified storage.`);
+   void cycle(run);update();return 1;
+  }
+  const transfer=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&
+   chatSingleObjectTransfer(message.text,o.name,editor.items.map(item=>({id:item.userData.editorId,name:item.name,kind:item.userData.editorKind}))));
+  if(transfer){
+   handledChatMessages.add(message.id);
+   const named=chatSingleObjectTransfer(message.text,transfer.name,editor.items.map(item=>({id:item.userData.editorId,name:item.name,kind:item.userData.editorKind})));
+   const id=transfer.userData.editorId;
+   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal:message.text,allowChanges:true,vision:false,interval:180,sourceId:named.sourceId,destinationId:named.destinationId});
+   const old=runs.get(id);if(old)stop(id,'new explicit named object transfer',false);
+   const run=newRun(order,true,transfer);
+   try{await saveOrder(run,true);}catch(error){trace(transfer,'TRANSFER NOT STARTED',error.message);return 0;}
+   savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});
+   runs.set(id,run);run.timer=setInterval(()=>void cycle(run),order.interval*1000);
+   trace(transfer,'TRANSFER ASSIGNED',`Grounded ${named.sourceName} → ${named.destinationName} into exact scene IDs; older order superseded`);
    void cycle(run);update();return 1;
   }
   if(cityTeamIntent(message?.text)){handledChatMessages.add(message.id);return startCityTeam(message.text);}

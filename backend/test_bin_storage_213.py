@@ -1,12 +1,13 @@
 """Execute real scene-storage validators without Flask, SQLite, or network."""
 import ast
 import re
+import math
 from pathlib import Path
 source=ast.parse((Path(__file__).resolve().parent/'server.py').read_text())
-names={'valid_inventory_storage','valid_held_scene'}
+names={'valid_inventory_storage','valid_held_scene','bin_item_permitted'}
 functions=[node for node in source.body if isinstance(node,ast.FunctionDef) and node.name in names]
-assert len(functions)==2
-namespace={'re':re}
+assert len(functions)==3
+namespace={'re':re,'math':math}
 exec(compile(ast.fix_missing_locations(ast.Module(body=functions,type_ignores=[])),'scene storage validation','exec'),namespace)
 validate=namespace['valid_held_scene']
 bin={'id':'bin-a123','kind':'furniture','furniture':{'variant':'bin'}}

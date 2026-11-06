@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.217",
+  "currentVersion": "0.2.218",
   "releases": [
+    {
+      "version": "0.2.218",
+      "publishedAt": "2026-11-06T20:51:32Z",
+      "changes": [
+        "Correct robot object intent: modal \u201ccan you\u201d no longer triggers unrelated drink-can cleanup; explicit named box collection creates a persisted work order.",
+        "Perform pickup, travel, and bin transfer with existing inventory tools and verified scene-save acknowledgement; refuse unauthorised, oversized, inappropriate or over-capacity bin objects.",
+        "Defer temporarily blocked boxes, continue with other eligible boxes, then retry the earlier ones with collision-checked alternate approaches and a persisted per-item ledger.",
+        "Support direct unambiguous single-object transfer requests with unchanged scene IDs and permissions. Preserve avatar, room data, assets and deployment contract."
+      ]
+    },
     {
       "version": "0.2.217",
       "publishedAt": "2026-11-06T20:00:17Z",
@@ -307,18 +317,6 @@
         "Allow topic-scoped, rate-limited optional public encyclopedia reading for construction/navigation goals from fixed HTTPS endpoints; do not treat summaries as building standards or code execution.",
         "Attempt an explicit text-only Meta fallback on six-image TypeError, and continue with permitted scene tools if Meta remains unavailable. Do not imply provider outage is repaired without live verification.",
         "Add regression tests, preserve deployment watcher, avatar binaries and current scene persistence; live browser, Meta, WebXR and actual scene placements remain to verify."
-      ]
-    },
-    {
-      "version": "0.2.183",
-      "publishedAt": "2026-11-04T16:28:14Z",
-      "changes": [
-        "Redesign Routines with Schedules/Work orders/Runtime log tabs, adjustable window dimensions and expanded 1,800-character goal input; improve failure visibility, recovery suggestions, copyable per-tab routine traces and tool documentation.",
-        "Replace Brains scroll-and-fold interaction with Vision, Identity, Learning, Decision log and Memory tabs; provide one-click Copy log in the top bar alongside existing JSON export.",
-        "Expose a safe, versioned Robot Tool API for bounded house blueprints, account-owned saved Architecture/Furniture presets, existing navigation/carry/seat routines and scene mutation controls.",
-        "Construct real procedural room walls with door, windows and roof, a separately persisted floor, and bed/table/chair where collision-free. Keep operation results explicit and partial on blocked construction.",
-        "Improve Meta autonomy planning validation, provider error diagnostics, 360-degree image request fallback only for incompatible HTTP 400/413, and deterministic construction recovery for explicitly authorized house goals; preserve three-minute cooldown and daily budget.",
-        "Add regression checks, uphold GitHub watcher packaging and avatar GLB preservation; real-browser/Meta/WebXR verification remains required."
       ]
     }
   ]

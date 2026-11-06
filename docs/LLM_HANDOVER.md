@@ -1,3 +1,11 @@
+# SOLVI.help Master LLM Handover — v0.2.218
+
+## v0.2.218 — Object transfer resilience
+
+Box-copy cleanup now has its own verified, saved work-order executor; the older can-specific routine is not used for boxes. `js/robot-object-intent.js` handles unambiguous single-object transfers from explicit addressed human chat; the actual pickup, delivery, scene save and alternate approach are in `js/robot-autonomy.js`. Empty drink and small general boxes are accepted inside persistent bins by both `js/robot-inventory.js` and backend `bin_item_permitted`, with server-side ownership/capacity constraints retained. Skipped attempts are server-durable. Read `docs/RELEASE_0.2.218_SPEC.md` for verification/limitations. No schema migration.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.217
 
 ## v0.2.217 — Seat escape and floor-aware social arrivals

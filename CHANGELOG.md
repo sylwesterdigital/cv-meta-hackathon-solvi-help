@@ -1,3 +1,10 @@
+# v0.2.218 — Reliable named object transfer and box collection (2026-11-06)
+
+- Parse box-cleaning commands accurately instead of treating “can you” as a can object. Real boxes can go into the named junk bin through owner-validated inventory storage and server acknowledgements.
+- Persist per-object cleanup progress, skip blocked boxes, try others and revisit failures later. Use alternate checked approaches instead of a single route through obstacles.
+- Ground named single-object pickup/delivery requests in exact object IDs and unique destination names; do not claim chat replies as execution.
+- Keep avatar/media/room files and permissions unchanged. Browser physics and multiplayer acceptance still needed.
+
 # v0.2.217 — Seat escape and real floor-aware robot encounters (2026-11-06)
 
 - Seated avatar exit now checks alternate furniture edges if the normal exit is obstructed, including sofas and office chairs; never cross a wall, never change storey, and preserve a seated pose if all exits are blocked.
