@@ -29,6 +29,7 @@ import {makePortal,rebuildPortal} from './portal-geometry.js';
 import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach,robotRouteCheckpoints} from './robot-pathfinding.js';
+import {robotPosePacket,appendRobotPose,sampleRobotPose} from './robot-motion-sync.js';
 import {planRobotMeeting,canMeetRobot,remainingRouteBlocked} from './robot-social-navigation.js';
 import {findRobotWorksite,footprintClear} from './robot-worksite.js';
 import {infrastructureSegments} from './procedural-infrastructure.js';
@@ -157,7 +158,7 @@ export class SceneEditor{
    if(!e.detail?.enabled){this.transform.detach();this.world.editorGizmoPointer=false;this.world.editorDragging=false;this.endWallDrawing?.();}
    else if(isEditMode()&&this.selected&&this.canTransform(this.selected)&&this.selected.userData.editorKind!=='robot')this.transform.attach(this.selected);
    this.updateInspector();
-  });this.refreshList();this.avatarGallery=setupAvatarGallery(this);this.assetGallery=setupAssetGallery(this);this.objectPresets=setupObjectPresets(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.dirtyGenerations=new Map();this.inFlightSaves=new Map();this.retrySaveCounts=new Map();this.pendingRemovals=new Set();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.robotActionSeq=0;this.lastRobotCombat=0;this.remoteActionSequences=new Map();this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();
+  });this.refreshList();this.avatarGallery=setupAvatarGallery(this);this.assetGallery=setupAssetGallery(this);this.objectPresets=setupObjectPresets(this);window.solviEditor=this;world.robotEditor=this;this.pendingSaves=new Map();this.dirtyGenerations=new Map();this.inFlightSaves=new Map();this.retrySaveCounts=new Map();this.pendingRemovals=new Set();this.robotKeys=new Set();this.localRobotInput=null;this.lastRobotPacket=0;this.robotPacketSeq=0;this.robotActionSeq=0;this.lastRobotCombat=0;this.remoteActionSequences=new Map();this.remoteInput=new Map();this.remoteCorrections=new Map();this.remoteSequences=new Map();this.remoteRobotMotion=new Map();this.sentRobotMotion=new Map();
   window.addEventListener('solvi:robot-task-update',event=>{const detail=event.detail||{},id=detail.robotId;const robot=this.items.find(o=>o.userData.editorId===id);
     if(robot){const audit=missionMovementEvidence(robot.userData.robotTelemetry,robot,robot.userData.robotDebugRoute,detail.status);
       if(audit){detail.routeTelemetry=audit;if(shouldRejectClaimedArrival(audit,detail.status))detail.status='failed';}
@@ -2156,7 +2157,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   this.flushPendingRoomSaves(previousRoom);
   this.realmTransitioning=room;
   this.sceneLoadTicket=(this.sceneLoadTicket||0)+1;this.lastSmartPlacement=null;
-  this.controlledRobotId=null;this.remoteInput.clear();this.remoteCorrections.clear();this.robotKeys.clear();
+  this.controlledRobotId=null;this.remoteInput.clear();this.remoteCorrections.clear();this.remoteRobotMotion.clear();this.sentRobotMotion.clear();this.robotKeys.clear();
   this.localRobotInput=null;this.transform.detach();
   // A previous realm's collision world must not keep stepping as scene meshes
   // are removed. The room policy is restored only after the scene has arrived.
@@ -2241,6 +2242,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   const movingRemote=this.remoteInput.get(id);
   const preserveRobotPose=!isNew&&entry.kind==='robot'&&(
     (movingRemote&&performance.now()-movingRemote.received<2400)||
+    (this.remoteRobotMotion.get(id)&&performance.now()-this.remoteRobotMotion.get(id).received<2300)||
+    (this.canEdit(obj)&&Boolean(obj.userData.robotGoal||obj.userData.robotMission))||
     (this.controlMode==='robot'&&this.selected===obj&&this.canEdit(obj))||
     Boolean(obj.userData.robotImpactVelocity));
   const incomingLift=entry.kind==='stairs'&&entry.stairs?.variant==='lift';
@@ -2578,6 +2581,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     }else this.localRobotInput=null;
     // Remote robots integrate the same acceleration and turn-rate equations.
     for(const [id,remote] of this.remoteInput){
+      if(this.remoteRobotMotion.has(id))continue;
       const other=this.items.find(o=>o.userData.editorId===id);
       if(!other||now-remote.received>3600){this.remoteInput.delete(id);if(other){other.userData.robotRemoteMotion=false;other.userData.robotMode='idle';other.userData.robotVelocity=0;other.userData.robotSteer=0;other.userData.robotLateral=0;}continue;}
       const state={x:other.position.x,z:other.position.z,yaw:other.rotation.y,velocity:other.userData.robotVelocity||0,steer:other.userData.robotSteer||0,lateral:other.userData.robotLateral||0};
@@ -2598,10 +2602,26 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       obj.position.x=next.x;obj.position.z=next.z;if(!obj.userData.robotJumpActive&&!obj.userData.physicsAirborne)obj.rotation.y=next.yaw;
       if(next.done)this.remoteCorrections.delete(id);else this.remoteCorrections.set(id,next.residual);
     }
+    // Playback is intentionally delayed by one or two network packets. It uses
+    // measured owner poses rather than re-executing A* on other clients.
+    for(const [id,stream] of this.remoteRobotMotion){
+      const other=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===id);
+      if(!other){this.remoteRobotMotion.delete(id);continue;}
+      const pose=sampleRobotPose(stream,now);
+      if(!pose){this.remoteRobotMotion.delete(id);continue;}
+      other.position.set(pose.x,pose.y,pose.z);other.rotation.y=pose.yaw;
+      other.userData.robotMode=pose.mode;
+      other.userData.robotRemoteMotion=pose.moving;
+      if(pose.stale&&now-stream.received>2600){
+        other.userData.robotMode='idle';other.userData.robotRemoteMotion=false;
+        this.remoteRobotMotion.delete(id);
+      }
+    }
     tickRobots(this.items,dt,Object.assign((o,arrived)=>{
       if(!this.canEdit(o))return;
-      // Share autonomous movement while walking, not only its final position.
-      if(arrived||o.userData.robotMission&&now-(o.userData.lastMissionSave||0)>900){
+      // Scene saves are recovery checkpoints, never animation frames. Live
+      // locomotion is published separately below at ~9 snapshots/second.
+      if(arrived||o.userData.robotMission&&now-(o.userData.lastMissionSave||0)>5000){
         o.userData.lastMissionSave=now;this.queueSave(o);
       }
     },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),refreshRoute:robot=>this.refreshRobotRoute(robot),checkpoint:(robot,point)=>this.inspectRobotRouteCheckpoint(robot,point),avoidRobot:(robot,other)=>this.avoidMovingRobot(robot,other),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot),seat:(robot,id)=>{const target=this.items.find(o=>o.userData.editorId===id);return target?takeSeat(robot,target,this):false;}}));
@@ -2616,6 +2636,28 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
      if(Math.abs(y-bot.position.y)<.02)delete bot.userData.liftRemoteTargetY;
     }
     tickPortals(this,dt);this.updateMountedMedia();
+    // Broadcast actually simulated autonomous poses after navigation, physics
+    // and transport. Keyboard-controlled robots retain robot-input prediction.
+    for(const bot of this.items){
+      if(bot.userData.editorKind!=='robot'||!this.canEdit(bot))continue;
+      const id=bot.userData.editorId;
+      const manual=this.controlMode==='robot'&&this.controlledRobot?.()===bot&&
+        (active(input)||Math.abs(bot.userData.robotVelocity||0)>.04);
+      const moving=Boolean(bot.userData.robotGoal||bot.userData.robotMission);
+      const previous=this.sentRobotMotion.get(id);
+      if(manual){this.sentRobotMotion.delete(id);continue;}
+      if(!moving&&!previous)continue;
+      if(previous&&now-previous.at<110&&moving)continue;
+      const origin=previousRobotPositions.get(id);
+      const observedSpeed=origin?Math.hypot(bot.position.x-origin.x,bot.position.z-origin.z)/Math.max(.016,dt):0;
+      // Checkpoint camera scans may pause for 1.4s while the mission remains
+      // active. Those frames must animate as idle, not walking in place.
+      const mode=moving&&observedSpeed>.12?(bot.userData.robotMode==='run'?'run':'walk'):'idle';
+      const seq=((previous?.seq||0)%2147483646)+1;
+      window.solviRoomSocket?.send(robotPosePacket(bot,seq,mode));
+      if(moving)this.sentRobotMotion.set(id,{at:now,seq});
+      else this.sentRobotMotion.delete(id); // final idle is sent once
+    }
     for(const r of this.items){if(r.userData.editorKind!=='robot')continue;const previous=previousRobotPositions.get(r.userData.editorId);if(!previous)continue;const distance=Math.hypot(r.position.x-previous.x,r.position.z-previous.z);r.userData.robotActualSpeed=distance/Math.max(.016,dt);}
     animateRobots(this.items,dt,(actor,kind,force,remote)=>{
       const hits=this.physics.applyCombat(actor,kind,force,remote);
@@ -2734,6 +2776,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     this.playRobotCombat(robot,packet.action,packet.force,true);
   }
   applyRobotInput(packet){
+    this.remoteRobotMotion.delete(packet.id);
     const robot=this.items.find(o=>o.userData.editorId===packet.id&&o.userData.editorKind==='robot');
     if(!robot||(this.selected===robot&&this.canEdit(robot)&&this.robotKeys.size))return;
     // Ignore out-of-order input frames (WebSocket ordering is per connection, but reconnects happen).
@@ -2751,13 +2794,24 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     }else this.remoteInput.set(packet.id,{f:packet.f,t:packet.t,r:packet.r,b:packet.b,s:packet.s,runMultiplier:packet.runMultiplier??2.8,q:packet.q??2.5,u:packet.u??4,received:performance.now()});
   }
   applyRobotMotion(state){
-   this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});
-   if(state.mode==='lift'||state.mode==='conveyor'){const robot=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===state.id);
-    const y=state.position?.[1];if(robot&&!this.physics.owns(robot)&&typeof y==='number'&&Number.isFinite(y)){
-     // Vertical transport is absent from the 2D robot input correction path.
-     if(!robot.userData.liftRide)robot.userData.liftRemoteTargetY=y;
+    const robot=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===state?.id);
+    if(!robot)return;
+    // Transports retain their existing authoritative vertical reconciliation.
+    if(state.mode==='lift'||state.mode==='conveyor'){
+      this.applyRobotInput({...state,m:0,x:state.position?.[0],y:state.position?.[1],z:state.position?.[2],yaw:state.rotation?.[1]});
+      const y=state.position?.[1];
+      if(!this.physics.owns(robot)&&typeof y==='number'&&Number.isFinite(y)){
+        if(!robot.userData.liftRide)robot.userData.liftRemoteTargetY=y;
+      }
+      return;
     }
-   }
+    if(this.controlMode==='robot'&&this.controlledRobot?.()===robot&&this.canEdit(robot)&&this.robotKeys.size)return;
+    const now=performance.now();
+    const stream=appendRobotPose(this.remoteRobotMotion.get(state.id),state,now,
+      {x:robot.position.x,y:robot.position.y,z:robot.position.z,yaw:robot.rotation.y});
+    if(!stream)return;
+    this.remoteRobotMotion.set(state.id,stream);
+    this.remoteInput.delete(state.id);this.remoteCorrections.delete(state.id);
   }
   // Same live editor geometry drives the minimap and route planner. Footprints
   // are kept clear of robots and furniture; navigation never pushes objects.

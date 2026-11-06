@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.210",
+  "currentVersion": "0.2.211",
   "releases": [
+    {
+      "version": "0.2.211",
+      "publishedAt": "2026-11-06T05:24:38Z",
+      "changes": [
+        "Stream actual autonomous navigation positions, heading and gait state at roughly 9Hz to other signed-in clients; render between snapshots instead of jumping between infrequent scene saves.",
+        "Keep the original collision-aware path and fence checkpoint pauses on the owner client while remote avatars smoothly follow that same route and use walking/run/idle animations.",
+        "Preserve the manual keyboard-prediction network path, lift transport, room permissions and persistent scene objects; avoid stale checkpoint rewinds while a live motion stream is active.",
+        "Bound and authorise robot-motion WebSocket relay and sequence numbers; continue saving final positions and five-second recovery checkpoints without writing every animation frame."
+      ]
+    },
     {
       "version": "0.2.210",
       "publishedAt": "2026-11-06T05:04:53Z",
@@ -313,19 +323,6 @@
         "Add entry/last/saved per-room camera start position, a one-click save-with-confirmation action in the shared Control Switcher beside follow/distance controls; save camera pose only, not world state.",
         "Introduce per-robot comic speech/thought bubble options for shape (rounded/oval/cloud), Digital Strip or fallback font family, all-caps and visibility, without redistributing uploaded font binaries.",
         "Unify the Office Space wall numeric slider with the shared active-field slider beneath the focused row; add backend and regression checks for new door/roof/preset, camera, seating and comic settings."
-      ]
-    },
-    {
-      "version": "0.2.177",
-      "publishedAt": "2026-11-04T01:11:25Z",
-      "changes": [
-        "Active infrastructure drawing Ctrl/Cmd+Z/Y/Shift+Z now undoes/redoes path vertices, freehand strokes and draft field changes rather than unrelated saved scene history.",
-        "Continuous freehand capture and adaptive path simplification preserve gestures beyond 80 raw points while saving no more than 80 validated control points.",
-        "Restore camera orbit/pan/zoom while creating infrastructure; only left scene clicks append vertices; show a temporary dashed guide from the previous vertex to the pointer.",
-        "Keep fence, hedge, road and wall controls in the existing Properties window; remove meaningless fence/wall Width setting and live-preview functional settings.",
-        "Detect a robot capsule wedged and frozen in a falling animation against edited walls/fences and return it to a last safely grounded pose and Idle.",
-        "Introduce robot head-anchored comic speech/thought overlays, using the user-supplied SVG assets without redistributing the separately uploaded proprietary font.",
-        "Extend automated tests and retain all prior assets, room sync, presets and watcher-compatible application file integrity."
       ]
     }
   ]

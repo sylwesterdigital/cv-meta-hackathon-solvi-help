@@ -93,7 +93,7 @@ The application server and browser are separate from the test harness. Some Pyth
 
 ## Status and limitations
 
-Current packaged source release: **v0.2.210**. The latest packaged release is not considered live until the existing deployment watcher verifies and deploys it.
+Current packaged source release: **v0.2.211**. The latest packaged release is not considered live until the existing deployment watcher verifies and deploys it.
 
 This is an evolving research and creative prototype. AI can misunderstand images or instructions, navigation can be obstructed, external media and Meta services can be unavailable, and robots do not perform long-running independent work while the controlling browser is closed. World edits are permission-checked; deployments must preserve existing realms and data. Do not commit API keys, user content, or production databases.
 

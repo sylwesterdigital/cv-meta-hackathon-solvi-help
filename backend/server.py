@@ -232,7 +232,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.210',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.211',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -4500,6 +4500,7 @@ def websocket(ws):
     if request.headers.get('Origin') not in ALLOWED_ORIGINS:ws.close();return
     uid=None;room_id=None
     ws_admin_token=''
+    last_robot_motion={} # ephemeral per-WebSocket rate cap; no persistent state
     def ws_admin_enabled():
         if not ws_admin_token:return False
         with db() as con:r=con.execute('SELECT expires FROM admin_sessions WHERE token_hash=?',(sha(ws_admin_token),)).fetchone()
@@ -4631,17 +4632,27 @@ def websocket(ws):
                 publish({'type':'conveyor-control','room':room_id,'by':uid,'id':identifier,
                          'action':action,'changedAt':int(stamp)},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-motion':
+                # Live movement only: no scene/DB writes. Sender must still
+                # have edit authority for this robot in this room.
                 identifier=str(msg.get('id',''))
                 position=msg.get('position');rotation=msg.get('rotation');mode=msg.get('mode','idle')
                 if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',identifier):continue
                 if mode not in ('idle','walk','run','wave','lift','conveyor'):continue
-                if not all(isinstance(v,list) and len(v)==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in v) for v in (position,rotation)):continue
+                if not all(isinstance(v,list) and len(v)==3 and all(type(x) in (int,float) and math.isfinite(x) and abs(x)<1000000 for x in v) for v in (position,rotation)):continue
+                try:seq=int(msg.get('seq',0))
+                except (ValueError,TypeError,OverflowError):continue
+                if type(msg.get('seq',0)) not in (int,) or not 0<=seq<=2147483647:continue
+                # Limit continuous poses to <=20 Hz per robot per connection;
+                # an idle/final packet is always allowed to end an animation.
+                clock=time.monotonic()
+                if mode!='idle' and clock-last_robot_motion.get(identifier,0)<.05:continue
                 with db() as con:
                     itemrow=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
                     objects=json.loads(itemrow['payload']) if itemrow else []
                     controlled=next((o for o in objects if o.get('id')==identifier and o.get('kind')=='robot'),None)
                 if not controlled or not may_edit(uid,controlled,room_policy(room_id),ws_admin_enabled()):continue
-                publish({'type':'robot-motion','room':room_id,'by':uid,'id':identifier,'position':position,'rotation':rotation,'mode':mode},except_id=uid,room_id=room_id)
+                last_robot_motion[identifier]=clock
+                publish({'type':'robot-motion','room':room_id,'by':uid,'id':identifier,'position':position,'rotation':rotation,'mode':mode,'seq':seq},except_id=uid,room_id=room_id)
             elif msg.get('type')=='robot-impact':
                 # Compact victim impulse event; authority is tied to the attacking
                 # robot. No per-frame pose arrays or client-supplied coordinates.

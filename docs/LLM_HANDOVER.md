@@ -1,3 +1,9 @@
+# SOLVI.help Master LLM Handover — v0.2.211
+
+**Issue:** Remote browser robot avatars jump every ~900ms because autonomous motion was only replicated as persisted scene positions. `robot-input` prediction is manual-only. v0.2.211 sends actual owner poses and gait at ~9Hz, independently of scene saves, with 145ms buffered remote interpolation, short angular paths, out-of-order protection and an idle final frame. Long fence detours/waypoint scans preserve their owner-derived shape. Keep `robot-input` for manual control and old transport. SQLite authorisation remains; server rate-limits pose relay to <=20Hz. Five-second recovery scene checkpoints plus task-completion save remain. New files: `js/robot-motion-sync.js`, `tests/release-211-multiplayer-robot-motion.test.mjs`, `docs/RELEASE_0.2.211_SPEC.md`. Original GLB/media untouched, no new dependencies, no schema migration. Validate from watcher ZIP and in two browsers with independent signed-in profiles; production deployment not established.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.210
 
 ## v0.2.210 — fence-aware dynamic navigation and evidence-led checkpoints

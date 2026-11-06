@@ -1,3 +1,14 @@
+# v0.2.211 — Smooth autonomous robot walking across multiplayer clients (2026-11-06)
+
+- Stream actual autonomous navigation positions, heading and gait state at roughly 9Hz to other signed-in clients; render between snapshots instead of jumping between infrequent scene saves.
+- Keep the original collision-aware path and fence checkpoint pauses on the owner client while remote avatars smoothly follow that same route and use walking/run/idle animations.
+- Preserve the manual keyboard-prediction network path, lift transport, room permissions and persistent scene objects; avoid stale checkpoint rewinds while a live motion stream is active.
+- Bound and authorise robot-motion WebSocket relay and sequence numbers; continue saving final positions and five-second recovery checkpoints without writing every animation frame.
+
+Previous navigation, scene persistence, owned GLB assets, inventory and room permission behaviour are preserved. New `js/robot-motion-sync.js` interpolates live owner-authored navigation poses and guards against stale scene saves; the server validates relay ownership. No DB migration. Live two-profile browser behaviour awaits Mac watcher deployment. See `docs/RELEASE_0.2.211_SPEC.md`.
+
+---
+
 # v0.2.210 — Adaptive long-fence route planning and robot checkpoint autonomy (2026-11-06)
 
 - Fix false red straight planned path through blocked fences: red ring now marks failed destination only; green is A* path and cyan is measured progress.
