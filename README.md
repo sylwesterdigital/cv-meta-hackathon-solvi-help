@@ -104,3 +104,7 @@ This is an evolving research and creative prototype. AI can misunderstand images
 ### Smart object placement
 
 When adding a primitive, tool, furniture item or saved preset, SOLVI searches for a visible, unobstructed floor position near the last object added. It avoids room walls and existing furniture, and asks the creator to adjust the camera if no suitable placement can be found. Manual transforms remain available.
+
+### Configuring how tools are held
+
+In the avatar **Inventory → Held**, select **Grip** on an equipped tool (or **Switch hand** to move it to the other free hand). The editor displays per-hand bone, position, rotation and handle contact-point controls. The saved values follow that tool in multiplayer and in presets. Tools do not yet perform terrain excavation or other tool-specific world actions.

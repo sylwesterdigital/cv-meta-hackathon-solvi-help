@@ -1,3 +1,15 @@
+# SOLVI.help Master LLM Handover — v0.2.204
+
+## Current change: configurable tool grips
+
+Based on v0.2.203 (watcher status not confirmed). Introduce `inventory.grip` per held tool with independently configurable `left` and `right` hand profiles, matching browser inspector controls, sanitized client data and strict `valid_tool_grip` server validation. The animated held pose is computed per client after avatar animation; no frame-by-frame scene writes. See `docs/RELEASE_0.2.204_SPEC.md`.
+
+**Actual bundled rig:** GLB includes `mixamorig:RightHand` and `mixamorig:LeftHand` and numerous finger joints; defaults use the hand bone and allow exact `rig:` overrides. A new `Switch hand` control uses the same held object ID and persists only when the opposite hand is free. The existing `held` storage contract, owner controls and per-object save remain unchanged.
+
+**v0.2.204 verification:** 982/982 JavaScript tests passed from a fresh extraction of the complete ZIP; 6/6 standalone backend checks and 13 Python syntax checks passed, as did Ubuntu installer and Mac deploy script syntax. SHA-256 verified 479/479 application files; all 110 original media/3D files remain byte-for-byte identical to v0.2.203. Full Flask HTTP integration is unavailable here and is delegated to the Mac watcher. Live two-browser animation alignment has not been verified and production deployment is not confirmed.
+
+**Important:** This does NOT implement digging, sawing, sweeping, or tool combat. The Use button remains explicit about that limit. Tool-specific action verbs, target checks, animations, terrain/physics effects, and game permissions require a separate implementation.
+
 # SOLVI.help Master LLM Handover — v0.2.203
 
 ## v0.2.203 — Backend integration hotfix: captioned command authorization

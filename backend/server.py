@@ -232,7 +232,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.203',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.204',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -3806,8 +3806,25 @@ def valid_wear_attachment(value):
         if not isinstance(arr,list) or len(arr)!=3 or any(type(n) not in (float,int) or not math.isfinite(n) or abs(n)>limit for n in arr):return False
     return True
 
+def valid_tool_grip(value):
+    # Both hand profiles are validated on every preset and scene write.
+    # Explicit rig bone names are data, never evaluated as code.
+    if not isinstance(value,dict) or not set(value) or not set(value)<= {'left','right'}:return False
+    bone_aliases={'auto','palm','hand','wrist','middleMetacarpal','indexMetacarpal','ringMetacarpal'}
+    for hand in ('left','right'):
+        if hand not in value:continue
+        profile=value[hand]
+        if not isinstance(profile,dict) or set(profile)!={'bone','followRotation','position','rotation','anchor'}:return False
+        bone=profile['bone']
+        if not isinstance(bone,str) or (bone not in bone_aliases and re.fullmatch(r'rig:[A-Za-z0-9_.: -]{1,64}',bone) is None):return False
+        if type(profile['followRotation']) is not bool:return False
+        for field,limit in (('position',2),('rotation',720),('anchor',3)):
+            array=profile[field]
+            if not isinstance(array,list) or len(array)!=3 or any(type(n) not in (int,float) or not math.isfinite(n) or abs(n)>limit for n in array):return False
+    return True
+
 def valid_inventory_item(value):
-    return isinstance(value,dict) and set(value)<= {'category','size','consumable','attachment'} and ('attachment' not in value or valid_wear_attachment(value['attachment'])) and value.get('category') in ('world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable') and value.get('size') in ('pocket','bag') and type(value.get('consumable')) is bool
+    return isinstance(value,dict) and set(value)<= {'category','size','consumable','attachment','grip'} and ('attachment' not in value or valid_wear_attachment(value['attachment'])) and ('grip' not in value or valid_tool_grip(value['grip'])) and value.get('category') in ('world','general','key','money','phone','notepad','tool','food','backpack','jetpack','parachute','wearable') and value.get('size') in ('pocket','bag') and type(value.get('consumable')) is bool
 
 def valid_inventory_storage(value):
     if value is None:return True

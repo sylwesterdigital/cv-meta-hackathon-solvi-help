@@ -1,3 +1,11 @@
+# v0.2.204 — Editable animated tool grip and bone attachment (2026-11-05)
+
+- Add per-tool, per-hand Grip settings: actual avatar rig bone, follow bone rotation, hand-space X/Y/Z position, rotation degrees, and tool-local grip point. This replaces the one-tilt-fits-all approach from v0.2.200.
+- Tools default to the actual Mixamo hand bone, rather than finger joints, with tool-specific contact points and baseline orientations. The selected item's inventory/grip profile persists with scene and saved presets; remote clients reconstruct the animation from the same record, without per-frame socket updates.
+- Inventory → Held → Switch hand swaps an equipped item between available hands; Grip opens Edit mode on the equipped object; the selected tool inspector shows the editable settings and rig bone choices. Changes are previewed immediately and recorded through the existing validated object-save flow. Reset restores tool-specific defaults for the chosen hand.
+- If an avatar rig lacks the requested bone, use the corresponding hand, never the opposite hand. Validate aliases, bounded finite numerical offsets, and rig-name syntax on the backend. No database schema changes, no model asset edits.
+- **Scope boundary:** This release configures equipment holding, not digging, sawing, chopping, sweeping or combat tool effects. The existing Use button continues to indicate that actions are not implemented. These require their own target/action/world-physics implementation and must not be presented as complete.
+
 # v0.2.203 — Backend authorization fix for captioned robot commands (2026-11-05)
 
 - Fix failed v0.2.202 Mac watcher integration assertion: `CC: Jessica, stop` now gets parsed as a real privileged STOP command; when robot policy is `owned`, non-owner attempts return HTTP 403 even without a Meta API key.

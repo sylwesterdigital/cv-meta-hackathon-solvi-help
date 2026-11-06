@@ -18,6 +18,14 @@ for _module in _local_imports:
 assert "DEPLOY_PHASE='Python backend import preflight'" in _installer
 print('PASS: local backend modules deployed, rollback protected and import preflight configured')
 from server import app, patch_scene_object, valid_robot_combat, db
+from server import valid_tool_grip, valid_inventory_item
+_grip204={'bone':'rig:mixamorig:RightHand','followRotation':True,'position':[0,0,0],'rotation':[0,0,-17],'anchor':[0,0.57,0]}
+assert valid_tool_grip({'right':_grip204})
+assert valid_inventory_item({'category':'tool','size':'bag','consumable':False,'grip':{'right':_grip204}})
+assert not valid_tool_grip({'right':{**_grip204,'bone':'rig:<script>'}})
+assert not valid_inventory_item({'category':'tool','size':'bag','consumable':False,'grip':{'right':{**_grip204,'position':[float('nan'),0,0]}}})
+print('PASS: per-hand tool grip persistence validator')
+
 # Regression: the Flask POST decorator must belong to the HTTP handler,
 # never to the combat-settings validator (the latter takes a settings arg).
 scene_object_rules=[rule for rule in app.url_map.iter_rules()

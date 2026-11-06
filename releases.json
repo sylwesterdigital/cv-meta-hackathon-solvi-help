@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.203",
+  "currentVersion": "0.2.204",
   "releases": [
+    {
+      "version": "0.2.204",
+      "publishedAt": "2026-11-06T00:16:01Z",
+      "changes": [
+        "Provide per-tool, per-hand adjustable skinned-bone grip profiles: exact rig bone or hand aliases, follow-rotation, local hand offsets, tool rotation offsets and handle contact point.",
+        "Default to the actual avatar hand bone instead of finger joints; use tool-specific handle grips for shovel, axe, rake, broom, mop, stick and saw.",
+        "Expose Inventory \u2192 Held \u2192 Switch hand / Grip and Selected Tool \u2192 Tool grip settings, with live preview, reset and persistent multiplayer profiles.",
+        "Validate and persist grip profiles in scene objects, object presets, realm exports and imports; retain all v0.2.203 authorization and prior improvements. No DB migration or tool-action claim."
+      ]
+    },
     {
       "version": "0.2.203",
       "publishedAt": "2026-11-05T23:14:37Z",
@@ -320,17 +330,6 @@
         "Retry muted playback when browser autoplay rules block remote audio; preserve spatial audio and existing screen controls.",
         "Surface failed stream playback in the in-world menu instead of leaving a black/blank monitor, and apply the same readiness handling to smart speakers.",
         "Add a release regression that checks JavaScript syntax for every shipped JS/MJS file and tests HLS event ordering, media readiness, and playback fallback."
-      ]
-    },
-    {
-      "version": "0.2.170",
-      "publishedAt": "2026-11-03T18:30:04Z",
-      "changes": [
-        "Give every numeric furniture and vegetation inspector parameter its own always-visible compact range slider directly beneath the corresponding number input, including orchard/forest scatter, soil, terrain and water parameters.",
-        "Keep the three-column inspector grid stable: all companion range controls are present from render time and do not insert, remove, resize or reflow other fields on focus.",
-        "Synchronise range dragging and typed numeric values in both directions through the existing debounced geometry preview, undo history, physics update and multiplayer save pipeline.",
-        "Preserve the existing floating contextual slider for transform position/rotation/scale, while avoiding redundant popovers over furniture controls.",
-        "Add regression checks for slider creation, numeric bounds, change propagation and consistent non-reflow layout."
       ]
     }
   ]

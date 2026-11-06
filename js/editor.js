@@ -40,6 +40,7 @@ import {plannedRouteLength,newMovementTelemetry,sampleMovementTelemetry,missionM
 import {physicsOptions} from './physics-options.js';
 import {canBeClimbable} from './climbable-surfaces.js';
 import {RobotInventory,cleanInventory,cleanStorage,cleanWearAttachment} from './robot-inventory.js';
+import {isToolObject,cleanToolGripProfile,toolGripProfile,toolRigBones,GRIP_BONES} from './held-equipment.js';
 import {bindRobotShortcutHelp,ROBOT_KEY_ACTIONS} from './robot-shortcut-help.js';
 import {seatPlan,takeSeat,standUp,followFurnitureSeats,restoreSeatedRobots,repairLoadedRobotElevation} from './robot-seating.js';
 import {canBePickable,ObjectCarry,cleanThrowSettings,editThrowSetting,pickableTarget} from './object-carry.js';
@@ -283,6 +284,28 @@ export class SceneEditor{
    const obj=this.selected;if(!obj||!this.canEdit(obj)||!obj.userData.pickable)return;
    const before=this.snapshot(obj);obj.userData.inventory=cleanInventory({...obj.userData.inventory,size:byId('objectInventorySize').value,consumable:byId('objectInventoryConsumable').checked});
    this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
+  });
+  byId('toolGripHand')?.addEventListener('change',e=>{
+   this.toolGripEditingHand=e.target.value==='left'?'left':'right';this.renderToolGripControls(this.selected);
+  });
+  byId('toolGripDetails')?.addEventListener('change',e=>{
+   const obj=this.selected,field=e.target?.dataset?.gripField;
+   if(!obj||!field||!isToolObject(obj)||!this.canEdit(obj)||!obj.userData.pickable)return;
+   const hand=this.toolGripEditingHand==='left'?'left':'right',before=this.snapshot(obj);
+   const cfg=obj.userData.furniture||{},grip=cleanToolGripProfile(obj.userData.inventory?.grip?.[hand],cfg.variant,cfg.handleLength,hand);
+   if(field==='bone')grip.bone=e.target.value;
+   else if(field==='followRotation')grip.followRotation=e.target.checked;
+   else if(['position','rotation','anchor'].includes(field))grip[field][Number(e.target.dataset.axis)]=Number(e.target.value);
+   const clean=cleanToolGripProfile(grip,cfg.variant,cfg.handleLength,hand);
+   obj.userData.inventory=cleanInventory({...obj.userData.inventory,grip:{...obj.userData.inventory?.grip,[hand]:clean}});
+   this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.inventory.tick();this.renderToolGripControls(obj);
+  });
+  byId('toolGripReset')?.addEventListener('click',()=>{
+   const obj=this.selected,hand=this.toolGripEditingHand==='left'?'left':'right';
+   if(!obj||!isToolObject(obj)||!this.canEdit(obj))return;
+   const before=this.snapshot(obj),grip={...obj.userData.inventory?.grip};delete grip[hand];
+   const inventory={...obj.userData.inventory};if(Object.keys(grip).length)inventory.grip=grip;else delete inventory.grip;
+   obj.userData.inventory=cleanInventory(inventory);this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);this.inventory.tick();this.renderToolGripControls(obj);
   });
   byId('wearableAttachmentDetails')?.addEventListener('change',e=>{
    const obj=this.selected,field=e.target?.dataset?.wearField;if(!obj||!field||!this.canEdit(obj))return;
@@ -1506,6 +1529,29 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   window.dispatchEvent(new CustomEvent('solvi:properties-robot-selected',{detail:{robotId:obj?.userData.editorKind==='robot'?obj.userData.editorId:null}}));
   // Selection must never move the camera; numpad presets and zoom remain explicit.
   if(obj&&isEditMode())this.broadcastEdit(true);}
+ renderToolGripControls(obj){
+  const details=byId('toolGripDetails');if(!details)return;
+  const visible=Boolean(obj?.userData?.pickable&&isToolObject(obj));details.hidden=!visible;
+  if(!visible)return;
+  const hand=this.toolGripEditingHand==='left'?'left':'right';
+  byId('toolGripHand').value=hand;
+  const holderId=obj.userData.storage?.type==='held'?obj.userData.storage.holderId:null;
+  const robot=this.items.find(r=>r.userData.editorKind==='robot'&&r.userData.editorId===holderId)||this.controlledRobot?.()||this.robot?.();
+  const select=byId('toolGripBone');
+  // Keep the alias choices stable and show the actual imported rig's hand bones.
+  for(const element of [...select.querySelectorAll('option[data-rig-bone]')])element.remove();
+  const bones=toolRigBones(robot,hand).filter(name=>/^[A-Za-z0-9_.: -]{1,64}$/.test(name));
+  for(const name of bones){const option=document.createElement('option');option.value='rig:'+name;option.textContent='Rig · '+name;option.dataset.rigBone='1';select.append(option);}
+  const grip=toolGripProfile(obj,hand);
+  if(![...select.options].some(o=>o.value===grip.bone)){const opt=document.createElement('option');opt.value=grip.bone;opt.textContent='Saved bone · '+grip.bone;opt.dataset.rigBone='1';select.append(opt);}
+  for(const element of details.querySelectorAll('[data-grip-field]')){
+   element.disabled=!this.canEdit(obj);const field=element.dataset.gripField;
+   if(field==='bone')element.value=grip.bone;
+   else if(field==='followRotation')element.checked=grip.followRotation;
+   else element.value=grip[field][Number(element.dataset.axis)];
+  }
+  byId('toolGripReset').disabled=!this.canEdit(obj);
+ }
  updateInspector(){const obj=this.selected,slider=byId('inspectorValueSlider');
   const restoreSlider=!slider.hidden&&obj?.userData?.editorId===this.inspectorSliderSession?.id;
   if(!isEditMode()){byId('objectInspector').hidden=true;byId('propertiesPanel').hidden=true;slider.hidden=true;return;}
@@ -1528,6 +1574,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   byId('objectName').textContent=obj.name;byId('objectNameInput').value=obj.name;byId('objectNameInput').disabled=!this.canEdit(obj);
   if(obj.userData.editorKind==='robot')this.refreshRobotActions(obj);
   if(obj.userData.editorKind==='robot'){const settings=combatSettings(obj.userData.robotCombat);for(const el of byId('robotCombatList').querySelectorAll('[data-combat-action]'))el.value=String(settings[el.dataset.combatAction][el.dataset.combatField]);}
+  this.renderToolGripControls(obj);
   const worn=byId('wearableAttachmentDetails'),category=cleanInventory(obj.userData.inventory).category;
   worn.hidden=!['backpack','jetpack','parachute','wearable'].includes(category)||!obj.userData.pickable;
   if(!worn.hidden){const cfg=cleanWearAttachment(obj.userData.inventory?.attachment);for(const el of worn.querySelectorAll('[data-wear-field]')){
