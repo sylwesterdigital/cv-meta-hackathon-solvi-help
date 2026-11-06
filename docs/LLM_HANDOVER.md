@@ -1,3 +1,15 @@
+# SOLVI.help Master LLM Handover — v0.2.210
+
+## v0.2.210 — fence-aware dynamic navigation and evidence-led checkpoints
+
+Built on full v0.2.209 source. The observed v0.2.209 failure was repeated A* `blocked` results for destinations across a white fence, with zero movement; the debug overlay misleadingly drew a red straight failed-target segment through the barrier. `js/robot-pathfinding.js` now expands A* to bounded adaptive global grids for physically intersected long fences/hedges/walls, producing verified multi-waypoint routes around their actual ends (regression-tested for 120–320m fences). No unsafe straight-line fallback or teleport. `js/robot-path-visuals.js` displays blocked destinations as rings, not fake red navigable paths. `robotRouteCheckpoints` identifies turns near barriers; `js/editor.js` and `js/robots.js` briefly stop at checkpoints to re-read real scene geometry and retain the original mission and goal. For opted-in life routes, `js/robot-life.js` captures real local 3-angle JPEGs and may invoke the existing Meta perception reservation (120s cooldown and original limits), attaching an authenticated life lease to label the task as client-reported. All path execution remains under deterministic scene-collider and ownership checks.
+
+Multi-tab long runs now use same-token `/api/robots/life/lease` heartbeats; stale or lost life authorization terminates only that matching life journey. Casual social approaches are capped at 90m routed distance, while explicit missions may take longer. Recent client-reported exploration is surfaced to robot conversation prompts; a broad @all chat invitation is **not** an executable construction order. To construct new parks, use an explicitly enabled autonomous agent work order with Allow scene changes. Do not conflate speech with saved edits. No schema or GLB/media changes. Details: `docs/RELEASE_0.2.210_SPEC.md`.
+
+**Verification (source):** 1,018/1,018 JavaScript tests; 6/6 standalone Python backend checks; syntax validation of 13 Python modules; Ubuntu installer and Mac watcher `bash -n` passed. Fresh ZIP validation pending. Flask HTTP, Meta calls, and two-client live sessions are not verifiable in this sandbox. Watcher deployment status unknown; preserve all existing realms, scene objects, user data and uploaded models.
+
+---
+
 # SOLVI.help Master LLM Handover — v0.2.209
 
 ## v0.2.209 — bounded active robot life

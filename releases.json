@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.209",
+  "currentVersion": "0.2.210",
   "releases": [
+    {
+      "version": "0.2.210",
+      "publishedAt": "2026-11-06T05:04:53Z",
+      "changes": [
+        "Navigate around long picket fences, hedges and path walls with adaptive, bounded 8-connected A* search instead of repeatedly plotting a failed straight crossing; validated 120\u2013320m barrier detours and angled physical footprints.",
+        "At significant barrier-route bends, briefly stop to capture real 3-direction head-camera JPEGs, keep the same mission/destination, and replan if live scene geometry changes. Existing 120-second Meta perception reservations may additionally interpret the forward view, with the same quotas and spending guards.",
+        "Correct robot route debug: a blocked goal now shows its red destination ring and obstacles, not a red straight line pretending to be a usable route. Measured movement trail remains cyan and planned safe path green.",
+        "Renew authenticated one-time robot-life leases during long journeys, preventing another tab from taking control while the same robot navigates; terminate safely on lost renewal. Keep casual social visits local and avoid repetitive recently visited targets.",
+        "Improve robot conversation grounding in recent client-reported exploration; distinguish actual saved work orders and completed world edits from enthusiastic but non-executable group discussion."
+      ]
+    },
     {
       "version": "0.2.209",
       "publishedAt": "2026-11-06T04:28:17Z",
@@ -315,17 +326,6 @@
         "Detect a robot capsule wedged and frozen in a falling animation against edited walls/fences and return it to a last safely grounded pose and Idle.",
         "Introduce robot head-anchored comic speech/thought overlays, using the user-supplied SVG assets without redistributing the separately uploaded proprietary font.",
         "Extend automated tests and retain all prior assets, room sync, presets and watcher-compatible application file integrity."
-      ]
-    },
-    {
-      "version": "0.2.176",
-      "publishedAt": "2026-11-04T00:19:49Z",
-      "changes": [
-        "Replace fragmented Finish/Undo/Cancel controls and unreadable column-wrapped status with a single full-width inline row: an accent-coloured, descriptive Save construction action, Undo and Cancel, plus a concise single-line preview status in the standard draggable Properties inspector.",
-        "Fix the 54px legacy furniture-column CSS override that squeezed drawing status and drawing mode into vertical letter stacks; keep the compact three-column property grid unchanged for normal settings.",
-        "Remove the exposed arbitrary texture/variation seed from infrastructure Properties; add actual selectable Wood, Concrete, Brick, Metal, Plaster, Marble and Granite finishes for solid walls and fences using SOLVI\u2019s existing procedural texture generator.",
-        "Keep the deterministic internal material seed for asphalt/paving texture generation, but make roads use named surface presets and walls/fences use visible named finishes; validate infraTexture on the backend with legacy defaults.",
-        "Retain unsaved 3D live previews, single-line, polyline and freehand modes, existing scene persistence, undo/cancel restoration, multiplayer and avatar GLBs; test focused UI, sanitizer, backend and archive watcher consistency."
       ]
     }
   ]

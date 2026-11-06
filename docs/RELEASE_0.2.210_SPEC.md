@@ -1,0 +1,28 @@
+# SOLVI.help v0.2.210 — adaptive fence navigation and route-aware autonomy
+
+## Problem demonstrated in 2026-11-06 Lemox logs
+- Straight red path through a white fence was a **debug rendering artefact**, not a viable A* path. Old overlay joined the robot to a failed destination even on `blocked`.
+- Several proposed routes across the same fence returned `blocked` with zero distance, zero segments, zero replans. The idle-life scheduler then abandoned the original attempt and chose unrelated objects.
+- v0.2.209 A* detour window capped the navigation grid at 225 cells per axis and at most 50m extra margin. Tests reproduced success around 40–80m fences but failure at 120m despite reachable physical ends.
+- Longer journeys exceed the 22-second life lease. Without renewal, a second browser could acquire control while the initial long route was in progress.
+- Robot replies referred to an obsolete 3m command rather than later client-reported exploration and spoke of helping build without issuing work orders.
+
+## Implementation
+- In `js/robot-pathfinding.js`, global A* fallbacks expand the search near **actually intersected physical long barriers**, up to a hard 90k grid-cell budget, adaptive 0.65–2.5m grid resolution and 175m detour margin. Impassable routes return `null`. All emitted compressed waypoint segments are sampled against the original full-resolution obstacle footprints. A bounded segmented fallback remains for long non-barrier routes. Terrain or colliders are not modified.
+- `robotRouteCheckpoints` chooses up to three meaningful turns near physical fence/pathWall/hedge/wall footprints. Editor stores them as ephemeral mission metadata. A robot stops for ~1.4 seconds at each reached checkpoint, retains the original goal, rescans local geometry and may replan if later legs are obstructed. If a new valid path cannot be found, the robot explicitly reports `blocked`, not arrival.
+- When an opt-in `initiativeMove` life route reaches a checkpoint, `js/robot-life.js` gathers up to three local head-camera JPEGs at relative yaw −55/0/+55 degrees. The existing server `/api/robots/perception/start` reservation may allow one Meta model interpretation of the forward JPEG; this **shares** the old 120-second per-robot cooldown, shared user cooldown, daily use limit and authenticated permissions. No unbounded model calls and no model-controlled position writes. `/complete` may include a verified, client-reported life-task lease so the model has the route objective without calling it independent camera evidence.
+- Debug now shows green actual safe path, cyan measured travel and red footprints/blocked target ring; never a red traversable-looking straight line to an unreachable target.
+- `/api/robots/life/lease` accepts `renew=true` with an exact active unconsumed token and same authenticated operator; heartbeat renews before 22s expiry, rejects stale/unauthorized/replayed tokens. Client immediately interrupts only its **matching** life mission when renewal fails, not a later human command.
+- `planRobotMeeting` caps casual visits at 90m actual route distance; direct long commands and exploration remain separate. Last 36 targets are avoided to reduce frequent returns to the same torus. Spoken replies are prompted with the most recent client-reported activity rather than implying old 3m walks were the only progress. An `@all` suggestion does not alone authorize scene edits: actual builds still require explicitly enabled saved agent work orders and scene permissions.
+
+## Test plan
+1. Put an opted-in Lemox near a white picket fence, request travel to an existing object across it. Green path must go all the way around its real end (possibly >100m), never intersecting the fence. Arrival requires measured position; blocked stays blocked.
+2. Enable path-debug. With a truly unreachable destination see a red ring/footprints only and no red line cutting across the fence. When a valid detour exists, see green bends and cyan actual travel.
+3. During a long valid detour, inspect `BARRIER CHECKPOINT`, raw JPEG gallery, optional `META BARRIER OBSERVATION` subject to budget. Verify the same task ID and destination survive each pause, and a new moved fence is re-read before walking further.
+4. With two clients and the same robot, confirm one life lease is renewed throughout a longer-than-22-second journey; a second client cannot start duplicate routes. Lose ownership or disable activity: no autonomous movement should continue.
+5. Add a new obstacle after initial route planning; robot must replan to a different collision-free path or explicitly stop `blocked`, without cutting the new geometry.
+6. Confirm human chat commands and enabled saved work orders still preempt life. Existing scenes, backpack, held equipment, avatars and room state remain unchanged.
+7. If the user wants parks and playgrounds actually built, explicitly start a goal-oriented **Autonomous agent work order** and enable its **Allow scene changes** flag. The v0.2.210 life scheduler itself does not automatically construct objects from group-chat encouragement.
+
+## Verification / limits
+Source verification: 1,018/1,018 JavaScript regressions, six of six standalone backend checks, 13 Python AST checks and installer/watcher shell syntax. Fresh ZIP extraction/checksum verification follows packaging. This sandbox cannot verify Flask HTTP integration, real Meta model perception, browser WebGL/physics timing, or live two-client synchronization. Do not state the release has been deployed until the existing Mac watcher completes. No database migration, external JS package, 3D asset changes, avatar resets, scene resets, or production credential changes.

@@ -16,6 +16,7 @@ test('path overlays show planned and failed routes, and are accessible via debug
  assert.match(editor,/syncRobotPathDebug/);
  assert.match(studio,/solviEditor\?\.syncRobotPathDebug\(\)/);
  assert.match(visual,/DEBUG_TRAIL_MS=15000/);
- assert.match(visual,/blocked\?0xff5353:0x66ff95/);
+ assert.match(visual,/if\(!blocked&&points\.length>1\)group\.add\(ribbon/);
+ assert.match(visual,/blocked\?0xff5353:0xffc45d/);
  assert.match(read('index.html'),/id="robotPathDebugStatus"/);
 });

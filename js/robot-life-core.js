@@ -1,4 +1,4 @@
-// v0.2.209: pure, bounded local exploration policy. Never treats the scene
+// v0.2.210: pure, bounded local exploration policy. Never treats the scene
 // index as visual evidence; all movement is checked by the existing A* router.
 export const LIFE_TICK_MS=6000;
 export const LIFE_LEASE_MS=22000;
@@ -12,7 +12,7 @@ const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 export function lifeCandidates(robot,objects=[],history=[],step=0){
  const here=robot?.position;
  if(!here||![here.x,here.z].every(Number.isFinite))return [];
- const past=new Set(history.slice(-12).map(h=>String(h.targetId||'')));
+ const past=new Set(history.slice(-36).map(h=>String(h.targetId||'')));
  const nearby=(objects||[]).filter(o=>o!==robot&&o?.userData?.editorId&&
    o.visible!==false&&o.position&&[o.position.x,o.position.z].every(Number.isFinite)&&
    !['light','floor','ceiling','wall'].includes(o.userData.editorKind)&&

@@ -28,7 +28,7 @@ import {stairGeometryKey} from './stair-extensions.js';
 import {makePortal,rebuildPortal} from './portal-geometry.js';
 import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
-import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach} from './robot-pathfinding.js';
+import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach,robotRouteCheckpoints} from './robot-pathfinding.js';
 import {planRobotMeeting,canMeetRobot,remainingRouteBlocked} from './robot-social-navigation.js';
 import {findRobotWorksite,footprintClear} from './robot-worksite.js';
 import {infrastructureSegments} from './procedural-infrastructure.js';
@@ -2604,7 +2604,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       if(arrived||o.userData.robotMission&&now-(o.userData.lastMissionSave||0)>900){
         o.userData.lastMissionSave=now;this.queueSave(o);
       }
-    },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),refreshRoute:robot=>this.refreshRobotRoute(robot),avoidRobot:(robot,other)=>this.avoidMovingRobot(robot,other),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot),seat:(robot,id)=>{const target=this.items.find(o=>o.userData.editorId===id);return target?takeSeat(robot,target,this):false;}}));
+    },{navigate:(robot,target)=>this.routeRobot(robot,target),recover:(robot,reason)=>this.recoverRobot(robot,reason),refreshRoute:robot=>this.refreshRobotRoute(robot),checkpoint:(robot,point)=>this.inspectRobotRouteCheckpoint(robot,point),avoidRobot:(robot,other)=>this.avoidMovingRobot(robot,other),push:(robot,other,next,step)=>this.physics.tryPushRobot(robot,other,next,step),retarget:robot=>this.retargetRobot(robot),seat:(robot,id)=>{const target=this.items.find(o=>o.userData.editorId===id);return target?takeSeat(robot,target,this):false;}}));
     // Move kinematic transport platforms and cabin riders before evaluating
     // character gravity, on both the lift operator and the robot owner's tab.
     tickStairTransport(this,dt);
@@ -2762,7 +2762,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   // Same live editor geometry drives the minimap and route planner. Footprints
   // are kept clear of robots and furniture; navigation never pushes objects.
   robotPathDebugVisible(robot){return robotPathVisible(robot?.userData?.editorId,sessionStorage);}
-  updateRobotDebugStatus(){const label=byId('robotPathDebugStatus'),robot=this.robot();if(!label)return;label.hidden=!robot||!this.robotPathDebugVisible(robot);if(label.hidden)return;const route=robot.userData.robotDebugRoute;label.textContent=!route?'Route debug ready — start a robot walking mission to see its actual planned path.':route.blocked?'No valid route — red attempted destination and obstacle footprints.':route.finished?'Previous route shown briefly after the mission ended.':'Green: A* planned route · cyan: actual travelled trail · red: obstacles · orange: destination; blue shows direction, not camera evidence.';}
+  updateRobotDebugStatus(){const label=byId('robotPathDebugStatus'),robot=this.robot();if(!label)return;label.hidden=!robot||!this.robotPathDebugVisible(robot);if(label.hidden)return;const route=robot.userData.robotDebugRoute;label.textContent=!route?'Route debug ready — start a robot walking mission to see its actual planned path.':route.blocked?'No valid route — red destination ring only; there is no traversable line.':route.finished?'Previous route shown briefly after the mission ended.':'Green: A* planned route · cyan: actual travelled trail · red: obstacles · orange: destination; blue shows direction, not camera evidence.';}
   syncRobotPathDebug(){for(const robot of this.items.filter(o=>o.userData.editorKind==='robot')){const route=robot.userData.robotDebugRoute;if(this.robotPathDebugVisible(robot)&&route&&!route.finished)updateRobotPathDebug(this.world,robot,route);else if(!this.robotPathDebugVisible(robot))clearRobotPathDebug(this.world,robot.userData.editorId);}this.updateRobotDebugStatus();}
   navigationObstacles(robot){
     this.world.scene.updateMatrixWorld(true);
@@ -2827,6 +2827,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
       this.toast(`${robot.name}: no collision-free route found`);return false;
     }
     robot.userData.robotWaypoints=waypoints.slice(1);
+    robot.userData.robotRouteCheckpointHoldUntil=0;
+    robot.userData.robotRouteCheckpoints=robotRouteCheckpoints(start,waypoints,obstacles);
     robot.userData.robotProgressSample=null;
     robot.userData.robotPathObstacles=obstacles;
     if(!preserveMission)robot.userData.robotRecoveryAttempts=0;
@@ -2846,11 +2848,43 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     window.dispatchEvent(new CustomEvent('solvi:robot-route',{detail:{robotId:robot.userData.editorId,name:robot.name,status:'planned',target:robot.userData.robotMission?.targetName||'',obstacles:obstacles.length,waypoints:waypoints.length,
       start,destination:{x:point.x,z:point.z},taskId:robot.userData.robotMission?.taskId||'',
       plannedMeters:typeof plannedRouteLength==='function'?plannedRouteLength(start,waypoints):0,
+      checkpoints:robot.userData.robotRouteCheckpoints.length,
       plan:{waypoints:waypoints.map(p=>({x:p.x,z:p.z})),obstacles:obstacles.map(o=>({minX:o.minX,maxX:o.maxX,minZ:o.minZ,maxZ:o.maxZ}))}}}));
     setRobotDestination(robot,waypoints[0]);return true;
   }
   // Commands are issued by the authenticated chat endpoint and resolved against
   // the same room scene. The client still checks editable state and targets.
+  inspectRobotRouteCheckpoint(robot,reached){
+    const points=robot?.userData?.robotRouteCheckpoints;
+    if(!robot||!Array.isArray(points)||!points.length)return false;
+    const index=points.findIndex(p=>Math.hypot(p.x-reached.x,p.z-reached.z)<.20);
+    if(index<0)return false;
+    const current=points[index];points.splice(0,index+1);
+    const destination=robot.userData.robotRouteDestination;
+    const mission=robot.userData.robotMission;
+    const remaining=destination?Math.hypot(destination.x-robot.position.x,destination.z-robot.position.z):0;
+    window.dispatchEvent(new CustomEvent('solvi:robot-route-checkpoint',{detail:{
+      room:this.roomId||'',robotId:robot.userData.editorId,taskId:mission?.taskId||'',
+      point:{x:robot.position.x,z:robot.position.z},destination,
+      remainingMeters:+remaining.toFixed(1),checkpoint:current.metres,
+      reason:'Reached collision-checked barrier detour waypoint; inspect surroundings and retain original goal'}}));
+    // A new object may now obstruct the rest of a multi-part route. Replan
+    // from the measured position, preserving mission ID and final goal.
+    if(!destination||!mission)return false;
+    const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
+    const onward=robot.userData.robotWaypoints||[];
+    if(!remainingRouteBlocked({x:robot.position.x,z:robot.position.z},onward[0]||destination,onward.slice(1),obstacles))return 'scan';
+    if(this.routeRobot(robot,destination,{preserveMission:true,quiet:true}))return true;
+    // The world changed while the agent was inspecting a barrier. Never use
+    // the now-invalid original waypoints, or report the final goal completed.
+    robot.userData.robotGoal=null;robot.userData.robotWaypoints=null;
+    robot.userData.robotRouteCheckpoints=[];robot.userData.robotPathObstacles=null;
+    robot.userData.robotMission=null;robot.userData.robotMode='idle';
+    window.dispatchEvent(new CustomEvent('solvi:robot-task-update',{detail:{
+      robot:robot.name,robotId:robot.userData.editorId,taskId:mission.taskId,
+      target:mission.targetName,status:'blocked',reason:'Remaining detour obstructed at observation checkpoint'}}));
+    return true;
+  }
   avoidMovingRobot(robot,other){
     const mission=robot?.userData?.robotMission;
     if(!mission||!other||!this.canEdit(robot))return false;

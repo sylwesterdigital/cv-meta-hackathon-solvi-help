@@ -153,7 +153,19 @@ export function tickRobots(items,dt,onMove=()=>{}){
         onMove(robot,false);continue;
       }
       if(distance<.07){
-        if(robot.userData.robotWaypoints?.length){const point=robot.userData.robotWaypoints.shift();setRobotDestination(robot,point);onMove(robot,false);continue;}
+        if(robot.userData.robotWaypoints?.length){
+          // Allow a short actual head-camera scan while stopped at the fence
+          // end. Movement then resumes toward the ORIGINAL destination.
+          if(robot.userData.robotRouteCheckpointHoldUntil&&Date.now()<robot.userData.robotRouteCheckpointHoldUntil){onMove(robot,false);continue;}
+          if(robot.userData.robotRouteCheckpointHoldUntil){robot.userData.robotRouteCheckpointHoldUntil=0;}
+          else{
+            const reached={x:robot.userData.robotGoal.x,z:robot.userData.robotGoal.z};
+            const check=onMove.checkpoint?.(robot,reached);
+            if(check===true){onMove(robot,false);continue;}
+            if(check==='scan'){robot.userData.robotRouteCheckpointHoldUntil=Date.now()+1400;onMove(robot,false);continue;}
+          }
+          const point=robot.userData.robotWaypoints.shift();setRobotDestination(robot,point);onMove(robot,false);continue;
+        }
         if(onMove.retarget?.(robot)){onMove(robot,false);continue;}
         robot.userData.robotWaypoints=null;robot.userData.robotPathObstacles=null;robot.userData.robotRecoveryAttempts=0;
         robot.userData.robotGoal=null;mode='idle';robot.userData.robotMode='idle';robot.userData.robotArrived=true;

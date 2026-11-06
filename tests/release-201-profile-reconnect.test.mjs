@@ -53,7 +53,7 @@ test('profile sign-in is recoverable, backend-first, and scene startup is not ho
  assert.ok(!studio.slice(start,end).includes("api.req('/api/models'"),'AI catalog must not block sign-in');
  assert.match(studio,/finally\{\s*if\(auth&&me\)\{\s*window\.dispatchEvent\(new CustomEvent\('solvi:scene-ready'\)\)/);
  assert.match(studio,/Sign-in failed:/);
- assert.match(html,/profile-session-ownership\.js\?v=0\.2\.209/);
+ assert.match(html,/profile-session-ownership\.js\?v=0\.2\.210/);
 });
 
 import vm from 'node:vm';

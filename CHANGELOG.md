@@ -1,3 +1,12 @@
+# v0.2.210 — Adaptive long-fence route planning and robot checkpoint autonomy (2026-11-06)
+
+- Fix false red straight planned path through blocked fences: red ring now marks failed destination only; green is A* path and cyan is measured progress.
+- Expand bounded A* around physical long fences, walls and hedges with adaptive grids; staged waypoints can lead around 120–320m barriers with collision verification at the underlying full-resolution footprints.
+- Scan and replan at meaningful barrier turns without dropping the original destination or claiming an uncompleted arrival. Optional Meta head-image interpretation respects existing perception quotas.
+- Renew owner-authenticated life lease on long journeys; safely stop matching life missions if lost. Limit very long casual social detours and reduce repetitive exploration targets.
+- Prefer recent client-reported movement to older chat in robot conversations. Building remains a separately authorised work-order operation, not a result of an @all invitation by itself.
+- Preserve data, GLB/media, inventory, tools, permissions and all other existing features. No SQLite migration.
+
 # v0.2.209 — Opt-in active exploration and robot-to-robot visits (2026-11-06)
 
 - Add a separately enabled six-second **life loop** for idle, editable robots. The loop plans a real 11–19m exploration route or a novel object/peer approach, using existing A* collision checks and locomotion.

@@ -1,5 +1,5 @@
 // Scene footprint planner shared by autonomous robot missions and the minimap.
-// 8-connected A* on a 0.45m grid, with clearance for robot width and obstacle
+// 8-connected A* on an adaptive grid, with clearance for robot width and obstacle
 // footprints. Each diagonal checks both adjacent cells to prevent corner cuts.
 // All inputs and outputs are planar metres; no Three.js dependency.
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -8,23 +8,29 @@ export function pathBlocked(x,z,obstacles=[],clearance=0.30){
 }
 export function planRobotPath(start,end,obstacles=[],options={}){
  if(![start?.x,start?.z,end?.x,end?.z].every(Number.isFinite))return null;
- const cell=clamp(Number(options.cell)||.45,.2,1),clearance=clamp(Number(options.clearance)||.30,.15,.9);
+ const cell=clamp(Number(options.cell)||.45,.2,2.5),clearance=clamp(Number(options.clearance)||.30,.15,.9);
  const direct=Math.hypot(end.x-start.x,end.z-start.z);
  if(direct<.10)return [{x:end.x,z:end.z}];
  // The grid covers the route and a 5m detour on both sides, bounded for performance.
- const extra=Number.isFinite(options.extra)?clamp(options.extra,3.5,55):clamp(direct*.35+2.4,3.5,8);
+ const extra=Number.isFinite(options.extra)?clamp(options.extra,3.5,240):clamp(direct*.35+2.4,3.5,8);
  const minX=Math.min(start.x,end.x)-extra,minZ=Math.min(start.z,end.z)-extra;
  const maxX=Math.max(start.x,end.x)+extra,maxZ=Math.max(start.z,end.z)+extra;
  const nx=Math.ceil((maxX-minX)/cell)+1,nz=Math.ceil((maxZ-minZ)/cell)+1;
- const maxCells=Math.min(36000,Math.max(8500,Number(options.maxCells)||8500));
- if(nx>225||nz>225||nx*nz>maxCells)return null;
+ const maxCells=Math.min(90000,Math.max(8500,Number(options.maxCells)||8500));
+ if(nx>550||nz>550||nx*nz>maxCells)return null;
  const index=(x,z)=>z*nx+x;
  const at=(x,z)=>({x:minX+x*cell,z:minZ+z*cell});
  const sx=clamp(Math.round((start.x-minX)/cell),0,nx-1),sz=clamp(Math.round((start.z-minZ)/cell),0,nz-1);
  const ex=clamp(Math.round((end.x-minX)/cell),0,nx-1),ez=clamp(Math.round((end.z-minZ)/cell),0,nz-1);
  const blocks=new Uint8Array(nx*nz);
- for(let z=0;z<nz;z++)for(let x=0;x<nx;x++){
-  const p=at(x,z);blocks[index(x,z)]=pathBlocked(p.x,p.z,obstacles,clearance)?1:0;
+ // Rasterise each actual physical footprint into occupied grid centres. A
+ // kilometre-long picket fence may have hundreds of segments; scanning every
+ // footprint for every cell made the expanded detour grid needlessly slow.
+ for(const o of obstacles){
+  if(![o.minX,o.maxX,o.minZ,o.maxZ].every(Number.isFinite))continue;
+  const x0=clamp(Math.ceil((o.minX-clearance-minX)/cell),0,nx),x1=clamp(Math.floor((o.maxX+clearance-minX)/cell),-1,nx-1);
+  const z0=clamp(Math.ceil((o.minZ-clearance-minZ)/cell),0,nz),z1=clamp(Math.floor((o.maxZ+clearance-minZ)/cell),-1,nz-1);
+  for(let z=z0;z<=z1;z++)for(let x=x0;x<=x1;x++)blocks[index(x,z)]=1;
  }
  // Allow initial position even if a geometry bounding box overlaps the robot.
  blocks[index(sx,sz)]=0;
@@ -128,6 +134,36 @@ export function planRobotTravelRoute(start,end,obstacles=[],options={}){
    if(exact(wide,end))return wide;
   }
  }
+ // Physically long, narrow barriers require looking for their *ends*, not
+ // repeatedly trying small lateral offsets beside the same fence. Widen the
+ // search symmetrically and coarsen the grid within a fixed 90k-cell budget.
+ // This global pass handles 100m+ fences, including diagonal infrastructure.
+ // Any resulting route is verified segment-by-segment against full-resolution
+ // scene footprints; an unsafe or inexact result is discarded.
+ const crossesRect=(o)=>{
+  if(![o.minX,o.maxX,o.minZ,o.maxZ].every(Number.isFinite))return false;
+  const dx=end.x-start.x,dz=end.z-start.z;
+  let low=0,high=1;
+  for(const [a,d,min,max] of [[start.x,dx,o.minX-clearance,o.maxX+clearance],
+                              [start.z,dz,o.minZ-clearance,o.maxZ+clearance]]){
+   if(Math.abs(d)<1e-9){if(a<min||a>max)return false;continue;}
+   const t1=(min-a)/d,t2=(max-a)/d;
+   low=Math.max(low,Math.min(t1,t2));high=Math.min(high,Math.max(t1,t2));
+   if(high<low)return false;
+  }
+  return true;
+ };
+ const longBarrierCrossing=obstacles.some(o=>(['fence','hedge','pathWall'].includes(o.kind)||
+   Math.max(o.maxX-o.minX,o.maxZ-o.minZ)>=26)&&crossesRect(o));
+ if(distance<=250&&options.longDetour!==false&&longBarrierCrossing){
+  for(const extra of [65,95,135,175]){
+   const spanX=Math.abs(end.x-start.x)+2*extra;
+   const spanZ=Math.abs(end.z-start.z)+2*extra;
+   const cell=Math.min(2.5,Math.max(.65,Math.max(spanX,spanZ)/360,Math.sqrt(spanX*spanZ/72000)));
+   const wide=planRobotPath(start,end,obstacles,{...options,extra,cell,maxCells:90000});
+   if(exact(wide,end))return wide;
+  }
+ }
  const maxDepth=Math.max(3,Math.ceil(Math.log2(Math.max(1,distance/maxLeg)))+3);
  let searches=0;
  const budget=Number(options.searchBudget)||95;
@@ -153,6 +189,35 @@ export function planRobotTravelRoute(start,end,obstacles=[],options={}){
   return null;
  };
  return split(start,end,0);
+}
+
+
+// Progress checkpoints are physical bends alongside a long obstruction, not
+// arbitrary straight-line percentages. The moving robot can look around and
+// re-read the scene at these points without losing its final destination.
+// This function is pure: it does not authoritatively mark the obstacle visible
+// in a camera image, and it never turns an incomplete route into an arrival.
+export function robotRouteCheckpoints(start,waypoints=[],obstacles=[]){
+ if(!start||waypoints.length<3||!obstacles.some(o=>['fence','pathWall','hedge','wall','runtime-contact'].includes(o.kind)))return [];
+ const total=plannedPathLength(start,waypoints);
+ if(total<16)return [];
+ const result=[];let distanceAlong=0,lastScan=0;
+ for(let i=0;i<waypoints.length-1;i++){
+  const prev=i?waypoints[i-1]:start,at=waypoints[i],next=waypoints[i+1];
+  const ax=at.x-prev.x,az=at.z-prev.z,bx=next.x-at.x,bz=next.z-at.z;
+  const incoming=Math.hypot(ax,az),outgoing=Math.hypot(bx,bz);
+  distanceAlong+=incoming;
+  if(incoming<.15||outgoing<.15||distanceAlong-lastScan<8||total-distanceAlong<4)continue;
+  const angle=Math.acos(clamp((ax*bx+az*bz)/(incoming*outgoing),-1,1));
+  if(angle<.48)continue;
+  const close=obstacles.some(o=>['fence','pathWall','hedge','wall','runtime-contact'].includes(o.kind)&&
+   Math.hypot(Math.max(o.minX-at.x,0,at.x-o.maxX),Math.max(o.minZ-at.z,0,at.z-o.maxZ))<3.2);
+  if(!close)continue;
+  result.push({x:at.x,z:at.z,metres:Math.round(distanceAlong*10)/10});
+  lastScan=distanceAlong;
+  if(result.length>=3)break;
+ }
+ return result;
 }
 
 // Compare planned stair approaches by the REAL routed distance, not straight-line

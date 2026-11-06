@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {planRobotPath, planRobotTravelRoute, pathBlocked} from '../js/robot-pathfinding.js';
+import {planRobotPath, planRobotTravelRoute, pathBlocked, robotRouteCheckpoints} from '../js/robot-pathfinding.js';
 import {checkRobotWalkingProgress} from '../js/robot-progress-watchdog.js';
 const source=rel=>readFileSync(new URL('../'+rel,import.meta.url),'utf8');
 const editor=source('js/editor.js'),robots=source('js/robots.js'),html=source('index.html'),backend=source('backend/server.py'),styles=source('styles.css');
@@ -20,7 +20,7 @@ function harness(obstacles=[]){
  class CustomEvent{constructor(name,{detail}){this.detail=detail;}}
  const win={dispatchEvent(event){events.push(event.detail);}};
  const dest=(robot,p)=>{robot.userData.robotGoal=new Vector(p.x,robot.position.y,p.z);robot.userData.robotMode='walk';};
- const route=new Function('planRobotTravelRoute','pathBlocked','setRobotDestination','window','CustomEvent',`return function routeRobot(robot,point){${pathSrc}`)(planRobotTravelRoute,pathBlocked,dest,win,CustomEvent);
+ const route=new Function('planRobotTravelRoute','pathBlocked','robotRouteCheckpoints','setRobotDestination','window','CustomEvent',`return function routeRobot(robot,point){${pathSrc}`)(planRobotTravelRoute,pathBlocked,robotRouteCheckpoints,dest,win,CustomEvent);
  const editorStub={navigationObstacles:()=>obstacles,toast:()=>{},routeRobot:route};
  const tickSrc=robots.split('export function tickRobots(items,dt,onMove=()=>{}){')[1]?.split('\nexport function setRobotDestination(')[0];
  const tick=new Function('clamp','setRobotDestination','pathBlocked','window','CustomEvent','performance','checkRobotWalkingProgress',`return function tickRobots(items,dt,onMove=()=>{}){${tickSrc}`)((x,a,b)=>Math.max(a,Math.min(b,x)),dest,pathBlocked,win,CustomEvent,performance,checkRobotWalkingProgress);

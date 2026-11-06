@@ -36,6 +36,11 @@ export function planRobotMeeting(start,target,staticObstacles=[],options={}){
    const waypoints=planRobotTravelRoute(start,point,solid,options);
    if(!waypoints?.length||Math.hypot(waypoints.at(-1).x-point.x,waypoints.at(-1).z-point.z)>.14)continue;
    const length=plannedPathLength(start,waypoints);
+   // A colleague a few metres away is NOT a 200m social expedition around
+   // the end of a regional fence. Explicit building/navigation missions can
+   // use the unrestricted general router; casual meetings remain local.
+   const maximumJourney=Number.isFinite(options.maxTravel)?Math.max(8,Math.min(300,options.maxTravel)):90;
+   if(length>maximumJourney)continue;
    // Prefer physically shorter route, not the closest straight-line spot
    // outside the wall. Each destination has clear final contact with target.
    const score=length+radius*.06;

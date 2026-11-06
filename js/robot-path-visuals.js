@@ -46,8 +46,10 @@ export function updateRobotPathDebug(world,robot,{start,waypoints=[],obstacles=[
  const group=new THREE.Group();group.name='debug-'+id;group.userData.robotId=id;
  const origin=start||{x:robot.position.x,z:robot.position.z},dest=destination||waypoints.at(-1);
  const points=[origin,...waypoints];
- if(dest&&(!points.length||Math.hypot(points.at(-1).x-dest.x,points.at(-1).z-dest.z)>.01))points.push(dest);
- if(points.length>1)group.add(ribbon(points,blocked?0xff5353:0x66ff95,.11));
+ // Never join the robot to an unreachable endpoint with a false red route.
+ // Red means blocked destination/obstacle; green alone represents A* path.
+ if(!blocked&&dest&&(!points.length||Math.hypot(points.at(-1).x-dest.x,points.at(-1).z-dest.z)>.01))points.push(dest);
+ if(!blocked&&points.length>1)group.add(ribbon(points,0x66ff95,.11));
  for(const obstacle of obstacles.slice(0,80))group.add(ribbon(rect(obstacle),0xff746c,.048,{closed:true,y:.085,opacity:.75}));
  if(dest){group.add(ring(dest,.4,blocked?0xff5353:0xffc45d));if(!blocked)group.add(sector(origin,dest));}
  const realTrail=new THREE.Group();realTrail.name='actual-travelled-trail';group.add(realTrail);

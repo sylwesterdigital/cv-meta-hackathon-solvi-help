@@ -1,9 +1,9 @@
-// v0.2.209: owner-authorised, browser-only idle life. Inference is NOT invoked
+// v0.2.210: owner-authorised, browser-only idle life and long-route renewals. Inference is NOT invoked
 // every six seconds; Meta visual perception and social initiative retain their
 // existing billing/cooldown paths. This module executes real checked routes.
 import {lifeCanStart,lifeCandidates,lifeResult,LIFE_TICK_MS} from './robot-life-core.js';
 import {emitBrainTrace,rememberRobotObservationFrame} from './robot-brains.js';
-import {captureRobotView} from './robots.js';
+import {captureRobotView,interruptRobotMission} from './robots.js';
 export function initRobotLife({editor,api,room,canRun,workOrderActive=()=>false,postDiscussion}){
  const state=new Map();let cursor=0,busy=false;
  const current=bot=>state.get(bot.userData.editorId)||{step:0,history:[],nextAt:0,active:null,contacts:new Map()};
@@ -14,7 +14,7 @@ export function initRobotLife({editor,api,room,canRun,workOrderActive=()=>false,
   const mission=life.active;life.active=null;
   const result=lifeResult(status.status,mission.start,bot.position);
   life.history.push({targetId:mission.candidate.targetId,point:mission.candidate.point,status:result.status});
-  life.history=life.history.slice(-20);
+  life.history=life.history.slice(-60);
   life.nextAt=Date.now()+(result.moved?6000:22000);
   const detail=`${result.status} · ${result.metres}m actual displacement · ${mission.candidate.targetName}`;
   trace(bot,result.moved?'TRAVELLED':'ROUTE RESULT',detail);
@@ -47,6 +47,49 @@ export function initRobotLife({editor,api,room,canRun,workOrderActive=()=>false,
   if(life?.active?.taskId===event.taskId&&['arrived','partial','blocked','failed','stopped'].includes(event.status))void completed(bot,life,event);
  };
  window.addEventListener('solvi:robot-task-update',handler);
+ // Major physical bends are a chance to collect new evidence. This is a
+ // bounded raw-head-camera sweep at the ACTUAL detour point, not a paid model
+ // interpretation, fabricated sighting, or permission to change the scene.
+ const checkpointHandler=e=>{
+  const event=e.detail||{},bot=editor.items.find(o=>o.userData.editorId===event.robotId);
+  const life=bot&&state.get(event.robotId);
+  if(!bot||!life?.active||event.taskId!==life.active.taskId||!canRun()||room()!==life.active.room)return;
+  const mission=life.active;
+  if((mission.scans||0)>=2||!editor.canEdit(bot))return;
+  mission.scans=(mission.scans||0)+1;
+  trace(bot,'BARRIER CHECKPOINT',`Reached verified detour at (${bot.position.x.toFixed(1)}, ${bot.position.z.toFixed(1)}); ${event.remainingMeters}m remain to the SAME target. Local head-camera sweep, then continue navigation.`);
+  void (async()=>{
+   let forward=null;
+   for(const yaw of [-55,0,55]){
+    if(!canRun()||room()!==mission.room||bot.userData.robotMission?.taskId!==mission.taskId)break;
+    try{const frame=await captureRobotView(editor.world,bot,{yawOffset:yaw*Math.PI/180,pitchDegrees:-12});
+     if(frame?.size){rememberRobotObservationFrame(event.robotId,frame,
+       `Barrier checkpoint · raw JPEG · relative head yaw ${yaw}° · not Meta-analysed`);
+      if(yaw===0)forward=frame;}
+    }catch(error){trace(bot,'ROUTE SCAN UNAVAILABLE',error.message);break;}
+   }
+   // Reuse the server's existing 120-second perception reservation, per-user
+   // cooldown and daily budget. A checkpoint is prioritised, not an uncapped
+   // new Meta call. Model text NEVER directly drives navigation or scene edits.
+   if(!forward||bot.userData.robotBrain?.initiativeVision===false||!canRun()||room()!==mission.room||
+       bot.userData.robotMission?.taskId!==mission.taskId)return;
+   try{
+    const permit=await api.req('/api/robots/perception/start',{method:'POST',body:JSON.stringify({room:mission.room,robot_id:event.robotId})});
+    if(!permit.ready)return;
+    if(!canRun()||room()!==mission.room||bot.userData.robotMission?.taskId!==mission.taskId)return;
+    const form=new FormData();form.append('room',mission.room);form.append('robot_id',event.robotId);
+    form.append('token',permit.token);form.append('life_task_id',mission.taskId);
+    form.append('life_target_id',mission.candidate.targetId||'');
+    form.append('frame',forward,'fence-checkpoint.jpg');
+    const observation=await api.req('/api/robots/perception/complete',{method:'POST',body:form});
+    if(observation.observed){bot.userData.lastCameraObservation={text:observation.observation,at:observation.observed_at};
+     trace(bot,'META BARRIER OBSERVATION',`${observation.observation} · model usage ~US$${Number(observation.usage?.estimated_usd||0).toFixed(6)} · navigation remains geometry-checked`);
+     if(observation.inference)trace(bot,'PERCEPTION MODEL I/O (text + frame reference)',observation.inference);
+    }
+   }catch(error){trace(bot,'META ROUTE SCAN UNAVAILABLE',error.message);}
+  })();
+ };
+ window.addEventListener('solvi:robot-route-checkpoint',checkpointHandler);
  async function tick(){
   if(busy||!canRun()||editor.world?.renderer?.xr?.isPresenting)return;
   const robots=editor.items.filter(o=>lifeCanStart(o,{controlled:editor.controlledRobot?.()===o,workOrder:workOrderActive(o.userData.editorId)})&&editor.canEdit(o));
@@ -69,7 +112,7 @@ export function initRobotLife({editor,api,room,canRun,workOrderActive=()=>false,
     bot.userData.robotMission={kind:'life',taskId,targetName:candidate.targetName};
     const start={x:bot.position.x,z:bot.position.z};
     if(editor.routeRobot(bot,candidate.point)){
-     life.active={taskId,candidate,start,room:roomId,started:Date.now()};
+     life.active={taskId,candidate,start,room:roomId,started:Date.now(),renewAt:Date.now()+10000,renewing:false};
      life.nextAt=Date.now()+22000;
      trace(bot,'DECIDED',`Exploring ${candidate.targetName}; ${Math.hypot(candidate.point.x-start.x,candidate.point.z-start.z).toFixed(1)}m route requested, not yet completed.`);
      return;
@@ -79,20 +122,38 @@ export function initRobotLife({editor,api,room,canRun,workOrderActive=()=>false,
     bot.userData.robotMission=null;
     life.history.push({targetId:candidate.targetId,point:candidate.point,status:'blocked'});
    }
-   life.history=life.history.slice(-20);life.nextAt=Date.now()+22000;
+   life.history=life.history.slice(-60);life.nextAt=Date.now()+22000;
    trace(bot,'BLOCKED','No reachable novel destination from the current surroundings; retrying after a pause.');
   }catch(error){life.nextAt=Date.now()+30000;trace(bot,'UNAVAILABLE',error.message);}
   finally{busy=false;}
  }
  // A stale local route is only forgotten if the actual mission has ended;
  // otherwise a long trip must never be overwritten by an idle life cycle.
+ async function renew(bot,life,mission){
+  mission.renewing=true;
+  try{
+   const response=await api.req('/api/robots/life/lease',{method:'POST',body:JSON.stringify({
+    room:mission.room,robot_id:bot.userData.editorId,renew:true,task_id:mission.taskId})});
+   if(response.granted!==true)throw Error(response.reason||'Life route lease was not renewed');
+   if(life.active===mission)mission.renewAt=Date.now()+10000;
+  }catch(error){
+   if(life.active!==mission)return;
+   // A lost/denied lease is not permission for another client to keep walking.
+   // Never interrupt a later human mission in this asynchronous callback.
+   if(bot.userData.robotMission?.taskId===mission.taskId)interruptRobotMission(bot);
+   life.active=null;life.nextAt=Date.now()+30000;
+   trace(bot,'LEASE EXPIRED',`${error.message}; stopped autonomous travel without claiming arrival.`);
+  }finally{mission.renewing=false;}
+ }
  const recover=()=>{for(const [id,life] of state){if(!life.active)continue;
   const bot=editor.items.find(o=>o.userData.editorId===id);
-  if(!bot||bot.userData.robotMission?.taskId!==life.active.taskId){life.active=null;life.nextAt=Date.now()+30000;}
+  if(!bot||bot.userData.robotMission?.taskId!==life.active.taskId){life.active=null;life.nextAt=Date.now()+30000;continue;}
+  if(canRun()&&room()===life.active.room&&Date.now()>life.active.renewAt&&!life.active.renewing)
+   void renew(bot,life,life.active);
  }};
  const timer=setInterval(()=>{recover();void tick();},LIFE_TICK_MS);
  window.addEventListener('solvi:room-changed',clear);
  window.addEventListener('solvi:session-lost',clear);
- window.addEventListener('pagehide',()=>{clearInterval(timer);clear();window.removeEventListener('solvi:robot-task-update',handler);});
+ window.addEventListener('pagehide',()=>{clearInterval(timer);clear();window.removeEventListener('solvi:robot-task-update',handler);window.removeEventListener('solvi:robot-route-checkpoint',checkpointHandler);});
  return {tick,clear};
 }

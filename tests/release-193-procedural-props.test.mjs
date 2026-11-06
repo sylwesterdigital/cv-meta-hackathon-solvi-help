@@ -100,10 +100,10 @@ print('validators OK')`;
  assert.match(output.stdout,/validators OK/);
 });
 
-test('module cache and runtime backend now agree on release 0.2.209',()=>{
+test('module cache and runtime backend now agree on release 0.2.210',()=>{
  const html=read('index.html');
- for(const file of ['procedural-tools','interactive-props','procedural-equipment','equipment-media'])assert.ok(html.includes(`./js/${file}.js?v=0.2.209`));
- assert.match(html,/>v0\.2\.209<\/small>/);
- assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.209');
- assert.match(read('backend/server.py'),/version='0\.2\.209'/);
+ for(const file of ['procedural-tools','interactive-props','procedural-equipment','equipment-media'])assert.ok(html.includes(`./js/${file}.js?v=0.2.210`));
+ assert.match(html,/>v0\.2\.210<\/small>/);
+ assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.210');
+ assert.match(read('backend/server.py'),/version='0\.2\.210'/);
 });

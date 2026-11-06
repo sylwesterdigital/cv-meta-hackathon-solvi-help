@@ -43,7 +43,9 @@ test('server grants one authorised robot life lease and validates one-time feedb
  assert.match(runtime,/solvi:robot-task-update/);
  assert.match(runtime,/captureRobotView\(editor\.world,bot/);
  assert.match(runtime,/postDiscussion\(bot,peer/);
- assert.doesNotMatch(runtime,/interruptRobotMission\(|robot\.position\.set\(|robot\.position\.copy\(/);
+ // A denied long-route lease now interrupts only its own life mission.
+ assert.match(runtime,/if\(bot\.userData\.robotMission\?\.taskId===mission\.taskId\)interruptRobotMission\(bot\)/);
+ assert.doesNotMatch(runtime,/robot\.position\.set\(|robot\.position\.copy\(/);
  assert.match(studio,/initRobotLife\(/);
  assert.match(brain,/initiativeMove:\$\('brainsInitiativeMove'\)\.checked/);
  assert.match(html,/id="brainsInitiativeMove"/);
