@@ -1,3 +1,9 @@
+## v0.2.222 — Flat single-colour trait sliders
+
+- Correct the native range track in Safari, Chrome and Firefox so it is a square-ended solid temperature colour, not a coloured pill under a narrow grey line.
+- Replace the ringed thumb with one borderless white circle without shadows; preserve the existing compact row spacing, labels and value output.
+- Styling-only change. All character profiles, relationships, saved scenes, permissions, backend and avatar assets remain unchanged.
+
 ## v0.2.221 — Compact character sliders and value-colour tracks
 
 - All 96 trait sliders occupy one aligned compact row per trait: a changing trait name, full-width single-colour track, and numeric value.

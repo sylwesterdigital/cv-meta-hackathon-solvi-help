@@ -1,4 +1,7 @@
-# SOLVI.help Master LLM Handover — v0.2.221
+# SOLVI.help Master LLM Handover — v0.2.222
+
+## v0.2.222 — Native rectangular slider rendering
+- Shared range track rules were still rendering a grey stripe over the coloured input. Apply the solid value-derived background to WebKit and Gecko native track pseudos, use square edges, and remove thumb borders/shadows. Preserve 96 traits, compact alignment, JSON import/export and settings persistence. No backend migration.
 
 ## v0.2.221 — Compact trait editor and accurate temperature tracks
 - Trait editor rows align name, full-width solid heat-coloured slider, and value horizontally; no row dividers or redundant captions. Colour updates with the current 0–100 value rather than a fixed gradient.

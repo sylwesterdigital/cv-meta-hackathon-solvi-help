@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.221",
+  "currentVersion": "0.2.222",
   "releases": [
+    {
+      "version": "0.2.222",
+      "publishedAt": "2026-11-07T00:45:52Z",
+      "changes": [
+        "Fix compact character sliders to render a single flat solid-colour native track with square ends in Chromium/Safari and Firefox, eliminating the grey inner stripe.",
+        "Use one plain white borderless, shadowless circular thumb while retaining accurate value-dependent blue-to-red track colours and accessible controls.",
+        "Preserve the v0.2.221 trait schema, profiles, saved values, other app features, original assets, scene data and permissions without migrations."
+      ]
+    },
     {
       "version": "0.2.221",
       "publishedAt": "2026-11-07T00:25:55Z",
@@ -301,18 +310,6 @@
         "Add targeted regression tests for chat operator roles, destination targeting, malformed Meta output, hospital task ordering and persistent contacts; preserve existing avatar, ownership, navigation and watcher contracts.",
         "Deployment correction: multi-handle conversation messages (for example @Jessica talk to @Elox) no longer invoke implicit camera capture when the secondary handle is a conversation target. Explicit visual questions and ordinary one-to-one spontaneous camera refresh remain available.",
         "Flask integration regression for two-hop robot dialogue now verifies single addressed recipient and excludes false needs_vision routing; package replaces the original v0.2.189 release rejected before GitHub/Ubuntu publication."
-      ]
-    },
-    {
-      "version": "0.2.188",
-      "publishedAt": "2026-11-04T19:25:16Z",
-      "changes": [
-        "Robot encounters are now wall-aware: candidate meeting points must have an unobstructed physical line to the other avatar, preventing apparent arrivals through a window or solid wall.",
-        "When a robot is inside an Office Wall house, the navigator searches viable paths through actual doorway gaps; sealed rooms remain inaccessible. Near-wall starts can safely move away without clipping masonry.",
-        "Robot avatars no longer act as fixed global navigation obstacles. Runtime collision checks yield temporarily and attempt a bounded detour around moving neighbours without pushing them.",
-        "Active routes recheck real scene geometry for moved furniture or changed doors and retarget moving robots without teleports or false completion.",
-        "Character dialogue is shorter and more conversational, with at most one optional grounded aside; it now receives saved work orders and recent client-reported work results rather than only generic camera summaries.",
-        "New route/door/scene-change regression tests and fully versioned browser import map; existing GitHub/Ubuntu watcher and original avatar binaries unchanged."
       ]
     }
   ]
