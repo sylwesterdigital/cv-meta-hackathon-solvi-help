@@ -1,4 +1,20 @@
-# SOLVI.help Master LLM Handover — v0.2.222
+# SOLVI.help Master LLM Handover — v0.2.224
+
+## v0.2.224 — Recoverable construction and v0.2.223 integration repair (7 November 2026)
+
+- The failed v0.2.223 deployment was caused by a real Flask integration assertion: the missing-key notice intercepted a model-free scene `vision_search` command. `backend/server.py` now returns the deterministic command in that case, while a genuine free-form question without a key still receives the saved, attributed status notice. The original `backend/test_api.py` assertion remains intact and is the watcher acceptance gate.
+- `js/robot-autonomy-policy.js` exports `chatNamedConstructionInstruction`: an explicit, directly addressed human `@Ania ... build a house` request can replace a stale authorised work order. `js/robot-autonomy.js` persists the new local project before running scene tools. Casual conversation is excluded; `editor.canEdit()` and server-side edit permissions remain required.
+- A saved 'array of houses' is limited to three houses, preserving their real IDs. The executor uses existing architecture, floor and furniture tools and can vary supported roof shapes/footprints. On repeated failure it tries at most two real 15 m route-recovery scouts, each followed by a few retried placement probes, then reports a concrete blocker. Completed house IDs grant a fresh bounded attempt budget; there is no infinite failed-build loop.
+- Explicit house construction no longer depends on a successful Meta planning call. Malformed model decision parsing is treated as an invalid proposal rather than exposing a raw TypeError/502. The user-configured planning cooldown continues to apply only to billable model requests.
+- Optional chat design question: after one verified home in a multi-home project, the robot can ask which roof (flat/shed/pyramid) to use next, using a new authenticated `POST /api/robots/autonomy/ask-human` route. No paid model call; no indefinite wait. `@Ania flat roof` is saved and used by the **next** unbuilt house; existing house geometry is not retroactively changed. This is a limited preference workflow, not yet arbitrary TV sizing or a full architectural design engine.
+- All construction, movement, camera, and scene tools still require the visible authenticated browser, physical route verification, object-edit permission and actual server saved receipts. No model-proposed action or conversational response counts as completed construction.
+
+## v0.2.223 — Transparent Meta access fallback (7 November 2026)
+
+- When a named robot hears an authenticated user but has no usable Meta API key, it now saves and publishes a **predefined, clearly labelled** reply in that robot's name. It explains bring-your-own key and optional administrator server inference, and does not impersonate a model-generated response.
+- The same notice is used when the browser key is invalidly formatted or Meta returns HTTP 401/403. It is deduplicated per message/robot and is not relayed to other robots. Deterministic authorised commands continue to execute without a key; actual inference permissions remain unchanged.
+- Settings → Meta AI explains individual key costs, tab-scoped session keys, and that any future maintainer-managed usage/subscription tier is not currently provided.
+- Live browser/client checks and watcher deployment still required.
 
 ## v0.2.222 — Native rectangular slider rendering
 - Shared range track rules were still rendering a grey stripe over the coloured input. Apply the solid value-derived background to WebKit and Gecko native track pseudos, use square edges, and remove thumb borders/shadows. Preserve 96 traits, compact alignment, JSON import/export and settings persistence. No backend migration.

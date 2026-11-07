@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.222",
+  "currentVersion": "0.2.224",
   "releases": [
+    {
+      "version": "0.2.224",
+      "publishedAt": "2026-11-07T01:19:45Z",
+      "changes": [
+        "Correct the v0.2.223 Mac watcher Flask regression: a deterministic vision_search remains a robot scene command even without a Meta key, while missing-key free-form dialogue remains transparently attributed.",
+        "Recover Ania-type stalled house projects: explicit authorised named build commands supersede stale agent orders, bounded array house goals and collision-checked alternate worksite scouts continue without forcing a paid model call.",
+        "Report actionable permission/site blockers, safely reject invalid Meta decisions, and accept one optional roof-style chat preference for the NEXT new house without holding construction.",
+        "Preserve all original avatar/media assets, edit permissions, scene IDs, durable work receipts, no generated Python bytecode."
+      ]
+    },
     {
       "version": "0.2.222",
       "publishedAt": "2026-11-07T00:45:52Z",
@@ -296,20 +306,6 @@
         "Load the tracker only after page load and idle scheduling, with an independent async script so analytics latency cannot delay 3D startup, DOM readiness or normal user interaction.",
         "Ignore blocked or failed analytics requests, remove a hanging tracker after 8 seconds and never retry in a loop; test load/error/timeout/startup isolation.",
         "Retain the v0.2.190 fence-aware navigation and stuck-recovery code, unchanged avatar binaries, full watcher release manifest and existing deployment contract."
-      ]
-    },
-    {
-      "version": "0.2.189",
-      "publishedAt": "2026-11-04T19:58:09Z",
-      "changes": [
-        "Correct addressed-vs-target robot parsing: @Jess @Suck find @Elox routes only Jess and Suck; Elox is the physical destination and not an unintended third command recipient.",
-        "A verified chat movement to a colleague can relay the requested next step after arrival; that message does not bypass the colleague\u2019s autonomous work-order permissions or claim to execute construction.",
-        "Harden Meta Responses extraction and schema validation against malformed model output, including null content and non-string action, roof and furniture fields; rejected payloads cannot throw TypeError in parse-decision.",
-        "Prioritise named collaboration before hospital construction in recurring autonomous work orders; persist verified contact IDs and report missing colleague contacts separately from hospital/furnishing objectives.",
-        "Continue inspecting and furnishing an existing compatible robot-built house within the same autonomy cycle instead of always returning a partial result; avoid reusing an old small house as a larger hospital.",
-        "Add targeted regression tests for chat operator roles, destination targeting, malformed Meta output, hospital task ordering and persistent contacts; preserve existing avatar, ownership, navigation and watcher contracts.",
-        "Deployment correction: multi-handle conversation messages (for example @Jessica talk to @Elox) no longer invoke implicit camera capture when the secondary handle is a conversation target. Explicit visual questions and ordinary one-to-one spontaneous camera refresh remain available.",
-        "Flask integration regression for two-hop robot dialogue now verifies single addressed recipient and excludes false needs_vision routing; package replaces the original v0.2.189 release rejected before GitHub/Ubuntu publication."
       ]
     }
   ]

@@ -1,3 +1,18 @@
+## v0.2.224 — Recoverable robot construction, honest planning errors and optional design questions
+
+- Repair the undeployed v0.2.223 backend regression: when Meta is missing, preserve executable, locally validated `vision_search` commands rather than substituting a credential notice. Normal free-form chat still explains the missing key.
+- A directly addressed, authenticated instruction such as `@Ania please build another cosy house` now starts a fresh persistent local building order, superseding stale generic agent work without requiring a model call or loosening scene-edit permissions.
+- Interpret a bounded "array of houses" as up to three houses rather than two. Preserve verified house IDs, rotate supported roof/footprint styles, grant bounded retries for each completed house, and inspect alternative physical worksites via at most two collision-checked recovery movements before returning a specific blocker.
+- Meta JSON/decision parser errors now result in `invalid-model-plan` with safe diagnostics and local recovery rather than generic 502 errors on otherwise successful model responses. Per-account retry settings and real provider status remain respected.
+- After the first verified house in a multi-house project, the robot may ask one short optional roof preference (flat, shed, pyramid) through the existing saved chat; the user can answer in a direct `@Robot flat roof` phrase. The next *unbuilt* house uses the answer, and construction is never blocked while waiting. No unsupported TV-size control is advertised.
+- Preserve original scene assets, object IDs, robot character profiles, multiplayer restrictions, saved receipts and browser-only physical execution. No new paid inference or database migration.
+
+## v0.2.223 — Honest robot conversation fallback and Meta key cost transparency
+
+- Directly addressed robots now produce a saved predefined chat status when Meta access is missing, invalid or rejected, rather than remaining silent. Notices are explicitly non-model output and have no inference cost.
+- Key cost/ownership policy explained under Settings → Meta AI. Users may bring their own key; an administrator-provided server key remains supported. A future usage-based subscription is not enabled by this release.
+- Existing allowlisted offline action tools, scene permissions, work orders, model-backed dialogue and multiplayer data remain intact.
+
 ## v0.2.222 — Flat single-colour trait sliders
 
 - Correct the native range track in Safari, Chrome and Firefox so it is a square-ended solid temperature colour, not a coloured pill under a narrow grey line.

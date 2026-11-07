@@ -541,7 +541,10 @@ async function reactOneRobot(message,targetRobotId,interruptedRobot=''){
      if(accepted&&command.kind==='stop')await reportRobotTask(command,'stopped');
    }
  }else if(response.triggered){
-   $('chatStatus').textContent=response.answer?`${response.answer.speaker} replied · ~US$${Number(response.usage?.estimated_usd||0).toFixed(5)}`:(response.note||'Robot observed the message');
+   $('chatStatus').textContent=response.model_access_required
+     ?`${response.robot_name||'Robot'} needs Meta access · Settings → Meta AI · no model reply generated`
+     :response.answer?`${response.answer.speaker} replied · ~US$${Number(response.usage?.estimated_usd||0).toFixed(5)}`
+       :(response.note||'Robot observed the message');
  }
  return response;
 }
@@ -581,7 +584,7 @@ async function reactToRobotMessage(message,relayHops=0,interruptedRobot=''){
   while(queue.length&&count<10&&room===activeRoom){
    const item=queue.shift();
    const result=await api.req('/api/robots/queue',{method:'POST',body:JSON.stringify({room,message_id:item.message.id})});
-   if(result.discussion?.enabled&&item.depth===0){await runRobotDiscussion(item.message,room);continue;}
+   if(result.discussion?.enabled&&item.depth===0&&result.model_ready!==false){await runRobotDiscussion(item.message,room);continue;}
    for(const robot of result.targets||[]){
     if(count>=10||room!==activeRoom)break;
     const key=item.message.id+':'+robot.id;
@@ -1537,6 +1540,7 @@ function bindUI(world){
   captureObservation:async(robot,target)=>{const frame=await captureRobotView(world,robot);if(frame?.size)rememberRobotObservationFrame(robot.userData.editorId,frame,`Routine observation of ${target.name} · local frame, no model analysis`);},
   postDiscussion:async(robot,target,subject)=>{if(target.userData.editorKind!=='robot')return;const message=`@${robot.name} @${target.name} discuss ${subject}; compare evidence, pros and cons and respond to each other.`;const response=await api.req('/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text:message,media:[]})});await bubble(response.message);await reactToRobotMessage(response.message);}});
  const activeAutonomy=initRobotAutonomy({editor,api,room:()=>activeRoom,toast,
+  postHumanQuestion:async message=>{if(message)await bubble(message);},
   postDiscussion:async(robot,target,subject)=>{
    if(target.userData.editorKind!=='robot')throw Error('Colleague is not a robot');
    const response=await api.req('/api/robots/autonomy/speak',{method:'POST',body:JSON.stringify({room:activeRoom,robot_id:robot.userData.editorId,target_id:target.userData.editorId,text:subject.slice(0,240)})});

@@ -236,7 +236,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.222',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.224',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1788,7 +1788,15 @@ def robot_autonomy_plan():
         stage='usage-record'
         usage=record_usage(user['id'],'muse-spark-1.3','robot-autonomy-plan',answer,images=used_images)
         stage='parse-decision'
-        plan=parse_autonomy_decision(meta_output_text(answer),objects,rid,allow_changes,{p['id'] for p in preset_index})
+        # A malformed but successfully returned model decision is a *proposal*
+        # failure, not a backend outage. Preserve the parser diagnostic in the
+        # audit log, but never leak provider text or credentials to the client.
+        try:
+            plan=parse_autonomy_decision(meta_output_text(answer),objects,rid,allow_changes,{p['id'] for p in preset_index})
+        except (TypeError,ValueError,OverflowError,AttributeError) as parse_error:
+            audit_event('robot-autonomy-plan-parser-rejected',room=room_id,robot_id=rid,
+                        error=type(parse_error).__name__)
+            plan=None
         if not plan:
             audit_event('robot-autonomy-invalid-model-plan',room=room_id,robot_id=rid)
             return jsonify(decision={'action':'idle','target_id':'','destination_id':'','variant':'chair','message':'',
@@ -1841,7 +1849,7 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried'}
+    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
@@ -1853,6 +1861,8 @@ def valid_robot_work_order(order,state):
        not isinstance(it['reason'],str) or len(it['reason'])>110 or
        type(it['attempts']) is not int or not 1<=it['attempts']<=20 or
        type(it['retryAt']) not in (int,float) or not math.isfinite(it['retryAt']) or not 0<=it['retryAt']<=9999999999999 for it in skipped):return None
+    if stored.get('askedPreferences') not in (None,True,False):return None
+    if stored.get('roofPreference','') not in ('','flat','shed','pyramid'):return None
     tried=stored.get('cleanupThrowTried',[])
     if (not isinstance(tried,list) or len(tried)>32 or
         any(not isinstance(ident,str) or not 1<=len(ident)<=100 for ident in tried)):return None
@@ -2032,6 +2042,44 @@ def robot_autonomy_speak():
     audit_event('robot-autonomy-spoke',room=room_id,robot_id=rid,target_robot_id=tid)
     return jsonify(message={'id':ident,'role':'assistant','speaker':str(bot.get('name','Robot'))[:100],
         'model':'robot-autonomy','text':text,'media':'[]','created':ts})
+
+# Small, non-blocking construction questions. A verified project must exist,
+# with the robot under this account's edit permission. No generative model call.
+ROBOT_STYLE_QUESTION_LAST={}
+@app.post('/api/robots/autonomy/ask-human')
+def robot_autonomy_ask_human():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    rid=str(data.get('robot_id',''))[:100]
+    if data.get('topic')!='roof_style':return json_error('Unsupported construction preference',400)
+    robot=robot_work_order_robot(user,room_id,rid)
+    if not robot:return json_error('Robot operator permission required',403)
+    with db() as con:
+        work=con.execute('SELECT enabled,order_json FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',
+                         (room_id,rid,user['id'])).fetchone()
+    if not work or not work['enabled']:return json_error('No active saved construction work order',409)
+    try:order=json.loads(work['order_json'])
+    except (TypeError,ValueError):return json_error('Saved work order unavailable',409)
+    if not order.get('allowChanges') or not re.search(r'\b(build|create|construct)\b',order.get('goal',''),re.I) or not re.search(r'\b(houses?|homes?|cabins?)\b',order.get('goal',''),re.I):
+        return json_error('Not an editable house project',403)
+    stamp=time.time()
+    with robot_task_lock:
+        if stamp-ROBOT_STYLE_QUESTION_LAST.get((room_id,rid),0)<300:
+            return json_error('Construction preference question already asked recently',429)
+        ROBOT_STYLE_QUESTION_LAST[(room_id,rid)]=stamp
+    text='For the next home, would you prefer a flat, shed or pyramid roof? I will use the planned default unless you reply with @'+str(robot.get('name','Robot'))[:60]+' flat roof, shed roof or pyramid roof. Building continues while you decide.'
+    mid=str(uuid.uuid4());ts=now()
+    with db() as con:
+        con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
+                    (mid,user['id'],'assistant','robot-autonomy',text,'[]',ts,room_id,str(robot.get('name','Robot'))[:100]))
+        con.execute('INSERT INTO robot_memories VALUES (?,?,?,?,?)',
+                    (str(uuid.uuid4()),room_id,rid,'Offered optional roof preference for the following house, without pausing construction',ts))
+    publish({'type':'chat-created','id':mid,'room':room_id},room_id=room_id)
+    return jsonify(message={'id':mid,'role':'assistant','speaker':str(robot.get('name','Robot'))[:100],
+                            'model':'robot-autonomy','text':text,'media':'[]','created':ts})
 
 def observe_robot_relationship(con, room_id, robot_id, peer_id, event):
     """Evidence of interaction, not proof of friendship, agreement or emotion."""
@@ -2821,7 +2869,7 @@ def robot_eyes_chat():
                     (str(uuid.uuid4()),room_id,ident,'Shared head-camera image with room',ts))
     publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
     return jsonify(answer={'id':aid,'role':'assistant','speaker':str(robot['name'])[:100],
-      'model':model,'text':answer,'media':json.dumps([mid]),'created':ts,'avatar':str((robot.get('brain') or {}).get('portrait',''))},usage=usage,model=model)
+      'model':model,'text':answer,'media':json.dumps([mid]),'created':ts,'avatar':str((robot.get('brain') if isinstance(robot.get('brain'),dict) else {}).get('portrait',''))},usage=usage,model=model)
 
 
 ROBOT_VISION_MESSAGES={}
@@ -3280,7 +3328,9 @@ def robot_reaction_queue():
     if not from_robot and m['role']!='user':return json_error('Unsupported message author',403)
     targets=robot_recipient_queue(m['text'],robots,from_robot,speaker['id'] if speaker else None)
     discuss=discussion_requested(m['text'],robots,from_robot)
-    return jsonify(discussion={'enabled':True,'topic':discussion_topic(m['text'],robots)} if discuss else None,targets=[{'id':r['id'],'name':r['name']} for r in targets if r['id'] not in consumed],
+    try:model_ready=bool(active_model_key())
+    except ValueError:model_ready=False
+    return jsonify(model_ready=model_ready,discussion={'enabled':True,'topic':discussion_topic(m['text'],robots)} if discuss else None,targets=[{'id':r['id'],'name':r['name']} for r in targets if r['id'] not in consumed],
                    relay_depth=int(m['relay_depth']),broadcast=bool(re.search(r'(?<![\w@])@all(?![\w-])',m['text'],re.I) and not from_robot))
 
 def robot_conversation_excerpt(rows,robot_name,user_id,limit=18):
@@ -3345,6 +3395,45 @@ def robot_scene_excerpt(objects,robot,message,limit=15):
     return [item[2] for item in ranked[:limit]]
 
 
+def robot_model_access_notice_text(reason='missing'):
+    """No model call: honest predefined status for a directly addressed human.
+
+    No claim of model reasoning, sentience, movement, or subscribed inference.
+    """
+    lead={
+        'missing': "I received your message, but I can't generate a conversational reply because no Meta API key is available for this request.",
+        'invalid-session': "I received your message, but the Meta key supplied by this browser tab has an invalid format, so I can't use it for conversation.",
+        'rejected': "I received your message, but Meta rejected the configured key, so I can't generate a conversational reply.",
+    }.get(reason, "I received your message, but Meta conversation is unavailable right now.")
+    return (lead+' For cost control, you can provide your own Meta API key under Settings → Meta AI (a session key is limited to this tab), or a maintainer can configure server inference. '
+            'A maintainer-funded, usage-based or subscription inference option may be offered later; it is not included or enabled by this notice. '
+            '[Automatic SOLVI status notice; no model reply was generated.]')
+
+
+def robot_model_access_notice(user,robot,room_id,message_id,reason='missing'):
+    """Save an attributed notice exactly once per authenticated message/recipient.
+
+    The caller reserves robot_reactions first. These notices are never eligible
+    for robot-to-robot relay and cannot be mistaken for an AI-generated answer.
+    """
+    aid=str(uuid.uuid4());ts=now()
+    notice=robot_model_access_notice_text(reason)
+    with db() as con:
+        con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
+                    (aid,user['id'],'assistant','robot-system-notice',notice,'[]',ts,room_id,str(robot['name'])[:100]))
+    audit_event('robot-model-access-notice',room=room_id,robot_id=robot['id'],reason=reason)
+    publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
+    return jsonify(triggered=True,responded=True,model_access_required=True,robot_id=robot['id'],robot_name=robot['name'],
+        notice='Predefined model-access explanation; no Meta inference was invoked.',reason=reason,
+        answer={'id':aid,'role':'assistant','speaker':str(robot['name'])[:100],
+                'model':'robot-system-notice','text':notice,'media':'[]','created':ts,
+                'avatar':str((robot.get('brain') if isinstance(robot.get('brain'),dict) else {}).get('portrait',''))},
+        trace=[{'step':'route','result':'Matched '+str(robot['name'])[:100],'source':'verified recipient'},
+               {'step':'model access','result':reason+'; no model call',
+                'source':'Settings → Meta AI; bring your own key or administrator-provided server key'}],
+        usage=None)
+
+
 @app.post('/api/robots/react')
 def robot_react():
     user,msg,status=actor()
@@ -3400,6 +3489,13 @@ def robot_react():
         publish({'type':'scene-changed','revision':revision,'room':room_id,'by':user['id'],'action':'upsert','id':robot['id'],'object':updated,'reason':'robot-preference'},room_id=room_id)
         publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
         return jsonify(triggered=True,responded=True,answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'robot-settings','text':reply,'media':'[]','created':ts},trace=[{'step':'identity','result':label+' = '+value,'source':'explicit authorized user request'}])
+    # A broken browser-session key must not crash conversation routing.
+    try:
+        model_ready=bool(active_model_key())
+        key_issue='missing'
+    except ValueError:
+        model_ready=False
+        key_issue='invalid-session'
     command_text=robot_command_clause(text,robot,robots) if tagged and not from_robot else text
     if tagged and not from_robot and len(addressed_list)>1:
         # Shared imperative: all named operators get the SAME instruction;
@@ -3413,6 +3509,15 @@ def robot_react():
         if tell and len(tell.group(1).strip())>=8:
             command['message_after_arrival']=tell.group(1).strip()[:220]
             ack+=' I will pass on the requested next step only after reaching them; this does not automatically authorise their construction.'
+    # User-facing fallback must precede implicit/explicit camera routing:
+    # an addressed robot cannot analyse images or improvise a reply without
+    # model access, but deterministic commands above remain fully operational.
+    if not model_ready and ack is None:
+        if from_robot:
+            # Never form an automated chain of credential warnings between robots.
+            return jsonify(triggered=True,responded=False,robot_id=robot['id'],robot_name=robot['name'],
+                           note='Meta unavailable for peer dialogue; no automatic notice to another robot')
+        return robot_model_access_notice(user,robot,room_id,message_id,key_issue)
     # Perception is part of conversation. A missing/stale visual memory means
     # ordinary chat can request one real frame without a magic command phrase.
     last_visual=latest_robot_visual_memory(room_id,robot['id'])
@@ -3436,7 +3541,7 @@ def robot_react():
     explicit_robot_handles=len(list(re.finditer(r'(?<![\w@])@([\w-]+)',text,re.I)))
     individual_vision_turn=(not from_robot and len(addressed_list)==1 and explicit_robot_handles<=1
                             and not re.search(r'(?<![\w@])@all(?![\w-])',text,re.I))
-    natural_vision=(individual_vision_turn and visual_enabled and active_model_key()
+    natural_vision=(individual_vision_turn and visual_enabled and model_ready
                     and may_edit(user['id'],robot,room_policy(room_id))
                     and (not last_visual or last_visual['age_seconds']>180))
     if tagged and not from_robot and (has_image or is_robot_visual_question(text) or (natural_vision and command is None)) and (command is None or command.get('kind')=='vision_search'):
@@ -3470,7 +3575,7 @@ def robot_react():
                 con.execute('DELETE FROM robot_reactions WHERE message_id=? AND robot_id=?',(message_id,robot['id']))
             return json_error('Room policy does not allow you to command this robot',403)
         plan_usage=None;plan_inference=None
-        if command and active_model_key() and command['kind'] not in ('turn','turn_walk','walk_forward','jump','go_to'):
+        if command and model_ready and command['kind'] not in ('turn','turn_walk','walk_forward','jump','go_to'):
             # Muse drafts a user-facing plan in the robot's voice. It is never executable;
             # the allowlisted command from plan_robot_command is the only motion authority.
             try:
@@ -3531,9 +3636,6 @@ def robot_react():
                                'text':ack,'media':'[]','created':ts,'avatar':str(brain.get('portrait',''))},
                        trace=trace,usage=plan_usage,task_id=command['id'] if command else None,
                        note='Scene index is attempted first. Unnamed target invokes real SAM head-camera scan and raycast. Debug shows executed steps, not hidden AI reasoning.')
-    if not active_model_key():
-        with db() as con:con.execute('DELETE FROM robot_reactions WHERE message_id=? AND robot_id=?',(message_id,robot['id']))
-        return jsonify(triggered=True,responded=False,robot_id=robot['id'],robot_name=robot['name'],note='Robot heard the message. Set a Meta key to enable speech.',trace=[{'step':'route','result':'Matched '+robot['name'],'source':'address or phrase trigger'},{'step':'model','result':'Muse Spark not called: no Meta key configured','source':'API configuration'}])
     attempts=[v for v in chat_attempts.get(user['id'],[]) if time.time()-v<60]
     if len(attempts)>=12:
         with db() as con:con.execute('DELETE FROM robot_reactions WHERE message_id=? AND robot_id=?',(message_id,robot['id']))
@@ -3617,6 +3719,13 @@ def robot_react():
         answer=meta_output_text(response).strip()[:2400]
         if not answer:return jsonify(triggered=True,responded=False,note='Model returned no text',usage=usage)
     except Exception as exc:
+        # A configured key is not the same as a valid provider credential.
+        # Preserve a visible, non-model status reply for rejected credentials.
+        if isinstance(exc,RuntimeError) and re.match(r'^Meta API HTTP (?:401|403):',str(exc)):
+            if from_robot:
+                return jsonify(triggered=True,responded=False,robot_id=robot['id'],robot_name=robot['name'],
+                               note='Meta rejected key for peer conversation; no model reply was generated')
+            return robot_model_access_notice(user,robot,room_id,message_id,'rejected')
         with db() as con:con.execute('DELETE FROM robot_reactions WHERE message_id=? AND robot_id=?',(message_id,robot['id']))
         return json_error(str(exc),502)
     inference={'operation':'robot-reply','model':'muse-spark-1.3','store':False,

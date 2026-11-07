@@ -27,10 +27,10 @@ test('hospital project never claims medication, patient care or blocked site ins
 });
 test('runtime reports receipts, uses cooldown, retries alternative actions, avoids duplicate houses and supports relevant research',()=>{
  const runtime=src('js/robot-autonomy.js');
- for(const term of ['/api/robots/autonomy/report','/api/robots/autonomy/research','metaRetryDelay','workRecoveryPlan','projectOutcome','existingRobotHouse','META BACKOFF','AWAITING NEW CAPABILITY','site_check','researchNotes'])assert.ok(runtime.includes(term),term);
+ for(const term of ['/api/robots/autonomy/report','/api/robots/autonomy/research','metaRetryDelay','workRecoveryPlan','projectOutcome','existingRobotHouse','META BACKOFF','WHY BLOCKED','site_check','researchNotes'])assert.ok(runtime.includes(term),term);
  assert.match(runtime,/house.*hospital|hospital.*house/i);
  assert.match(runtime,/no duplicate shell created/);
- assert.match(runtime,/run\.last\.status='blocked'/);
+ assert.match(runtime,/run\.last\.status=.*blocked/);
 });
 test('real work review is separate from formal sourced research; API limits client reports',()=>{
  const server=src('backend/server.py'),studio=src('js/studio.js');

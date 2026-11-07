@@ -653,6 +653,44 @@ message=c.post('/api/message',headers=headers,json={'room':'lab','text':'A norma
 with patch('server.active_model_key',return_value=''):
     result=c.post('/api/robots/react',headers=headers,json={'room':'lab','text':message['text'],'message_id':message['id']})
 assert result.status_code==200 and result.get_json()['triggered'] is False,(result.status_code,result.data)
+# v0.2.224: no Meta key must never leave a directly addressed human unanswered.
+notice_msg=c.post('/api/message',headers=headers,json={'room':'lab','text':'@Jessica hello, can you hear me?'}).get_json()['message']
+with patch('server.active_model_key',return_value=''):
+    notice_response=c.post('/api/robots/react',headers=headers,json={'room':'lab',
+        'text':notice_msg['text'],'message_id':notice_msg['id']})
+assert notice_response.status_code==200,(notice_response.status_code,notice_response.data)
+notice_data=notice_response.get_json()
+assert notice_data['triggered'] and notice_data['responded'] and notice_data['model_access_required']
+assert notice_data['answer']['speaker']=='Jessica' and notice_data['answer']['model']=='robot-system-notice'
+assert 'Meta API key' in notice_data['answer']['text'] and 'Automatic SOLVI status notice' in notice_data['answer']['text']
+assert notice_data.get('usage') is None
+assert any(v['id']==notice_data['answer']['id'] and v['model']=='robot-system-notice'
+    for v in c.get('/api/messages?room=lab',headers=headers).get_json()['messages'])
+with patch('server.active_model_key',return_value=''):
+    duplicate=c.post('/api/robots/react',headers=headers,json={'room':'lab',
+        'text':notice_msg['text'],'message_id':notice_msg['id']})
+assert duplicate.status_code==200 and duplicate.get_json()['triggered'] is False
+bad_key=c.post('/api/message',headers=headers,json={'room':'lab','text':'@Jessica how is your day?'}).get_json()['message']
+with patch('server.active_model_key',side_effect=ValueError('Invalid browser session API key')):
+    invalid=c.post('/api/robots/react',headers=headers,json={'room':'lab',
+        'text':bad_key['text'],'message_id':bad_key['id']})
+assert invalid.status_code==200 and invalid.get_json()['reason']=='invalid-session'
+visual_without_key=c.post('/api/message',headers=headers,json={'room':'lab','text':'@Jessica what can your camera see?'}).get_json()['message']
+with patch('server.active_model_key',return_value=''):
+    offline_visual=c.post('/api/robots/react',headers=headers,json={'room':'lab',
+        'text':visual_without_key['text'],'message_id':visual_without_key['id']})
+assert offline_visual.status_code==200 and offline_visual.get_json().get('model_access_required') is True
+assert offline_visual.get_json().get('needs_vision') is not True
+# A provider-rejected credential is different from an absent key. Announce
+# the rejection without echoing provider data, and do not fabricate inference.
+rejected_msg=c.post('/api/message',headers=headers,json={'room':'lab','text':'@All hello, are you there?'}).get_json()['message']
+with patch('server.active_model_key',return_value='test-key'), patch('server.meta_request',side_effect=RuntimeError('Meta API HTTP 401: unauthorized')):
+    rejected=c.post('/api/robots/react',headers=headers,json={'room':'lab',
+        'text':rejected_msg['text'],'message_id':rejected_msg['id']})
+assert rejected.status_code==200,(rejected.status_code,rejected.data)
+assert rejected.get_json()['reason']=='rejected' and rejected.get_json()['answer']['model']=='robot-system-notice'
+assert rejected.get_json().get('usage') is None
+print('PASS: missing/invalid/rejected Meta keys create durable honest status replies, not camera or simulated model output')
 # Addressing must work through text, CC captions, and one unambiguous spelling slip.
 # Grounding is the actual scene catalogue: do not pretend SAM found objects.
 sofa={'id':'testsofa-0222','kind':'cube','name':'Red Sofa','position':[4,1,0],

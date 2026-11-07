@@ -39,7 +39,9 @@ export function localProjectSequence(goal=''){
  return [];
 }
 export function requestedHomeCount(goal=''){
- return /\b(houses|homes|cabins)\b/i.test(goal)&&houseGoal(goal)?2:houseGoal(goal)?1:0;
+ if(!houseGoal(goal))return 0;
+ if(/\b(?:array|row|series|three|3)\b/i.test(goal)&&/\b(?:houses?|homes?|cabins?)\b/i.test(goal))return 3;
+ return /\b(houses|homes|cabins)\b/i.test(goal)?2:1;
 }
 // Chat may *start* a local work order only for an unambiguous, direct @all
 // construction instruction from the person who just submitted the message.
@@ -52,15 +54,33 @@ export function chatConstructionInstruction(text=''){
    /\b(?:build|construct|create|make)\s+(?:some\s+|new\s+|more\s+|a\s+|an\s+)?(?:homes?|houses?|cabins?|parks?|picnic\s+(?:area|spot))\b/i.test(message);
  return direct?message:null;
 }
+
+// Explicit, robot-addressed construction is different from friendly discussion.
+// This is used ONLY after the human's authenticated message is already saved;
+// editor permission is still checked again before any scene mutation.
+export function chatNamedConstructionInstruction(text='',robotName=''){
+ const name=String(robotName||'').trim();
+ if(!name||!/^@[\p{L}\p{N}_-]+(?:[\s,:]|$)/u.test(String(text||'')))return null;
+ const message=String(text||'').trim().slice(0,1800);
+ const mention=/^@([\p{L}\p{N}_-]+)(?:[\s,:]|$)/u.exec(message);
+ if(!mention||mention[1].toLowerCase()!==name.toLowerCase())return null;
+ const command=message.slice(mention[0].length).trim();
+ if(!houseGoal(command)&&!localProjectSequence(command).length)return null;
+ if(!/^(?:(?:please|hey|now|go for it|kindly|actually|just)\s+)*?(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:start\s+|begin\s+|go\s+and\s+)?(?:build|construct|create|make|furnish)\b/i.test(command))return null;
+ return message;
+}
+
 export function workRecoveryPlan({goal='',allowChanges=false,house=null,existingHouse=false,peerId='',attempts={},hasSeat=false,invitationTargets=[],contactTargets=[],placedSupplies=0,projectPlaced=[],completedHouses=[],retryBudget=8}={}){
  if(boxCleanupGoal(goal))return {action:'cleanup_boxes',reason:'Collect explicitly named procedural boxes into the matching junk bin; skip blocked objects and retry them later'};
  if(canCleanupGoal(goal))return {action:'cleanup_cans',reason:'Perform the assigned can collection using the existing inventory and bin tools'};
  const construction=houseGoal(goal);
+ if(construction&&!allowChanges)return {action:'idle',reason:'SCENE CHANGES DISABLED: this work order cannot create buildings. Enable Allow scene changes for the authorised robot in Work orders; Meta retries will not fix this.'};
  const hospital=/\b(hospital|clinic)\b/i.test(goal);
  const party=/\b(invite|invitation|opening party|celebrat)\b/i.test(goal);
  const supplies=/\b(bottles?|cans?|drinks?|refreshments?)\b/i.test(goal);
  const count=action=>Math.max(0,Number(attempts[action])||0);
  const homeTarget=requestedHomeCount(goal);
+ const houseRetryLimit=Math.max(2,Math.min(8,retryBudget))+4*Math.min(2,count('site_scout'));
  const installed=new Set(projectPlaced.map(entry=>entry?.id).filter(Boolean));
  const sequence=localProjectSequence(goal);
  const counts=new Map();
@@ -78,10 +98,16 @@ export function workRecoveryPlan({goal='',allowChanges=false,house=null,existing
    message:'I was asked to meet you about a shared project. Here is the goal: '+goal.slice(0,150)+'. Can you take a concrete next step in your own authorised work order?',
    reason:'Meet the named colleague and communicate the assigned project before building'};
  // Reuse an existing house first; run the same tool to rehydrate its scene IDs.
- if(construction&&allowChanges&&!house&&completedHouses.length<homeTarget&&count('build_house')<Math.max(2,Math.min(8,retryBudget)))
+ if(construction&&allowChanges&&!house&&completedHouses.length<homeTarget&&count('build_house')<houseRetryLimit)
   return {action:'build_house',reason:existingHouse?'Resume the existing building before doing more work':'Construct the explicitly requested building before optional research or chat'};
- if(construction&&allowChanges&&house?.missing?.length&&count('build_house')<Math.max(2,Math.min(8,retryBudget)))
+ if(construction&&allowChanges&&house?.missing?.length&&count('build_house')<houseRetryLimit)
   return {action:'build_house',reason:'Finish missing furniture inside the existing structure'};
+ // Spend a bounded, collision-checked relocation attempt before declaring an
+ // empty construction worksite impossible. Each successful scout earns at
+ // most four further ordinary placement trials; no infinite reset loop.
+ if(construction&&allowChanges&&!house&&completedHouses.length<homeTarget&&
+    count('build_house')>=houseRetryLimit&&count('site_scout')<2)
+  return {action:'site_scout',reason:`The last ${count('build_house')} house-placement attempts did not find a usable site. Try a 15 m collision-checked retreat and random reorientation, then resurvey.`};
  if(construction&&house?.inspectionFailed&&count('site_check')<3)
   return {action:'site_check',reason:'Make one alternative exterior visit before reporting the navigation blocker'};
  if(construction&&house&&supplies&&allowChanges&&placedSupplies<4&&count('build')<4)
@@ -93,6 +119,11 @@ export function workRecoveryPlan({goal='',allowChanges=false,house=null,existing
  if(!construction&&allowChanges&&remainingProject.length&&count('build')<Math.max(2,Math.min(8,retryBudget)))
   return {action:'build',variant:remainingProject[0],project:true,
    reason:`Place ${remainingProject[0]} (${installed.size+1}/${sequence.length}) for the requested community area`};
+ if(construction&&completedHouses.length>=homeTarget&&homeTarget>0&&!house?.missing?.length&&!house?.inspectionFailed)
+  return {action:'idle',reason:`GOAL REACHED: ${completedHouses.length}/${homeTarget} requested house shells verified. New homes require a new direct work order.`};
+ if(construction&&allowChanges&&!house&&completedHouses.length<homeTarget&&
+    count('site_scout')>=2&&count('build_house')>=houseRetryLimit)
+  return {action:'idle',reason:'SITE SEARCH EXHAUSTED: two collision-checked relocations and the permitted placement attempts could not find an open building footprint. The goal is preserved; choose another open region or modify the house dimensions.'};
  // Research is optional and never replaces an authorized build. Lookups do
  // not advance any construction milestone. Avoid repeated low-value articles.
  if(construction&&count('research')===0&&(!allowChanges||(!house&&count('build_house')>0)))
@@ -116,4 +147,13 @@ export function projectOutcome({house=null,goal='',invitations=[],invitationsReq
  if(/\b(hospital|clinic|medicine|medication|sick)\b/i.test(goal))
   blockers.push('hospital services, patient care and medicine are not implemented as robot tools');
  return {done:!blockers.length,blockers};
+}
+
+// Optional user preference for a FOLLOWING house, never a blocker for work.
+export function namedRoofChoice(text='',robotName=''){
+ const name=String(robotName||'').trim(),message=String(text||'').trim();
+ const match=/^@([\p{L}\p{N}_-]+)(?:[,\s:]+)(.+)$/u.exec(message);
+ if(!match||!name||match[1].toLowerCase()!==name.toLowerCase())return null;
+ const choices=[...match[2].toLowerCase().matchAll(/\b(flat|shed|pyramid)\s+(?:style\s+)?roof\b|\broof\s+(flat|shed|pyramid)\b/g)];
+ return choices.length===1?choices[0][1]||choices[0][2]:null;
 }
