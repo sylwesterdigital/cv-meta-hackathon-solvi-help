@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from './helpers/subprocess-test.mjs';
+import {spawnSync} from 'node:child_process';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const source=read('js/robot-inventory.js').replace(/^import .*;\s*$/gm,'').replace(/^export /gm,'');
 function setup(){

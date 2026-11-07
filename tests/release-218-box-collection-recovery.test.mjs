@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from './helpers/subprocess-test.mjs';
+import {spawnSync} from 'node:child_process';
 import {boxCleanupGoal,chatBoxCleanupInstruction,canCleanupGoal,workRecoveryPlan} from '../js/robot-autonomy-policy.js';
+import {sceneBoxCopies,liveCleanupObservation} from '../js/robot-task-queue.js';
 import {cargoConstraints,groundedBoxMatch} from '../js/robot-transfer-decisions.js';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const instruction='@Lea please please Box copies are all over the floor can you put all of them into the Bin - Big Junk ?';
@@ -88,8 +89,8 @@ test('live box-workflow state machine skips failed pickup, processes another obj
  let failFirst=true;
  const editor={items:[bin,a,b],canEdit:()=>true,queueSave(){},
   async persistObject(o){saved.push(o.name);return true;},inventory:{heldFor(){return null;},hold(bot,obj){if(obj===a&&failFirst){failFirst=false;return false;}obj.userData.storage={type:'held',holderId:bot.userData.editorId,hand:'right'};return true;},storeInBin(bot,obj,dst){obj.userData.storage={type:'container',containerId:dst.userData.editorId,slot:obj===a?0:1};return true;}}};
- const create=new Function('editor','requireActive','autonomyProximity','moveTo','trace','MAX_TRAVEL','wait','window','cargoConstraints','groundedBoxMatch','tryThrowBox',segment+'\nreturn cleanBoxes;');
- const func=create(editor,()=>{},(o,t,d)=>Math.hypot(o.position.x-t.position.x,o.position.z-t.position.z)<=d,async()=>{throw Error('unreachable');},(...args)=>events.push(args),90,()=>Promise.resolve(),{},cargoConstraints,groundedBoxMatch,async()=>false);
+ const create=new Function('editor','requireActive','autonomyProximity','moveTo','trace','MAX_TRAVEL','wait','window','cargoConstraints','groundedBoxMatch','tryThrowBox','sceneBoxCopies','liveCleanupObservation',segment+'\nreturn cleanBoxes;');
+ const func=create(editor,()=>{},(o,t,d)=>Math.hypot(o.position.x-t.position.x,o.position.z-t.position.z)<=d,async()=>{throw Error('unreachable');},(...args)=>events.push(args),90,()=>Promise.resolve(),{},cargoConstraints,groundedBoxMatch,async()=>false,sceneBoxCopies,liveCleanupObservation);
  const run={id:robot.userData.editorId,room:'loft-16',order:{allowChanges:true,goal:instruction},cleanupDone:[],cleanupSkipped:[],cleanupBinId:''};
  const first=await func(run,robot);
  assert.match(first,/skipped Box copy1/);

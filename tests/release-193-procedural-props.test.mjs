@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from './helpers/subprocess-test.mjs';
+import {spawnSync} from 'node:child_process';
 import {runInNewContext} from 'node:vm';
 import {fridgeLayout,fridgeSlotPose,canStoreInFridge,cleanDeviceMode,nextPropOpen,propInteractionOf} from '../js/interactive-props.js';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -100,10 +100,10 @@ print('validators OK')`;
  assert.match(output.stdout,/validators OK/);
 });
 
-test('module cache and runtime backend now agree on release 0.2.233',()=>{
+test('module cache and runtime backend now agree on release 0.2.235',()=>{
  const html=read('index.html');
- for(const file of ['procedural-tools','interactive-props','procedural-equipment','equipment-media'])assert.ok(html.includes(`./js/${file}.js?v=0.2.233`));
- assert.match(html,/>v0\.2\.233<\/small>/);
- assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.233');
- assert.match(read('backend/server.py'),/version='0\.2\.233'/);
+ for(const file of ['procedural-tools','interactive-props','procedural-equipment','equipment-media'])assert.ok(html.includes(`./js/${file}.js?v=0.2.235`));
+ assert.match(html,/>v0\.2\.235<\/small>/);
+ assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.235');
+ assert.match(read('backend/server.py'),/version='0\.2\.235'/);
 });

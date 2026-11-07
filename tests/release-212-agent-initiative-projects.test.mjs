@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from './helpers/subprocess-test.mjs';
+import {spawnSync} from 'node:child_process';
 import {houseGoal} from '../js/robot-construction-api.js';
 import {localProjectSequence,chatConstructionInstruction,requestedHomeCount,workRecoveryPlan} from '../js/robot-autonomy-policy.js';
 import {cleanAutonomyOrder} from '../js/robot-autonomy-core.js';
@@ -39,7 +39,8 @@ test('only an explicit human @all construction command starts local projects, no
  assert.equal(chatConstructionInstruction('@all build nothing'),null);
  const js=read('js/robot-autonomy.js'),studio=read('js/studio.js'),backend=read('backend/server.py');
  assert.match(js,/startChatProjects\(message\)/);
- assert.match(js,/editor\.canEdit\(o\)&&!runs\.has/);
+ assert.match(js,/chooseQueuedWorker\(editor\.items/);
+ assert.match(js,/await api\.req\('\/api\/robots\/autonomy\/group\/claim'/);
  assert.match(js,/\.slice\(0,3\)/);
  assert.match(js,/await saveOrder\(run,true\)/);
  assert.match(studio,/window\.solviStartChatProjects\?\.\(response\.message\)/);

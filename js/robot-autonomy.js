@@ -1,4 +1,5 @@
 import {characterPolicy} from './robot-character-core.js';
+import {sceneBoxCopies,liveCleanupObservation,chooseQueuedWorker,resolveQueuedBin} from './robot-task-queue.js';
 import {groupBoxCleanupInstruction,groupBinClarification,selectCleanupTarget,nearestAvailableCleanupWorker,boxCleanupProjectGoal,sceneBinTargets} from './robot-group-cleanup.js';
 import {namedRoomFurnishingInstruction,namedWorkContinuation,namedFurnishingPreference,recentHumanFurnishingAuthority,promisedRoomFurnishing,roomFurnishingSequence,nextRoomFurnishing} from './robot-room-furnishing.js';
 // v0.2.192: server-durable work orders with browser-controlled scene execution. Never simulates keyboard events:
@@ -111,7 +112,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   return {house,step:run.step,completed:run.completed,last:run.last,metaFailures:run.metaFailures,
    nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,contacted:run.contacted,
    placedSupplies:run.placedSupplies,projectPlaced:run.projectPlaced,projectPending:run.projectPending,projectDeferred:run.projectDeferred,completedHouses:run.completedHouses,
-   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,cleanupThrowTried:run.cleanupThrowTried,askedPreferences:run.askedPreferences,roofPreference:run.roofPreference,furnishingColors:run.furnishingColors,intentMessageId:run.intentMessageId,team:run.team,teamBuilt:run.teamBuilt};
+   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,cleanupThrowTried:run.cleanupThrowTried,askedPreferences:run.askedPreferences,roofPreference:run.roofPreference,furnishingColors:run.furnishingColors,intentMessageId:run.intentMessageId,groupJobId:run.groupJobId,groupNoProgress:run.groupNoProgress,team:run.team,teamBuilt:run.teamBuilt};
  }
  function restoreHouse(state){
   if(!state||typeof state!=='object')return null;
@@ -145,7 +146,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    cleanupThrowTried:Array.isArray(state.cleanupThrowTried)?state.cleanupThrowTried.filter(id=>typeof id==='string'&&id.length<101).slice(0,32):[],
    askedPreferences:state.askedPreferences===true,roofPreference:['flat','shed','pyramid'].includes(state.roofPreference)?state.roofPreference:'',
    furnishingColors:state.furnishingColors&&typeof state.furnishingColors==='object'?Object.fromEntries(Object.entries(state.furnishingColors).filter(([key,value])=>['bed','table','sofa','chair','stool','cabinet','lamp'].includes(key)&&/^#[a-f0-9]{6}$/i.test(value)).slice(0,7)):{},
-   intentMessageId:typeof state.intentMessageId==='string'?state.intentMessageId.slice(0,100):''};
+   intentMessageId:typeof state.intentMessageId==='string'?state.intentMessageId.slice(0,100):'',
+   groupJobId:typeof state.groupJobId==='string'?state.groupJobId.slice(0,100):'',groupNoProgress:Math.max(0,Math.min(15,Math.trunc(Number(state.groupNoProgress)||0)))};
   return run;
  }
  function presentSaved(order){
@@ -182,6 +184,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    const chosen=savedOrders.get($('autonomyRobot').value);
    if(chosen&&!runs.has(chosen.robot_id))presentSaved(chosen.order);
    update();
+   void dispatchPendingGroupTasks();
   }catch(error){emitLog(null,'MISSION RESTORE FAILED',error.message);}
  }
  const robotFor=id=>editor.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===id);
@@ -283,7 +286,12 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
  function stop(id,reason='stopped',disable=true){
   const run=runs.get(id);if(!run)return;
   run.cancelled=true;clearInterval(run.timer);clearTimeout(run.localTimer);runs.delete(id);created.delete(id);
-  if(disable)void saveOrder(run,false).catch(error=>emitLog(null,'STOP NOT SAVED',error.message));
+  if(disable){
+   if(run.groupJobId)void api.req('/api/robots/autonomy/group/result',{method:'POST',body:JSON.stringify({room:run.room,message_id:run.groupJobId,robot_id:run.id,outcome:'release',reason})})
+    .then(answer=>emitLog(robotFor(id),'GROUP '+answer.status.toUpperCase(),answer.detail))
+    .catch(error=>emitLog(robotFor(id),'GROUP RETAINED',`Unable to hand off safely: ${error.message}; saved assignment remains recoverable.`));
+   else void saveOrder(run,false).catch(error=>emitLog(null,'STOP NOT SAVED',error.message));
+  }
   const bot=robotFor(id);
   if(bot?.userData.robotMission?.taskId?.startsWith(run.token))interruptRobotMission(bot);
   if(bot)trace(bot,'STOP',reason);update();
@@ -575,6 +583,18 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   requireActive(run,bot);
   if(!run.order.allowChanges)throw Error('Object collection requires scene-change permission');
   const goal=run.order.goal.toLowerCase();
+  const seen=liveCleanupObservation(editor.items,bot);
+  trace(bot,'LIVE SCENE',`Current ${new Date(seen.observedAt).toISOString()} scene index: ${seen.boxes.length} Box copies, ${seen.nearby.length} within 12m, ${seen.bins.length} named bin candidates. Previous camera captions are not used as live proof.`);
+  if(run.groupJobId&&bot.userData.robotBrain?.initiativeVision!==false){
+   try{
+    const frame=await captureRobotView(editor.world,bot,{yawOffset:0,pitchDegrees:-12});
+    requireActive(run,bot);
+    if(frame?.size){
+     rememberRobotObservationFrame(run.id,frame,`Live cleanup frame · ${new Date().toISOString()} · fresh capture, not historical scene proof`);
+     trace(bot,'FRESH CAMERA',`Captured current robot head view (${frame.size} bytes); decisions still use live named scene objects and verified tool reach, not inferred image coordinates.`);
+    }else trace(bot,'CAMERA UNAVAILABLE','No current head frame; proceeding only from checked scene object IDs.');
+   }catch(error){trace(bot,'CAMERA UNAVAILABLE','No live image: '+error.message+'; older frames will not be substituted.');}
+  }
   // The actual target ID from an authorised group dispatch outranks the
   // conversational wording of an older robot work order. Without an ID,
   // require one explicitly named matching scene object, never Small Bin.
@@ -595,7 +615,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   // receipt, never a claim of storage inside the model.
   run.cleanupDone=run.cleanupDone.filter(id=>editor.items.some(o=>o.userData.editorId===id&&verified(o)));
   const descriptors=cargoConstraints(run.order.goal);
-  const allBoxes=editor.items.filter(o=>o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='box'&&/^Box copy\d+$/i.test(o.name));
+  const allBoxes=sceneBoxCopies(editor.items);
   const boxes=allBoxes.filter(o=>groundedBoxMatch(o,descriptors).ok);
   if(!boxes.length){
    const description=[descriptors.colour,descriptors.content].filter(Boolean).join(' with ');
@@ -1019,7 +1039,15 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&!boxCleanupGoal(run.order.goal)&&((run.team&&cityMilestoneCount(run.team.role,run)>=cityRoleTarget(run.team.role))||(!run.team&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
      (localProjectSequence(run.order.goal).length>0&&run.projectPlaced.length>=localProjectSequence(run.order.goal).length))))){
     trace(bot,'PROJECT FINISHED','Already completed in saved scene history; no duplicate buildings or props will be placed.');
-    stop(run.id,'verified project already complete');return;
+    if(run.groupJobId){
+     try{
+      await saveOrder(run,true);
+      await api.req('/api/robots/autonomy/group/result',{method:'POST',body:JSON.stringify({room:run.room,message_id:run.groupJobId,robot_id:run.id,outcome:'completed'})});
+      trace(bot,'GROUP PROJECT VERIFIED','Server independently confirmed completed saved project milestones.');
+      stop(run.id,'verified existing group project',false);
+     }catch(error){trace(bot,'GROUP RECEIPT PENDING','Saved project IDs need server verification before closing: '+error.message);}
+    }else stop(run.id,'verified project already complete');
+    return;
    }
    if(run.order.mode==='agent'||run.order.mode==='local_project'){
     if(run.order.mode==='local_project')plan=recovery(run,bot,'Locally authorised construction; no Meta model call');
@@ -1045,7 +1073,9 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    // Missing objects are not evidence of completion after a reload or delete.
    run.projectPlaced=run.projectPlaced.filter(p=>editor.items.some(o=>o.userData.editorId===p.id));
    trace(bot,'ACTION STARTED',`${plan.action}${plan.variant?' ('+plan.variant+')':''} · saved goal: ${run.order.goal.slice(0,130)}${run.intentMessageId?' · message '+run.intentMessageId:''}`);
+   const beforeCleanup=run.cleanupDone.length;
    const detail=await execute(run,bot,plan);
+   if(run.groupJobId&&plan.action==='cleanup_boxes')run.groupNoProgress=run.cleanupDone.length>beforeCleanup?0:Math.min(15,run.groupNoProgress+1);
    if(plan.action==='build_house'&&run.house&&!run.house.missing?.length&&!run.house.inspectionFailed){
     const wallId=run.house.wall?.userData.editorId;
     if(wallId&&!run.completedHouses.includes(wallId)){
@@ -1094,10 +1124,43 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    if(run.order.mode==='local_project'&&!canCleanupGoal(run.order.goal)&&!boxCleanupGoal(run.order.goal)&&((run.team&&cityMilestoneCount(run.team.role,run)>=cityRoleTarget(run.team.role))||(!run.team&&((requestedHomeCount(run.order.goal)>0&&run.completedHouses.length>=requestedHomeCount(run.order.goal))||
       (localProjectSequence(run.order.goal).length>0&&run.projectPlaced.length>=localProjectSequence(run.order.goal).length))))){
     trace(bot,'PROJECT FINISHED','All bounded local construction milestones have verified scene object IDs; the work order is stopping.');
-    stop(run.id,'verified project milestones completed');
+    if(run.groupJobId){
+     await saveOrder(run,true);
+     try{
+      await api.req('/api/robots/autonomy/group/result',{method:'POST',body:JSON.stringify({room:run.room,message_id:run.groupJobId,robot_id:run.id,outcome:'completed'})});
+      trace(bot,'GROUP PROJECT VERIFIED','Server confirmed built scene IDs; independent project queue is ready for another worker.');
+      stop(run.id,'verified group project',false);
+     }catch(error){trace(bot,'GROUP RECEIPT PENDING','Built objects saved; task receipt needs server verification: '+error.message);}
+    }else stop(run.id,'verified project milestones completed');
    }
    if(plan.action==='named_transfer'&&run.order.mode==='local_project'&&detail.startsWith('Delivered ')){trace(bot,'TRANSFER FINISHED','Named target move has a saved scene receipt.');stop(run.id,'verified named object transfer');}
-   if(plan.action==='cleanup_boxes'&&detail.startsWith('All ')&&/ Box copies verified (?:in|beside) /.test(detail)){trace(bot,'CLEANUP FINISHED','All Box copies have server-acknowledged storage receipts.');stop(run.id,'verified box collection');}
+   if(plan.action==='cleanup_boxes'&&detail.startsWith('All ')&&/ Box copies verified (?:in|beside) /.test(detail)){
+    if(run.groupJobId){
+     try{
+      await api.req('/api/robots/autonomy/group/result',{method:'POST',body:JSON.stringify({room:run.room,message_id:run.groupJobId,robot_id:run.id,outcome:'completed'})});
+      trace(bot,'GROUP CLEANUP VERIFIED','Server independently checked every Box copy in current saved scene; project closed.');
+      stop(run.id,'verified group box collection',false);
+     }catch(error){trace(bot,'GROUP RECEIPT PENDING','Client scene claims complete, but the server has NOT confirmed the boxes: '+error.message);}
+    }else{trace(bot,'CLEANUP FINISHED','All Box copies have server-acknowledged storage receipts.');stop(run.id,'verified box collection');}
+   }
+   // A blocked worker yields a shared task when no cargo is in its hands;
+   // the next available nearby robot can try a different physical route.
+   if(run.groupJobId&&plan.action==='cleanup_boxes'&&run.groupNoProgress>=3&&!run.cancelled){
+    const holding=editor.items.find(o=>o.userData.storage?.type==='held'&&o.userData.storage.holderId===run.id);
+    if(holding&&editor.canEdit(holding)){
+     if(editor.inventory.drop(bot,holding)&&await editor.persistObject(holding,run.room))
+      trace(bot,'SAFE HANDOFF DROP',`Saved ${holding.name} at current physical location before asking a colleague to continue; not counted as bin delivery.`);
+    }
+    const cargoRemaining=editor.items.some(o=>o.userData.storage?.type==='held'&&o.userData.storage.holderId===run.id);
+    if(!cargoRemaining){
+     try{
+      const handoff=await api.req('/api/robots/autonomy/group/result',{method:'POST',body:JSON.stringify({room:run.room,message_id:run.groupJobId,robot_id:run.id,outcome:'release',reason:'No verified progress after three fresh scene checks; seeking another eligible robot'})});
+      trace(bot,'GROUP HANDOFF',`No box moved in three cycles; ${handoff.status}. Saved scene objects remain untouched.`);
+      stop(run.id,'handed off blocked group task',false);
+      void dispatchPendingGroupTasks();
+     }catch(error){trace(bot,'HANDOFF BLOCKED','Assignment retained; no duplicate worker may start: '+error.message);}
+    }else trace(bot,'HANDOFF DEFERRED','Robot still holds cargo; physical delivery or recovery must finish before another worker is assigned.');
+   }
    if(plan.action==='cleanup_cans'&&detail.startsWith('All detected table cans cleared')){trace(bot,'CLEANUP FINISHED','Table clear per current scene objects; work order stopped.');stop(run.id,'verified table can cleanup');}
    if(run.last.status==='blocked'&&run.loop)trace(bot,'WHY BLOCKED',detail+' · A new direct assignment can replace the old work order. Existing objects remain untouched.');
    if(plan.action==='idle'&&/^GOAL REACHED:/.test(detail))stop(run.id,'verified project target reached');
@@ -1125,6 +1188,23 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    const diagnosis=operatorFailure(error);run.last={...autonomyResult('task',false,error.message),diagnosis};
    $('autonomyFailure').textContent=`FAILED · ${diagnosis.code}\n${diagnosis.reason}\nNEXT: ${diagnosis.remedy}`;
    trace(bot,'UNFINISHED',diagnosis.reason+' · Next: '+diagnosis.remedy+' · No unverified completion is claimed');
+   if(run.groupJobId&&run.pendingAction==='cleanup_boxes'&&!run.cancelled){
+    run.groupNoProgress=Math.min(15,run.groupNoProgress+1);
+    if(run.groupNoProgress>=3){
+     const holding=editor.items.some(o=>o.userData.storage?.type==='held'&&o.userData.storage.holderId===run.id);
+     if(!holding){
+      try{
+       const handoff=await api.req('/api/robots/autonomy/group/result',{method:'POST',body:JSON.stringify({room:run.room,message_id:run.groupJobId,robot_id:run.id,outcome:'release',reason:String(error.message).slice(0,160)})});
+       trace(bot,'GROUP REASSIGN',`Blocked worker released safely (${handoff.status}); another idle robot can try.`);
+       stop(run.id,'group retry with another free robot',false);
+       void dispatchPendingGroupTasks();
+      }catch(handoffError){trace(bot,'GROUP RETAINED',handoffError.message);}
+     }
+    }else{
+     clearTimeout(run.localTimer);
+     run.localTimer=setTimeout(()=>void cycle(run),3000);
+    }
+   }
    if(run.pendingAction==='furnish_room'&&run.lastPlanVariant){
     const prev=run.projectDeferred.find(p=>p.variant===run.lastPlanVariant);
     const attempts=Math.min(5,(prev?.attempts||0)+1);
@@ -1211,6 +1291,64 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   if(ok)void startCityTeam('@all start building a city with homes roads parks',true);
  };
  const handledChatMessages=new Set();
+ let groupDispatchBusy=false;
+ const groupDispatchDelays=new Map(),groupQueueReported=new Map();
+ async function dispatchPendingGroupTasks(force=false){
+  if(groupDispatchBusy||!api.online||!api.auth())return 0;
+  groupDispatchBusy=true;let assigned=0;
+  try{
+   const reply=await api.req('/api/robots/autonomy/group/queue?room='+encodeURIComponent(room()));
+   let humanMessages=null;
+   for(const task of reply.tasks||[]){
+    if(task.status==='blocked'&&groupQueueReported.get(task.source_message_id)!==task.updated){
+     groupQueueReported.set(task.source_message_id,task.updated);
+     emitLog(null,'GROUP BLOCKED',`${task.kind} needs intervention after ${task.attempts} failed delegations: ${task.detail}. A new explicit human request may start another job.`);
+     toast('Group job blocked: see Work orders log for the exact reason.');
+    }
+    if(task.status!=='pending'||Number(task.retry_at||0)*1000>Date.now())continue;
+    if(!force&&groupDispatchDelays.get(task.source_message_id)>Date.now())continue;
+    groupDispatchDelays.set(task.source_message_id,Date.now()+10000);
+    let selection=null,boxes=[];
+    if(task.kind==='cleanup_boxes'){
+     if([...runs.values()].some(r=>boxCleanupGoal(r.order.goal)))continue; // no competing box movers
+     boxes=sceneBoxCopies(editor.items);
+     if(!boxes.length){emitLog(null,'GROUP WAITING',`Task ${task.source_message_id}: no current Box copy scene objects; will inspect again.`);continue;}
+     if(!humanMessages){
+      try{humanMessages=(await api.req('/api/messages?room='+encodeURIComponent(room()))).messages||[];}
+      catch(error){emitLog(null,'GROUP WAITING','Cannot verify human-named bin yet: '+error.message);continue;}
+     }
+     selection=resolveQueuedBin(editor.items,task.source_text,humanMessages);
+     if(!selection.ready){emitLog(null,'GROUP WAITING',`${task.source_message_id}: ${selection.reason}; no wrong bin selected.`);continue;}
+     if(!editor.canEdit(selection.target)){emitLog(null,'GROUP WAITING','Bin exists but is not editable by this operator');continue;}
+    }
+    const worker=chooseQueuedWorker(editor.items,[...runs.keys()],editor.controlledRobot?.()?.userData.editorId||'',
+     bot=>editor.canEdit(bot),task.failed_worker_id,task.kind,selection?.target||null);
+    if(!worker){emitLog(null,'GROUP WAITING',`Task ${task.source_message_id}: no free editable worker; preserving other projects.`);continue;}
+    const id=worker.userData.editorId;
+    const goal=task.kind==='cleanup_boxes'?boxCleanupProjectGoal(selection.targetName):task.source_text;
+    const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
+    const run=newRun(order,true,worker);
+    run.groupJobId=task.source_message_id;
+    run.intentMessageId=task.source_message_id;
+    run.cleanupBinId=selection?.target?.userData.editorId||'';
+    try{
+     await api.req('/api/robots/autonomy/group/claim',{method:'POST',body:JSON.stringify({room:room(),message_id:task.source_message_id,robot_id:id,target_id:run.cleanupBinId,order,state:stateOf(run)})});
+    }catch(error){emitLog(worker,'GROUP CLAIM REFUSED',error.message+'; no scene task started');continue;}
+    savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});
+    runs.set(id,run);
+    run.timer=setInterval(()=>void cycle(run),order.interval*1000);
+    trace(worker,'GROUP DELEGATED',`Human message ${task.source_message_id}, ${task.kind}; nearest free editable worker ${worker.name}; ${boxes.length} boxes; bin ${selection?.targetName||'(construction)'} · one atomic server claim.`);
+    trace(worker,'ORDER COMMITTED',`SQLite group assignment and robot order saved together BEFORE physical movement.`);
+    toast(`${worker.name}: ${task.kind==='cleanup_boxes'?'box cleanup':'construction'} accepted; follow physical receipts in Brain.`);
+    void cycle(run);assigned++;
+   }
+  }catch(error){emitLog(null,'GROUP DISPATCH WAITING',error.message);}
+  finally{groupDispatchBusy=false;}
+  if(assigned)update();return assigned;
+ }
+ // Recheck pending work within seconds, independently of 180 s model-planning
+ // intervals; the browser must remain signed in with its 3D scene loaded.
+ let groupQueueTimer=setInterval(()=>void dispatchPendingGroupTasks(),3000);
  async function assignRoomFurnishing(bot,goal,origin='human instruction',options={}){
   const id=bot.userData.editorId;
   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
@@ -1233,40 +1371,19 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   if(!message?.id||handledChatMessages.has(message.id)||!api.online||!api.auth())return 0;
   // Never fall through to a misleading model promise when the sender cannot
   // operate the addressed robot. Real scene-edit permissions are required.
-  // @all cleanup is one shared human assignment, not five independent
-  // robot chat promises. Rank by distance to real Box copy scene objects;
-  // only an idle editable robot can receive the persisted work order.
+  // Explicit @all instructions become server-durable pending intents, even
+  // when no robot is free or a named bin has not loaded yet. Chat replies are
+  // never a substitute for physical tool receipts.
   const groupCleanup=groupBoxCleanupInstruction(message.text);
-  if(groupCleanup){
+  const groupBuild=cityTeamIntent(message.text)?null:chatConstructionInstruction(message.text);
+  if(groupCleanup||groupBuild){
    handledChatMessages.add(message.id);
-   let history=[];
-   try{history=(await api.req('/api/messages?room='+encodeURIComponent(room()))).messages||[];}
-   catch(error){emitLog(null,'GROUP DISPATCH FAILED','Cannot read the preceding user-named bin: '+error.message);return 0;}
-   const selected=selectCleanupTarget(editor.items,groupCleanup,history);
-   if(!selected.targetName){emitLog(null,'GROUP NEEDS EXACT BIN','No uniquely named Big Junk destination in current scene or recent human messages; no wrong bin was selected.');
-    toast('Box cleanup: name the destination bin first.');return 0;}
-   const boxes=editor.items.filter(o=>o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='box'&&/^Box copy\d+$/i.test(o.name)&&!o.userData.storage);
-   const robots=editor.items.filter(o=>o.userData.editorKind==='robot');
-   const worker=nearestAvailableCleanupWorker(robots,boxes,{
-    busyIds:[...runs.keys()],controlledId:editor.controlledRobot?.()?.userData.editorId||'',canEdit:bot=>editor.canEdit(bot)});
-   if(!worker){emitLog(null,'GROUP DEFERRED',`${boxes.length} free Box copies; no editable idle robot available. Existing robot work orders remain intact.`);
-    toast('Box cleanup: no free editable robot found.');return 0;}
-   const id=worker.userData.editorId,goal=boxCleanupProjectGoal(selected.targetName);
-   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
-   const run=newRun(order,true,worker);
-   run.cleanupBinId=selected.target?.userData.editorId||'';
-   run.intentMessageId=String(message.id).slice(0,100);
-   try{await saveOrder(run,true);}
-   catch(error){trace(worker,'GROUP ORDER REJECTED',error.message);return 0;}
-   // Retire stale unverified copies of this same job AFTER the new work
-   // order is committed, to prevent duplicate box claims.
-   for(const other of [...runs.values()])if(other.id!==id&&!other.busy&&boxCleanupGoal(other.order.goal))stop(other.id,'superseded by authorised nearest-idle group cleanup');
-   savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});
-   runs.set(id,run);run.timer=setInterval(()=>void cycle(run),order.interval*1000);
-   trace(worker,'GROUP DELEGATED',`Human message ${message.id}: nearest idle worker ${worker.name}, ${boxes.length} Box copies, target ${selected.targetName}${selected.target?' · scene ID '+run.cleanupBinId:' · target not loaded'}. Single owner to prevent duplicate pickups.`);
-   trace(worker,'ORDER COMMITTED',`Saved ${goal}; physical pickup, route and server receipt required. Target state: ${selected.reason}.`);
-   toast(`${worker.name} assigned to group Box copy cleanup → ${selected.targetName}. Follow verified scene receipts in Brain.`);
-   void cycle(run);update();return 1;
+   try{
+    const queued=await api.req('/api/robots/autonomy/group/queue',{method:'POST',body:JSON.stringify({room:room(),message_id:message.id})});
+    emitLog(null,'GROUP QUEUED',`Human message ${message.id}; task ${queued.task.kind}; ${queued.deduplicated?'merged with pending job':'new durable intent'}; will dispatch only through checked scene tools.`);
+    await dispatchPendingGroupTasks(true);
+    return 1; // Suppress five non-executable @all acknowledgement speeches.
+   }catch(error){emitLog(null,'GROUP QUEUE FAILED',error.message);toast('Group job not saved: '+error.message);return -1;}
   }
   // New @all destination corrections update the existing cleanup order
   // rather than becoming five conversational acknowledgements.
@@ -1281,14 +1398,43 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
     if(!selected.targetName)return 0;
     let accepted=0;
     for(const run of active){
-     const bot=robotFor(run.id),oldGoal=run.order.goal,oldId=run.cleanupBinId;
-     run.order.goal=boxCleanupProjectGoal(selected.targetName);run.cleanupBinId=selected.target?.userData.editorId||'';
-     try{await saveOrder(run,true);trace(bot,'BIN TARGET UPDATED',`${selected.targetName}: ${selected.reason}; actual bin scene ID ${run.cleanupBinId||'not yet loaded'}`);accepted++;
-      if(!run.busy)void cycle(run);}
-     catch(error){run.order.goal=oldGoal;run.cleanupBinId=oldId;trace(bot,'BIN UPDATE FAILED',error.message);}
+     const bot=robotFor(run.id);
+     const correct=async()=>{
+      if(run.cancelled)return;
+      const oldGoal=run.order.goal,oldId=run.cleanupBinId;
+      run.order.goal=boxCleanupProjectGoal(selected.targetName);
+      run.cleanupBinId=selected.target?.userData.editorId||'';
+      try{
+       if(run.groupJobId){
+        if(!run.cleanupBinId)throw Error('Corrected bin must be present before updating the assigned group task');
+        await api.req('/api/robots/autonomy/group/retarget',{method:'POST',body:JSON.stringify({room:run.room,message_id:run.groupJobId,
+         clarification_message_id:message.id,robot_id:run.id,target_id:run.cleanupBinId,order:run.order,state:stateOf(run)})});
+       }else await saveOrder(run,true);
+       trace(bot,'BIN TARGET UPDATED',`${selected.targetName}: ${selected.reason}; server-saved target ${run.cleanupBinId||'not yet loaded'}`);
+       if(!run.busy)void cycle(run);
+      }catch(error){run.order.goal=oldGoal;run.cleanupBinId=oldId;trace(bot,'BIN UPDATE FAILED',error.message);}
+     };
+     // Never change an in-progress carrying action's destination mid-step.
+     // The authenticated correction is applied when that physical step ends.
+     if(run.busy){
+      let attempts=0;
+      const waitForIdle=()=>{
+       if(run.cancelled)return;
+       if(run.busy){
+        if(attempts++<150)setTimeout(waitForIdle,1000);
+        else trace(bot,'BIN UPDATE DEFERRED','Previous physical action did not finish within the correction window; retry the human clarification.');
+       }else void correct();
+      };
+      trace(bot,'BIN UPDATE WAITING','Human target correction held until current physical action finishes.');
+      setTimeout(waitForIdle,250);
+     }else await correct();
+     accepted++;
     }
     return accepted;
    }
+   handledChatMessages.add(message.id);
+   await dispatchPendingGroupTasks(true);
+   return 1; // Pending task now has a new human-authored bin name.
   }
   const denied=editor.items.find(o=>o.userData.editorKind==='robot'&&!editor.canEdit(o)&&
    (namedRoomFurnishingInstruction(message.text,o.name)||namedWorkContinuation(message.text,o.name)||
@@ -1422,25 +1568,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    void cycle(run);update();return 1;
   }
   if(cityTeamIntent(message?.text)){handledChatMessages.add(message.id);return startCityTeam(message.text);}
-  const instruction=chatConstructionInstruction(message?.text);
-  if(!instruction||!message?.id||handledChatMessages.has(message.id)||!api.online||!api.auth())return 0;
-  handledChatMessages.add(message.id);
-  const candidates=editor.items.filter(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&!runs.has(o.userData.editorId)&&editor.controlledRobot?.()!==o&&!o.userData.robotMission).slice(0,3);
-  let accepted=0;
-  for(const bot of candidates){
-   const id=bot.userData.editorId;
-   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal:instruction,
-    allowChanges:true,vision:false,interval:180});
-   const run=newRun(order,true,bot);
-   try{await saveOrder(run,true);}
-   catch(error){trace(bot,'CHAT PROJECT REFUSED',error.message);continue;}
-   savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});
-   runs.set(id,run);run.timer=setInterval(()=>void cycle(run),order.interval*1000);
-   trace(bot,'CHAT PROJECT ACCEPTED','Explicit @all building instruction created an authorised, persistent local work order; no Meta model calls.');
-   void cycle(run);accepted++;
-  }
-  if(accepted)toast(`${accepted} robot construction work order(s) started; review Work orders for verified progress.`);
-  update();return accepted;
+  return 0; // Other chat is conversation, not an executable work-order instruction.
  }
  $('autonomyOnce').onclick=()=>void start(false);
  $('autonomyStart').onclick=()=>void start(true);
@@ -1453,6 +1581,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
  window.addEventListener('solvi:meta-key-updated',()=>void checkMetaStatus());
  window.addEventListener('solvi:room-changed',()=>{restoreSequence++;stopAll(false);});
  window.addEventListener('solvi:session-lost',()=>{restoreSequence++;stopAll(false);});
- window.addEventListener('pagehide',()=>{restoreSequence++;stopAll(false);});
+ window.addEventListener('pagehide',()=>{restoreSequence++;clearInterval(groupQueueTimer);stopAll(false);});
+ window.addEventListener('pageshow',event=>{if(event.persisted){groupQueueTimer=setInterval(()=>void dispatchPendingGroupTasks(),3000);void loadSaved();}});
  refresh();return {stopAll,refresh,loadSaved,startChatProjects,isActive:id=>runs.has(id)};
 }

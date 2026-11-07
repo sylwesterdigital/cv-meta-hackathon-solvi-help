@@ -31,54 +31,43 @@ test('choose only one free authorised robot, nearest eligible Box copy',()=>{
  assert.equal(nearestAvailableCleanupWorker(bots,boxes,{busyIds:['lea','lola','bart'],controlledId:'ctrl',canEdit:()=>true}),null);
  assert.equal(nearestAvailableCleanupWorker(bots,[],{canEdit:()=>true}),null);
 });
-test('actual local order is persisted before cycling; do not route group cleanup through model chat',()=>{
+test('group cleanup is queued durably and only claimed atomically before robot cycles',()=>{
  const source=readFileSync(new URL('../js/robot-autonomy.js',import.meta.url),'utf8');
+ const taskQueue=readFileSync(new URL('../js/robot-task-queue.js',import.meta.url),'utf8');
  const studio=readFileSync(new URL('../js/studio.js',import.meta.url),'utf8');
+ const backend=readFileSync(new URL('../backend/server.py',import.meta.url),'utf8');
  assert.match(source,/const groupCleanup=groupBoxCleanupInstruction\(message\.text\)/);
- assert.match(source,/nearestAvailableCleanupWorker\(robots,boxes/);
- assert.match(source,/try\{await saveOrder\(run,true\);\}/);
- assert.match(source,/trace\(worker,'GROUP DELEGATED'/);
- assert.match(source,/trace\(worker,'ORDER COMMITTED'/);
- assert.match(source,/if\(procedural\)\{[\s\S]*?editor\.inventory\.storeInBin\(bot,box,bin\)/);
+ assert.match(source,/await dispatchPendingGroupTasks\(true\)/);
+ assert.match(source,/const worker=chooseQueuedWorker\(editor\.items/);
+ assert.match(source,/\/api\/robots\/autonomy\/group\/claim/);
+ const claim=source.indexOf("await api.req('/api/robots/autonomy/group/claim'");
+ assert.ok(claim>0&&source.indexOf('runs.set(id,run);',claim)>claim);
+ assert.match(taskQueue,/nearestAvailableCleanupWorker\(choices,boxes/);
+ assert.match(source,/editor\.inventory\.storeInBin\(bot,box,bin\)/);
  assert.match(source,/editor\.inventory\.drop\(bot,box\)/);
  assert.match(source,/await editor\.persistObject\(box,run\.room\)/);
  assert.match(studio,/work>0&&groupBoxCleanupInstruction\(text\)/);
+ assert.match(backend,/def robot_group_queue_add\(/);
+ assert.match(backend,/con\.execute\('BEGIN IMMEDIATE'\)/);
+ assert.match(backend,/def robot_group_queue_claim\(/);
+ assert.match(backend,/def robot_group_queue_result\(/);
 });
 
-test('actual group router commits to server before a single worker executes',async()=>{
+test('actual @all router queues already-authenticated message even with no free robot',async()=>{
  const runtime=readFileSync(new URL('../js/robot-autonomy.js',import.meta.url),'utf8');
  const begin=runtime.indexOf('  const groupCleanup=groupBoxCleanupInstruction(message.text);');
  const end=runtime.indexOf('  // New @all destination corrections',begin);
  assert.ok(begin>0&&end>begin);
- // Execute the real, unmodified browser dispatch branch with a mock editor
- // and API. This catches missing closures / incorrect order of operations.
- const args=['message','editor','api','room','handledChatMessages','emitLog','toast','runs',
-  'groupBoxCleanupInstruction','selectCleanupTarget','nearestAvailableCleanupWorker','boxCleanupProjectGoal','cleanAutonomyOrder','newRun','saveOrder','stop','savedOrders','trace','cycle','update','boxCleanupGoal','stateOf','setInterval'];
- const dispatch=new Function(...args,`return (async()=>{${runtime.slice(begin,end)}return 0;})()`);
- const small=obj('small','Small Bin','furniture','bin',0,0);
- const junk=obj('junk','Bin - Big Junk','model','',22,3);
- const one=obj('box1','Box copy1','furniture','box',3,4);
- const two=obj('box2','Box copy2','furniture','box',5,4);
- const lee=bot('lea','Lea',1,1);const lola=bot('lola','Lola',3.1,3.5);const bart=bot('bart','Bart',4.2,4.6);
- const items=[small,junk,one,two,lee,lola,bart];
- const editor={items,canEdit:()=>true,controlledRobot:()=>null};
+ const args=['message','api','room','handledChatMessages','groupBoxCleanupInstruction','chatConstructionInstruction','cityTeamIntent','emitLog','toast','dispatchPendingGroupTasks'];
+ const run=new Function(...args,`return (async()=>{${runtime.slice(begin,end)}return 0;})()`);
  const message={id:'human-msg-143503',text:'@all guys I see plenty of boxes (Box copy...) - they need to be moved to the Bbig bin I mentioned earlier'};
- const api={req:async endpoint=>{
-  assert.match(endpoint,/^\/api\/messages\?room=/);
-  return {messages:[{role:'user',text:'@all the target is called "Bin - Big Junk"'},message]};
- }};
- const events=[];
- const savedOrders=new Map();const runs=new Map([['lea',{id:'lea',busy:true,order:{goal:'move boxes to bin'}}]]);
- const result=await dispatch(message,editor,api,()=> 'loft-16',new Set(),()=>{},()=>{},runs,
-  groupBoxCleanupInstruction,selectCleanupTarget,nearestAvailableCleanupWorker,boxCleanupProjectGoal,
-  params=>params,(order,loop,worker)=>({order,loop,id:worker.userData.editorId,cleanupBinId:'',intentMessageId:''}),
-  async run=>{events.push('SAVE '+run.id);assert.equal(run.cleanupBinId,'junk');assert.equal(run.intentMessageId,message.id);},
-  ()=>assert.fail('busy old work must not be cancelled'),savedOrders,
-  (_worker,tag)=>events.push('TRACE '+tag),run=>{events.push('CYCLE '+run.id);},()=>{},()=>true,()=>({}),()=>1);
- assert.equal(result,1);
- assert.deepEqual(events.slice(0,2),['SAVE lola','TRACE GROUP DELEGATED']);
- assert.equal(runs.has('lola'),true);assert.equal(savedOrders.has('lola'),true);
- assert.equal(runs.has('bart'),false);
- assert.match(runs.get('lola').order.goal,/Bin - Big Junk/);
- assert.ok(events.includes('CYCLE lola'));
+ const events=[],handled=new Set();
+ const api={req:async (endpoint,params)=>{assert.equal(endpoint,'/api/robots/autonomy/group/queue');
+   assert.deepEqual(JSON.parse(params.body),{room:'loft-16',message_id:message.id});events.push('PERSIST');
+   return {task:{kind:'cleanup_boxes'},deduplicated:false};}};
+ const accepted=await run(message,api,()=> 'loft-16',handled,groupBoxCleanupInstruction,()=>null,()=>null,
+   ()=>{},()=>{},async()=>{events.push('DISPATCH');return 0;});
+ assert.equal(accepted,1);
+ assert.deepEqual(events,['PERSIST','DISPATCH']);
+ assert.equal(handled.has(message.id),true);
 });

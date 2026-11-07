@@ -50,6 +50,7 @@ export function requestedHomeCount(goal=''){
 export function chatConstructionInstruction(text=''){
  const message=String(text||'').slice(0,1800);
  if(!/(?<![\p{L}\p{N}_])@all\b/iu.test(message))return null;
+ if(/\b(?:don't|do\s+not|never|stop)\s+(?:\w+\s+){0,3}(?:start|begin|build|building|construct|constructing|create|creating|make)\b/i.test(message))return null;
  if(!houseGoal(message)&&!localProjectSequence(message).length)return null;
  const direct=/\b(?:start|begin|please|now)\s+(?:[\w-]+\s+){0,4}(?:build|building|construct|constructing|create|creating)\b/i.test(message)||
    /\b(?:build|construct|create|make)\s+(?:some\s+|new\s+|more\s+|a\s+|an\s+)?(?:homes?|houses?|cabins?|parks?|picnic\s+(?:area|spot))\b/i.test(message);

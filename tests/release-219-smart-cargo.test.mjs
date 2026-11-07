@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {sceneBoxCopies,liveCleanupObservation} from '../js/robot-task-queue.js';
 import {cargoConstraints,groundedBoxMatch,colourFamily,shouldJogCargoLeg,safeThrowCandidate} from '../js/robot-transfer-decisions.js';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const box=(name,color,contents)=>({name,userData:{furniture:{variant:'box',color,...(contents?{contents}:{})}}});
@@ -50,7 +51,7 @@ test('runtime uses real physics, verified landing, animation, and saver for opti
 test('full collection executor saves only pink items; unmatched blue and unknown-content items remain untouched',async()=>{
  const source=read('js/robot-autonomy.js');
  const segment=source.slice(source.indexOf(' // Recover a failed direct object route'),source.indexOf(' async function walkToWorksite('));
- const create=new Function('editor','requireActive','autonomyProximity','moveTo','trace','MAX_TRAVEL','wait','window','cargoConstraints','groundedBoxMatch','tryThrowBox',segment+'\nreturn cleanBoxes;');
+ const create=new Function('editor','requireActive','autonomyProximity','moveTo','trace','MAX_TRAVEL','wait','window','cargoConstraints','groundedBoxMatch','tryThrowBox','sceneBoxCopies','liveCleanupObservation',segment+'\nreturn cleanBoxes;');
  const make=(id,name,variant,color)=>({name,position:{x:.3,y:0,z:0,distanceToSquared(){return 0;}},userData:{editorId:id,editorKind:'furniture',furniture:{variant,color}}});
  const bot={name:'Lea',position:{x:0,y:0,z:0},userData:{editorId:'robot-12345678'}};
  const bin=make('bin-12345678','Bin - Big Junk','bin','#888888');
@@ -58,7 +59,7 @@ test('full collection executor saves only pink items; unmatched blue and unknown
  const blue=make('blue-12345678','Box copy9','box','#6688ee');
  const saved=[];
  const editor={items:[bin,pink,blue],canEdit:()=>true,queueSave(){},async persistObject(obj){saved.push(obj.name);return true;},inventory:{heldFor(){return null;},hold(robot,obj){obj.userData.storage={type:'held',holderId:robot.userData.editorId,hand:'right'};return true;},storeInBin(robot,obj,destination){obj.userData.storage={type:'container',containerId:destination.userData.editorId,slot:0};return true;}}};
- const clean=create(editor,()=>{},()=>true,async()=>{},()=>{},90,()=>Promise.resolve(),{},cargoConstraints,groundedBoxMatch,async()=>false);
+ const clean=create(editor,()=>{},()=>true,async()=>{},()=>{},90,()=>Promise.resolve(),{},cargoConstraints,groundedBoxMatch,async()=>false,sceneBoxCopies,liveCleanupObservation);
  const run={id:bot.userData.editorId,room:'loft-16',order:{allowChanges:true,goal:'@Lea collect only pink Box copies into Bin - Big Junk'},cleanupDone:[],cleanupSkipped:[],cleanupThrowTried:[],cleanupBinId:''};
  assert.match(await clean(run,bot),/1\/1 Box copies stored/);
  assert.equal(blue.userData.storage,undefined);
@@ -70,5 +71,5 @@ test('full collection executor saves only pink items; unmatched blue and unknown
 });
 test('new cargo module is versioned in the browser import map',()=>{
  const html=read('index.html');
- assert.ok(html.includes('"./js/robot-transfer-decisions.js":"./js/robot-transfer-decisions.js?v=0.2.233"'));
+ assert.ok(html.includes('"./js/robot-transfer-decisions.js":"./js/robot-transfer-decisions.js?v=0.2.235"'));
 });

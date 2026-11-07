@@ -23,13 +23,14 @@ export function sceneBinTargets(items=[]){
    /\b(?:bin|junk)\b/i.test(o.name||''));
 }
 export function requestedBinName(text='',history=[]){
- const refs=[String(text||'')];
- // Only human user speech may name the destination. Robot speculation cannot
- // silently authorize choosing a different bin.
+ const refs=[];
+ // The latest human clarification takes precedence over an older ambiguous
+ // destination. Robot speculation cannot silently rename the target.
  for(const msg of [...history].reverse().slice(0,80)){
   if(msg?.role!=='user'||typeof msg.text!=='string')continue;
   refs.push(msg.text);
  }
+ refs.push(String(text||''));
  for(const ref of refs){
   const quoted=/["“']\s*(Bin\s*[-–:]\s*[^"”'\n]{2,90})\s*["”']/i.exec(ref);
   if(quoted)return quoted[1].trim();

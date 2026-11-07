@@ -1222,6 +1222,123 @@ assert c.get('/api/messages?room=main',headers=headers).get_json()['messages']==
 assert c.get('/api/admin/room-chat/export?room=lab',headers=chat_admin).get_json()['count']==lab_before
 print('PASS: admin transcript exports complete room chat, exact-name flush, unrelated rooms unaffected')
 
+# v0.2.234: real Flask + SQLite group-intent integration. Use an isolated room
+# with scene objects; do not mistake the enqueue response for a physical move.
+queue_room='group-queue-smoke'
+created=c.post('/api/rooms',headers=headers,json={'id':queue_room,'title':'Group queue test'})
+assert created.status_code==200,(created.status_code,created.data)
+_user_id=data['user']['id']
+_queue_robot={'id':'queue-test-bot-1','kind':'robot','name':'Lea','owner':_user_id,
+              'position':[0,0,0],'rotation':[0,0,0],'scale':[1,1,1]}
+_queue_bot2={**_queue_robot,'id':'queue-test-bot-2','name':'Lola','position':[4,0,0]}
+_queue_bin={'id':'queue-test-big-bin','kind':'model','name':'Bin - Big Junk','owner':_user_id,
+            'position':[12,0,4],'rotation':[0,0,0],'scale':[1,1,1]}
+_queue_small={**_queue_bin,'id':'queue-test-small-bin','name':'Small Bin','position':[3,0,1]}
+_queue_box={'id':'queue-test-box-1','kind':'furniture','name':'Box copy1','owner':_user_id,
+            'position':[1,0,0],'rotation':[0,0,0],'scale':[1,1,1],
+            'furniture':{'variant':'box','width':.35,'height':.3,'depth':.35}}
+with db() as con:
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',
+                (json.dumps([_queue_robot,_queue_bot2,_queue_bin,_queue_small,_queue_box]),queue_room))
+_msg=lambda text:c.post('/api/message',headers=headers,json={'room':queue_room,'text':text,'media':[]})
+name_msg=_msg('@all the target is called "Bin - Big Junk"')
+assert name_msg.status_code==200,(name_msg.status_code,name_msg.data)
+not_work=_msg('@all do not move the boxes to the bin')
+assert not_work.status_code==200
+assert c.post('/api/robots/autonomy/group/queue',headers=headers,json={
+    'room':queue_room,'message_id':not_work.get_json()['message']['id']}).status_code==400
+instruction=_msg('@all I see boxes (Box copy...) that need to be moved to the Bbig bin mentioned earlier')
+assert instruction.status_code==200,(instruction.status_code,instruction.data)
+mid=instruction.get_json()['message']['id']
+endpoint='/api/robots/autonomy/group/'
+queued=c.post(endpoint+'queue',headers=headers,json={'room':queue_room,'message_id':mid})
+assert queued.status_code==200 and queued.get_json()['task']['status']=='pending',(queued.status_code,queued.data)
+again=c.post(endpoint+'queue',headers=headers,json={'room':queue_room,'message_id':mid})
+assert again.get_json()['deduplicated'] is True
+assert any(t['source_message_id']==mid for t in c.get(endpoint+'queue?room='+queue_room,headers=headers).get_json()['tasks'])
+_order={'mode':'local_project','robotId':_queue_robot['id'],'room':queue_room,
+        'goal':'@all move Box copies into Bin - Big Junk','interval':180,'vision':False,'allowChanges':True}
+_state={'groupJobId':mid,'intentMessageId':mid,'cleanupBinId':_queue_bin['id'],'groupNoProgress':0}
+claim={'room':queue_room,'message_id':mid,'robot_id':_queue_robot['id'],'target_id':_queue_bin['id'],
+       'order':_order,'state':_state}
+assert c.post(endpoint+'claim',headers=headers,json={**claim,'target_id':_queue_small['id']}).status_code==409
+claim_response=c.post(endpoint+'claim',headers=headers,json=claim)
+assert claim_response.status_code==200,(claim_response.status_code,claim_response.data)
+# Invalid identity/order pairing is a bad request (400), not proof of the
+# single-worker conflict path. Test both branches with accurate payloads.
+malformed_second=c.post(endpoint+'claim',headers=headers,json={**claim,'robot_id':_queue_bot2['id']})
+assert malformed_second.status_code==400,(malformed_second.status_code,malformed_second.data)
+assert malformed_second.get_json()['error']=='Group work order and source message mismatch'
+second_claim={**claim,'robot_id':_queue_bot2['id'],
+              'order':{**_order,'robotId':_queue_bot2['id']}}
+competing=c.post(endpoint+'claim',headers=headers,json=second_claim)
+assert competing.status_code==409,(competing.status_code,competing.data)
+assert competing.get_json()['error']=='Group intent not ready for claiming'
+with db() as con:
+    owner=con.execute('SELECT worker_id,status FROM robot_group_intents WHERE room_id=? AND source_message_id=?',
+                      (queue_room,mid)).fetchone()
+    duplicate=con.execute('SELECT enabled FROM robot_work_orders WHERE room_id=? AND robot_id=?',
+                          (queue_room,_queue_bot2['id'])).fetchone()
+assert owner['worker_id']==_queue_robot['id'] and owner['status']=='assigned'
+assert duplicate is None, 'Rejected competing claim must not persist a second worker'
+# A later authorised human correction updates the SAME job and its persisted
+# work order atomically; the old target cannot produce a false receipt.
+_queue_updated_bin={**_queue_bin,'id':'queue-test-big-bin-updated','name':'Bin - Big Junk Updated',
+                    'position':[18,0,4]}
+with db() as con:
+    objects=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    objects.append(_queue_updated_bin)
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(objects),queue_room))
+clarification=_msg('@all the updated destination is called "Bin - Big Junk Updated"')
+assert clarification.status_code==200
+retarget={**claim,'clarification_message_id':clarification.get_json()['message']['id'],
+          'target_id':_queue_updated_bin['id'],
+          'order':{**_order,'goal':'@all move Box copies into Bin - Big Junk Updated'},
+          'state':{**_state,'cleanupBinId':_queue_updated_bin['id']}}
+assert c.post(endpoint+'retarget',headers=headers,json={**retarget,'target_id':_queue_small['id']}).status_code==400
+changed=c.post(endpoint+'retarget',headers=headers,json=retarget)
+assert changed.status_code==200,(changed.status_code,changed.data)
+with db() as con:
+    target=con.execute('SELECT target_id FROM robot_group_intents WHERE room_id=? AND source_message_id=?',(queue_room,mid)).fetchone()
+    order_row=con.execute('SELECT state_json FROM robot_work_orders WHERE room_id=? AND robot_id=?',(queue_room,_queue_robot['id'])).fetchone()
+assert target['target_id']==_queue_updated_bin['id'] and json.loads(order_row['state_json'])['cleanupBinId']==_queue_updated_bin['id']
+# No live scene save => no completed receipt; order remains assigned.
+result={'room':queue_room,'message_id':mid,'robot_id':_queue_robot['id'],'outcome':'completed'}
+assert c.post(endpoint+'result',headers=headers,json=result).status_code==409
+# Ordinary unrelated job must not be allowed to overwrite active group cargo.
+assert c.put('/api/robots/autonomy/order',headers=headers,json={'room':queue_room,'robot_id':_queue_robot['id'],
+    'order':_order,'state':{'intentMessageId':mid},'enabled':True}).status_code==409
+# A held item cannot be delegated to a different worker invisibly.
+with db() as con:
+    objects=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    box=next(o for o in objects if o['id']==_queue_box['id'])
+    box['storage']={'type':'held','holderId':_queue_robot['id'],'hand':'right'}
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(objects),queue_room))
+assert c.post(endpoint+'result',headers=headers,json={**result,'outcome':'release'}).status_code==409
+with db() as con:
+    objects=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    box=next(o for o in objects if o['id']==_queue_box['id'])
+    box.pop('storage',None);box['position']=[18.5,0,4.3]
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(objects),queue_room))
+complete=c.post(endpoint+'result',headers=headers,json=result)
+assert complete.status_code==200 and complete.get_json()['status']=='completed',(complete.status_code,complete.data)
+with db() as con:
+    state=con.execute('SELECT enabled FROM robot_work_orders WHERE room_id=? AND robot_id=?',
+                      (queue_room,_queue_robot['id'])).fetchone()
+assert state['enabled']==0
+# Separate bounded build goals are queued independently and may claim a free robot.
+build=_msg('@all start building more homes')
+assert build.status_code==200
+build_id=build.get_json()['message']['id']
+assert c.post(endpoint+'queue',headers=headers,json={'room':queue_room,'message_id':build_id}).get_json()['task']['kind']=='local_build'
+order2={**_order,'robotId':_queue_bot2['id'],'goal':'@all start building more homes'}
+claim2={'room':queue_room,'message_id':build_id,'robot_id':_queue_bot2['id'],
+        'order':order2,'state':{'groupJobId':build_id,'completedHouses':[]}}
+assert c.post(endpoint+'claim',headers=headers,json=claim2).status_code==200
+assert c.post(endpoint+'result',headers=headers,json={
+    'room':queue_room,'message_id':build_id,'robot_id':_queue_bot2['id'],'outcome':'completed'}).status_code==409
+print('PASS: authenticated group queue, idempotence, atomic worker claim, independent scene receipt, held-cargo safety and multiple project types')
+
 # Logging out revokes the token server-side; the same browser tab cannot use it again.
 assert c.post('/api/logout',headers=headers,json={}).status_code==200
 assert c.get('/api/me',headers=headers).status_code==401

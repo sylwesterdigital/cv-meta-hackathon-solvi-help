@@ -1,9 +1,20 @@
-## v0.2.233 — Reliable Mac watcher test subprocesses
+## v0.2.235 — Correct Mac watcher group-queue integration assertion
 
-- Investigate v0.2.232 watcher failure: `npm test` assertion `actual: null`, `expected: 0` after package hashes passed; no files reached production.
-- Address test-only subprocess reliability: retry only transient process-launch errors / timeouts; give timed subprocesses a minimum 30 s budget, report abnormal signals/errors; do not retry or mask real nonzero exits.
-- Use Node's built-in spec reporter to put failing test names and stack traces at the end of test output for visibility in shortened Mac watcher logs.
-- Preserve live autonomy, group delegation, object-save verification and original media/assets unchanged; watcher must still validate deployment.
+- Reproduce failed v0.2.234 watcher test at `backend/test_api.py`: after Lea had already claimed the Box-copy job, the second claim switched only the outer `robot_id` to Lola; its embedded `order.robotId` still pointed to Lea. The API correctly rejected this malformed order as HTTP 400, while the test incorrectly required 409.
+- Assert HTTP 400 for an identity-mismatched request, then submit a **consistent competing worker order** and require HTTP 409 plus database proof that the original assignment is untouched and no duplicate order was saved.
+- Retain server-side atomic claims, human authorization, real scene receipts, group handoff, browser-only execution and deployment gates. The watcher rejected v0.2.234 before GitHub or production; v0.2.235 remains subject to watcher and live-world verification.
+
+## v0.2.234 — Durable reactive group-task queue, safe handoff and verified execution
+
+- Persist authenticated human @all cleanup and bounded construction requests as independent SQLite group intents, including when all robots are busy or the named destination is unavailable.
+- Atomically claim one free editable nearest Box copy worker before physical action; preserve unrelated robot projects, retry deferred goals every three seconds in an active browser and reassign a blocked cargo-free worker safely.
+- Capture fresh head-camera evidence and re-read live scene object IDs for each box attempt; never treat an old caption or a robot chat acknowledgement as proof of action.
+- Require existing inventory pickup/navigation and server-acknowledged saved delivery; independently verify scene positions or native bin storage before the server closes the group intent.
+- Preserve the original 3D scene, avatar/media binaries and human ownership; no autonomous physics execution when every browser is closed, no arbitrary tools, and no production deployment claimed.
+
+## v0.2.233 — Mac test subprocess reliability (carried forward)
+
+- Give the Python child-process regression sufficient time; retry only transient process-start or timeout failures, never a real nonzero exit. Use the Node spec reporter so a failed watcher test names its assertion.
 
 ## v0.2.232 — Nearest-free group box delegation and grounded disposal
 

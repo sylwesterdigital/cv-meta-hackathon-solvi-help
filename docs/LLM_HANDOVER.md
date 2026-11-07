@@ -1,9 +1,16 @@
-# SOLVI.help Master LLM Handover — v0.2.233
+# SOLVI.help Master LLM Handover — v0.2.235
 
-## v0.2.233 — Mac watcher subprocess gate
+## v0.2.235 — Watcher claim-concurrency test correction
 
-Mac watcher rejected v0.2.232 during npm test with `actual:null expected:0`; this is consistent with a test subprocess that never exited normally, but the pasted log lacks the test name and cannot prove its exact cause. Test-only helper retries transient `EAGAIN`, `ENOMEM`, `EINTR`, `EBUSY`, `ETIMEDOUT` and improves diagnostics, leaving actual nonzero exits as hard failures. `npm test` retains all test files with the built-in spec reporter. Keep the watcher running and drop the entire release ZIP into updates/. No live deployment claim.
+- The Mac watcher for 0.2.234 rejected the backend integration assertion at `backend/test_api.py`: a second robot claim supplied a mismatched embedded `order.robotId`, correctly yielding HTTP 400 rather than expected 409. The new test distinguishes malformed (400) and valid conflicting (409) claims and checks that no duplicate worker row is persisted. This is a test correction, not a relaxation of server validation.
+- Complete Flask/SQLite suite and actual two-client robot movement still must be checked by the watcher/scene acceptance. See `docs/RELEASE_0.2.235_SPEC.md`.
 
+## v0.2.234 — Durable browser-backed group task orchestration
+
+- The `robot_group_intents` SQLite queue persists authenticated human `@all` instructions independently of browser worker availability. A fresh browser scene polls every three seconds; claiming a worker and saving the validated order happen in one database transaction.
+- Independent bounded construction tasks may occupy different available robots, while one nearest-free robot handles the shared Box-copy cleanup. No existing active order may be silently replaced.
+- Each box action begins with a current scene check and optional fresh head-camera capture, uses physical inventory navigation, and waits for a verified scene save. A completed group job additionally requires a server check of saved bin inventory or physical pose beside the named imported-model bin.
+- A blocked cargo-free worker can hand off safely; outstanding tasks remain queued when nobody is available. No backend physics or vision is performed with all browser scenes closed. See `docs/RELEASE_0.2.234_SPEC.md` for acceptance and residual limitations.
 
 ## v0.2.232 — @all box cleanup dispatch
 

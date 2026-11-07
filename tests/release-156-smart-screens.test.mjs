@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
-import {spawnSync} from './helpers/subprocess-test.mjs';
+import {spawnSync} from 'node:child_process';
 const read=name=>fs.readFileSync(new URL('../'+name,import.meta.url),'utf8');
 const evaluate=(name,expression)=>{
  const code=read(name).replace(/^import .*?;\s*$/gm,'').replaceAll('export ','');

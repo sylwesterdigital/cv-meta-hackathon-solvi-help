@@ -117,6 +117,16 @@ def init_db():
         CREATE TABLE IF NOT EXISTS robot_work_events (id TEXT PRIMARY KEY,room_id TEXT NOT NULL,robot_id TEXT NOT NULL,user_id TEXT NOT NULL,action TEXT NOT NULL,status TEXT NOT NULL,detail TEXT NOT NULL,created TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS robot_work_events_lookup ON robot_work_events(room_id,robot_id,created);
         CREATE TABLE IF NOT EXISTS robot_work_orders (room_id TEXT NOT NULL,robot_id TEXT NOT NULL,user_id TEXT NOT NULL,order_json TEXT NOT NULL,state_json TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,updated TEXT NOT NULL,PRIMARY KEY(room_id,robot_id));
+        CREATE TABLE IF NOT EXISTS robot_group_intents (
+          room_id TEXT NOT NULL,source_message_id TEXT NOT NULL,user_id TEXT NOT NULL,
+          kind TEXT NOT NULL,source_text TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',
+          scene_before TEXT NOT NULL DEFAULT '[]',
+          worker_id TEXT NOT NULL DEFAULT '',target_id TEXT NOT NULL DEFAULT '',
+          target_name TEXT NOT NULL DEFAULT '',failed_worker_id TEXT NOT NULL DEFAULT '',
+          attempts INTEGER NOT NULL DEFAULT 0,retry_at REAL NOT NULL DEFAULT 0,
+          detail TEXT NOT NULL DEFAULT '',created TEXT NOT NULL,updated TEXT NOT NULL,
+          PRIMARY KEY(room_id,source_message_id));
+        CREATE INDEX IF NOT EXISTS robot_group_intents_owner ON robot_group_intents(user_id,room_id,status);
         CREATE TABLE IF NOT EXISTS robot_autonomy_preferences (user_id TEXT PRIMARY KEY, retry_seconds INTEGER NOT NULL DEFAULT 30, max_retry_seconds INTEGER NOT NULL DEFAULT 120, planner_cooldown_seconds INTEGER NOT NULL DEFAULT 175);
         CREATE INDEX IF NOT EXISTS robot_work_orders_owner ON robot_work_orders(user_id,room_id);
         CREATE TABLE IF NOT EXISTS scene (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, payload TEXT NOT NULL);
@@ -237,7 +247,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.233',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.235',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1879,7 +1889,7 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending'}
+    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending','groupJobId','groupNoProgress'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
@@ -1899,6 +1909,8 @@ def valid_robot_work_order(order,state):
         not isinstance(value,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',value)
         for key,value in colours.items())):return None
     if not isinstance(stored.get('intentMessageId',''),str) or len(stored.get('intentMessageId',''))>100:return None
+    if not isinstance(stored.get('groupJobId',''),str) or len(stored.get('groupJobId',''))>100:return None
+    if type(stored.get('groupNoProgress',0)) is not int or not 0<=stored.get('groupNoProgress',0)<=15:return None
     tried=stored.get('cleanupThrowTried',[])
     if (not isinstance(tried,list) or len(tried)>32 or
         any(not isinstance(ident,str) or not 1<=len(ident)<=100 for ident in tried)):return None
@@ -1934,6 +1946,247 @@ def valid_robot_work_order(order,state):
     if not isinstance(houses,list) or len(houses)>3 or any(not isinstance(id,str) or len(id)>100 for id in houses):return None
     return cleaned,stored
 
+# Group intent queue: ONLY authenticated, already saved human chat can authorize
+# a scene-changing task. Queuing persists without a free robot. Claim + work
+# order commit are one SQLite transaction, so two clients cannot duplicate it.
+def group_intent_kind(text):
+    if not isinstance(text,str) or not 1<=len(text)<=1800 or not re.match(r'^\s*@(?:all|everyone)\b',text,re.I):return ''
+    if re.search(r"\b(?:don't|do\s+not|never|stop)\s+(?:\w+\s+){0,3}(?:move|moved|collect|put|pick|dispose|start|begin|build|building|construct|constructing|create|creating|make)\b",text,re.I):return ''
+    if (re.search(r'\b(?:boxes|box\s+cop(?:y|ies))\b',text,re.I) and
+        re.search(r'\b(?:bin|junk|rubbish|trash)\b',text,re.I) and
+        re.search(r'\b(?:move|moved|collect|collected|clear|tidy|pick\s*up|dispose|put|take|deliver)\b',text,re.I)):
+        return 'cleanup_boxes'
+    if (re.search(r'\b(?:build|building|construct|constructing|create|creating|make)\b',text,re.I) and
+        re.search(r'\b(?:homes?|houses?|cabins?|parks?|picnic\s+(?:areas?|spots?))\b',text,re.I)):
+        return 'local_build'
+    return ''
+
+def group_intent_public(row):
+    return {key:row[key] for key in ('room_id','source_message_id','kind','source_text','status',
+             'worker_id','target_id','target_name','failed_worker_id','attempts','retry_at','detail','updated')}
+
+def group_scene_objects(con,room_id):
+    row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+    try:return json.loads(row['payload']) if row else []
+    except (TypeError,ValueError):return []
+
+def group_copy_objects(objects):
+    return [o for o in objects if isinstance(o,dict) and o.get('kind') in ('furniture','model','cube') and
+      re.fullmatch(r'box\s+cop(?:y|ies)(?:\s*\d+)?',str(o.get('name','')).strip(),re.I)]
+
+def group_has_held_cargo(objects,worker_id):
+    return any(isinstance(o,dict) and isinstance(o.get('storage'),dict) and
+       o['storage'].get('type')=='held' and o['storage'].get('holderId')==worker_id for o in objects)
+
+def group_destination_confirmed(objects,target_id,box):
+    dest=next((o for o in objects if isinstance(o,dict) and o.get('id')==target_id),None)
+    if not dest:return False
+    stored=box.get('storage')
+    if dest.get('kind')=='furniture' and isinstance(dest.get('furniture'),dict) and dest['furniture'].get('variant')=='bin':
+        return isinstance(stored,dict) and stored.get('type')=='container' and stored.get('containerId')==target_id
+    if stored:return False
+    try:
+        p=box['position'];q=dest['position'];
+        # Saved Three.js world poses are numeric [x, y, z] arrays.
+        return (math.hypot(float(p[0])-float(q[0]),float(p[2])-float(q[2]))<=2.5 and
+                abs(float(p[1])-float(q[1]))<=1.7)
+    except (KeyError,TypeError,ValueError,OverflowError):return False
+
+@app.post('/api/robots/autonomy/group/queue')
+def robot_group_queue_add():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    mid=str(data.get('message_id',''))[:100]
+    if not mid:return json_error('Human message ID required',400)
+    with db() as con:
+        row=con.execute('SELECT id,user_id,role,text FROM messages WHERE id=? AND room_id=?',(mid,room_id)).fetchone()
+        if not row or row['user_id']!=user['id'] or row['role']!='user':return json_error('Original human chat authority required',403)
+        kind=group_intent_kind(row['text'])
+        if not kind:return json_error('Only explicit supported @all tasks can be queued',400)
+        existing=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=?',(room_id,mid)).fetchone()
+        if existing:return jsonify(ok=True,task=group_intent_public(existing),deduplicated=True)
+        active_count=con.execute("SELECT COUNT(*) AS n FROM robot_group_intents WHERE room_id=? AND user_id=? AND status IN ('pending','assigned')",(room_id,user['id'])).fetchone()['n']
+        if active_count>=25:return json_error('Group work queue is full (25 outstanding jobs)',429)
+        # Merge repeated instructions while an identical room-wide cleanup
+        # is still pending or running. Do not create competing cargo claims.
+        if kind=='cleanup_boxes':
+            active=con.execute("SELECT * FROM robot_group_intents WHERE room_id=? AND user_id=? AND kind=? AND status IN ('pending','assigned') ORDER BY created DESC LIMIT 1",(room_id,user['id'],kind)).fetchone()
+            if active:return jsonify(ok=True,task=group_intent_public(active),deduplicated=True)
+        stamp=now()
+        con.execute('INSERT INTO robot_group_intents(room_id,source_message_id,user_id,kind,source_text,created,updated) VALUES(?,?,?,?,?,?,?)',
+             (room_id,mid,user['id'],kind,row['text'],stamp,stamp))
+        task=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=?',(room_id,mid)).fetchone()
+    return jsonify(ok=True,task=group_intent_public(task),deduplicated=False)
+
+@app.get('/api/robots/autonomy/group/queue')
+def robot_group_queue_list():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    room_id=selected_room(request.args.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    with db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        objects=group_scene_objects(con,room_id)
+        assigned=con.execute("SELECT * FROM robot_group_intents WHERE room_id=? AND user_id=? AND status='assigned'",(room_id,user['id'])).fetchall()
+        for task in assigned:
+            current=con.execute('SELECT enabled,state_json FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',
+                                (room_id,task['worker_id'],user['id'])).fetchone()
+            bot=next((o for o in objects if isinstance(o,dict) and o.get('id')==task['worker_id'] and o.get('kind')=='robot'),None)
+            valid=(current and current['enabled'] and json.loads(current['state_json']).get('groupJobId')==task['source_message_id'] and bot and may_edit(user['id'],bot,room_policy(room_id)))
+            if valid or group_has_held_cargo(objects,task['worker_id']):continue
+            # An order lost through deletion / manual disable must not orphan
+            # the group's instruction forever. An active eligible worker is
+            # never stolen merely because a browser timer was throttled.
+            con.execute("UPDATE robot_group_intents SET status='pending',failed_worker_id=?,worker_id='',retry_at=0,detail='Previous worker or saved order unavailable; safe pending reassignment',updated=? WHERE room_id=? AND source_message_id=?",
+                        (task['worker_id'],now(),room_id,task['source_message_id']))
+        rows=con.execute("SELECT * FROM robot_group_intents WHERE room_id=? AND user_id=? AND status IN ('pending','assigned','blocked') ORDER BY created ASC LIMIT 40",(room_id,user['id'])).fetchall()
+    return jsonify(tasks=[group_intent_public(row) for row in rows],execution='browser-required')
+
+@app.post('/api/robots/autonomy/group/claim')
+def robot_group_queue_claim():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    mid=str(data.get('message_id',''))[:100];rid=str(data.get('robot_id',''))[:100]
+    bot=robot_work_order_robot(user,room_id,rid)
+    if not bot:return json_error('Robot operator permission required',403)
+    normalized=valid_robot_work_order(data.get('order'),data.get('state'))
+    if not normalized:return json_error('Invalid bounded work-order state',400)
+    order,state=normalized
+    if order['robotId']!=rid or order['room']!=room_id or order['mode']!='local_project' or order['allowChanges'] is not True or state.get('groupJobId')!=mid:
+        return json_error('Group work order and source message mismatch',400)
+    with db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        task=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=? AND user_id=?',(room_id,mid,user['id'])).fetchone()
+        if not task:return json_error('Unknown group intent',404)
+        if task['status']!='pending' or task['retry_at']>time.time():return json_error('Group intent not ready for claiming',409)
+        existing=con.execute('SELECT enabled FROM robot_work_orders WHERE room_id=? AND robot_id=?',(room_id,rid)).fetchone()
+        if existing and existing['enabled']:return json_error('Robot already has an active project',409)
+        if task['kind']=='cleanup_boxes':
+            active=con.execute("SELECT 1 FROM robot_group_intents WHERE room_id=? AND kind='cleanup_boxes' AND status='assigned' LIMIT 1",(room_id,)).fetchone()
+            if active:return json_error('Another Box copy worker already assigned in the room',409)
+            objects=group_scene_objects(con,room_id)
+            target_id=str(data.get('target_id',''))[:100]
+            dest=next((o for o in objects if isinstance(o,dict) and o.get('id')==target_id),None)
+            if not dest or dest.get('kind') not in ('furniture','model','cube','cylinder') or not re.search(r'\b(?:bin|junk)\b',str(dest.get('name','')),re.I):return json_error('Named destination not loaded',409)
+            if not may_edit(user['id'],dest,room_policy(room_id)):return json_error('Destination edit permission required',403)
+            # Saved HUMAN room messages, including later clarification, may
+            # identify the physical bin. No robot dialogue can authorize it.
+            messages=con.execute("SELECT text FROM messages WHERE room_id=? AND role='user' ORDER BY created DESC LIMIT 150",(room_id,)).fetchall()
+            name=str(dest.get('name','')).strip()
+            if not any(name.lower() in row['text'].lower() for row in messages):return json_error('Destination must be explicitly named in earlier human chat',409)
+            if not group_copy_objects(objects):return json_error('No Box copies present in saved scene',409)
+            if state.get('cleanupBinId')!=target_id or name.lower() not in order['goal'].lower():return json_error('Task destination ID and name mismatch',400)
+        elif task['kind']=='local_build':
+            target_id='';name=''
+            if order['goal']!=task['source_text']:return json_error('Construction goal does not match authorized human message',400)
+        else:return json_error('Unknown group intent kind',400)
+        stamp=now()
+        scene_before=json.dumps([o.get('id') for o in group_scene_objects(con,room_id) if isinstance(o,dict) and isinstance(o.get('id'),str)])
+        con.execute('INSERT INTO robot_work_orders(room_id,robot_id,user_id,order_json,state_json,enabled,updated) VALUES(?,?,?,?,?,?,?) ON CONFLICT(room_id,robot_id) DO UPDATE SET user_id=excluded.user_id,order_json=excluded.order_json,state_json=excluded.state_json,enabled=excluded.enabled,updated=excluded.updated',
+            (room_id,rid,user['id'],json.dumps(order,ensure_ascii=False),json.dumps(state,ensure_ascii=False),1,stamp))
+        con.execute("UPDATE robot_group_intents SET status='assigned',worker_id=?,target_id=?,target_name=?,scene_before=?,attempts=attempts+1,retry_at=0,detail='',updated=? WHERE room_id=? AND source_message_id=?",(rid,target_id,name,scene_before,stamp,room_id,mid))
+    return jsonify(ok=True,assigned_robot_id=rid,persistence='SQLite; physical execution requires visible browser')
+
+@app.post('/api/robots/autonomy/group/retarget')
+def robot_group_queue_retarget():
+    """Apply a later human bin-name correction to the *same* claimed job.
+
+    The destination ID, persisted worker order, and authoritative group
+    receipt target change together. Never let a chat correction create an
+    unverified receipt for the old bin, or interrupt a robot holding cargo.
+    """
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    mid=str(data.get('message_id',''))[:100];rid=str(data.get('robot_id',''))[:100]
+    clarification_id=str(data.get('clarification_message_id',''))[:100]
+    target_id=str(data.get('target_id',''))[:100]
+    normalized=valid_robot_work_order(data.get('order'),data.get('state'))
+    if not normalized:return json_error('Invalid corrected work order',400)
+    order,state=normalized
+    if (order.get('robotId')!=rid or order.get('room')!=room_id or order.get('mode')!='local_project' or
+        not order.get('allowChanges') or state.get('groupJobId')!=mid or state.get('cleanupBinId')!=target_id):
+        return json_error('Corrected group order must retain original worker and task',400)
+    with db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        human=con.execute("SELECT user_id,role,text FROM messages WHERE room_id=? AND id=?",(room_id,clarification_id)).fetchone()
+        if not human or human['role']!='user' or human['user_id']!=user['id']:
+            return json_error('A saved human clarification by the operator is required',403)
+        phrase=human['text']
+        if not re.match(r'^\s*@(?:all|everyone)\b',phrase,re.I) or not re.search(r'\b(?:target|destination|bin|junk)\b',phrase,re.I):
+            return json_error('Explicit @all destination clarification required',400)
+        task=con.execute("SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=? AND user_id=?",(room_id,mid,user['id'])).fetchone()
+        if not task or task['status']!='assigned' or task['kind']!='cleanup_boxes' or task['worker_id']!=rid:
+            return json_error('No active group cleanup assignment for robot',409)
+        worker=con.execute('SELECT state_json,enabled FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',
+                           (room_id,rid,user['id'])).fetchone()
+        if not worker or not worker['enabled'] or json.loads(worker['state_json']).get('groupJobId')!=mid:
+            return json_error('Group worker order is no longer active',409)
+        objects=group_scene_objects(con,room_id)
+        if group_has_held_cargo(objects,rid):return json_error('Finish or safely release held cargo before changing bin',409)
+        dest=next((o for o in objects if isinstance(o,dict) and o.get('id')==target_id),None)
+        if not dest or dest.get('kind') not in ('furniture','model','cube','cylinder') or not re.search(r'\b(?:bin|junk)\b',str(dest.get('name','')),re.I):
+            return json_error('Corrected bin is not present in the saved room',409)
+        name=str(dest.get('name','')).strip()
+        if (name.lower() not in phrase.lower() or name.lower() not in order['goal'].lower() or
+            not may_edit(user['id'],dest,room_policy(room_id))):
+            return json_error('Corrected bin must be explicitly human-named and editable',403)
+        stamp=now()
+        con.execute('UPDATE robot_work_orders SET order_json=?,state_json=?,updated=? WHERE room_id=? AND robot_id=? AND user_id=?',
+                    (json.dumps(order,ensure_ascii=False),json.dumps(state,ensure_ascii=False),stamp,room_id,rid,user['id']))
+        con.execute('UPDATE robot_group_intents SET target_id=?,target_name=?,updated=?,detail=? WHERE room_id=? AND source_message_id=?',
+                    (target_id,name,stamp,'Destination updated by saved human clarification '+clarification_id,room_id,mid))
+    return jsonify(ok=True,target_id=target_id,target_name=name,persistence='SQLite atomic destination and worker-order update')
+
+@app.post('/api/robots/autonomy/group/result')
+def robot_group_queue_result():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    data=request.get_json(silent=True) or {}
+    room_id=selected_room(data.get('room','main'))
+    if not room_id:return json_error('Unknown room',404)
+    mid=str(data.get('message_id',''))[:100];rid=str(data.get('robot_id',''))[:100]
+    outcome=str(data.get('outcome',''))
+    if outcome not in ('completed','release'):return json_error('Unknown group task outcome',400)
+    with db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        task=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=? AND user_id=?',(room_id,mid,user['id'])).fetchone()
+        if not task or task['status']!='assigned' or task['worker_id']!=rid:return json_error('Group assignment ownership changed',409)
+        row=con.execute('SELECT state_json FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',(room_id,rid,user['id'])).fetchone()
+        if not row or json.loads(row['state_json']).get('groupJobId')!=mid:return json_error('Missing authoritative group work order',409)
+        objects=group_scene_objects(con,room_id)
+        if outcome=='completed' and task['kind']=='cleanup_boxes':
+            boxes=group_copy_objects(objects)
+            if not boxes or not all(group_destination_confirmed(objects,task['target_id'],box) for box in boxes):
+                return json_error('Server scene does not verify all Box copies delivered',409)
+        if outcome=='completed' and task['kind']=='local_build':
+            # Build completion is asserted only by the browser's independently
+            # saved object IDs, and still requires a server scene check.
+            state=json.loads(row['state_json'])
+            ids=[p['id'] for p in state.get('projectPlaced',[]) if isinstance(p,dict) and p.get('id')]
+            ids+=state.get('completedHouses',[])
+            before=set(json.loads(task['scene_before']))
+            if not ids or not any(ident not in before for ident in ids) or not all(any(o.get('id')==ident for o in objects if isinstance(o,dict)) for ident in ids):
+                return json_error('No verified built objects in scene',409)
+        if outcome=='release' and group_has_held_cargo(objects,rid):return json_error('Cannot reassign while the robot holds cargo',409)
+        if outcome=='release':
+            status='blocked' if task['attempts']>=4 else 'pending'
+            retry_at=time.time()+min(120,8*2**min(4,max(0,task['attempts']-1)))
+            detail=str(data.get('reason','No progress; retry with another free worker'))[:200]
+        else:status='completed';retry_at=0;detail='Server scene independently confirmed task result' if task['kind']=='cleanup_boxes' else 'Scene object IDs independently checked'
+        con.execute('UPDATE robot_work_orders SET enabled=0,updated=? WHERE room_id=? AND robot_id=? AND user_id=?',(now(),room_id,rid,user['id']))
+        con.execute('UPDATE robot_group_intents SET status=?,worker_id=?,failed_worker_id=?,retry_at=?,detail=?,updated=? WHERE room_id=? AND source_message_id=?',
+            (status,'' if outcome=='release' else rid,rid if outcome=='release' else '',retry_at,detail,now(),room_id,mid))
+    return jsonify(ok=True,status=status,detail=detail)
+
 @app.get('/api/robots/autonomy/orders')
 def robot_work_orders_list():
     user,msg,status=actor()
@@ -1968,6 +2221,12 @@ def robot_work_order_save():
     with db() as con:
         old=con.execute('SELECT user_id FROM robot_work_orders WHERE room_id=? AND robot_id=?',(room_id,rid)).fetchone()
         if old and old['user_id']!=user['id']:return json_error('Work order belongs to another robot operator',403)
+        old_state=con.execute('SELECT state_json FROM robot_work_orders WHERE room_id=? AND robot_id=?',(room_id,rid)).fetchone()
+        previous=json.loads(old_state['state_json']) if old_state else {}
+        prior_job=previous.get('groupJobId')
+        if prior_job and prior_job!=state.get('groupJobId'):
+            in_progress=con.execute("SELECT 1 FROM robot_group_intents WHERE room_id=? AND source_message_id=? AND status='assigned' AND worker_id=?",(room_id,prior_job,rid)).fetchone()
+            if in_progress:return json_error('Robot has an active group job; release the assigned cargo task before replacing it',409)
         con.execute('INSERT INTO robot_work_orders(room_id,robot_id,user_id,order_json,state_json,enabled,updated) VALUES(?,?,?,?,?,?,?) ON CONFLICT(room_id,robot_id) DO UPDATE SET order_json=excluded.order_json,state_json=excluded.state_json,enabled=excluded.enabled,updated=excluded.updated',
             (room_id,rid,user['id'],json.dumps(order,ensure_ascii=False),json.dumps(state,ensure_ascii=False),int(enabled),now()))
     return jsonify(ok=True,enabled=enabled,persistence='SQLite; a browser client is required for physical execution')

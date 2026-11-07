@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from './helpers/subprocess-test.mjs';
+import {spawnSync} from 'node:child_process';
 const root=new URL('../',import.meta.url);
 const file=name=>readFileSync(new URL(name,root),'utf8');
 const pose=file('js/held-equipment.js');

@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.233",
+  "currentVersion": "0.2.235",
   "releases": [
+    {
+      "version": "0.2.235",
+      "publishedAt": "2026-11-07T22:07:15Z",
+      "changes": [
+        "Repair Mac watcher Flask/SQLite claim test: reject mismatched robot_id and order.robotId with 400, and independently verify a valid second worker claim returns 409.",
+        "Assert atomic single-worker assignment is preserved in SQLite after a competing claim, with no duplicate robot work order.",
+        "Retain all v0.2.234 durable group queue, fresh camera, spatial pickup, safe handoff, server-side completion checks, original assets and watcher safeguards unchanged."
+      ]
+    },
     {
       "version": "0.2.233",
       "publishedAt": "2026-11-07T19:14:20Z",
@@ -296,16 +305,6 @@
         "Support low broad cube floors and horizontal plane platforms as actual walkable surfaces, so existing indoor floors do not block placement of other furniture.",
         "Use full world-space footprint containment, vertical support height, per-support collider exclusion, occlusion checks, recent-item proximity, and a safe ground fallback.",
         "Preserve existing per-object authoritative multiplayer scene saves, scene-recovery protections, previous releases and original model binaries."
-      ]
-    },
-    {
-      "version": "0.2.197",
-      "publishedAt": "2026-11-05T13:00:49Z",
-      "changes": [
-        "Smart viewport-aware initial placement for manually added primitives, furniture, procedural tools, equipment, and saved presets: keep near recently added object and camera where possible.",
-        "Collision and occlusion checks consider real transformed mesh bounds, individual wall surfaces, open doorways, long fence segments, floor elevations and camera frustum.",
-        "Reject unsafe/no-view candidates before publishing; clean up rejected preset objects and rigid bodies without persisting deletions.",
-        "Maintain existing v0.2.196 scene persistence, backups, multiplayer event validation, all previous features and original 3D assets."
       ]
     }
   ]

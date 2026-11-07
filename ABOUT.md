@@ -1,4 +1,4 @@
-SOLVI.help v0.2.232 — Watcher-stage deployment test repair.
+SOLVI.help v0.2.235 — Durable active-browser robot group queue.
 
 # About SOLVI.help
 
@@ -14,7 +14,7 @@ SOLVI is an experiment in **embodied AI**: giving language and vision models a s
 
 ## What is experimental
 
-Model-driven planning, navigation around complex obstacles, persistent work orders, media compatibility and real-time multi-user edits are actively developed and can fail. The agents are software avatars, **not physical robots**; task execution is permission-checked, bounded, and often uses deterministic fallbacks. A browser tab may need to stay open for robot routines to run.
+Model-driven planning, navigation around complex obstacles, persistent work orders, media compatibility and real-time multi-user edits are actively developed and can fail. The agents are software avatars, **not physical robots**; task execution is permission-checked, bounded, and often uses deterministic fallbacks. A signed-in, scene-loaded browser must remain active for physical robot routines to execute. The SQLite queue remembers tasks when every browser is closed but does not simulate movement on the backend.
 
 ## Explore and follow
 

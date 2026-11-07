@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from './helpers/subprocess-test.mjs';
+import {spawnSync} from 'node:child_process';
 import {chatNamedConstructionInstruction,namedRoofChoice,requestedHomeCount,workRecoveryPlan} from '../js/robot-autonomy-policy.js';
 const source=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 
@@ -64,6 +64,10 @@ test('missing Meta key must not hijack a valid standalone scene camera/search co
  assert.match(server,/if command and not may_edit/);
  assert.ok(server.includes('plan=parse_autonomy_decision(meta_output_text(answer)'));
  assert.ok(server.includes("audit_event('robot-autonomy-plan-parser-rejected'"));
- const result=spawnSync('python3',['backend/test_robot_model_notice_223.py'],{cwd:new URL('..',import.meta.url),encoding:'utf8',timeout:5000});
- assert.equal(result.status,0,result.stderr);
+ let result=spawnSync('python3',['backend/test_robot_model_notice_223.py'],{cwd:new URL('..',import.meta.url),encoding:'utf8',timeout:30000});
+ // macOS can intermittently fail to launch a subprocess or overrun a short
+ // startup budget. Real nonzero exits/assertions are NEVER retried or masked.
+ if(result.status===null&&['EAGAIN','ENOMEM','ETIMEDOUT'].includes(result.error?.code))
+  result=spawnSync('python3',['backend/test_robot_model_notice_223.py'],{cwd:new URL('..',import.meta.url),encoding:'utf8',timeout:30000});
+ assert.equal(result.status,0,`signal=${result.signal||'none'} error=${result.error?.code||'none'}\n${result.stderr||result.stdout||''}`);
 });
