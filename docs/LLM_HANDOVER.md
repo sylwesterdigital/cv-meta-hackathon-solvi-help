@@ -1,4 +1,12 @@
-# SOLVI.help Master LLM Handover — v0.2.226
+# SOLVI.help Master LLM Handover — v0.2.227
+
+## v0.2.227 — Conversation to verified room furnishing (7 November 2026)
+
+- Recognise direct, authorised, open-ended room furnishing requests (including the observed misspellings), turning them into a bounded bed-and-table project instead of camera-only conversation.
+- A follow-up to do what the robot previously promised now resumes an existing saved project, or derives specific furnishings from a recent recorded robot promise only when a human explicitly authorises execution.
+- Furnishing can select safe ground-level sites inside an editable closed procedural wooden-house outline even without a separately saved floor cube; dedicated floor cubes remain preferred and walls/occupied footprints stay protected.
+- Show an optional pickup gesture during furnishing while requiring the real scene-save acknowledgement and preserving pending object IDs, defer/retry receipts and user edit permissions.
+- Preserve existing robots, saved worlds, character profiles, models, assets, Meta key handling and browser-only scene execution; this release does not add unrestricted generative tools.
 
 ## v0.2.226 — Grounded room furnishing (7 November 2026)
 

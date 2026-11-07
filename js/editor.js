@@ -17,6 +17,7 @@ import {STATEFUL_PROPS,FRIDGE_ITEM_TYPES,fridgeLayout,fridgeSlotPose,canStoreInF
 import {syncEquipmentMedia,disposeEquipmentMedia,playEquipmentChannel,nextSpeakerChannel} from './equipment-media.js';
 import {smartScreenClick,openSmartChannel,parseChannel,cleanChannels,fetchIPTVPlaylist,safeIPTVPlaylistURL,cleanSmartOptions} from './smart-media-playlist.js';
 import {makeOfficeWall,rebuildOfficeWall,sanitiseWall,simplifyWallPoints,smoothWallPoints,snapWallPoint,wallWorldToLocal,wallSegments,wallPresetTexture} from './office-walls.js';
+import {enclosedRoomFootprint} from './robot-room-furnishing.js';
 import {makeOfficeStairs,rebuildOfficeStairs,updateLiftPanel,updateConveyorControls,sanitiseStairs,stairSegments} from './office-stairs.js';
 import {tickStairTransport,startLift,stopLift} from './stair-transport.js';
 import {liftHeightAt,liftBaseY,legacyLiftBaseY,safeLiftMotion} from './lift-sync.js';
@@ -1456,11 +1457,45 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     if(!best||score<best.score)best={at:{x,y:b.max.y,z},floorId:floor.userData.editorId,score};
    }
   }
-  return best;
+  if(best)return best;
+  // Do not bypass a dedicated floor cube merely because all its safe
+  // furniture positions are occupied. The wall-ground fallback applies only
+  // when there is no dedicated floor under this robot at all.
+  if(floors.some(floor=>{const b=new THREE.Box3().setFromObject(floor);
+   return !b.isEmpty()&&Math.abs(robot.position.y-b.max.y)<1.25&&
+    robot.position.x>=b.min.x-.35&&robot.position.x<=b.max.x+.35&&
+    robot.position.z>=b.min.z-.35&&robot.position.z<=b.max.z+.35;}))return null;
+  // The human wall editor also produces enclosed wooden houses that stand on
+  // the actual realm ground, without a dedicated 'house floor' cube. Only a
+  // complete, editable, non-array wall polygon on the same ground level is
+  // eligible. Test the WHOLE footprint, not just its centre.
+  const rooms=this.items.filter(o=>o.userData.editorKind==='wall'&&o.userData.wall?.closed===true&&
+   o.userData.wall?.array?.enabled!==true&&o.userData.wall?.points?.length>=3&&this.canEdit(o));
+  for(const wall of rooms){
+   wall.updateMatrixWorld(true);
+   const ground=wall.localToWorld(new THREE.Vector3(0,0,0));
+   if(Math.abs(ground.y)>.30||Math.abs(robot.position.y-ground.y)>.42)continue;
+   const localRobot=wall.worldToLocal(robot.position.clone());
+   if(!enclosedRoomFootprint(wall.userData.wall.points,Array(4).fill([localRobot.x,localRobot.z]),.2))continue;
+   for(const radius of [1.35,1.9,2.5,3.15,3.9,4.8])for(let k=0;k<16;k++){
+    const angle=(k*2*Math.PI/16)+robot.rotation.y;
+    const center=wall.localToWorld(new THREE.Vector3(localRobot.x+Math.cos(angle)*radius,0,localRobot.z+Math.sin(angle)*radius));
+    if(Math.hypot(center.x-robot.position.x,center.z-robot.position.z)>6)continue;
+    const corners=[[center.x-dims.x/2,center.z-dims.z/2],[center.x+dims.x/2,center.z-dims.z/2],
+     [center.x+dims.x/2,center.z+dims.z/2],[center.x-dims.x/2,center.z+dims.z/2]];
+    const localFootprint=corners.map(([x,z])=>{const p=wall.worldToLocal(new THREE.Vector3(x,ground.y,z));return [p.x,p.z];});
+    if(!enclosedRoomFootprint(wall.userData.wall.points,localFootprint,.22))continue;
+    const blocked=obstacles.some(o=>o.minX<center.x+dims.x/2+.10&&o.maxX>center.x-dims.x/2-.10&&
+     o.minZ<center.z+dims.z/2+.10&&o.maxZ>center.z-dims.z/2-.10);
+    if(blocked)continue;
+    return {at:{x:center.x,y:ground.y,z:center.z},wallId:wall.userData.editorId,score:radius};
+   }
+  }
+  return null;
  }
  createRobotRoomFurniture(robot,variant){
   const site=this.planRobotRoomFurnishing(robot,variant);
-  return site?this.createRobotFurniture(robot,variant,{at:site.at,roomFloorId:site.floorId}):null;
+  return site?this.createRobotFurniture(robot,variant,{at:site.at,roomFloorId:site.floorId,roomWallId:site.wallId}):null;
  }
  createRobotFurniture(robot,variant='chair',options={}){
   if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot)||
@@ -1471,7 +1506,23 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   // Respect all nearby footprints; never build furniture across a doorway or
   // inside another scene object. The robot's own capsule is excluded here.
   const obstacles=this.navigationObstacles(robot);
-  let roomFloor=null,roomBounds=null;
+  let roomFloor=null,roomBounds=null,roomGroundY=null;
+  if(options.roomWallId){
+   const wall=this.items.find(o=>o.userData.editorId===options.roomWallId&&o.userData.editorKind==='wall'&&
+    o.userData.wall?.closed===true&&o.userData.wall?.array?.enabled!==true&&this.canEdit(o));
+   if(!wall||wall.userData.wall.points?.length<3){this.disposeObject(obj);return null;}
+   wall.updateMatrixWorld(true);
+   const ground=wall.localToWorld(new THREE.Vector3(0,0,0));
+   const localBot=wall.worldToLocal(robot.position.clone());
+   if(Math.abs(ground.y)>.30||Math.abs(robot.position.y-ground.y)>.42||
+      !enclosedRoomFootprint(wall.userData.wall.points,Array(4).fill([localBot.x,localBot.z]),.2)){this.disposeObject(obj);return null;}
+   const x=options.at?.x,z=options.at?.z,y=options.at?.y;
+   if(!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(y)||Math.abs(y-ground.y)>.05){this.disposeObject(obj);return null;}
+   const corners=[[x-size.x/2,z-size.z/2],[x+size.x/2,z-size.z/2],[x+size.x/2,z+size.z/2],[x-size.x/2,z+size.z/2]];
+   const localCorners=corners.map(([cx,cz])=>{const pt=wall.worldToLocal(new THREE.Vector3(cx,ground.y,cz));return [pt.x,pt.z];});
+   if(!enclosedRoomFootprint(wall.userData.wall.points,localCorners,.22)||Math.hypot(x-robot.position.x,z-robot.position.z)>6){this.disposeObject(obj);return null;}
+   roomGroundY=ground.y;
+  }
   if(options.roomFloorId){
    roomFloor=this.items.find(o=>o.userData.editorId===options.roomFloorId&&
      o.userData.editorKind==='cube'&&(o.userData.autonomyFloor===true||o.name?.endsWith(' · house floor'))&&this.canEdit(o));
@@ -1498,7 +1549,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
    position={x,z};
   }
   if(!position){this.disposeObject(obj);return null;}
-  positionNewOnGround(obj,{x:position.x,y:roomBounds?roomBounds.max.y:0,z:position.z});
+  positionNewOnGround(obj,{x:position.x,y:roomBounds?roomBounds.max.y:(roomGroundY??0),z:position.z});
   obj.name=robot.name+' · '+variant;
   obj.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
   obj.userData.autonomyCreatedBy=robot.userData.editorId;

@@ -1,5 +1,5 @@
 import {characterPolicy} from './robot-character-core.js';
-import {namedRoomFurnishingInstruction,roomFurnishingSequence,nextRoomFurnishing} from './robot-room-furnishing.js';
+import {namedRoomFurnishingInstruction,namedWorkContinuation,promisedRoomFurnishing,roomFurnishingSequence,nextRoomFurnishing} from './robot-room-furnishing.js';
 // v0.2.192: server-durable work orders with browser-controlled scene execution. Never simulates keyboard events:
 // the same checked editor/physics tools used by human keys are invoked directly.
 import * as THREE from 'three';
@@ -696,16 +696,17 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   let item=pending&&editor.items.find(o=>o.userData.editorId===pending.id&&editor.canEdit(o));
   if(!item){
    run.projectPending=run.projectPending.filter(p=>p.variant!==variant);
-   const floor=editor.items.find(o=>o.userData.editorKind==='cube'&&
-    (o.userData.autonomyFloor===true||o.name?.endsWith(' · house floor'))&&editor.canEdit(o)&&
-    Math.hypot(o.position.x-bot.position.x,o.position.z-bot.position.z)<6);
-   if(!floor)throw Error('NO ROOM FLOOR: enter an existing editable room before furnishing; no remote placement was attempted');
+   const site=editor.planRobotRoomFurnishing?.(bot,variant);
+   if(!site)throw Error('NO CLEAR ROOM SPOT: no verified same-floor footprint for '+variant+' in an editable room; checking existing furniture and wall geometry, will retry another position');
    item=editor.createRobotRoomFurniture?.(bot,variant);
-   if(!item)throw Error('NO CLEAR ROOM SPOT: no '+variant+' footprint fits without crossing a wall or overlapping furniture');
+   if(!item)throw Error('ROOM PLACEMENT REJECTED: '+variant+' could not be created after scene clearance changed');
    run.projectPending.push({id:item.userData.editorId,variant});
   }
   requireActive(run,bot);
   const id=item.userData.editorId;
+  // The action is visible in the world, not merely a chat-side save. Animation
+  // is cosmetic and never substitutes for the server's placement receipt.
+  if(bot.userData.robotAnimator){robotAction(bot,'pickUp');await wait(550);requireActive(run,bot);robotAction(bot,'idle');}
   // Normal editor queueSave is asynchronous. Ask that very same persistence
   // method for an actual server acknowledgement before claiming completion.
   const pendingTimer=editor.pendingSaves?.get(id);
@@ -1066,7 +1067,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    if(!run.cancelled&&run.loop&&plan.recovery&&plan.action!=='idle'&&run.localBurst<(canCleanupGoal(run.order.goal)||boxCleanupGoal(run.order.goal)?48:run.order.sourceId?3:10)){
     run.localBurst++;
     clearTimeout(run.localTimer);
-    run.localTimer=setTimeout(()=>void cycle(run),12000);
+    run.localTimer=setTimeout(()=>void cycle(run),plan.action==='furnish_room'?2500:12000);
    }
    // Account-configured model retry must not be stretched to a 180s work-order tick.
    // Only a blocked model request waits; unrelated local actions continue above.
@@ -1166,6 +1167,21 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   if(ok)void startCityTeam('@all start building a city with homes roads parks',true);
  };
  const handledChatMessages=new Set();
+ async function assignRoomFurnishing(bot,goal,origin='human instruction'){
+  const id=bot.userData.editorId;
+  const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
+  const old=runs.get(id);
+  // Do not discard an old mission until the new order is accepted by the
+  // server. Preserve its scene IDs and pending state in the old run on failure.
+  const run=newRun(order,true,bot);
+  try{await saveOrder(run,true);}catch(error){trace(bot,'FURNISHING NOT STARTED',error.message);return 0;}
+  if(old)stop(id,'superseded by explicit furnished-room instruction',false);
+  savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});runs.set(id,run);
+  run.timer=setInterval(()=>void cycle(run),order.interval*1000);
+  trace(bot,'ROOM FURNISHING ASSIGNED',`${roomFurnishingSequence(goal).join(' + ')} from ${origin}; replacing ${old?.order.mode||'idle'}. Every item requires an actual floor and server scene receipt.`);
+  toast(`${bot.name}: furnishing work order saved. The Brain log will report real placements or specific blockers.`);
+  void cycle(run);update();return 1;
+ }
  async function startChatProjects(message){
   if(!message?.id||handledChatMessages.has(message.id)||!api.online||!api.auth())return 0;
   const answered=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&
@@ -1195,20 +1211,37 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    toast(`${assigned.name}: ${boxes?'box':'can'} cleanup saved; the action log will show actual pickup and verified storage.`);
    void cycle(run);update();return 1;
   }
+  const followUp=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&
+   namedWorkContinuation(message.text,o.name));
+  if(followUp){
+   const id=followUp.userData.editorId,active=runs.get(id);
+   if(active&&active.order.allowChanges&&roomFurnishingSequence(active.order.goal).length){
+    handledChatMessages.add(message.id);
+    trace(followUp,'WORK ORDER REMINDED',`Rechecking saved ${roomFurnishingSequence(active.order.goal).join(' + ')} project immediately. No second work order created.`);
+    clearTimeout(active.localTimer);
+    if(!active.busy)void cycle(active);
+    else trace(followUp,'WORK ORDER BUSY','Current verified editor action is still running; no duplicate action started');
+    return 1;
+   }
+   // Recover a concrete, recent model promise ONLY when this authenticated
+   // human now explicitly instructs it to happen. A robot statement alone
+   // can never create an editor mutation.
+   let messages=[];
+   try{messages=(await api.req('/api/messages?room='+encodeURIComponent(room()))).messages||[];}
+   catch(error){trace(followUp,'FOLLOW-UP BLOCKED','Cannot read recent room dialogue: '+error.message);return 0;}
+   const items=promisedRoomFurnishing(messages,followUp.name,Date.parse(message.created)||Date.now());
+   if(items.length){
+    handledChatMessages.add(message.id);
+    return assignRoomFurnishing(followUp,`@${followUp.name} please add ${items.join(' and ')} to this room`,'explicit human follow-up to recent robot promise');
+   }
+   trace(followUp,'FOLLOW-UP NEEDS TARGET','No saved furnishing job or recent concrete furnishing promise was found. Ask for specific objects to place; no scene was modified.');
+   return 0;
+  }
   const roomBuilder=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&
    namedRoomFurnishingInstruction(message.text,o.name));
   if(roomBuilder){
    handledChatMessages.add(message.id);
-   const id=roomBuilder.userData.editorId,goal=namedRoomFurnishingInstruction(message.text,roomBuilder.name);
-   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
-   const old=runs.get(id);if(old)stop(id,'superseded by explicit furnished-room instruction',false);
-   const run=newRun(order,true,roomBuilder);
-   try{await saveOrder(run,true);}catch(error){trace(roomBuilder,'FURNISHING NOT STARTED',error.message);return 0;}
-   savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});runs.set(id,run);
-   run.timer=setInterval(()=>void cycle(run),order.interval*1000);
-   trace(roomBuilder,'ROOM FURNISHING ASSIGNED',`${roomFurnishingSequence(goal).join(' + ')} requested by human; old ${old?.order.mode||'idle'} order superseded. Uses real editor scene tools and keeps original object IDs.`);
-   toast(`${roomBuilder.name}: furnishing work order saved. Verified placement attempts are in Work orders.`);
-   void cycle(run);update();return 1;
+   return assignRoomFurnishing(roomBuilder,namedRoomFurnishingInstruction(message.text,roomBuilder.name));
   }
   // A fresh direct construction request outranks the robot's old generic
   // agent order. A conversation reply alone never authorises scene edits.
