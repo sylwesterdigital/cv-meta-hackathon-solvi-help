@@ -1,3 +1,9 @@
+## v0.2.221 — Compact character sliders and value-colour tracks
+
+- All 96 trait sliders occupy one aligned compact row per trait: a changing trait name, full-width single-colour track, and numeric value.
+- Each slider changes its entire track colour with its current 0–100 value, from blue at the low end through green/yellow to red at the high end; no rainbow gradient and no horizontal trait dividers.
+- Existing robot profiles, presets, import/export, memory, permissions and asset data remain unchanged. A separate optional watcher patch filters repetitive macOS Python MallocStackLogging diagnostics while preserving actual errors.
+
 ## v0.2.220 — Persistent character brain and observed robot relationships (2026-11-06)
 - Add 96 versioned 0–100 bipolar traits in 30 categories, compact editable Brain tab, presets and JSON import/export.
 - Persist all editable character traits inside existing robot identity; add observed peer-exchange ledger to SQLite and a read-only advisory action-rule API.

@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {characterTrackColor} from '../js/robot-character-editor.js';
+const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
+const rgb=hex=>[1,3,5].map(offset=>parseInt(hex.slice(offset,offset+2),16));
+test('solid temperature colour follows current value: cold blue to hot red',()=>{
+ const values=[0,25,50,70,85,100].map(characterTrackColor);
+ assert.equal(values[0],'#266cd7');
+ assert.equal(values[2],'#38b171');
+ assert.equal(values.at(-1),'#db3e41');
+ assert.equal(new Set(values).size,values.length);
+ assert.deepEqual(values,[0,25,50,70,85,100].map(characterTrackColor));
+ assert.equal(characterTrackColor(-20),values[0]);
+ assert.equal(characterTrackColor(200),values.at(-1));
+ assert.ok(rgb(values[0])[2]>rgb(values[0])[0]);
+ assert.ok(rgb(values.at(-1))[0]>rgb(values.at(-1))[2]);
+});
+test('traits render single compact row with aligned name, slider, numeric value; no dividers or left/right caption rows',()=>{
+ const js=read('js/robot-character-editor.js'),css=read('styles.css');
+ assert.match(js,/row.append\(name,slider,value\)/);
+ assert.doesNotMatch(js,/row.append\(heading,slider,captions\)/);
+ assert.doesNotMatch(js,/character-trait-ends/);
+ assert.match(css,/#robotBrainsPanel \.character-trait\{display:grid;grid-template-columns:/);
+ assert.match(css,/background:var\(--trait-track-color/);
+ assert.match(css,/#robotBrainsPanel \.character-trait\{[^}]*border:0/);
+ assert.doesNotMatch(css,/#robotBrainsPanel \.character-trait input\[type=range\][^\n]*linear-gradient/);
+ assert.match(js,/slider.style.setProperty\('--trait-track-color',characterTrackColor\(current.traits\[trait.id\]\)\)/);
+ assert.match(js,/slider.setAttribute\('aria-valuetext'/);
+});

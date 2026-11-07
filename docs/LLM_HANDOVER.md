@@ -1,4 +1,9 @@
-# SOLVI.help Master LLM Handover — v0.2.220
+# SOLVI.help Master LLM Handover — v0.2.221
+
+## v0.2.221 — Compact trait editor and accurate temperature tracks
+- Trait editor rows align name, full-width solid heat-coloured slider, and value horizontally; no row dividers or redundant captions. Colour updates with the current 0–100 value rather than a fixed gradient.
+- Character persistence, import/export, and rule/permission handling are unchanged.
+- macOS watcher diagnostic filtering is an optional **separate local watcher patch** because the watcher lives outside the app release ZIP; never replace a newer local watcher with an old copy.
 
 ## v0.2.220 — Persistent character traits and observed peer relationships
 

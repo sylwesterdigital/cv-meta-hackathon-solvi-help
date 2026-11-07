@@ -1,4 +1,20 @@
 import {CHARACTER_SCHEMA,CHARACTER_PRESETS,TRAIT_DESCRIPTORS,makeCharacter,normalizeCharacter,traitBand,characterSummary,characterPolicy,characterExport,characterImport} from './robot-character-core.js';
+// The slider track is a *single* colour representing its selected temperature.
+// Interpolated RGB anchors provide cold blue → cyan → green → yellow → orange → red.
+const HEAT_STOPS=Object.freeze([
+ [0,[38,108,215]],[25,[43,172,224]],[50,[56,177,113]],
+ [70,[237,211,67]],[85,[243,138,60]],[100,[219,62,65]],
+]);
+export function characterTrackColor(rawValue){
+ const value=Math.max(0,Math.min(100,Number.isFinite(Number(rawValue))?Number(rawValue):50));
+ for(let i=1;i<HEAT_STOPS.length;i++){
+  const [end,to]=HEAT_STOPS[i];
+  if(value>end)continue;
+  const [start,from]=HEAT_STOPS[i-1],t=(value-start)/(end-start);
+  return '#'+from.map((channel,j)=>Math.round(channel+(to[j]-channel)*t).toString(16).padStart(2,'0')).join('');
+ }
+ return '#db3e41';
+}
 const $=id=>document.getElementById(id);
 export function initCharacterEditor({getRobot,canEdit,save,toast,api,room}){
  const host=$('brainsCharacterCategories'),summary=$('brainsCharacterSummary');
@@ -21,19 +37,22 @@ export function initCharacterEditor({getRobot,canEdit,save,toast,api,room}){
    const rows=document.createElement('div');rows.className='character-traits';
    for(const trait of found){
     const row=document.createElement('label');row.className='character-trait';row.dataset.trait=trait.id;
-    const heading=document.createElement('span');heading.className='character-trait-head';
-    const name=document.createElement('strong');name.textContent=label(trait,current.traits[trait.id]);
-    const value=document.createElement('output');value.textContent=String(current.traits[trait.id]);
-    heading.append(name,value);
+    const name=document.createElement('strong');name.className='character-trait-name';name.textContent=label(trait,current.traits[trait.id]);
     const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='100';slider.step='1';slider.value=String(current.traits[trait.id]);slider.disabled=!writable();
+    const value=document.createElement('output');value.className='character-trait-value';value.textContent=String(current.traits[trait.id]);
+    slider.style.setProperty('--trait-track-color',characterTrackColor(current.traits[trait.id]));
     slider.setAttribute('aria-label',`${category.label}: ${trait.low} to ${trait.high}`);
-    const captions=document.createElement('span');captions.className='character-trait-ends';
-    const a=document.createElement('span');a.textContent=trait.low;const b=document.createElement('span');b.textContent=trait.high;captions.append(a,b);
+    slider.setAttribute('aria-valuetext',`${label(trait,current.traits[trait.id])}, ${current.traits[trait.id]} of 100`);
+    slider.title=`${trait.low} ← ${current.traits[trait.id]} → ${trait.high}`;
     slider.addEventListener('input',()=>{
-     current.traits[trait.id]=Number(slider.value);current.preset='custom';name.textContent=label(trait,current.traits[trait.id]);value.textContent=slider.value;describe();
+     current.traits[trait.id]=Number(slider.value);current.preset='custom';name.textContent=label(trait,current.traits[trait.id]);value.textContent=slider.value;
+     slider.style.setProperty('--trait-track-color',characterTrackColor(current.traits[trait.id]));
+     slider.setAttribute('aria-valuetext',`${name.textContent}, ${slider.value} of 100`);
+     slider.title=`${trait.low} ← ${slider.value} → ${trait.high}`;
+     describe();
      $('brainsCharacterDirty').textContent='Unsaved changes';
     });
-    row.append(heading,slider,captions);rows.append(row);
+    row.append(name,slider,value);rows.append(row);
    }
    section.append(rows);host.append(section);
   }

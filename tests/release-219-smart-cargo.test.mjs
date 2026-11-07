@@ -70,5 +70,5 @@ test('full collection executor saves only pink items; unmatched blue and unknown
 });
 test('new cargo module is versioned in the browser import map',()=>{
  const html=read('index.html');
- assert.ok(html.includes('"./js/robot-transfer-decisions.js":"./js/robot-transfer-decisions.js?v=0.2.220"'));
+ assert.ok(html.includes('"./js/robot-transfer-decisions.js":"./js/robot-transfer-decisions.js?v=0.2.221"'));
 });

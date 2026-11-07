@@ -44,7 +44,7 @@ test('presets change exploration and persistence preferences but never grant sce
 test('brain UI preserves draggable panel, temperature slider, profile save and relationship evidence',()=>{
  const html=read('index.html'),css=read('styles.css'),brain=read('js/robot-brains.js'),module=read('js/robot-character-editor.js'),studio=read('js/studio.js');
  for(const id of ['brainsCharacterPreset','brainsCharacterCategories','brainsCharacterFile','brainsCharacterSave','brainsCharacterExport','brainsCharacterImport','brainsCharacterRelationships'])assert.ok(html.includes(`id="${id}"`),id);
- assert.match(css,/linear-gradient\(90deg,#2464d4/);
+ assert.match(css,/background:var\(--trait-track-color/);
  assert.match(css,/#robotBrainsPanel.*resize:both/);
  assert.match(module,/window\.addEventListener\('solvi:character-profile-refresh'/);
  assert.match(module,/solviEditor|save\(normalizeCharacter\(current\)\)/);

@@ -2829,7 +2829,7 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #controlSwitcher .robot-face-choice.robot-face-speaking::after{border-color:#f79aca!important;box-shadow:0 0 5px #e96db8!important;}
 @media(prefers-reduced-motion:reduce){#controlSwitcher .robot-face-choice.robot-face-speaking::after{animation:none!important;}}
 
-/* v0.2.220: compact responsive fiction-persona editor inside the draggable Brain window. */
+/* v0.2.221: compact responsive fiction-persona editor inside the draggable Brain window. */
 #robotBrainsPanel:has([data-brain-page="character"]:not([hidden])),#robotBrainsPanel:has([data-brain-page="relationships"]:not([hidden])){width:min(600px,calc(100vw - 28px));max-height:min(86vh,860px);min-height:350px}
 #robotBrainsPanel .brains-tabs{display:flex;gap:5px;overflow-x:auto;flex-shrink:0}
 #robotBrainsPanel .brains-tabs button{white-space:nowrap}
@@ -2841,15 +2841,16 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #robotBrainsPanel .character-categories{display:flex;flex-direction:column;gap:7px;max-height:min(48vh,460px);overflow:auto;overscroll-behavior:contain;padding-right:3px}
 #robotBrainsPanel .character-category{border:1px solid #3c5970;border-radius:8px;background:#0d1b2c}
 #robotBrainsPanel .character-category>summary{font-weight:650;padding:9px 12px;cursor:pointer}
-#robotBrainsPanel .character-traits{display:grid;gap:9px;padding:8px 12px 12px}
-#robotBrainsPanel .character-trait{display:grid;gap:4px;border-top:1px solid #29425a;padding:8px 0 2px}
-#robotBrainsPanel .character-trait-head{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
-#robotBrainsPanel .character-trait-head output{background:#1c3442;min-width:34px;border-radius:6px;text-align:center;padding:3px 5px;font-weight:700;font-variant-numeric:tabular-nums}
-#robotBrainsPanel .character-trait input[type=range]{appearance:none;-webkit-appearance:none;border:0;outline-offset:3px;background:linear-gradient(90deg,#2464d4 0%,#4ac5e5 23%,#4ba96e 48%,#e9dc47 70%,#ed6439 87%,#cf285a 100%);height:9px;min-height:9px!important;border-radius:50px;padding:0;cursor:pointer}
-#robotBrainsPanel .character-trait input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:19px;height:19px;border-radius:50%;background:#f6f9ff;border:2px solid #132a40;box-shadow:0 0 0 2px #819eb5}
-#robotBrainsPanel .character-trait input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#f6f9ff;border:2px solid #132a40}
-#robotBrainsPanel .character-trait-ends{display:flex;justify-content:space-between;gap:10px;color:#a0bbc9;font-size:11px;line-height:1.25}
-#robotBrainsPanel .character-trait-ends span:last-child{text-align:right}
+/* One aligned row per trait: live name | full-width uniform colour track | value. */
+#robotBrainsPanel .character-traits{display:grid;gap:2px;padding:5px 12px 9px}
+#robotBrainsPanel .character-trait{display:grid;grid-template-columns:minmax(126px,1fr) minmax(95px,1.7fr) 40px;align-items:center;gap:10px;min-width:0;border:0;padding:5px 0;margin:0}
+#robotBrainsPanel .character-trait-name{min-width:0;line-height:1.3;font-size:12px;font-weight:650;overflow-wrap:break-word}
+#robotBrainsPanel .character-trait-value{display:block;box-sizing:border-box;background:#1c3442;min-width:40px;border-radius:6px;text-align:center;padding:3px 4px;font-weight:700;font-variant-numeric:tabular-nums;font-size:12px}
+#robotBrainsPanel .character-trait input[type=range]{appearance:none;-webkit-appearance:none;display:block;width:100%;min-width:0;margin:0;border:0;outline-offset:4px;background:var(--trait-track-color,#266cd7);height:10px;min-height:10px!important;border-radius:30px;padding:0;cursor:pointer;transition:background-color .12s linear}
+#robotBrainsPanel .character-trait input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#f6f9ff;border:2px solid #132a40;box-shadow:0 0 0 2px #819eb5}
+#robotBrainsPanel .character-trait input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#f6f9ff;border:2px solid #132a40}
+#robotBrainsPanel .character-trait input[type=range]:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:420px){#robotBrainsPanel .character-traits{padding-inline:7px}#robotBrainsPanel .character-trait{grid-template-columns:minmax(90px,1fr) minmax(80px,1.4fr) 35px;gap:6px}#robotBrainsPanel .character-trait-name{font-size:11px}}
 #robotBrainsPanel .character-actions{display:flex;flex-wrap:wrap;gap:8px}
 #robotBrainsPanel .character-policy summary{cursor:pointer}
 #robotBrainsPanel .character-relationships{display:flex;flex-direction:column;gap:7px;max-height:55vh;overflow:auto}

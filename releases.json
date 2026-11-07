@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.220",
+  "currentVersion": "0.2.221",
   "releases": [
+    {
+      "version": "0.2.221",
+      "publishedAt": "2026-11-07T00:25:55Z",
+      "changes": [
+        "Present each 0\u2013100 character trait as one aligned, compact name/slider/value row; remove redundant third-line captions and horizontal dividers.",
+        "Colour the whole slider track a single live temperature colour according to its value, blue at 0 through green and yellow to red at 100; preserve accessible trait endpoints and saved character data.",
+        "Preserve original 3D/media assets, all permissions, robot decision and relationship logic; deliver a separate opt-in Mac watcher diagnostic filter without modifying watcher files in the application ZIP."
+      ]
+    },
     {
       "version": "0.2.220",
       "publishedAt": "2026-11-06T23:40:56Z",
@@ -304,17 +313,6 @@
         "Active routes recheck real scene geometry for moved furniture or changed doors and retarget moving robots without teleports or false completion.",
         "Character dialogue is shorter and more conversational, with at most one optional grounded aside; it now receives saved work orders and recent client-reported work results rather than only generic camera summaries.",
         "New route/door/scene-change regression tests and fully versioned browser import map; existing GitHub/Ubuntu watcher and original avatar binaries unchanged."
-      ]
-    },
-    {
-      "version": "0.2.187",
-      "publishedAt": "2026-11-04T18:49:14Z",
-      "changes": [
-        "Repair robot routes across houses: replace unsafe straight-line 18 m midpoint chunking with route planning through free staging points, so robots can walk around a building to another robot without requiring the straight line to be clear.",
-        "Improve robot follow/retarget behaviour: use collision-checked approaches on several sides of the target robot with stable feet-centred capsule bounds rather than an animated model bounding box or a single target-side offset.",
-        "Exclude out-of-height office wall sections, roof accessories and elevated stair treads from ground-level navigation obstacles, without removing actual wall collisions at the robot height.",
-        "Add geometry-level regression tests for 5\u00d74 m house detours, long/diagonal routes, robot stand-off approach, and impossible barrier rejection; preserve route debug, real walking and strict arrival proof.",
-        "No changes to deployment watcher, server persistence or original model assets; unchanged authenticated mission and scene permissions."
       ]
     }
   ]
