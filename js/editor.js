@@ -5,7 +5,7 @@ import {setupAvatarGallery} from './avatar-gallery.js';
 import {setupAssetGallery} from './asset-gallery.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
 import {EditHistory,duplicateElevation,nextDuplicateName} from './edit-history.js';
-import {makeRobot,hydrateRobot,robotAction,tickRobots,animateRobots,setRobotDestination,interruptRobotMission,resolveAvatarPath,DEFAULT_ROBOT_AVATAR} from './robots.js';
+import {makeRobot,hydrateRobot,robotAction,tickRobots,animateRobots,setRobotDestination,interruptRobotMission,resolveAvatarPath,sittingClip,DEFAULT_ROBOT_AVATAR} from './robots.js';
 import {intent,active,packetFor,stepRobotMotion,signedAngle,makeRemoteCorrection,applyRemoteCorrection} from './robot-net.js';
 import {makeSceneModel,hydrateSceneModel,invalidateSceneModel,configureSceneModelRenderer,isSceneModelURL,loadSceneAsset} from './scene-models.js';
 import {validateSceneSnapshot} from './scene-snapshot-guard.js';
@@ -28,6 +28,7 @@ import {liftButtonRequest} from './lift-panel-state.js';
 import {stairGeometryKey} from './stair-extensions.js';
 import {makePortal,rebuildPortal} from './portal-geometry.js';
 import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
+import {portalPairEntries} from './portal-preset-data.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach,robotRouteCheckpoints} from './robot-pathfinding.js';
 import {robotPosePacket,appendRobotPose,sampleRobotPose} from './robot-motion-sync.js';
@@ -65,7 +66,7 @@ import {startInfrastructureDrawing,infrastructurePointer,finishInfrastructureDra
 import {VEGETATION_TYPES} from './procedural-vegetation.js';
 import {WALKABLE_NATURE_AREAS,natureNavigationFootprints} from './robot-nature-navigation.js';
 import {canPreset,presetEntry} from './object-preset-data.js';
-import {centreGroundFromCamera,positionNewOnGround,positionNewSmartly} from './scene-placement.js';
+import {centreGroundFromCamera,positionNewOnGround,positionNewSmartly,smartPlacementObstacles} from './scene-placement.js';
 import {houseBlueprint,houseWallSettings} from './robot-construction-api.js';
 
 const kinds=['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'];
@@ -1530,14 +1531,17 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   }
   return best;
  }
- createRobotRoomFurniture(robot,variant){
+ createRobotRoomFurniture(robot,variant,options={}){
   const site=this.planRobotRoomFurnishing(robot,variant);
-  return site?this.createRobotFurniture(robot,variant,{at:site.at,roomFloorId:site.floorId,roomWallId:site.wallId}):null;
+  const color=typeof options.color==='string'&&/^#[0-9a-f]{6}$/i.test(options.color)?options.color:'';
+  return site?this.createRobotFurniture(robot,variant,{at:site.at,roomFloorId:site.floorId,roomWallId:site.wallId,...(color?{fabricColor:color}:{})}):null;
  }
  createRobotFurniture(robot,variant='chair',options={}){
   if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot)||
      !['chair','officeChair','stool','bed','armchair','sofa','table','cabinet','bottle','can','bin','tv','fridge','lamp','speaker','monitor'].includes(variant))return null;
-  const obj=objectFor('furniture');rebuildFurniture(obj,{variant});obj.userData.physics={mode:'static'};
+  const obj=objectFor('furniture');
+  const fabricColor=typeof options.fabricColor==='string'&&/^#[0-9a-f]{6}$/i.test(options.fabricColor)?options.fabricColor:undefined;
+  rebuildFurniture(obj,{variant,...(fabricColor?{fabricColor}:{})});obj.userData.physics={mode:'static'};
   const bb=new THREE.Box3().setFromObject(obj),size=bb.getSize(new THREE.Vector3());
   const margin=Math.max(1.05,size.x*.6,size.z*.6);
   // Respect all nearby footprints; never build furniture across a doorway or
@@ -1724,9 +1728,46 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   this.recordEdit(previous,null);this.persistRemoval(obj.userData.editorId);this.refreshList();
   return true;
  }
+ addPortalPairFromPreset(data){
+  // Stage both objects locally. Do not persist either half of a pair until
+  // both are valid; failure rolls back both provisional scene/physics nodes.
+  const owner=window.solviAPI?.auth()?.profile?.id||null;
+  const entries=portalPairEntries(data,[0,0,0],owner,()=>crypto.randomUUID());
+  if(!entries)return null;
+  const provisional=[];
+  const rollback=()=>{for(const item of provisional){this.items=this.items.filter(o=>o!==item);this.world.scene.remove(item);this.physics.remove(item.userData.editorId);this.disposeObject(item);}};
+  try{
+   this.addSceneEntry(entries[0]);
+   const entry=this.items.find(o=>o.userData.editorId===entries[0].id);
+   if(!entry)return null;
+   provisional.push(entry);
+   if(!this.placeSmartNewObject(entry)){rollback();this.toast('No collision-free space for Portal Entry in this view.');return null;}
+   const offset=data.exit.position;
+   const exitPosition=offset.map((v,i)=>v+entry.position.toArray()[i]);
+   if(exitPosition.some(n=>!Number.isFinite(n)||Math.abs(n)>490)){
+    rollback();this.toast('The saved portal separation would place Exit outside this realm.');return null;
+   }
+   entries[1].position=exitPosition;
+   this.addSceneEntry(entries[1]);
+   const exit=this.items.find(o=>o.userData.editorId===entries[1].id);
+   if(!exit){rollback();return null;}
+   provisional.push(exit);
+   const exitBox=new THREE.Box3().setFromObject(exit),entryBox=new THREE.Box3().setFromObject(entry);
+   // Exits cannot overlap existing solid architecture or the entry frame.
+   const obstacles=smartPlacementObstacles(this.items.filter(o=>o!==entry&&o!==exit));
+   const occupied=obstacles.some(box=>exitBox.intersectsBox(new THREE.Box3(new THREE.Vector3(box.min.x,box.min.y,box.min.z),new THREE.Vector3(box.max.x,box.max.y,box.max.z))));
+   if(occupied||exitBox.intersectsBox(entryBox)){
+    rollback();this.toast('Portal Exit would overlap another object. Reposition the camera or edit the saved pair separation.');return null;
+   }
+   for(const item of provisional){this.physics.applyEditedPose(item);this.recordEdit(null,this.snapshot(item));this.queueSave(item);}
+   this.rememberSmartPlacement(entry);this.select(entry);this.refreshList();
+   return entry;
+  }catch(error){rollback();console.warn('Could not add linked portal preset',error);this.toast('Could not add linked portal pair.');return null;}
+ }
  addFromPreset(saved){
   const data=presetEntry(saved);
   if(!data)return null;
+  if(data.kind==='portalPair')return this.addPortalPairFromPreset(data);
   const entry={...data,id:crypto.randomUUID(),name:data.name||'Preset object',owner:window.solviAPI?.auth()?.profile?.id||null,position:[0,0,0],rotation:Array.isArray(data.rotation)&&data.rotation.length===3?data.rotation:[0,0,0],scale:Array.isArray(data.scale)&&data.scale.length===3?data.scale:[1,1,1]};
   this.addSceneEntry(entry);
   const obj=this.items.find(o=>o.userData.editorId===entry.id);
@@ -1800,7 +1841,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   this.renderPrimitiveControls(obj);this.renderCurveControls(obj);this.renderTextGeometryControls(obj);this.renderPortalControls(obj);this.renderLadderControls(obj);this.renderFurnitureControls(obj);
   byId('objectPickableRow').hidden=!canBePickable(obj.userData.editorKind);byId('objectPickable').checked=obj.userData.pickable===true;byId('objectPickable').disabled=!this.canEdit(obj);  byId('objectConsumableRow').hidden=!canBePickable(obj.userData.editorKind)||obj.userData.pickable!==true;byId('objectInventoryOptions').hidden=!canBePickable(obj.userData.editorKind)||obj.userData.pickable!==true;byId('objectInventoryCategory').value=cleanInventory(obj.userData.inventory).category;byId('objectInventorySize').value=cleanInventory(obj.userData.inventory).size;byId('objectInventoryConsumable').checked=cleanInventory(obj.userData.inventory).consumable;
 byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKind)||obj.userData.pickable!==true;byId('objectFollowHandRotation').checked=obj.userData.followHandRotation!==false;byId('objectFollowHandRotation').disabled=!this.canEdit(obj);
-  byId('saveObjectPreset').hidden=!canPreset(this.snapshot(obj));byId('saveObjectPreset').disabled=!this.canEdit(obj);
+  byId('saveObjectPreset').hidden=!(obj.userData.editorKind==='portal'||canPreset(this.snapshot(obj)));byId('saveObjectPreset').disabled=!this.canEdit(obj);
   byId('objectClimbableRow').hidden=!canBeClimbable(obj.userData.editorKind);byId('objectClimbable').checked=obj.userData.climbable===true;byId('objectClimbable').disabled=!this.canEdit(obj);
   byId('physicsObjectControls').hidden=['robot','light'].includes(obj.userData.editorKind);const phys=physicsOptions(obj.userData.physics);byId('objectPhysicsMode').value=phys.mode;byId('objectCollider').value=phys.collider||'box';this.updateColliderOption();this.updateCombatPhysicsHint();byId('objectRestitution').value=phys.restitution;byId('objectFriction').value=phys.friction;this.syncPhysicsSurface?.();byId('robotControls').hidden=obj.userData.editorKind!=='robot';byId('lightControls').hidden=obj.userData.editorKind!=='light';byId('mediaObjectControls').hidden=obj.userData.editorKind!=='media';  if(obj.userData.editorKind==='robot'){
    byId('robotAvatar').value=obj.userData.avatarUrl||DEFAULT_ROBOT_AVATAR;
@@ -2493,7 +2534,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    // Apply seated state even while remote movement packets are still fresh;
    // pose prediction is independent from the persisted seating relationship.
    const seat=entry.seating;
-   if(seat){obj.userData.robotSeatState=structuredClone(seat);obj.userData.robotSeatedTarget=seat.targetId;obj.userData.robotSeatSlot=seat.slot??0;obj.userData.robotSeated=true;obj.userData.robotSitPose=obj.userData.robotSitPose||'procedural';obj.userData.robotMode='idle';}
+   if(seat){obj.userData.robotSeatState=structuredClone(seat);obj.userData.robotSeatedTarget=seat.targetId;obj.userData.robotSeatSlot=seat.slot??0;obj.userData.robotSeated=true;obj.userData.robotSitPose=sittingClip(obj.userData.robotAvailableActions||[])?'clip':'procedural';obj.userData.robotMode=sittingClip(obj.userData.robotAvailableActions||[])||'idle';obj.userData.robotPlaying=null;}
    else if(obj.userData.robotSeated){obj.userData.robotSeated=false;obj.userData.robotSeatState=null;obj.userData.robotSeatedTarget=null;obj.userData.robotSitPose=null;obj.userData.robotMode='idle';}
   }
   if(entry.kind==='robot'&&(isNew||obj.userData.avatarUrl!==avatar)){

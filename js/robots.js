@@ -43,6 +43,9 @@ export async function hydrateRobot(group){
     avatarVisual.add(model);group.add(avatarVisual);
     group.userData.robotAnimator=new MotionController(THREE,model,gltf.animations);
     group.userData.robotAvailableActions=group.userData.robotAnimator.clipNames;
+    // A persisted bed/chair occupant may hydrate AFTER its seat relationship.
+    // Restore the real Sitting clip as soon as the avatar actions are known.
+    if(group.userData.robotSeated){const clip=sittingClip(group.userData.robotAvailableActions);group.userData.robotSitPose=clip?'clip':'procedural';group.userData.robotMode=clip||'idle';group.userData.robotPlaying=null;}
     window.dispatchEvent(new CustomEvent('solvi:robot-model-ready',{detail:{id:group.userData.editorId}}));
     group.userData.robotAnimator.play('idle');
     group.userData.robotReady=true;if(!group.userData.robotSeated)group.userData.robotMode='idle';
@@ -441,6 +444,10 @@ export function animateRobots(items,dt,onImpact=()=>{}){
         (Number(data.robotLateral)||0)>.12?'strafeLeft':(Number(data.robotLateral)||0)<-.12?'strafeRight':
         (Number(data.robotVelocity)||0)<-.12?'walkBackward':'walk';
     }
+    // Sitting is an active animation state, not idle locomotion. Restored or
+    // remotely synchronised bed occupants retain the authored Sitting action.
+    if(data.robotSeated&&!data.robotJumpActive){const clip=sittingClip(data.robotAvailableActions||[]);
+      mode=data.robotSitPose==='clip'&&clip?clip:'idle';}
     // Only this robot's own local/remote command or mission can start its
     // locomotion. Contact displacement is animated separately above.
     if(!permittedRobotLocomotion(data,mode,now))mode='idle';

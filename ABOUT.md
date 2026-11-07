@@ -1,3 +1,5 @@
+SOLVI.help v0.2.231 — Watcher-stage deployment test repair.
+
 # About SOLVI.help
 
 **SOLVI.help is a living 3D world for humans and AI.**

@@ -1,5 +1,5 @@
 import {characterPolicy} from './robot-character-core.js';
-import {namedRoomFurnishingInstruction,namedWorkContinuation,promisedRoomFurnishing,roomFurnishingSequence,nextRoomFurnishing} from './robot-room-furnishing.js';
+import {namedRoomFurnishingInstruction,namedWorkContinuation,namedFurnishingPreference,recentHumanFurnishingAuthority,promisedRoomFurnishing,roomFurnishingSequence,nextRoomFurnishing} from './robot-room-furnishing.js';
 // v0.2.192: server-durable work orders with browser-controlled scene execution. Never simulates keyboard events:
 // the same checked editor/physics tools used by human keys are invoked directly.
 import * as THREE from 'three';
@@ -110,7 +110,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   return {house,step:run.step,completed:run.completed,last:run.last,metaFailures:run.metaFailures,
    nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,contacted:run.contacted,
    placedSupplies:run.placedSupplies,projectPlaced:run.projectPlaced,projectPending:run.projectPending,projectDeferred:run.projectDeferred,completedHouses:run.completedHouses,
-   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,cleanupThrowTried:run.cleanupThrowTried,askedPreferences:run.askedPreferences,roofPreference:run.roofPreference,team:run.team,teamBuilt:run.teamBuilt};
+   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,cleanupThrowTried:run.cleanupThrowTried,askedPreferences:run.askedPreferences,roofPreference:run.roofPreference,furnishingColors:run.furnishingColors,intentMessageId:run.intentMessageId,team:run.team,teamBuilt:run.teamBuilt};
  }
  function restoreHouse(state){
   if(!state||typeof state!=='object')return null;
@@ -142,7 +142,9 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    cleanupBinId:String(state.cleanupBinId||'').slice(0,100),cleanupHomeId:String(state.cleanupHomeId||'').slice(0,100),cleanupDone:Array.isArray(state.cleanupDone)?state.cleanupDone.filter(id=>typeof id==='string').slice(0,48):[],
    cleanupSkipped:Array.isArray(state.cleanupSkipped)?state.cleanupSkipped.filter(v=>v&&typeof v.id==='string'&&typeof v.reason==='string'&&Number.isInteger(v.attempts)&&Number.isFinite(v.retryAt)).slice(0,32):[],
    cleanupThrowTried:Array.isArray(state.cleanupThrowTried)?state.cleanupThrowTried.filter(id=>typeof id==='string'&&id.length<101).slice(0,32):[],
-   askedPreferences:state.askedPreferences===true,roofPreference:['flat','shed','pyramid'].includes(state.roofPreference)?state.roofPreference:''};
+   askedPreferences:state.askedPreferences===true,roofPreference:['flat','shed','pyramid'].includes(state.roofPreference)?state.roofPreference:'',
+   furnishingColors:state.furnishingColors&&typeof state.furnishingColors==='object'?Object.fromEntries(Object.entries(state.furnishingColors).filter(([key,value])=>['bed','table','sofa','chair','stool','cabinet','lamp'].includes(key)&&/^#[a-f0-9]{6}$/i.test(value)).slice(0,7)):{},
+   intentMessageId:typeof state.intentMessageId==='string'?state.intentMessageId.slice(0,100):''};
   return run;
  }
  function presentSaved(order){
@@ -710,7 +712,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    run.projectPending=run.projectPending.filter(p=>p.variant!==variant);
    const site=editor.planRobotRoomFurnishing?.(bot,variant);
    if(!site)throw Error('NO CLEAR ROOM SPOT: no verified same-floor footprint for '+variant+' in an editable room; checking existing furniture and wall geometry, will retry another position');
-   item=editor.createRobotRoomFurniture?.(bot,variant);
+   item=editor.createRobotRoomFurniture?.(bot,variant,{color:run.furnishingColors[variant]||''});
    if(!item)throw Error('ROOM PLACEMENT REJECTED: '+variant+' could not be created after scene clearance changed');
    run.projectPending.push({id:item.userData.editorId,variant});
   }
@@ -730,6 +732,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   run.projectPlaced.push({id,variant});
   run.projectPending=run.projectPending.filter(p=>p.variant!==variant);
   run.projectDeferred=run.projectDeferred.filter(p=>p.variant!==variant);
+  trace(bot,'ACTION VERIFIED',`furnish_room(${variant}) persisted: ${id}; colour ${run.furnishingColors[variant]||'default'}`);
   trace(bot,'ROOM FURNITURE SAVED',`${variant} on verified room floor; server acknowledged scene object ${id}`);
   return `Verified room furnishing: ${variant} (${id})`;
  }
@@ -1023,6 +1026,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    if(plan.recovery)run.recoveryAttempts[plan.action]=(run.recoveryAttempts[plan.action]||0)+1;
    // Missing objects are not evidence of completion after a reload or delete.
    run.projectPlaced=run.projectPlaced.filter(p=>editor.items.some(o=>o.userData.editorId===p.id));
+   trace(bot,'ACTION STARTED',`${plan.action}${plan.variant?' ('+plan.variant+')':''} · saved goal: ${run.order.goal.slice(0,130)}${run.intentMessageId?' · message '+run.intentMessageId:''}`);
    const detail=await execute(run,bot,plan);
    if(plan.action==='build_house'&&run.house&&!run.house.missing?.length&&!run.house.inspectionFailed){
     const wallId=run.house.wall?.userData.editorId;
@@ -1189,23 +1193,36 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   if(ok)void startCityTeam('@all start building a city with homes roads parks',true);
  };
  const handledChatMessages=new Set();
- async function assignRoomFurnishing(bot,goal,origin='human instruction'){
+ async function assignRoomFurnishing(bot,goal,origin='human instruction',options={}){
   const id=bot.userData.editorId;
   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
   const old=runs.get(id);
   // Do not discard an old mission until the new order is accepted by the
   // server. Preserve its scene IDs and pending state in the old run on failure.
   const run=newRun(order,true,bot);
+  run.furnishingColors={...(options.colours||{})};run.intentMessageId=String(options.messageId||'').slice(0,100);
+  trace(bot,'INTENT ACCEPTED',`${origin}: ${roomFurnishingSequence(goal).join(' + ')}${run.intentMessageId?' · message '+run.intentMessageId:''}`);
   try{await saveOrder(run,true);}catch(error){trace(bot,'FURNISHING NOT STARTED',error.message);return 0;}
   if(old)stop(id,'superseded by explicit furnished-room instruction',false);
   savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});runs.set(id,run);
   run.timer=setInterval(()=>void cycle(run),order.interval*1000);
+  trace(bot,'ORDER COMMITTED',`Persistent furnishing order stored by server; ${roomFurnishingSequence(goal).join(' + ')} · ${origin}`);
   trace(bot,'ROOM FURNISHING ASSIGNED',`${roomFurnishingSequence(goal).join(' + ')} from ${origin}; replacing ${old?.order.mode||'idle'}. Every item requires an actual floor and server scene receipt.`);
   toast(`${bot.name}: furnishing work order saved. The Brain log will report real placements or specific blockers.`);
   void cycle(run);update();return 1;
  }
  async function startChatProjects(message){
   if(!message?.id||handledChatMessages.has(message.id)||!api.online||!api.auth())return 0;
+  // Never fall through to a misleading model promise when the sender cannot
+  // operate the addressed robot. Real scene-edit permissions are required.
+  const denied=editor.items.find(o=>o.userData.editorKind==='robot'&&!editor.canEdit(o)&&
+   (namedRoomFurnishingInstruction(message.text,o.name)||namedWorkContinuation(message.text,o.name)||
+    namedFurnishingPreference(message.text,o.name)));
+  if(denied){handledChatMessages.add(message.id);
+   trace(denied,'TASK NOT AUTHORISED','This browser cannot edit or operate the named robot. No work order was saved and no action was attempted.');
+   toast(`${denied.name}: only a robot operator with scene edit permission can start this action.`);
+   return -1;
+  }
   const answered=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&
    runs.has(o.userData.editorId)&&runs.get(o.userData.editorId).askedPreferences&&namedRoofChoice(message.text,o.name));
   if(answered){
@@ -1233,6 +1250,37 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    toast(`${assigned.name}: ${boxes?'box':'can'} cleanup saved; the action log will show actual pickup and verified storage.`);
    void cycle(run);update();return 1;
   }
+  // A named answer to an optional design question updates the SAME saved
+  // project. Colour never becomes a prerequisite for physical execution.
+  const preferenceBot=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&
+   namedFurnishingPreference(message.text,o.name));
+  if(preferenceBot){
+   const choice=namedFurnishingPreference(message.text,preferenceBot.name);
+   let run=runs.get(preferenceBot.userData.editorId);
+   if(run&&run.order.allowChanges&&roomFurnishingSequence(run.order.goal).includes(choice.variant)){
+    handledChatMessages.add(message.id);
+    const already=run.projectPlaced.find(p=>p.variant===choice.variant);
+    if(already){trace(preferenceBot,'PREFERENCE NOT APPLIED',choice.colour+' '+choice.variant+' requested after that item was saved; existing furniture unchanged.');return 1;}
+    run.furnishingColors[choice.variant]=choice.hex;
+    try{await saveOrder(run,true);trace(preferenceBot,'PREFERENCE SAVED',choice.variant+' = '+choice.colour+'; no waiting for other preferences');
+     if(!run.busy)void cycle(run);
+    }catch(error){trace(preferenceBot,'PREFERENCE SAVE FAILED',error.message);}
+    return 1;
+   }
+   // A colour reply can continue the previously authorised construction if
+   // the original user request and a concrete promise are BOTH in room chat.
+   let history=[];
+   try{history=(await api.req('/api/messages?room='+encodeURIComponent(room()))).messages||[];}
+   catch(error){trace(preferenceBot,'PREFERENCE NOT SAVED','Unable to verify earlier authorisation: '+error.message);return 0;}
+   const stamp=Date.parse(message.created)||Date.now();
+   const promised=promisedRoomFurnishing(history,preferenceBot.name,stamp);
+   if(recentHumanFurnishingAuthority(history,preferenceBot.name,stamp)&&promised.includes(choice.variant)){
+    handledChatMessages.add(message.id);
+    return assignRoomFurnishing(preferenceBot,`@${preferenceBot.name} please add ${promised.join(' and ')} to this room`,
+     'human-authorised preference continuation',{colours:{[choice.variant]:choice.hex},messageId:message.id});
+   }
+   trace(preferenceBot,'PREFERENCE NOT ACTIONABLE','No current project and no recent direct human furnishing order; did not invent authorisation.');
+  }
   const followUp=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&
    namedWorkContinuation(message.text,o.name));
   if(followUp){
@@ -1254,7 +1302,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    const items=promisedRoomFurnishing(messages,followUp.name,Date.parse(message.created)||Date.now());
    if(items.length){
     handledChatMessages.add(message.id);
-    return assignRoomFurnishing(followUp,`@${followUp.name} please add ${items.join(' and ')} to this room`,'explicit human follow-up to recent robot promise');
+    return assignRoomFurnishing(followUp,`@${followUp.name} please add ${items.join(' and ')} to this room`,'explicit human follow-up to recent robot promise',{messageId:message.id});
    }
    trace(followUp,'FOLLOW-UP NEEDS TARGET','No saved furnishing job or recent concrete furnishing promise was found. Ask for specific objects to place; no scene was modified.');
    return 0;
@@ -1263,7 +1311,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    namedRoomFurnishingInstruction(message.text,o.name));
   if(roomBuilder){
    handledChatMessages.add(message.id);
-   return assignRoomFurnishing(roomBuilder,namedRoomFurnishingInstruction(message.text,roomBuilder.name));
+   return assignRoomFurnishing(roomBuilder,namedRoomFurnishingInstruction(message.text,roomBuilder.name),'direct human furnishing instruction',{messageId:message.id});
   }
   // A fresh direct construction request outranks the robot's old generic
   // agent order. A conversation reply alone never authorises scene edits.

@@ -67,12 +67,12 @@ test('room entry is always a reachable route, not teleporting into a closed wall
 
 test('new navigation module is mapped into the browser and original diagnostic bubbles do not fake speech',()=>{
  const html=read('index.html'),comic=read('js/robot-comic-bubbles.js');
- assert.match(html,/robot-nature-navigation\.js\?v=0\.2\.228/);
+ assert.match(html,/robot-nature-navigation\.js\?v=0\.2\.231/);
  assert.match(comic,/if\(\/\^AUTONOMY/);
 });
 test('real room-entry method seeks a same-floor door, and refuses a blocked or read-only room',()=>{
  const editorText=read('js/editor.js');
- const source=editorText.slice(editorText.indexOf(' planRobotRoomEntry(robot){'),editorText.indexOf(' createRobotRoomFurniture(robot,variant){'));
+ const source=editorText.slice(editorText.indexOf(' planRobotRoomEntry(robot){'),editorText.indexOf(' createRobotRoomFurniture(robot,variant,options={}){'));
  assert.ok(source.includes('route=planRobotTravelRoute'));
  class Vector3{constructor(x=0,y=0,z=0){this.x=x;this.y=y;this.z=z;}}
  const enclosed=(_pts,corners)=>corners.every(p=>p[0]>.3&&p[0]<5.7&&p[1]>.3&&p[1]<5.7);

@@ -1,3 +1,14 @@
+## v0.2.231 — Mac watcher staging parity and release history
+
+- Watcher merge_history(stage,manifest) replaces app/releases.json from its local root and keeps newest 30 records. The old release-195 test asserted the existence of 0.2.195 and 0.2.200 in that short, valid history. A direct extracted-ZIP npm test therefore passed but watcher-staged npm test failed. Reproduced that specific failure and repaired the incorrect test condition. Older full change history remains in CHANGELOG.md.
+- Standalone release-231-watcher-stage-parity test checks the exact bounded-feed policy and stable source uniqueness. Watcher deployment remains mandatory; no GitHub, Ubuntu, or runtime API modification.
+
+## v0.2.231 — Deployment watcher staging parity
+
+# SOLVI.help Master LLM Handover — v0.2.231
+
+Lea’s log exposed six paid Meta replies without a single work order or scene mutation. The browser now recognises explicit continuation commands and bounded saved preferences, while the backend validates `furnishingColors` and `intentMessageId` in persisted work-order state. Scene creation still requires authorisation, a physical worksite and a save acknowledgement. This is a targeted furnishing bridge, not universal model-to-tool execution.
+
 ## v0.2.228 — Walkable forest and local furnishing goals
 
 - Treat walkable procedural grass and forest ground as terrain, not a single giant navigation obstacle; route around deterministic tree-trunk footprints while retaining water, wall and fence collision.

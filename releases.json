@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.228",
+  "currentVersion": "0.2.231",
   "releases": [
+    {
+      "version": "0.2.231",
+      "publishedAt": "2026-11-07T14:30:43Z",
+      "changes": [
+        "Fix a Mac watcher-only npm test failure: the watcher intentionally retains the newest 30 entries in releases.json, whereas a legacy test wrongly demanded entries 0.2.195 and 0.2.200.",
+        "Keep release history in CHANGELOG.md and assert that staged releases.json contains a unique, valid current release; verified against an exact simulated watcher stage rather than only a fresh ZIP extraction.",
+        "Preserve portal-pair presets, bed sitting, saved robot work orders, original avatars, stage checks, and all production deployment gates without modifying the watcher."
+      ]
+    },
     {
       "version": "0.2.228",
       "publishedAt": "2026-11-07T12:26:52Z",
@@ -297,16 +306,6 @@
         "Introduce checksummed, compressed room scene history with pre-upgrade startup snapshots, read-only backup endpoints, explicit bulk-delete safeguards and offline recovery utility.",
         "Reject malformed or unexpectedly empty same-room loads without clearing locally rendered objects; retain a bounded read-only browser scene copy.",
         "Preserve existing v0.2.195 README/ABOUT/CHANGELOG separation, multiplayer robot functionality, avatar model assets, and watcher ZIP contract."
-      ]
-    },
-    {
-      "version": "0.2.195",
-      "publishedAt": "2026-11-05T10:52:11Z",
-      "changes": [
-        "Replace application developer-diary README with a public-facing project overview; preserve original historical notes in CHANGELOG.md.",
-        "Add ABOUT.md and a local About tab in the existing application window while keeping release notes and diagnostics unchanged.",
-        "Provide a separate GitHub repository-root README with correct app-relative links, without changing the watcher ZIP contract.",
-        "Retain all v0.2.194 scene, preset, multiplayer, procedural equipment and Meta AI features; original GLB assets unchanged."
       ]
     }
   ]

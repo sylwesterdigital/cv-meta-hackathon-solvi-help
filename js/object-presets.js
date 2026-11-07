@@ -1,3 +1,6 @@
+import {portalPairPreset} from './portal-preset-data.js';
+import {pairedPortal} from './portal-core.js';
+import {makePortal} from './portal-geometry.js';
 import {canPreset,presetEntry} from './object-preset-data.js';
 import {makeFurniture,buildPrimitive} from './primitive-properties.js';
 import {makeOfficeStairs} from './office-stairs.js';
@@ -52,6 +55,7 @@ export function capturePresetThumbnail(editor,source){
 // while an editor gizmo or world camera was active.
 function previewSource(preset){
  const data=preset.payload||{};
+ if(data.kind==='portalPair'){const group=new THREE.Group();for(const part of [data.entry,data.exit]){const obj=makePortal(part.portal);obj.position.fromArray(part.position);obj.rotation.fromArray(part.rotation);obj.scale.fromArray(part.scale);group.add(obj);}return group;}
  if(data.kind==='furniture')return makeFurniture(data.furniture||{});
  if(data.kind==='stairs'&&data.stairs?.variant!=='lift')return makeOfficeStairs(data.stairs||{});
  if(data.kind==='wall')return makeOfficeWall(data.wall||{});
@@ -96,7 +100,7 @@ export function setupObjectPresets(editor){
    const preview=document.createElement('div');preview.className='object-preset-image';preview.setAttribute('role','button');preview.tabIndex=0;preview.title='Add '+preset.name;preview.setAttribute('aria-label','Add '+preset.name);
    const thumbnail=thumbnailFor(preset);if(/^data:image\/(webp|png|jpeg);base64,/.test(thumbnail)){const img=document.createElement('img');img.src=thumbnail;img.alt=preset.name+' preview';img.loading='lazy';preview.append(img);}else{const icon=document.createElement('span');icon.className='object-preset-placeholder';icon.textContent='▱';preview.append(icon);}
    const heading=document.createElement('strong');heading.textContent=preset.name;heading.title=preset.name;
-   const meta=document.createElement('small');meta.textContent=(preset.payload?.furniture?.variant||preset.kind)+' · '+preset.category;
+   const meta=document.createElement('small');meta.textContent=(preset.kind==='portalPair'?'Linked Entry + Exit':preset.payload?.furniture?.variant||preset.kind)+' · '+preset.category;
    const caption=document.createElement('div');caption.className='object-preset-caption';caption.append(heading,meta);
    const actions=document.createElement('div');actions.className='object-preset-actions';
    const create=()=>{
@@ -119,9 +123,19 @@ export function setupObjectPresets(editor){
   try{const response=await window.solviAPI.req('/api/object-presets');if(token!==requestId)return;records=response.presets||[];render();}catch(error){note('Could not load presets: '+error.message);}
  }
  async function open(){category='All';search.value='';backdrop.hidden=false;await refresh();}
- async function save(){const obj=editor.selected,entry=editor.snapshot(obj);if(!editor.canEdit(obj)||!canPreset(entry))return;
-  const title=(await textEntry('Save object preset',obj.name||'My preset',{message:'Give this configuration a searchable name.'}))?.trim().slice(0,90);if(!title)return;
-  const payload=presetEntry(entry);const thumbnail=capturePresetThumbnail(editor,obj);
+ async function save(){const obj=editor.selected;if(!obj||!editor.canEdit(obj))return;
+  let entry=editor.snapshot(obj),source=obj;
+  if(obj.userData?.editorKind==='portal'){
+   const partner=pairedPortal(editor.items,obj);
+   if(!partner||!editor.canEdit(partner)){editor.toast('Save the linked Entry and Exit together. Both portals must exist and be editable.');return;}
+   entry=portalPairPreset(editor.snapshot(obj),editor.snapshot(partner));
+  }
+  if(!canPreset(entry)){editor.toast('This object cannot be saved as a preset.');return;}
+  if(!window.solviAPI?.online){editor.toast('Sign in to save account presets.');return;}
+  const title=(await textEntry(entry.kind==='portalPair'?'Save linked portal pair':'Save object preset',entry.kind==='portalPair'?'Portal Entry + Exit':obj.name||'My preset',{message:entry.kind==='portalPair'?'Save both portals, their individual settings and their relative locations.':'Give this configuration a searchable name.'}))?.trim().slice(0,90);if(!title)return;
+  const payload=presetEntry(entry);let thumbnail='';
+  if(entry.kind==='portalPair'){let preview=null;try{preview=previewSource({payload});thumbnail=capturePresetThumbnail(editor,preview);}catch(error){console.warn('Portal pair thumbnail unavailable',error);}finally{releasePreviewSource(preview);}}
+  else thumbnail=capturePresetThumbnail(editor,source);
   try{await window.solviAPI.req('/api/object-presets',{method:'POST',body:JSON.stringify({name:title,payload,thumbnail})});editor.toast('Preset saved · '+title);}
   catch(e){editor.toast('Preset could not be saved: '+e.message);}
  }

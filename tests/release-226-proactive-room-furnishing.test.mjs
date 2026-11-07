@@ -45,7 +45,7 @@ test('Scene executor validates actual room floor and obtains a server save ackno
  assert.match(ed,/planRobotRoomFurnishing\(robot,variant\)/);
  assert.match(ed,/Math\.abs\(robot\.position\.y-b\.max\.y\)>1\.25/);
  assert.match(ed,/this\.navigationObstacles\(robot\)/);
- assert.match(ed,/createRobotRoomFurniture\(robot,variant\)/);
+ assert.match(ed,/createRobotRoomFurniture\(robot,variant,options=\{\}\)/);
  assert.match(ed,/roomBounds\.min\.x/);
  assert.match(ed,/positionNewOnGround\(obj,\{x:position\.x,y:roomBounds\?roomBounds\.max\.y:\(roomGroundY\?\?0\),z:position\.z\}\)/);
  assert.match(app,/await editor\.persistObject\?\.\(item,run\.room\)/);

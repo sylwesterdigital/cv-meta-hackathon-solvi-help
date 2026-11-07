@@ -269,8 +269,8 @@ export function restoreSeatedRobots(editor){
   const clip=sittingClip(names);
   const variant=target.userData.furniture?.variant;
   const reclined=['sunbed','deckChair'].includes(variant);
-  robot.userData.robotSitPose=clip?'clip':reclined?'reclined':'procedural';
-  robot.userData.robotMode=clip||'idle';robot.userData.robotPlaying=null;
+  robot.userData.robotSitPose=reclined?'reclined':clip?'clip':'procedural';
+  robot.userData.robotMode=(!reclined&&clip)||'idle';robot.userData.robotPlaying=null;
   robot.userData.robotSeatTargetPose=[target.position.x,target.position.y,target.position.z,target.quaternion.x,target.quaternion.y,target.quaternion.z,target.quaternion.w,target.scale.x,target.scale.y,target.scale.z];
   editor.physics?.applyEditedPose?.(robot);restored++;
  }

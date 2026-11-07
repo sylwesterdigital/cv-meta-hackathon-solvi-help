@@ -237,7 +237,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.228',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.231',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1006,8 +1006,8 @@ def bookmark_payload(obj):
 # User-owned catalogue of procedural object configurations. Templates cannot include
 # asset URLs, ownership, robot data or uploaded media; every instance gets a fresh ID.
 MAX_FURNITURE_FIELDS = 200  # Aligned with complete procedural builder schema; all names and values are validated below.
-_PRESET_TYPES={'furniture','cube','sphere','cylinder','plane','torus','surface','curve','text','ladder','stairs','wall'}
-_PRESET_FIELDS={'kind','name','rotation','scale','color','texture','physics','pickable','inventory','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture','wall'}
+_PRESET_TYPES={'portalPair','furniture','cube','sphere','cylinder','plane','torus','surface','curve','text','ladder','stairs','wall'}
+_PRESET_FIELDS={'kind','name','rotation','scale','color','texture','physics','pickable','inventory','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture','wall','entry','exit'}
 
 def _preset_finite(value,depth=0):
     if depth>14:return False
@@ -1016,6 +1016,24 @@ def _preset_finite(value,depth=0):
     if isinstance(value,list):return len(value)<=2500 and all(_preset_finite(v,depth+1) for v in value)
     if isinstance(value,dict):return len(value)<=200 and all(isinstance(k,str) and len(k)<=100 and _preset_finite(v,depth+1) for k,v in value.items())
     return False
+
+def valid_portal_pair_preset(value):
+    # A saved pair has portable relative transforms and reciprocal placeholder
+    # links. Scene object ids and ownership are always regenerated on use.
+    if not isinstance(value,dict) or set(value)!={'kind','entry','exit'} or value['kind']!='portalPair':return False
+    for role,partner in (('entry','preset_exit'),('exit','preset_entry')):
+        part=value.get(role)
+        if not isinstance(part,dict) or set(part)!={'kind','name','position','rotation','scale','portal'}:return False
+        if part['kind']!='portal' or not isinstance(part['name'],str) or not 1<=len(part['name'])<=100:return False
+        for key in ('position','rotation','scale'):
+            seq=part.get(key)
+            if not isinstance(seq,list) or len(seq)!=3 or any(type(n) not in (int,float) or not math.isfinite(n) for n in seq):return False
+        if any(abs(n)>1000 for n in part['position']) or any(abs(n)>10000 for n in part['rotation']):return False
+        if any(n<.001 or n>1000 for n in part['scale']):return False
+        portal=part['portal']
+        if not valid_portal_geometry(portal) or portal['role']!=role or portal['partner']!=partner:return False
+        if portal.get('texture') not in ('none','concrete','bricks','metal','tiles'):return False
+    return all(v==0 for v in value['entry']['position']) and _preset_finite(value)
 
 @app.route('/api/object-presets',methods=['GET','POST'])
 def object_presets():
@@ -1029,6 +1047,8 @@ def object_presets():
     name=body.get('name');entry=body.get('payload');thumb=body.get('thumbnail','')
     if not isinstance(name,str) or not 1<=len(name.strip())<=90:return json_error('Preset name must be 1–90 characters')
     if not isinstance(entry,dict) or entry.get('kind') not in _PRESET_TYPES:return json_error('Unsupported preset object type')
+    if entry['kind']=='portalPair' and not valid_portal_pair_preset(entry):return json_error('Invalid linked portal preset')
+    if entry['kind']!='portalPair' and ('entry' in entry or 'exit' in entry):return json_error('Invalid nested preset components')
     if 'name' in entry and (not isinstance(entry['name'],str) or len(entry['name'])>100):return json_error('Invalid original object name')
     if 'rotation' in entry and (not isinstance(entry['rotation'],list) or len(entry['rotation'])!=3 or any(type(v) not in (int,float) or not math.isfinite(v) for v in entry['rotation'])):return json_error('Invalid preset rotation')
     if 'color' in entry and entry['color'] is not None and (not isinstance(entry['color'],str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',entry['color'])):return json_error('Invalid preset colour')
@@ -1047,12 +1067,12 @@ def object_presets():
     if entry['kind']=='stairs' and (entry.get('stairs') or {}).get('variant')=='lift':return json_error('Lift systems cannot be saved as single-object presets')
     if not isinstance(thumb,str) or (thumb and (len(thumb)>145000 or not re.fullmatch(r'data:image/(?:webp|png);base64,[A-Za-z0-9+/=]+',thumb))):return json_error('Invalid preset preview')
     entry={key:value for key,value in entry.items() if key in _PRESET_FIELDS}
-    if not isinstance(entry.get('scale'),list) or len(entry['scale'])!=3 or any(type(n) not in (int,float) or not math.isfinite(n) or not 0.001<=n<=1000 for n in entry['scale']):return json_error('Invalid preset scale')
+    if entry['kind']!='portalPair' and (not isinstance(entry.get('scale'),list) or len(entry['scale'])!=3 or any(type(n) not in (int,float) or not math.isfinite(n) or not 0.001<=n<=1000 for n in entry['scale'])):return json_error('Invalid preset scale')
     if not _preset_finite(entry):return json_error('Invalid preset properties')
     payload=json.dumps(entry,allow_nan=False,separators=(',',':'))
     if len(payload)>48000:return json_error('Preset configuration too large')
     variant=(entry.get('furniture') or {}).get('variant','table') if entry['kind']=='furniture' else ''
-    category='Tools' if variant in ('shovel','axe','rake','stick','broom','mop','saw') else 'Nature' if variant in ('tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch') else 'Props' if variant in ('plate','mug','glass','bowl','bottle','can','flowerpot','box') else 'Furniture' if entry['kind']=='furniture' else 'Geometry' if entry['kind'] in ('cube','sphere','cylinder','plane','torus','surface','curve','text','points') else 'Architecture'
+    category='Architecture' if entry['kind']=='portalPair' else 'Tools' if variant in ('shovel','axe','rake','stick','broom','mop','saw') else 'Nature' if variant in ('tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch') else 'Props' if variant in ('plate','mug','glass','bowl','bottle','can','flowerpot','box') else 'Furniture' if entry['kind']=='furniture' else 'Geometry' if entry['kind'] in ('cube','sphere','cylinder','plane','torus','surface','curve','text','points') else 'Architecture'
     with db() as con:
         if con.execute('SELECT COUNT(*) FROM object_presets WHERE user_id=?',(user['id'],)).fetchone()[0]>=250:return json_error('Maximum 250 saved presets')
         uid=str(uuid.uuid4());con.execute('INSERT INTO object_presets VALUES(?,?,?,?,?,?,?,?)',(uid,user['id'],name.strip(),category,entry['kind'],payload,thumb,now()))
@@ -1859,7 +1879,7 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','projectDeferred','projectPending'}
+    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
@@ -1873,6 +1893,12 @@ def valid_robot_work_order(order,state):
        type(it['retryAt']) not in (int,float) or not math.isfinite(it['retryAt']) or not 0<=it['retryAt']<=9999999999999 for it in skipped):return None
     if stored.get('askedPreferences') not in (None,True,False):return None
     if stored.get('roofPreference','') not in ('','flat','shed','pyramid'):return None
+    colours=stored.get('furnishingColors',{})
+    if (not isinstance(colours,dict) or len(colours)>7 or any(
+        key not in ('bed','table','sofa','chair','stool','cabinet','lamp') or
+        not isinstance(value,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',value)
+        for key,value in colours.items())):return None
+    if not isinstance(stored.get('intentMessageId',''),str) or len(stored.get('intentMessageId',''))>100:return None
     tried=stored.get('cleanupThrowTried',[])
     if (not isinstance(tried,list) or len(tried)>32 or
         any(not isinstance(ident,str) or not 1<=len(ident)<=100 for ident in tried)):return None
@@ -2683,22 +2709,22 @@ def plan_robot_command(text,robot,objects):
             target=stations[0]
             return {'kind':'coffee_visit','target_id':target['id'],'target_name':str(target.get('name','Coffee station'))[:100]},'I will visit the coffee station and return. I cannot prepare or carry a drink without implemented object interactions.'
         return None,'I cannot find a coffee station in this realm. I will not claim that I made coffee without a usable scene object.'
-    noun=re.search(r'\b(sofa|couch|chair)\b',words)
+    noun=re.search(r'\b(sofa|couch|chair|bed)\b',words)
     travel=bool(re.search(r'\b(find|look for|locate|go to|walk to|approach|sit on|sit in|sit down)\b',words))
     if noun and travel:
-        requested=noun.group(1);family={'sofa','couch'} if requested in ('sofa','couch') else {'chair'}
+        requested=noun.group(1);family={'sofa','couch'} if requested in ('sofa','couch') else {'bed'} if requested=='bed' else {'chair'}
         # A colour or numbered furniture label is part of the objective, not a suggestion.
         # Never substitute Black Sofa for Grey Sofa, or Sofa 2 for Sofa 1.
         colour_match=re.search(r'\b(red|green|yellow|blue|black|white|brown|purple|pink|orange|grey|gray)\b',words)
         colour=colour_match.group(1) if colour_match else ''
         colour_words={colour,'gray' if colour=='grey' else 'grey'} if colour in ('grey','gray') else ({colour} if colour else set())
-        number_match=re.search(r'\b(?:sofa|couch|chair)\s*(?:copy\s*)?(\d{1,3})\b',words)
+        number_match=re.search(r'\b(?:sofa|couch|chair|bed)\s*(?:copy\s*)?(\d{1,3})\b',words)
         number=number_match.group(1) if number_match else ''
         candidates=[o for o in objects if o.get('kind') not in ('robot','light')
                     and any(re.search(r'\b'+n+r'\b',str(o.get('name','')).casefold()) for n in family)
                     and (not colour or any(re.search(r'\b'+re.escape(c)+r'\b',str(o.get('name','')).casefold()) for c in colour_words)
                          or colour=='red' and _red_scene_object(o))
-                    and (not number or bool(re.search(r'\b(?:sofa|couch|chair)\s*(?:copy\s*)?'+re.escape(number)+r'\b',str(o.get('name','')).casefold())))
+                    and (not number or bool(re.search(r'\b(?:sofa|couch|chair|bed)\s*(?:copy\s*)?'+re.escape(number)+r'\b',str(o.get('name','')).casefold())))
                     and isinstance(o.get('position'),list) and len(o['position'])==3]
         if not candidates:
             detail=' '.join(x for x in (colour,requested,number) if x)
@@ -3758,7 +3784,7 @@ def robot_react():
        ' Only claim direct visual perception from last_real_camera_observation, and qualify by its age; the scene index is not direct sight. Respond naturally, not with a canned camera-status disclaimer.'
        ' Answer the actual person first. If it adds something, include ONE brief casual aside about what caught your attention or your next practical move, in your own voice and everyday jargon. This is a character remark, not a report of hidden reasoning. Skip the aside when it would be filler.'
        ' Prefer real task receipts and recent actions over old camera descriptions. If last_client_reported_exploration exists, do not claim the robot has only made an older short walk; distinguish a completed client-reported exploration from an active mission.'
-       ' When invited to improve or build the world, name a specific achievable next step or a saved work order. A friendly reply or broad group invitation is NOT scene construction, and must never be described as completed world edits. A new authorised human request to add specified procedural furniture can create a persistent local work order before this chat reply. Consult saved_work_order and recent receipts. Do not tell the user that chat can never trigger tools or claim you saved a preference that has no recorded state. Report a queued request as queued, not completed.'
+       ' When invited to improve or build the world, name a specific achievable next step or a saved work order. A friendly reply or broad group invitation is NOT scene construction, and must never be described as completed world edits. A new authorised human request to add specified procedural furniture can create a persistent local work order before this chat reply. Consult saved_work_order and recent receipts. Do not tell the user that chat can never trigger tools or claim you saved a preference that has no recorded state. Report a queued request as queued, not completed. Never say an item is queued or a work order exists unless saved_work_order.enabled is true in the current World situation. A colour preference is optional; default colours never block furnishing. If the current work order is absent, state no actual tool task is scheduled, instead of repeating a construction promise.'
        ' Describe places naturally with distinctive objects, buildings, paths, entrances and landmarks rather than raw X/Z coordinates unless the human explicitly asks for measurements. Do not invent landmarks or claim a place was seen in camera when only the scene index lists it.'
        ' Avoid repetitive sky/tiles reports, formal evidence-debate wording, generic self-assessment, and [S1] reference labels unless explicitly requested.'
        ' Do not claim to be walking, moving, rerouting, or executing a mission unless the server provided an actual scene command. A chat reply alone does not move the avatar.'

@@ -1,3 +1,22 @@
+## v0.2.231 — Fix watcher-stage release metadata regression
+
+- Reproduced the Mac-only test failure: release-195-public-readme-about.test.mjs incorrectly requires v0.2.195 and v0.2.200 in a watcher-published releases.json file that is explicitly trimmed to 30 releases. This produces the logged ERR_ASSERTION (actual false, expected true).
+- Update the test to verify valid current/unique release entries and use the enduring CHANGELOG.md for older historical entries. Add a regression that simulates watcher pruning.
+- Correct duplicate version records in the full source release catalog. No watcher changes, bypassed tests, avatar replacement, database migration or feature regression.
+
+## v0.2.230 — Portal pair presets and bed seating animation
+
+- Save linked Entry/Exit as one portable preset, including relative placement and individual effects; restore with fresh links and per-pair validation.
+- Play and retain the existing Sitting clip on beds after loading or remote scene synchronisation; retain approximate fallback if missing.
+- Preserve robust npm/Flask deployment gates; do not conceal a Mac-only failing assertion.
+
+## v0.2.230 — Coherent action decisions and real scene execution
+
+- Recover Lea’s observed `@Lea execute` and `@Lea yes please, follow step by step` instructions as authenticated continuations instead of paying for more empty model chat.
+- Apply `@Lea I wish a yellow one` to a pending bed, with safe default when no colour is chosen.
+- Track original human message ID in saved work order; log decision acceptance, server commit, physical action and acknowledgement independently.
+- Reject unsupported colour fields and task-state tampering; disclose missing edit permission instead of inventing a queued task.
+
 ## v0.2.228 — Walkable nature and executable furnishing recovery
 
 - Treat walkable procedural grass and forest ground as terrain, not a single giant navigation obstacle; route around deterministic tree-trunk footprints while retaining water, wall and fence collision.

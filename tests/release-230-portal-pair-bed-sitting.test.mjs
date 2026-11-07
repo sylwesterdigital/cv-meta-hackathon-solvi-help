@@ -1,0 +1,50 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {cleanPortal} from '../js/portal-core.js';
+import {portalPairPreset,portalPairEntries,validPortalPairPreset} from '../js/portal-preset-data.js';
+import {canPreset,presetEntry,presetCategory} from '../js/object-preset-data.js';
+const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
+const scenePortal=(id,role,partner,position)=>({kind:'portal',id,name:'Portal '+role,position,rotation:[0,0,0],scale:[1,1,1],portal:cleanPortal({role,partner,shape:'rounded',effect:'glow',width:3,openingWidth:2,delay:2,color:'#aabbcc'})});
+test('portal Entry and Exit are ONE saved preset with portable offsets and reciprocal new ids',()=>{
+ const entry=scenePortal('portal0001','entry','portal0002',[2,.1,4]);
+ const exit=scenePortal('portal0002','exit','portal0001',[16,1,25]);
+ const p=portalPairPreset(exit,entry);
+ assert.ok(validPortalPairPreset(p));assert.ok(canPreset(p));assert.equal(presetCategory(p),'Architecture');
+ assert.deepEqual(p.entry.position,[0,0,0]);assert.deepEqual(p.exit.position,[14,.9,21]);
+ const restored=presetEntry(p);assert.equal(restored.entry.portal.color,'#aabbcc');
+ let i=1;const objects=portalPairEntries(restored,[20,0,-10],'new_owner',()=>`new_portal_${i++}`);
+ assert.deepEqual(objects[0].position,[20,0,-10]);assert.deepEqual(objects[1].position,[34,.9,11]);
+ assert.equal(objects[0].portal.partner,objects[1].id);assert.equal(objects[1].portal.partner,objects[0].id);
+ assert.notEqual(objects[0].id,entry.id);assert.equal(objects[1].owner,'new_owner');
+ assert.equal(portalPairEntries({...p,exit:{...p.exit,portal:{...p.exit.portal,partner:'stale_source_id'}}},[0,0,0],null,()=>''),null);
+ assert.equal(portalPairPreset(entry,{...exit,portal:{...exit.portal,partner:'missing'}}),null);
+});
+test('portal preset dialog is available, saves both, and insert rolls back on failure before saving',()=>{
+ const code=read('js/object-presets.js'),editor=read('js/editor.js');
+ assert.match(code,/pairedPortal\(editor\.items,obj\)/);
+ assert.match(code,/portalPairPreset\(editor\.snapshot\(obj\),editor\.snapshot\(partner\)\)/);
+ assert.match(code,/Save linked portal pair/);
+ assert.match(editor,/obj\.userData\.editorKind==='portal'\|\|canPreset/);
+ assert.match(editor,/addPortalPairFromPreset/);
+ const block=editor.slice(editor.indexOf(' addPortalPairFromPreset(data)'),editor.indexOf(' addFromPreset(saved){'));
+ assert.ok(block.indexOf('placeSmartNewObject(entry)')<block.indexOf('this.queueSave(item)'));
+ assert.match(block,/const rollback=/);
+ assert.match(block,/portalPairEntries/);
+});
+test('backend accepts only validated linked portal presets, never arbitrary nested scene objects',()=>{
+ const code=read('backend/server.py');
+ assert.match(code,/def valid_portal_pair_preset\(value\):/);
+ assert.match(code,/set\(part\)!={'kind','name','position','rotation','scale','portal'}/);
+ assert.match(code,/if not valid_portal_geometry\(portal\)/);
+ assert.match(code,/entry\['kind'\]=='portalPair' and not valid_portal_pair_preset\(entry\)/);
+});
+test('bed sitting applies authored Sitting clip and never reverts to idle on hydration or network sync',()=>{
+ const robots=read('js/robots.js'),editor=read('js/editor.js'),seat=read('js/robot-seating.js');
+ assert.match(seat,/\['chair','officeChair','armchair','sofa','stool','bed'/);
+ assert.match(seat,/robot\.userData\.robotMode=recline\?\(lying\?'clip:'/);
+ assert.match(robots,/if\(group\.userData\.robotSeated\).*sittingClip\(group\.userData\.robotAvailableActions\)/);
+ assert.match(robots,/if\(data\.robotSeated&&!data\.robotJumpActive\)/);
+ assert.match(read('backend/server.py'),/noun=re.search\(r'\\b\(sofa\|couch\|chair\|bed\)/);
+ assert.match(editor,/obj\.userData\.robotMode=sittingClip\(obj\.userData\.robotAvailableActions\|\|\[\]\)\|\|'idle'/);
+});
