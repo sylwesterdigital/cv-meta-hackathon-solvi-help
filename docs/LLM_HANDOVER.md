@@ -1,4 +1,12 @@
-# SOLVI.help Master LLM Handover — v0.2.227
+## v0.2.228 — Walkable forest and local furnishing goals
+
+- Treat walkable procedural grass and forest ground as terrain, not a single giant navigation obstacle; route around deterministic tree-trunk footprints while retaining water, wall and fence collision.
+- Reserve full vegetation plots for building-footprint checks while using actual traversable routes for movement to construction sites.
+- Run existing broad, authorised furnishing work orders with local tools instead of repeating Meta planning errors or idling; seek a reachable room interior through a real doorway first.
+- Validate malformed nested Meta tool arguments without a TypeError, and keep internal planning diagnostics out of in-world robot thought bubbles.
+- Preserve object permissions, saved rooms, original media, scene-save acknowledgements and per-user Meta retry settings; physical execution still requires an active authenticated browser.
+
+# SOLVI.help Master LLM Handover — v0.2.228
 
 ## v0.2.227 — Conversation to verified room furnishing (7 November 2026)
 

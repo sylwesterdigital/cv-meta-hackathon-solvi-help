@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.227",
+  "currentVersion": "0.2.228",
   "releases": [
+    {
+      "version": "0.2.228",
+      "publishedAt": "2026-11-07T12:26:52Z",
+      "changes": [
+        "Treat grass, vegetation ground plots, and low orchard ground cover as walkable during robot routing; avoid individual tree stems rather than blocking the full forest plot.",
+        "Preserve stricter construction exclusion for vegetation plots and existing obstacles, separating route and building-site clearance.",
+        "Execute previously saved broad room-furnishing objectives with local authorised tools even when Meta autonomous planning fails or is in retry backoff.",
+        "Plan genuine checked room entry through a reachable ground-level doorway; never treat external wall proximity as room access.",
+        "Reject malformed Meta tool decisions without the previous variant-type TypeError, and keep machine planning diagnostics out of robot speech bubbles.",
+        "Maintain access validation, persisted object IDs, deferred work, browser-only physical execution and original media/avatar assets."
+      ]
+    },
     {
       "version": "0.2.227",
       "publishedAt": "2026-11-07T11:52:52Z",
@@ -295,18 +307,6 @@
         "Add ABOUT.md and a local About tab in the existing application window while keeping release notes and diagnostics unchanged.",
         "Provide a separate GitHub repository-root README with correct app-relative links, without changing the watcher ZIP contract.",
         "Retain all v0.2.194 scene, preset, multiplayer, procedural equipment and Meta AI features; original GLB assets unchanged."
-      ]
-    },
-    {
-      "version": "0.2.194",
-      "publishedAt": "2026-11-05T10:29:29Z",
-      "changes": [
-        "Fix procedural cube-preset openings validation and strict furniture/stair/wall preset shape handling.",
-        "Persist single-line stair colour/texture through canonical parametric state and cross-client reloads.",
-        "Prevent lost room objects from stale full-scene saves by using per-object dirty generations, serialized saves and revision-aware scene reconciliation.",
-        "Show scene object save success/failure, revision gaps and reconciliation in Live diagnostics, beyond presence messages.",
-        "Use atomic full-scene writes and raise scene capacity to 512 consistently across scene updates, clone and archive operations.",
-        "Preserve all v0.2.193 tools, equipment, laptop/fridge states, original GLBs and prior app features."
       ]
     }
   ]

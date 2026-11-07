@@ -63,6 +63,7 @@ import {setupObjectPresets} from './object-presets.js';
 import {startVegetationPlot,vegetationPointer,finishVegetationPlot,cancelVegetationPlot} from './vegetation-drawing.js';
 import {startInfrastructureDrawing,infrastructurePointer,finishInfrastructureDrawing,cancelInfrastructureDrawing,drawingUndo,drawingRedo,recordInfrastructureDraftChange} from './infrastructure-drawing.js';
 import {VEGETATION_TYPES} from './procedural-vegetation.js';
+import {WALKABLE_NATURE_AREAS,natureNavigationFootprints} from './robot-nature-navigation.js';
 import {canPreset,presetEntry} from './object-preset-data.js';
 import {centreGroundFromCamera,positionNewOnGround,positionNewSmartly} from './scene-placement.js';
 import {houseBlueprint,houseWallSettings} from './robot-construction-api.js';
@@ -1395,7 +1396,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   }
   if(!Number.isFinite(width)||!Number.isFinite(depth)||width<.1||depth<.1)return null;
   const start={x:robot.position.x,z:robot.position.z};
-  const obstacles=this.navigationObstacles(robot);
+  const routeObstacles=this.navigationObstacles(robot),obstacles=this.navigationObstacles(robot,{forConstruction:true});
   // Roads and footpaths are walkable, but duplicate same-lane geometry should
   // still be treated as occupied when selecting a NEW infrastructure site.
   if(['road','footpath'].includes(kind))for(const obj of this.items){
@@ -1406,13 +1407,13 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   const anchor=settings.anchor;
   if(anchor&&Number.isFinite(anchor.x)&&Number.isFinite(anchor.z)&&
       Math.hypot(anchor.x-start.x,anchor.z-start.z)<72){
-   const near=findRobotWorksite(anchor,obstacles,{width,depth},{yaw:0});
-   if(near){const route=planRobotPath(start,near.staging,obstacles);
+   const near=findRobotWorksite(anchor,obstacles,{width,depth},{yaw:0,navigationObstacles:routeObstacles});
+   if(near){const route=planRobotPath(start,near.staging,routeObstacles);
     if(route?.length&&Math.hypot(route.at(-1).x-near.staging.x,route.at(-1).z-near.staging.z)<.3)
      return {...near,teamAnchor:true};
    }
   }
-  return findRobotWorksite(start,obstacles,{width,depth},{yaw:robot.rotation.y});
+  return findRobotWorksite(start,obstacles,{width,depth},{yaw:robot.rotation.y,navigationObstacles:routeObstacles});
  }
  // Shares the movement controller, A* route and authoritative arrival event with
  // user-issued walk commands. It never teleports a robot or a construction item.
@@ -1493,6 +1494,42 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   }
   return null;
  }
+ // Walk into the nearest reachable, editable, closed ground-level house.
+ // A visual label or a camera image never establishes an open entrance.
+ planRobotRoomEntry(robot){
+  if(!robot||!this.canEdit(robot)||!this.items.includes(robot)||Math.abs(robot.position.y)>.85)return null;
+  const start={x:robot.position.x,z:robot.position.z};
+  const obstacles=this.navigationObstacles(robot).filter(o=>o.kind!=='robot');
+  const walls=this.items.filter(o=>o.userData.editorKind==='wall'&&o.userData.wall?.closed===true&&
+    o.userData.wall?.array?.enabled!==true&&Array.isArray(o.userData.wall?.points)&&
+    o.userData.wall.points.length>=3&&this.canEdit(o)&&o.visible);
+  const sorted=walls.sort((a,b)=>a.position.distanceToSquared(robot.position)-b.position.distanceToSquared(robot.position)).slice(0,12);
+  let best=null;
+  for(const wall of sorted){
+   wall.updateMatrixWorld(true);
+   const ground=wall.localToWorld(new THREE.Vector3());
+   if(Math.abs(ground.y-robot.position.y)>.55)continue;
+   const pts=wall.userData.wall.points;
+   const xs=pts.map(p=>p[0]),zs=pts.map(p=>p[1]);
+   const centre={x:(Math.min(...xs)+Math.max(...xs))/2,z:(Math.min(...zs)+Math.max(...zs))/2};
+   const offsets=[[0,0],[-.7,0],[.7,0],[0,-.7],[0,.7],[-1,1],[1,-1]];
+   for(const [dx,dz] of offsets){
+    const lx=centre.x+dx,lz=centre.z+dz;
+    if(!enclosedRoomFootprint(pts,Array.from({length:4},()=>[lx,lz]),.32))continue;
+    const point=wall.localToWorld(new THREE.Vector3(lx,0,lz));
+    const target={x:point.x,z:point.z};
+    const distance=Math.hypot(target.x-start.x,target.z-start.z);
+    if(distance<1.2||distance>90||pathBlocked(target.x,target.z,obstacles,.40))continue;
+    const route=planRobotTravelRoute(start,target,obstacles);
+    if(!route?.length||Math.hypot(route.at(-1).x-target.x,route.at(-1).z-target.z)>.12)continue;
+    const meters=plannedRouteLength(start,route);
+    if(!best||meters<best.meters)best={site:target,staging:target,meters,
+      roomId:wall.userData.editorId,roomName:wall.name||'procedural house'};
+    break;
+   }
+  }
+  return best;
+ }
  createRobotRoomFurniture(robot,variant){
   const site=this.planRobotRoomFurnishing(robot,variant);
   return site?this.createRobotFurniture(robot,variant,{at:site.at,roomFloorId:site.floorId,roomWallId:site.wallId}):null;
@@ -1505,7 +1542,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   const margin=Math.max(1.05,size.x*.6,size.z*.6);
   // Respect all nearby footprints; never build furniture across a doorway or
   // inside another scene object. The robot's own capsule is excluded here.
-  const obstacles=this.navigationObstacles(robot);
+  const obstacles=this.navigationObstacles(robot,{forConstruction:true});
   let roomFloor=null,roomBounds=null,roomGroundY=null;
   if(options.roomWallId){
    const wall=this.items.find(o=>o.userData.editorId===options.roomWallId&&o.userData.editorKind==='wall'&&
@@ -1562,7 +1599,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  // plus a separately editable floor cube. A failed site check creates nothing.
  createRobotHouse(robot,input={}){
   if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot))return null;
-  const spec=houseBlueprint(input),obstacles=this.navigationObstacles(robot);
+  const spec=houseBlueprint(input),obstacles=this.navigationObstacles(robot,{forConstruction:true});
   const clearance=Math.hypot(spec.width,spec.depth)/2+.6;
   let site=null;
   if(input.at){
@@ -2984,7 +3021,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   robotPathDebugVisible(robot){return robotPathVisible(robot?.userData?.editorId,sessionStorage);}
   updateRobotDebugStatus(){const label=byId('robotPathDebugStatus'),robot=this.robot();if(!label)return;label.hidden=!robot||!this.robotPathDebugVisible(robot);if(label.hidden)return;const route=robot.userData.robotDebugRoute;label.textContent=!route?'Route debug ready — start a robot walking mission to see its actual planned path.':route.blocked?'No valid route — red destination ring only; there is no traversable line.':route.finished?'Previous route shown briefly after the mission ended.':'Green: A* planned route · cyan: actual travelled trail · red: obstacles · orange: destination; blue shows direction, not camera evidence.';}
   syncRobotPathDebug(){for(const robot of this.items.filter(o=>o.userData.editorKind==='robot')){const route=robot.userData.robotDebugRoute;if(this.robotPathDebugVisible(robot)&&route&&!route.finished)updateRobotPathDebug(this.world,robot,route);else if(!this.robotPathDebugVisible(robot))clearRobotPathDebug(this.world,robot.userData.editorId);}this.updateRobotDebugStatus();}
-  navigationObstacles(robot){
+  navigationObstacles(robot,options={}){
     this.world.scene.updateMatrixWorld(true);
     const supplements=(robot.userData.robotNavTemporaryObstacles||[]).filter(o=>o.until>Date.now());
     robot.userData.robotNavTemporaryObstacles=supplements;
@@ -3004,6 +3041,28 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
           const p=o.localToWorld(new THREE.Vector3(x,0,z));return {x:p.x,z:p.z};
         },{...cfg,navigationWorldScale:Math.max(Math.abs(o.scale.x),Math.abs(o.scale.z))},
         {name:o.name||cfg.infraType,id:o.userData.editorId});
+      }
+      // A nature patch is a walkable terrain surface, NOT a solid rectangle
+      // spanning its grass and tree canopies. Keep only real trunk footprints
+      // when walking. Placement of NEW buildings still reserves its full plot.
+      if(o.userData.editorKind==='furniture'&&WALKABLE_NATURE_AREAS.includes(o.userData.furniture?.variant)){
+        if(options.forConstruction){
+          const b=new THREE.Box3().setFromObject(o);
+          return b.isEmpty()?null:{minX:b.min.x,maxX:b.max.x,minZ:b.min.z,maxZ:b.max.z,
+            name:o.name||'Nature plot',kind:'nature-reserved',id:o.userData.editorId};
+        }
+        return natureNavigationFootprints(o.userData.furniture,(x,z)=>{
+          const p=o.localToWorld(new THREE.Vector3(x,0,z));
+          return {x:p.x,z:p.z,scale:Math.max(Math.abs(o.scale.x),Math.abs(o.scale.z))};
+        },{name:o.name,id:o.userData.editorId},robot.position.y);
+      }
+      // A solitary tree has a slender physical trunk, not an impassable leafy
+      // canopy; decorative shrubs with physics disabled do not block paths.
+      if(o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='shrub'&&o.userData.physics?.mode==='off')return null;
+      if(o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='tree'){
+        const p=o.userData.furniture,r=Math.min(1.5,Math.max(.12,(Number(p.trunkRadius)||.18)*Math.max(Math.abs(o.scale.x),Math.abs(o.scale.z))+.10));
+        return {minX:o.position.x-r,maxX:o.position.x+r,minZ:o.position.z-r,maxZ:o.position.z+r,
+          name:o.name||'Tree',kind:'tree-trunk',id:o.userData.editorId};
       }
       // Human-like glTF bounds can swell with animation and accessories. Use a
       // stable feet-centred capsule footprint for other robots instead.

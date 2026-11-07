@@ -26,7 +26,7 @@ export function isOpenEndedRoomFurnishing(text=''){
  if(/\b(?:do\s+not|don\'t|never|stop|avoid|without)\s+(?:adding|add|put|place|install|furnish)\b/i.test(s))return false;
  return /\b(?:add|adding|furnish|furnishing|place|put)\b/i.test(s)&&
   /\b(?:furniture|furnitures|furnishings)\b/i.test(s)&&
-  /\b(?:room|house|home|here|inside|interior)\b/i.test(s);
+  /\b(?:rooms?|houses?|homes?|here|inside|interiors?)\b/i.test(s);
 }
 export function namedWorkContinuation(text='',robotName=''){
  const addressed=/^@([\p{L}\p{N}_-]+)(?:[,.:\s]+)(.+)$/u.exec(String(text||'').trim());

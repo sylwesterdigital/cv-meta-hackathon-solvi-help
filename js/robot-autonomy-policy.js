@@ -86,6 +86,7 @@ export function workRecoveryPlan({goal='',allowChanges=false,house=null,existing
  const sequence=localProjectSequence(goal);
  const roomSequence=!construction?roomFurnishingSequence(goal):[];
  const roomNext=nextRoomFurnishing(roomSequence,projectPlaced,projectDeferred);
+ if(roomSequence.length&&!allowChanges)return {action:'idle',reason:'SCENE CHANGES DISABLED: enable Allow scene changes for this robot before furnishing. Meta retries cannot change editor permissions.'};
  const counts=new Map();
  for(const entry of projectPlaced)if(entry?.id&&entry?.variant)counts.set(entry.variant,(counts.get(entry.variant)||0)+1);
  const remainingProject=[];

@@ -224,6 +224,18 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    const plan={action:'build_infrastructure',variant:role,reason:`City team ${role}: build real public infrastructure (${run.teamBuilt.length+1}/${cityRoleTarget(role)})`,recovery:true};
    trace(bot,'TEAM WORK',plan.reason);return plan;
   }
+  // Broad saved furnishing goals can execute with local tools even when Meta
+  // tool JSON is malformed. First enter an actual editable room via A*.
+  if(plan.action==='furnish_room'&&run.order.allowChanges&&
+      !editor.planRobotRoomFurnishing?.(bot,plan.variant)&&
+      (run.recoveryAttempts.enter_room||0)<4){
+   const room=editor.planRobotRoomEntry?.(bot);
+   if(room){const entry={action:'enter_room',entry:room,recovery:true,
+     reason:'Walk through a real doorway into '+room.roomName+' before furnishing'};
+     trace(bot,'RECOVERY CHOICE',`${source} · enter_room · ${entry.reason}`);
+     return entry;
+   }
+  }
   const chosen={...plan,recovery:true};
   if(chosen.action==='build_house')chosen.house=houseBlueprint({
    ...(/\b(hospital|clinic)\b/i.test(run.order.goal)?{width:8,depth:8}:/\b(cosy|cozy|snug|small)\b/i.test(run.order.goal)?{width:4,depth:4,roof:'shed'}:
@@ -896,6 +908,18 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   if(plan.action==='cleanup_boxes')return cleanBoxes(run,bot);
   if(plan.action==='cleanup_cans')return cleanCans(run,bot);
   if(plan.action==='build_infrastructure')return constructInfrastructure(run,bot,plan.variant);
+  if(plan.action==='enter_room'){
+   const entry=plan.entry;
+   if(!entry?.staging)throw Error('No reachable editable ground-floor room with a path');
+   const refreshed=editor.planRobotRoomEntry?.(bot);
+   if(!refreshed||refreshed.roomId!==entry.roomId||
+      Math.hypot(refreshed.staging.x-entry.staging.x,refreshed.staging.z-entry.staging.z)>.9)
+      throw Error('Planned room entrance changed; resurvey another room');
+   trace(bot,'ROOM ENTRY',`Walking into ${entry.roomName} on a verified ${entry.meters.toFixed(1)} m path`);
+   await walkToWorksite(run,bot,entry,'room interior');
+   trace(bot,'ROOM ENTERED',`Actually reached ${entry.roomName}; furniture still pending`);
+   return 'Entered editable room by collision-checked movement; furnishing still pending';
+  }
   if(plan.action==='site_scout'){
    requireActive(run,bot);
    const taskId=run.token+':'+(++run.step);
@@ -978,14 +1002,12 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    }
    if(run.order.mode==='agent'||run.order.mode==='local_project'){
     if(run.order.mode==='local_project')plan=recovery(run,bot,'Locally authorised construction; no Meta model call');
-    else if(run.nextMetaAt&&Date.now()<run.nextMetaAt){
+    else if((houseGoal(run.order.goal)||roomFurnishingSequence(run.order.goal).length>0)&&run.order.allowChanges){
+     // Local procedural tools do not need a paid Meta call or its backoff.
+     plan=recovery(run,bot,'Executable authorised construction/furnishing goal; Meta planning optional');
+    }else if(run.nextMetaAt&&Date.now()<run.nextMetaAt){
      trace(bot,'META BACKOFF',`Avoiding repeated failed requests until ${new Date(run.nextMetaAt).toLocaleTimeString()}`);
      plan=recovery(run,bot,'Waiting for Meta retry window');
-    }else if(houseGoal(run.order.goal)&&run.order.allowChanges){
-     // Explicit building work can proceed without paying to photograph the
-     // same house six times. The local plan still checks real route, site,
-     // editor ownership and scene-save evidence for each step.
-     plan=recovery(run,bot,'Executable authorised house goal; model planning optional');
     }else plan=await decision(run,bot);
    }
    else if(run.order.mode==='deliver')plan={action:'deliver',target_id:run.order.sourceId,destination_id:run.order.destinationId};

@@ -36,6 +36,9 @@ export function installRobotComicBubbles(world){
  };
  const brain=e=>{
   const d=e.detail||{};
+  // Brain diagnostic events are machine logs, not the robot's words. Never
+  // put Meta request machinery or retry explanations over the avatar's head.
+  if(/^AUTONOMY\s*·/i.test(d.step||''))return;
   if(!/PLAN|THINK|DECISION|REASON|INTENT/i.test(d.step||''))return;
   window.dispatchEvent(new CustomEvent('solvi:robot-comic',{detail:{name:d.robotName,text:comicBubbleText(d.detail,90)||d.step,kind:'thought'}}));
  };

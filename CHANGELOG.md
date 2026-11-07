@@ -1,3 +1,11 @@
+## v0.2.228 — Walkable nature and executable furnishing recovery
+
+- Treat walkable procedural grass and forest ground as terrain, not a single giant navigation obstacle; route around deterministic tree-trunk footprints while retaining water, wall and fence collision.
+- Reserve full vegetation plots for building-footprint checks while using actual traversable routes for movement to construction sites.
+- Run existing broad, authorised furnishing work orders with local tools instead of repeating Meta planning errors or idling; seek a reachable room interior through a real doorway first.
+- Validate malformed nested Meta tool arguments without a TypeError, and keep internal planning diagnostics out of in-world robot thought bubbles.
+- Preserve object permissions, saved rooms, original media, scene-save acknowledgements and per-user Meta retry settings; physical execution still requires an active authenticated browser.
+
 ## v0.2.227 — Execute room furnishing promises, not just conversations
 
 - Recognise direct, authorised, open-ended room furnishing requests (including the observed misspellings), turning them into a bounded bed-and-table project instead of camera-only conversation.

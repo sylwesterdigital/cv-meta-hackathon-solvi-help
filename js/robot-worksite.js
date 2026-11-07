@@ -11,6 +11,7 @@ export function footprintClear(site,size,obstacles=[],margin=.6){
 export function findRobotWorksite(robot,obstacles=[],size={},options={}){
  if(!finite(robot)||!size||!Number.isFinite(size.width)||!Number.isFinite(size.depth))return null;
  const width=Math.max(.3,Math.min(9,size.width)),depth=Math.max(.3,Math.min(9,size.depth));
+ const routeObstacles=Array.isArray(options.navigationObstacles)?options.navigationObstacles:obstacles;
  const minRadius=Math.max(3.8,Math.hypot(width,depth)/2+2.2);
  const radii=[minRadius,minRadius+3.5,minRadius+7,minRadius+12,minRadius+19,minRadius+27].filter(v=>v<=40);
  const heading=Number(options.yaw)||0;
@@ -28,8 +29,8 @@ export function findRobotWorksite(robot,obstacles=[],size={},options={}){
     {x:-Math.sign(ux||1),z:0},{x:0,z:-Math.sign(uz||1)}];
    for(const side of sides){
     const staging={x:site.x+side.x*(width/2+1.25),z:site.z+side.z*(depth/2+1.25)};
-    if(pathBlocked(staging.x,staging.z,obstacles,.45))continue;
-    const route=planRobotPath(robot,staging,obstacles);
+    if(pathBlocked(staging.x,staging.z,routeObstacles,.45))continue;
+    const route=planRobotPath(robot,staging,routeObstacles);
     if(!route?.length||Math.hypot(route.at(-1).x-staging.x,route.at(-1).z-staging.z)>.18)continue;
     const meters=plannedPathLength(robot,route);
     if(meters>90)continue;

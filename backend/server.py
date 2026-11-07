@@ -237,7 +237,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.227',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.228',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1597,7 +1597,11 @@ def validate_autonomy_decision(value,objects,robot_id,allow_changes=False,preset
     if action=='ask' and by_id[target].get('kind')!='robot':return None
     if action=='remove' and by_id[target].get('kind') in ('robot','light'):return None
     if action in ('build','build_house','furnish_room','use_preset','remove') and not allow_changes:return None
-    if action=='furnish_room' and value.get('variant') not in ('chair','bed','sofa','stool','table','cabinet','tv','fridge','lamp','speaker','monitor'):return None
+    variant=value.get('variant')
+    # A Meta response may contain nested JSON where a string was expected.
+    # Reject it as an invalid proposal instead of throwing a TypeError.
+    if not isinstance(variant,str):variant=''
+    if action=='furnish_room' and variant not in ('chair','bed','sofa','stool','table','cabinet','tv','fridge','lamp','speaker','monitor'):return None
     preset_id=str(value.get('preset_id') or '')[:100]
     if action=='use_preset' and preset_id not in (presets or []):return None
     raw_house=value.get('house') if isinstance(value.get('house'),dict) else {}
@@ -1611,7 +1615,7 @@ def validate_autonomy_decision(value,objects,robot_id,allow_changes=False,preset
            'furnish':raw_house.get('furnish') is not False}
     if action=='rest' and target and (target not in by_id or target==robot_id):return None
     return {'action':action,'target_id':target,'destination_id':destination,
-        'preset_id':preset_id,'house':house,'variant':value.get('variant') if isinstance(value.get('variant'),str) and value['variant'] in AUTONOMY_BUILD_VARIANTS else 'chair',
+        'preset_id':preset_id,'house':house,'variant':variant if variant in AUTONOMY_BUILD_VARIANTS else 'chair',
         'message':str(value.get('message') or '')[:240],
         'reason':str(value.get('reason') or '')[:240]}
 
