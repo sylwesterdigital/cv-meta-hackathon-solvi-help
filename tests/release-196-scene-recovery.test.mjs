@@ -76,6 +76,6 @@ test('backend retains per-object updates, atomic bulk checks, startup snapshots 
  assert.match(server,/explicit confirmation required/);
  assert.match(server,/@app\.get\('\/api\/scene\/backups'\)/);
  assert.match(server,/@app\.get\('\/api\/scene\/backups\/<snapshot_id>'\)/);
- const installer=source('backend/install-ubuntu.sh');assert.match(installer,/BACKEND_PY_MODULES=\(realm_archives\.py prune_removed_avatars\.py scene_recovery\.py robot_character\.py robot-character-schema\.json robot-character-policy\.json\)/);
+ const installer=source('backend/install-ubuntu.sh');assert.match(installer,/BACKEND_PY_MODULES=\(creative_design\.py realm_archives\.py prune_removed_avatars\.py scene_recovery\.py robot_character\.py robot-character-schema\.json robot-character-policy\.json\)/);
  const recovery=source('backend/scene_recovery.py');assert.match(recovery,/before-restore-/);assert.match(recovery,/RESTORE:/);assert.match(recovery,/--service-stopped/);
 });

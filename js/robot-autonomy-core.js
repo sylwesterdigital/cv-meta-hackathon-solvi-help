@@ -8,7 +8,7 @@ export function cleanAutonomyOrder(input={}){
  const mode=AUTONOMY_MODES.includes(input.mode)?input.mode:'agent';
  const finite=Number(input.interval);
  return {mode,robotId:String(input.robotId||'').slice(0,100),sourceId:String(input.sourceId||'').slice(0,100),destinationId:String(input.destinationId||'').slice(0,100),
-  goal:String(input.goal||'').trim().slice(0,1800),variant:AUTONOMY_FURNITURE.includes(input.variant)?input.variant:'chair',
+  goal:String(input.goal||'').trim().slice(0,1800),variant:input.mode==='local_project'&&input.variant==='creative'?'creative':AUTONOMY_FURNITURE.includes(input.variant)?input.variant:'chair',
   interval:Number.isFinite(finite)?Math.max(AUTONOMY_MIN_INTERVAL,Math.min(3600,Math.round(finite))):300,
   vision:input.vision===true,allowChanges:input.allowChanges===true,room:String(input.room||'main').slice(0,100)};
 }

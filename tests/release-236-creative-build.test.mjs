@@ -41,9 +41,10 @@ test('creative dispatch and real editor persistence are connected to group recei
  const studio=source('../js/studio.js');
  const html=source('../index.html');
  assert.match(runtime,/groupCreativeIntent\(message\.text\)/);
- assert.match(runtime,/namedCreativeIntent\(message\.text,o\.name\)/);
+ assert.match(runtime,/addressedCreativeRobot\(message\.text,/);
+ assert.match(runtime,/\/api\/robots\/autonomy\/design/);
  assert.match(runtime,/action:'creative_build'/);
- assert.match(runtime,/!creativeBuildIntent\(order\.goal\)/);
+ assert.match(runtime,/order\.variant='creative'/);
  assert.match(runtime,/await editor\.persistObject\?\.\(object,run\.room\)/);
  assert.match(runtime,/await saveOrder\(run,true\)/);
  assert.match(runtime,/outcome:'completed'/);
@@ -53,7 +54,7 @@ test('creative dispatch and real editor persistence are connected to group recei
  assert.match(editor,/this\.queueSave\(obj\)/);
  assert.match(backend,/elif task\['kind'\] in \('local_build','creative_build'\)/);
  assert.match(backend,/if outcome=='completed' and task\['kind'\]=='creative_build'/);
- assert.match(backend,/count=group_creative_part_count\(task\['source_text'\]\)/);
+ assert.match(backend,/count=len\(design\['parts'\]\)/);
  assert.match(backend,/object_row\.get\('owner'\)!=user\['id'\]/);
  assert.match(studio,/else if\(!\(work>0\)\)await reactToRobotMessage/);
  assert.ok(html.includes('./js/robot-creative-builder.js'));

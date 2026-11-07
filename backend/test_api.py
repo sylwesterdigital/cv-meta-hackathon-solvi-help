@@ -1394,6 +1394,37 @@ assert len([t for t in c.get(endpoint+'queue?room='+queue_room,headers=headers).
 print('PASS: creative authorisation splits into three distinct roles; unfinished/fake parts rejected; saved eight-part structure confirmed')
 
 
+# 0.2.237: new object names are designed by Muse, not selected from a
+# hardcoded tower/arch/submarine command list. Exact robot+room+owner state
+# must already authorize the work. The model only returns geometry data.
+from unittest.mock import patch as _mock_creative
+from creative_design import validate_design as _validate_creative
+_dynamic={'name':'recognizable new submersible','site_distance':30,'parts':[
+    {'kind':'sphere','label':'ellipsoid hull','color':'#f4d44d','offset':{'x':0,'y':0,'z':0},'size':{'width':5,'height':1.6,'depth':1.6}},
+    {'kind':'cylinder','label':'sail','color':'#f4d44d','offset':{'x':0,'y':1.5,'z':0},'size':{'width':1,'height':1.1,'depth':1}}]}
+assert _validate_creative(_dynamic)
+_direct={**_order,'robotId':creative_bot['id'],'goal':'@Albert please create a yellow submarine 30m in front of you', 'variant':'creative'}
+assert c.put('/api/robots/autonomy/order',headers=headers,json={
+    'room':queue_room,'robot_id':creative_bot['id'],'order':_direct,'state':{},'enabled':True}).status_code==200
+# Design uses the global autonomy endpoint, NOT the group intent routes.
+# A wrong /group/design POST returns Flask 405 and previously blocked the Mac
+# watcher even though the production design endpoint was registered correctly.
+design_endpoint='/api/robots/autonomy/design'
+design_routes=[rule for rule in app.url_map.iter_rules() if rule.rule==design_endpoint and 'POST' in rule.methods]
+assert len(design_routes)==1,design_routes
+with _mock_creative('server.active_model_key',return_value='test-model-key'),_mock_creative('server.meta_request',return_value={'output_text':json.dumps(_dynamic)}):
+    made=c.post(design_endpoint,headers=headers,json={'room':queue_room,'robot_id':creative_bot['id']})
+assert made.status_code==200,(made.status_code,made.data)
+assert made.get_json()['plan']['parts'][0]['kind']=='sphere'
+assert made.get_json()['robot_id']==creative_bot['id'] and made.get_json()['room']==queue_room
+assert c.post(design_endpoint,headers=headers,json={'room':'main','robot_id':creative_bot['id']}).status_code in (403,404)
+from server import DESIGN_THROTTLE
+DESIGN_THROTTLE.clear()
+with _mock_creative('server.active_model_key',return_value='test-model-key'),_mock_creative('server.meta_request',return_value={'output_text':'{\"name\":\"run script\",\"parts\":[],\"js\":\"eval(1)\"}'}):
+    malformed=c.post(design_endpoint,headers=headers,json={'room':queue_room,'robot_id':creative_bot['id']})
+assert malformed.status_code==422
+print('PASS: dynamic Muse creative design requires active realm-bound order; returned data validated and unsafe output rejected')
+
 # Logging out revokes the token server-side; the same browser tab cannot use it again.
 assert c.post('/api/logout',headers=headers,json={}).status_code==200
 assert c.get('/api/me',headers=headers).status_code==401

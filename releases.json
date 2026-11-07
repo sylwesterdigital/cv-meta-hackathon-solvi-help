@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.236",
+  "currentVersion": "0.2.238",
   "releases": [
+    {
+      "version": "0.2.238",
+      "publishedAt": "2026-11-07T23:30:20Z",
+      "changes": [
+        "Repair the Mac watcher v0.2.237 backend integration failure: post to the real /api/robots/autonomy/design endpoint rather than /api/robots/autonomy/group/design (HTTP 405).",
+        "Assert the design API is registered for POST and retain tests for a valid Muse geometric design, incorrect realm and invalid generated JSON.",
+        "Keep the v0.2.237 creative builder, human authorization checks, robot/realm identity, persistence, existing scenes, avatars, media and watcher deployment safeguards unchanged."
+      ]
+    },
     {
       "version": "0.2.236",
       "publishedAt": "2026-11-07T22:43:59Z",
@@ -297,16 +306,6 @@
         "Held tab, Hold nearby, Hold, Store, Drop controls; bag/pocket size restrictions and backpack availability enforced.",
         "Server-side atomic hand occupancy and avatar authorization checks, safe avatar-deletion release of held/pocket/worn equipment, and import/export holder ID remapping.",
         "Preserve previous furniture persistence, indoor placement, road drawing, room snapshots, user README, and original GLB model assets."
-      ]
-    },
-    {
-      "version": "0.2.199",
-      "publishedAt": "2026-11-05T13:57:48Z",
-      "changes": [
-        "Restore Draw road and motorway in outdoor open terrain without the furniture-placement collision/camera distance gate rejecting an unsaved infrastructure draft.",
-        "Explicitly positioned, non-persistent infrastructure paths, fences, hedges, vegetation/ground plots, freehand 3D curves and portal pairs bypass the smart furniture planner until their drawing tools position completed objects.",
-        "Normal furniture, tools, primitive objects and presets retain safe camera-aware collision-checked placement and existing multiplayer per-object saves.",
-        "Preserve all previous indoor tabletop placement, scene backups, database recovery protections, Meta AI workflows and original 3D avatar/model binaries."
       ]
     }
   ]

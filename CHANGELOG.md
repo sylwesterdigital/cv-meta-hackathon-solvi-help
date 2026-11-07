@@ -1,3 +1,17 @@
+## v0.2.238 — Mac watcher design route test fix (2026-11-07)
+
+- Fix the v0.2.237 backend integration failure (HTTP 405): the test posted to `/api/robots/autonomy/group/design` instead of the existing POST `/api/robots/autonomy/design`.
+- Assert exact route registration and retain wrong-realm and invalid-plan rejection checks; do not relax any application permissions or alter the design API.
+- Carry forward the complete v0.2.237 creative builder, avatars, realms, scene objects, and watcher gates unchanged. v0.2.237 did not deploy.
+
+## v0.2.237 — Realm-bound model-planned creative construction (2026-11-07)
+
+- Replace hardcoded object-name templates for new creative tasks with an authenticated Muse design endpoint returning bounded, validated declarative geometry from saved human goals.
+- Support arbitrary human-described design names by constructing allowed cube, sphere, and cylinder components through existing owner-checked, collision-aware Three.js editor tools.
+- Persist design and per-part IDs before creation, resume after refresh without design drift, and independently verify every planned component in the saved room scene.
+- Keep robot identity bound to a stable scene ID and the current realm; give new robots unique default names rather than ambiguous “New robot”. Include only current-realm scene and recent room dialogue in design context.
+- Enforce explicit human authorization and no model-supplied scripts, custom executable tools or guessed cross-realm instructions. Do not claim background physics or autonomous realm provisioning.
+
 ## v0.2.236 — Creative builders: actual primitives, independent team projects, saved receipts
 
 - Route authenticated human `@All` creative building instructions (including “procedural mega strcutures”) into three server-committed roles rather than idle Meta model dialogue. Existing non-creative city/team and cargo workflows continue.

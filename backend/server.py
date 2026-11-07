@@ -32,6 +32,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from flask import Flask, request, jsonify, send_from_directory, send_file, abort
 from flask_sock import Sock
+from creative_design import validate_design, parse_design
 from robot_character import (valid_character, contextual_character, evaluate_action,
                              character_self_insight, character_self_report_text, wants_character_self_report)
 
@@ -247,7 +248,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.236',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.238',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1889,7 +1890,7 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'creativeSite','creativeBuilt','creativePending','completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending','groupJobId','groupNoProgress'}
+    safe_keys={'creativeSite','creativeBuilt','creativePending','creativePlan','completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending','groupJobId','groupNoProgress'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
@@ -1942,6 +1943,10 @@ def valid_robot_work_order(order,state):
     built=stored.get('teamBuilt',[])
     if not isinstance(built,list) or len(built)>8 or any(not isinstance(p,dict) or set(p)!={'id','variant'} or
          not isinstance(p['id'],str) or len(p['id'])>100 or p['variant'] not in ('road','footpath') for p in built):return None
+    creative_plan=stored.get('creativePlan')
+    if creative_plan is not None:
+        # Bound every model-designed component again at the server persistence gate.
+        if validate_design(creative_plan) is None:return None
     creative_site=stored.get('creativeSite')
     if creative_site is not None and (not isinstance(creative_site,dict) or set(creative_site)!={'x','z'} or any(
         type(creative_site[key]) not in (int,float) or not math.isfinite(creative_site[key]) or abs(creative_site[key])>480 for key in ('x','z'))):return None
@@ -1972,11 +1977,12 @@ def group_intent_kind(text):
     if (re.search(r'\b(?:build|building|construct|constructing|create|creating|make)\b',text,re.I) and
         re.search(r'\b(?:homes?|houses?|cabins?|parks?|picnic\s+(?:areas?|spots?))\b',text,re.I)):
         return 'local_build'
-    # An @all creative-build request is explicit project authorisation, not
-    # merely an invitation for model-generated speeches. This does NOT permit
-    # arbitrary code, uncontrolled deletion or new realms/accounts.
-    if (re.search(r'\b(?:build|building|construct|constructing|create|creating|make|design|add|place)\b',text,re.I) and
-        re.search(r'\b(?:mega\s*str\w*|str\w*ctures?|towers?|arches?|bridges?|pavilions?|sculptures?|monuments?|landmarks?|cubes?|procedural\s+(?:api|objects?)|new\s+realms?)\b',text,re.I)):
+    # Only an explicit, saved human group instruction can authorize creative
+    # work. Object nouns are NOT enumerated; Muse designs the requested item.
+    # Casual discussion mentioning a build is not an executable order.
+    if (re.search(r'\b(?:build|building|construct|constructing|create|creating|make|design|add|place|assemble)\b',text,re.I) and
+        (re.search(r'\b(?:please|can\s+you|could\s+you|start|go\s+ahead|right\s+now)\b',text,re.I) or
+         re.match(r'^\s*@(?:all|everyone)\b[\s,:]+(?:build|create|make|design|construct|assemble)\b',text,re.I))):
         return 'creative_build'
     return ''
 
@@ -2209,25 +2215,53 @@ def robot_group_queue_result():
             if not boxes or not all(group_destination_confirmed(objects,task['target_id'],box) for box in boxes):
                 return json_error('Server scene does not verify all Box copies delivered',409)
         if outcome=='completed' and task['kind']=='creative_build':
-            # Eight distinct grounded primitives belonging to THIS human
-            # subtask, with dimensions, positions and server owner verified.
-            # Work-order text and model claims do not constitute scene edits.
             state=json.loads(row['state_json'])
             entries=state.get('creativeBuilt',[])
+            design=validate_design(state.get('creativePlan')) if state.get('creativePlan') else None
+            count=len(design['parts']) if design else group_creative_part_count(task['source_text'])
             indices={entry.get('index') for entry in entries if isinstance(entry,dict)}
-            count=group_creative_part_count(task['source_text'])
             if len(entries)!=count or indices!=set(range(count)):
                 return json_error('Creative structure has unfinished verified parts',409)
-            tag=re.sub(r'[^\w:.-]','_',mid[:90])
+            tag=re.sub(r'[^\w:.-]','_',mid[:90]);seen=set()
             for entry in entries:
                 ident=entry.get('id')
                 object_row=next((obj for obj in objects if isinstance(obj,dict) and obj.get('id')==ident),None)
-                if (not object_row or object_row.get('kind')!='cube' or
+                if (not object_row or ident in seen or
                     object_row.get('owner')!=user['id'] or
-                    not str(object_row.get('name','')).startswith('SOLVI Creative · '+tag+' · '+str(entry['index'])+' · ') or
-                    not isinstance(object_row.get('primitive'),dict) or
-                    not all(type(object_row['primitive'].get(k)) in (int,float) and 0.1<=object_row['primitive'][k]<=7 for k in ('width','height','depth'))):
+                    not str(object_row.get('name','')).startswith('SOLVI Creative · '+tag+' · '+str(entry['index'])+' · ')):
                     return json_error('Creative part missing or not confirmed in authoritative scene',409)
+                seen.add(ident)
+                if design:
+                    part=design['parts'][entry['index']]
+                    if object_row.get('kind')!=part['kind'] or str(object_row.get('color','')).lower()!=part['color']:
+                        return json_error('Creative part geometry/color differs from saved Muse design',409)
+                    # A scene object ID and color alone are insufficient: require
+                    # its actual saved position and scale/dimensions to be valid.
+                    if not isinstance(object_row.get('position'),list) or len(object_row['position'])!=3 or not all(
+                        type(v) in (int,float) and math.isfinite(v) for v in object_row['position']):
+                        return json_error('Creative part position is not saved',409)
+                    site=state.get('creativeSite')
+                    if not isinstance(site,dict) or any(type(site.get(axis)) not in (int,float) for axis in ('x','z')):
+                        return json_error('Creative construction site missing from saved project',409)
+                    xyz=(site['x']+part['offset']['x'],
+                         part['offset']['y']+part['size']['height']/2,
+                         site['z']+part['offset']['z'])
+                    if any(abs(a-b)>.08 for a,b in zip(object_row['position'],xyz)):
+                        return json_error('Creative part is not at its approved construction site',409)
+                    geometry=object_row.get('primitive') or {}
+                    scale=object_row.get('scale')
+                    dims=part['size']
+                    if part['kind']=='cube':
+                        valid_dimensions=all(type(geometry.get(k)) in (int,float) and abs(geometry[k]-dims[k])<.05 for k in ('width','height','depth'))
+                    else:
+                        valid_dimensions=(isinstance(scale,list) and len(scale)==3 and
+                            all(type(v) in (int,float) and abs(v-target)<.05 for v,target in zip(scale,(dims['width'],dims['height'],dims['depth']))))
+                    if not valid_dimensions:return json_error('Creative part dimensions are not the planned dimensions',409)
+                else:
+                    if object_row.get('kind')!='cube' or not isinstance(object_row.get('primitive'),dict) or not all(
+                        type(object_row['primitive'].get(k)) in (int,float) and 0.1<=object_row['primitive'][k]<=7
+                        for k in ('width','height','depth')):
+                        return json_error('Legacy creative part geometry not confirmed',409)
         if outcome=='completed' and task['kind']=='local_build':
             # Build completion is asserted only by the browser's independently
             # saved object IDs, and still requires a server scene check.
@@ -2247,6 +2281,107 @@ def robot_group_queue_result():
         con.execute('UPDATE robot_group_intents SET status=?,worker_id=?,failed_worker_id=?,retry_at=?,detail=?,updated=? WHERE room_id=? AND source_message_id=?',
             (status,'' if outcome=='release' else rid,rid if outcome=='release' else '',retry_at,detail,now(),room_id,mid))
     return jsonify(ok=True,status=status,detail=detail)
+
+# Design service, not a chat reply: accepts only an existing, saved, owned,
+# realm-bound work order. Generated JSON never becomes executable code.
+DESIGN_THROTTLE={}
+@app.post('/api/robots/autonomy/design')
+def robot_autonomy_design():
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    payload=request.get_json(silent=True) or {}
+    room_id=selected_room(payload.get('room','main'))
+    if not room_id:return json_error('Unknown realm',404)
+    rid=str(payload.get('robot_id',''))[:100]
+    if not robot_work_order_robot(user,room_id,rid):return json_error('Robot not in this realm or not editable',403)
+    with db() as con:
+        row=con.execute('SELECT order_json,state_json,enabled FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',
+                        (room_id,rid,user['id'])).fetchone()
+        scene=group_scene_objects(con,room_id)
+        # Design context is current-realm conversation ONLY. A robot's own
+        # proposal can inform an explicitly human-authorized 'build that'
+        # follow-up, but never itself grants authority to make changes.
+        dialogue=con.execute('SELECT role,speaker_override,text FROM messages WHERE room_id=? ORDER BY created DESC LIMIT 18',
+                             (room_id,)).fetchall()
+    if not row or not row['enabled']:return json_error('No active saved human work order in this realm',409)
+    try:order=json.loads(row['order_json']);state=json.loads(row['state_json'])
+    except (ValueError,TypeError):return json_error('Saved work order is invalid',409)
+    if not order.get('allowChanges') or order.get('room')!=room_id or order.get('robotId')!=rid or order.get('mode')!='local_project':
+        return json_error('Creative changes require an authorized local project',403)
+    source_id=state.get('intentMessageId')
+    if source_id:
+        # Group sub-jobs use <original-human-message-id>:<role>. A subjob
+        # cannot inherit authority from a robot's words or another realm.
+        if state.get('groupJobId')==source_id and re.search(r':[012]$',source_id):source_id=source_id[:-2]
+        with db() as con:
+            source=con.execute('SELECT role,user_id,text FROM messages WHERE id=? AND room_id=?',(source_id,room_id)).fetchone()
+        if not source or source['role']!='user' or source['user_id']!=user['id'] or str(order.get('goal','')).strip()!=str(source['text']).strip():
+            return json_error('Original human creative command is not saved in this realm',403)
+    if state.get('creativePlan'):
+        existing=validate_design(state['creativePlan'])
+        if existing:return jsonify(plan=existing,reused=True,room=room_id,robot_id=rid)
+    robot=next((o for o in scene if isinstance(o,dict) and o.get('kind')=='robot' and o.get('id')==rid),None)
+    if not robot:return json_error('Robot identity missing from current realm',404)
+    goal=order.get('goal','')
+    if not isinstance(goal,str) or not goal.strip():return json_error('Saved human goal is empty',400)
+    if not active_model_key():return jsonify(error='Muse design requires a configured Meta key; no hardcoded design substituted',failure_code='meta-key-missing'),503
+    stamp=time.time();throttle=(room_id,rid,hashlib.sha256(goal.encode()).hexdigest())
+    with robot_task_lock:
+        if stamp-DESIGN_THROTTLE.get(throttle,0)<30:
+            return jsonify(error='Design inference already requested; retry after cooldown',failure_code='rate-limited'),429
+        DESIGN_THROTTLE[throttle]=stamp
+        if len(DESIGN_THROTTLE)>1000:
+            for key,t in list(DESIGN_THROTTLE.items()):
+                if stamp-t>180:DESIGN_THROTTLE.pop(key,None)
+    # Only current realm geometry, saved goal and this robot's identity. Past
+    # room conversations, other robots' orders and memories are excluded.
+    nearby=[{'id':o.get('id'),'kind':o.get('kind'),'name':str(o.get('name',''))[:60],
+             'position':o.get('position')}
+            for o in scene if isinstance(o,dict) and o.get('id') and o.get('id')!=rid][:50]
+    context=[]
+    for msg in reversed(dialogue):
+        # Speaker names are contextual descriptions, not permission or robot
+        # identity. Saved operator command + real robot ID stay authoritative.
+        speaker=str(msg['speaker_override'] or '')[:65]
+        if msg['role']=='assistant' and speaker.casefold()!=str(robot.get('name','')).casefold():continue
+        if msg['role'] not in ('user','assistant'):continue
+        phrase=str(msg['text'] or '').strip()[:300]
+        if phrase:context.append({'speaker':speaker if msg['role']=='assistant' else 'human','text':phrase})
+    explicit_distance=re.search(r'\b(\d{1,2}(?:\.\d+)?)\s*(?:m|met(?:re|er)s?)\s+(?:in\s+)?front\s+of\s+you\b',goal,re.I)
+    team_role_index=int(state.get('groupJobId','').rsplit(':',1)[-1]) if re.search(r':[012]$',state.get('groupJobId','')) else None
+    developer=('Design a recognizable 3D object that fulfils the HUMAN objective. '
+       'Output ONLY a JSON object: {"name":"...","site_distance":null,"parts":'
+       '[{"kind":"cube","label":"...","color":"#aabbcc",'
+       '"offset":{"x":0,"y":0,"z":0},"size":{"width":1,"height":1,"depth":1}}]}. '
+       'You may invent freely by composing primitive geometry: cube, sphere, cylinder. '
+       'Pick 1-12 parts, each size 0.1..7 metres, height 0..12 metres, offsets within +/-4.6m. '
+       'Give the entire assembly recognizable silhouette and proportions. Make a sphere if asked for a sphere; '
+       'a submarine should have an elongated hull, conning tower and portholes, not a tower of columns. '
+       'Use the color requested by the human. Never invent scene actions, code, new APIs, shaders, URLs, or robot names. '
+       'No instructions beyond the JSON fields. SITE_DISTANCE must be a number in 1..45 only when the human '
+       'explicitly requests a distance in front of this robot, otherwise null. '
+       'Each offset Y is the component BOTTOM above local ground. For a team, invent a DISTINCT design for each assigned team_role_index 0,1,2 rather than repeating towers. '
+       'Do not pretend a plan is construction; the client will check route, collisions and save receipts.')
+    request_text=json.dumps({'goal':goal,'realm_id':room_id,'robot':{'id':rid,'name':robot.get('name',''),
+                    'position':robot.get('position'),'rotation':robot.get('rotation')},
+                    'current_realm_objects':nearby,'current_realm_dialogue':context[-12:],'team_role_index':team_role_index},ensure_ascii=False)[:9200]
+    try:
+        response=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,
+           'input':[{'role':'developer','content':[{'type':'input_text','text':developer}]},
+                    {'role':'user','content':[{'type':'input_text','text':request_text}]}]})
+        usage=record_usage(user['id'],'muse-spark-1.3','robot-creative-design',response)
+        plan=parse_design(meta_output_text(response))
+        if not plan:return jsonify(error='Muse design rejected: invalid declarative plan, no scene changes',failure_code='invalid-design'),422
+        # The distance in a direct human instruction is authoritative; a
+        # model may design the object but cannot move it to an invented site.
+        if explicit_distance:
+            distance=float(explicit_distance.group(1))
+            if not 1<=distance<=45:return json_error('Requested construction distance is outside 1–45 metres',400)
+            plan['site_distance']=distance
+        return jsonify(plan=plan,room=room_id,robot_id=rid,model='muse-spark-1.3',usage=usage,reused=False)
+    except Exception as exc:
+        audit_event('creative-design-error',realm_id=room_id,robot_id=rid,error=type(exc).__name__)
+        return jsonify(error='Muse design could not be validated; the work order remains pending',failure_code='provider-error'),502
 
 @app.get('/api/robots/autonomy/orders')
 def robot_work_orders_list():

@@ -106,7 +106,7 @@ function objectFor(kind){
  case 'light':{object=new THREE.Group();const icon=new THREE.Mesh(new THREE.SphereGeometry(.125,12,8),new THREE.MeshBasicMaterial({color:'#ffe3a2',depthTest:false}));icon.userData.lightMarker=true;object.add(icon);setLight(object,{type:'point',intensity:2,range:10,decay:2,color:'#d0efff'});break;}
  default:throw Error('Unsupported kind');
  }
- object.name='New '+kind;object.userData.editorKind=kind;object.userData.editorId=crypto.randomUUID();
+ object.userData.editorKind=kind;object.userData.editorId=crypto.randomUUID();object.name=kind==='robot'?'Robot-'+object.userData.editorId.slice(0,8):'New '+kind;
  if(kind==='light')object.position.set(0,2.2,0);else object.position.set(0,kind==='plane'?.015:kind==='robot'?0:.8,0);
  object.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
  return object;
@@ -1667,13 +1667,14 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
  // A real reusable 3D primitive creation tool for authorised creative robots.
  // It uses the human editor's scene object, physics, undo and persistence
  // pipeline. Every part is checked against *other* scene geometry before Add.
- createRobotCreativePart(robot,part,{site,tag,index=0}={}){
+ createRobotCreativePart(robot,part,{site,tag,index=0,ignoreProjectTag=""}={}){
   const numeric=[site?.x,site?.z,part?.offset?.x,part?.offset?.y,part?.offset?.z,
    part?.size?.width,part?.size?.height,part?.size?.depth];
   if(!robot||robot.userData?.editorKind!=='robot'||!this.items.includes(robot)||!this.canEdit(robot)||
      !numeric.every(Number.isFinite)||!/^#[a-f0-9]{6}$/i.test(part?.color||'')||
      !/^[\w:.-]{1,90}$/.test(tag||'')||!Number.isInteger(index)||index<0||index>15)return null;
   const {width,height,depth}=part.size;
+  const kind=['cube','sphere','cylinder'].includes(part.kind)?part.kind:'cube';
   if(Math.min(width,height,depth)<.1||Math.max(width,height,depth)>7||
      part.offset.y<0||part.offset.y+height>12||
      Math.abs(part.offset.x)+width/2>4.6||Math.abs(part.offset.z)+depth/2>4.6)return null;
@@ -1683,6 +1684,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   const box=new THREE.Box3(new THREE.Vector3(x-width/2,y-height/2,z-depth/2),
                            new THREE.Vector3(x+width/2,y+height/2,z+depth/2));
   const prefix='SOLVI Creative · '+tag+' · ';
+  const ignoredPrefix=ignoreProjectTag&&/^[\w:.-]{1,90}$/.test(ignoreProjectTag)?'SOLVI Creative · '+ignoreProjectTag+' · ':null;
   this.world.scene.updateMatrixWorld(true);
   for(const other of this.items){
    if(other===robot||!other.visible||other.userData?.storage||other.userData?.carriedBy||
@@ -1698,16 +1700,20 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
     continue;
    }
    if(other.name?.startsWith(prefix))continue; // this same planned structure
+   if(ignoredPrefix&&other.name?.startsWith(ignoredPrefix)&&this.canEdit(other)&&!isTransformLocked(other)&&other.userData.ownerId===window.solviAPI?.auth()?.profile?.id)continue; // human authorised remodel of owned structure
    if(other.userData?.editorKind==='cube'&&other.name?.endsWith(' · house floor'))continue;
    if(other.userData?.editorKind==='furniture'&&
       ['road','footpath','curb'].includes(other.userData.furniture?.infraType))continue;
    const occupied=new THREE.Box3().setFromObject(other);
    if(!occupied.isEmpty()&&box.intersectsBox(occupied))return null;
   }
-  const obj=objectFor('cube');
-  obj.name=prefix+index+' · '+String(part.label||'part').slice(0,45);
-  obj.userData.primitive=sanitisePrimitive('cube',{width,height,depth});
-  obj.geometry.dispose();obj.geometry=buildPrimitive('cube',obj.userData.primitive);
+  const obj=objectFor(kind);
+  obj.name=prefix+index+' · '+String(part.label||'part').slice(0,40);
+  const geometry=kind==='cube'?{width,height,depth}:kind==='sphere'?{radius:.5}:{radiusTop:.5,radiusBottom:.5,height:1};
+  obj.userData.primitive=sanitisePrimitive(kind,geometry);
+  obj.geometry.dispose();obj.geometry=buildPrimitive(kind,obj.userData.primitive);
+  if(kind!=='cube')obj.scale.set(width,height,depth); // sphere/cylinder base radius .5 and height 1: real ellipsoids and varied diameters
+
   obj.material.color.set(part.color);obj.position.set(x,y,z);
   obj.userData.physics={mode:'static'};
   obj.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
@@ -1717,6 +1723,21 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   this.items.push(obj);this.world.scene.add(obj);this.physics.sync(obj);
   this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);this.refreshList();
   return obj;
+ }
+ // Edit only a previously verified creative part from the same robot's
+ // persisted work-order IDs. Never apply a room-wide colour operation.
+ recolorRobotCreativePart(robot,obj,verifiedIds,color){
+  if(!robot||robot.userData?.editorKind!=='robot'||!this.items.includes(robot)||!this.canEdit(robot)||
+     !obj||!this.items.includes(obj)||!this.canEdit(obj)||isTransformLocked(obj)||
+     !['cube','sphere','cylinder'].includes(obj.userData.editorKind)||
+     !obj.name?.startsWith('SOLVI Creative · ')||
+     !Array.isArray(verifiedIds)||!verifiedIds.includes(obj.userData.editorId)||
+     obj.userData.ownerId!==window.solviAPI?.auth()?.profile?.id||
+     !/^#[a-f0-9]{6}$/i.test(color||''))return false;
+  const before=this.snapshot(obj);
+  obj.material.color.set(color);
+  this.recordEdit(before,this.snapshot(obj));this.queueSave(obj);
+  return true;
  }
  // Saved presets are account-scoped. The caller must obtain them through the
  // authenticated /api/object-presets endpoint and revalidate the current user.

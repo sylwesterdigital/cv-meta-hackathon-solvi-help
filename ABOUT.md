@@ -1,4 +1,4 @@
-SOLVI.help v0.2.236 — Durable active-browser robot group queue.
+SOLVI.help v0.2.238 — Model-planned, identity-bound creative projects.
 
 # About SOLVI.help
 
