@@ -1,3 +1,10 @@
+## v0.2.225 — Grounded robot character self-inspection
+
+- Give every robot a read-only exact self-profile report from its 96 persisted slider values, including grounded strengths, trade-offs and practical self-checks; available without a Meta key.
+- Give both Meta conversation and autonomous planning the robot’s saved trait values and compact self-insight context; require truthful numerical self-reports instead of claiming the sliders are inaccessible.
+- Expose authenticated GET /api/robots/character/self and ensure direct trait questions return saved, attributed, durable non-model messages without affecting movement, construction or permission checks.
+- Correct construction preference weighting to reference the real inventiveness trait rather than a non-existent creativity key. No new technical powers or unrestricted actions.
+
 ## v0.2.224 — Recoverable robot construction, honest planning errors and optional design questions
 
 - Repair the undeployed v0.2.223 backend regression: when Meta is missing, preserve executable, locally validated `vision_search` commands rather than substituting a credential notice. Normal free-form chat still explains the missing key.

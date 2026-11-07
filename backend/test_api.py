@@ -681,6 +681,39 @@ with patch('server.active_model_key',return_value=''):
         'text':visual_without_key['text'],'message_id':visual_without_key['id']})
 assert offline_visual.status_code==200 and offline_visual.get_json().get('model_access_required') is True
 assert offline_visual.get_json().get('needs_vision') is not True
+# v0.2.225: robots can inspect actual saved trait values and their trade-offs
+# independently of Meta; only an authorised scene edit can change those values.
+character_scene=c.get('/api/scene?room=lab',headers=headers).get_json()['objects']
+character_robot=next(o for o in character_scene if o.get('id')=='testrobot-0220')
+character_robot['brain']['character']={'version':1,'preset':'custom','traits':{
+    'curiosity':100,'experimentation':89,'exploration':78,
+    'problem_solving':0,'deliberation':3,'limitations_awareness':92}}
+assert c.post('/api/scene/object',headers=headers,json={'room':'lab','action':'upsert','object':character_robot}).status_code==200
+self_api=c.get('/api/robots/character/self?room=lab&robot_id=testrobot-0220',headers=headers)
+assert self_api.status_code==200 and self_api.get_json()['character']['traits']['curiosity']==100
+assert self_api.get_json()['self_insight']['configured'] is True
+assert self_api.get_json()['read_only'] is True and self_api.get_json()['executed'] is False
+self_question='@Jessica can you describe your strengths and weaknesses from your saved traits?'
+self_message=c.post('/api/message',headers=headers,json={'room':'lab','text':self_question}).get_json()['message']
+with patch('server.active_model_key',return_value=''),patch('server.meta_request',side_effect=AssertionError('self-report must not call Meta')):
+    self_answer=c.post('/api/robots/react',headers=headers,json={'room':'lab',
+        'text':self_question,'message_id':self_message['id']})
+assert self_answer.status_code==200,(self_answer.status_code,self_answer.data)
+self_data=self_answer.get_json()
+assert self_data['self_report'] and self_data['model_used'] is False
+assert self_data['answer']['model']=='robot-character-self-report'
+assert '100/100' in self_data['answer']['text'] and '0/100' in self_data['answer']['text']
+assert 'may accept a temporary blocker' in self_data['answer']['text']
+assert self_data.get('usage') is None
+assert any(v['id']==self_data['answer']['id'] for v in c.get('/api/messages?room=lab',headers=headers).get_json()['messages'])
+# An exact single-trait question must return the saved numerical value.
+focused='@Jessica what is your curiosity value?'
+focused_message=c.post('/api/message',headers=headers,json={'room':'lab','text':focused}).get_json()['message']
+with patch('server.active_model_key',return_value=''):
+    focused_reply=c.post('/api/robots/react',headers=headers,json={'room':'lab',
+        'text':focused,'message_id':focused_message['id']})
+assert focused_reply.status_code==200 and 'Curiosity: 100/100' in focused_reply.get_json()['answer']['text']
+print('PASS: saved character self-awareness is exact, read-only, durable and available without Meta')
 # A provider-rejected credential is different from an absent key. Announce
 # the rejection without echoing provider data, and do not fabricate inference.
 rejected_msg=c.post('/api/message',headers=headers,json={'room':'lab','text':'@All hello, are you there?'}).get_json()['message']

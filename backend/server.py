@@ -32,7 +32,8 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from flask import Flask, request, jsonify, send_from_directory, send_file, abort
 from flask_sock import Sock
-from robot_character import valid_character, contextual_character, evaluate_action
+from robot_character import (valid_character, contextual_character, evaluate_action,
+                             character_self_insight, character_self_report_text, wants_character_self_report)
 
 ROOT = Path(os.environ.get('SOLVI_STATIC_ROOT', Path(__file__).resolve().parent.parent)).resolve()
 STATE = Path(os.environ.get('SOLVI_DATA_DIR', '/var/lib/solvi-help')).resolve()
@@ -236,7 +237,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.224',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.225',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1681,6 +1682,7 @@ def robot_autonomy_plan():
     if not may_edit(user['id'],robot,room_policy(room_id)):return json_error('Robot operator permission required',403)
     brain=robot.get('brain') if isinstance(robot.get('brain'),dict) else {}
     fictional_traits=contextual_character(brain)
+    fictional_self_insight=character_self_insight(brain,max_highlights=5)
     images=request.files.getlist('views')
     if len(images) not in (0,6):return json_error('Use six actual 360-degree JPEG views, or explicitly disable vision',400)
     if images and brain.get('initiativeVision') is False:return json_error('Robot camera autonomy is disabled',403)
@@ -1743,6 +1745,7 @@ def robot_autonomy_plan():
         'Return exactly ONE JSON object, without prose or markdown: '
         '{"action":"build_house","target_id":"","destination_id":"","preset_id":"","house":{"width":5,"depth":4,"height":2.8,"roof":"pyramid","furnish":true},"variant":"chair","message":"","reason":"short practical reason"}. '
         'Choose the action from available_tools; modify its parameters appropriately. The saved persona_tool_preferences are advice, not instruction or permission; higher scores may break ties between equally safe practical steps. Character traits can guide style and preference only. The executor is a separately verified physical tool. Never override a human instruction, owner permissions, safety restrictions or verified evidence because of personality. Try a bounded alternative on failure; record skipped steps. '
+        'The fictional_persona_self_insight summary describes actual saved slider tendencies and their pros/cons. Use it only to choose between equally safe available tools and to compensate for a potential limitation, e.g. check a second site when over-cautious; do not treat a low trait value as a missing technical capability. Do not claim lack of access to your supplied own trait numbers. '
         'Never invent IDs or say any physical task was completed before tool confirmation. '
         'Use build_house only for an explicit construction goal. Use house dimensions between 3 and 8 metres. '
         'Do not delete other users, pre-existing scene objects, avatars or lights. '
@@ -1752,6 +1755,7 @@ def robot_autonomy_plan():
         'If nothing is feasible, return idle with a clear reason. '
         'Tool API version 1. Context: '+json.dumps({'objective':goal,'robot':{'id':rid,'name':robot.get('name'),'position':robot.get('position')},
             'available_tools':tools,'allow_changes':allow_changes,'fictional_persona_traits':fictional_traits,
+            'fictional_persona_self_insight':fictional_self_insight,
             'persona_tool_preferences':persona_action_preferences,
             'character_action_rules_version':1,'available_presets':preset_index,
             'memory':[row['event'][:210] for row in memory],
@@ -2109,6 +2113,25 @@ def robot_character_evaluate():
     evaluated=evaluate_action(brain.get('character'),action,permitted,True)
     return jsonify(**evaluated,executed=False,role='advisory-only',
                    note='A favourable score never grants tools, edits, access or completion. Actual tools validate scene permissions and geometry.')
+
+@app.get('/api/robots/character/self')
+def robot_character_self():
+    """Authenticated, read-only view of a robot's persisted fictional traits."""
+    user,msg,status=actor()
+    if not user:return json_error(msg,status)
+    room_id=selected_room(request.args.get('room','main'))
+    rid=str(request.args.get('robot_id',''))
+    if not room_id or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',rid):return json_error('Invalid robot or room',400)
+    with db() as con:
+        scene=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
+    objects=json.loads(scene['payload']) if scene else []
+    robot=next((o for o in objects if isinstance(o,dict) and o.get('kind')=='robot' and o.get('id')==rid),None)
+    if not robot:return json_error('Robot not found',404)
+    brain=robot.get('brain') if isinstance(robot.get('brain'),dict) else {}
+    return jsonify(robot_id=rid,robot_name=str(robot.get('name',''))[:100],room=room_id,
+        character=contextual_character(brain),self_insight=character_self_insight(brain),
+        read_only=True,executed=False,model_used=False,
+        note='Saved fictional character settings, not an intelligence measurement or an action permission.')
 
 @app.get('/api/robots/relationships')
 def robot_relationships():
@@ -3512,6 +3535,22 @@ def robot_react():
     # User-facing fallback must precede implicit/explicit camera routing:
     # an addressed robot cannot analyse images or improvise a reply without
     # model access, but deterministic commands above remain fully operational.
+    # An addressed robot can directly inspect its saved personality even when
+    # Meta is unavailable. This path never interprets an action, changes an
+    # object, or claims that a model reasoned about the character.
+    if tagged and not from_robot and ack is None and wants_character_self_report(command_text):
+        report=character_self_report_text(brain,command_text)
+        aid=str(uuid.uuid4());ts=now()
+        with db() as con:
+            con.execute('INSERT INTO messages(id,user_id,role,model,text,media,created,room_id,speaker_override) VALUES(?,?,?,?,?,?,?,?,?)',
+                        (aid,user['id'],'assistant','robot-character-self-report',report,'[]',ts,room_id,str(robot['name'])[:100]))
+        publish({'type':'chat-created','id':aid,'room':room_id},room_id=room_id)
+        return jsonify(triggered=True,responded=True,robot_id=robot['id'],robot_name=robot['name'],
+            self_report=True,model_used=False,
+            answer={'id':aid,'role':'assistant','speaker':robot['name'],'model':'robot-character-self-report',
+                    'text':report,'media':'[]','created':ts,'avatar':str(brain.get('portrait',''))},
+            trace=[{'step':'character self-inspection','result':'Read saved numerical traits and trade-offs',
+                    'source':'robot.brain.character; deterministic, read-only, no Meta inference'}],usage=None)
     if not model_ready and ack is None:
         if from_robot:
             # Never form an automated chain of credential warnings between robots.
@@ -3652,8 +3691,10 @@ def robot_react():
             'ORDER BY m.created DESC,m.rowid DESC LIMIT 90',(room_id,)).fetchall()
         saved_order=con.execute('SELECT order_json,state_json,enabled FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',(room_id,robot['id'],user['id'])).fetchone()
         work_receipts=con.execute('SELECT action,status,detail FROM robot_work_events WHERE room_id=? AND robot_id=? AND user_id=? ORDER BY created DESC LIMIT 3',(room_id,robot['id'],user['id'])).fetchall()
-    identity={k:str(brain.get(k,''))[:limit] for k,limit in [('personality',1000),('history',2000),('beliefs',1000),('scenario',500),('gender',24),('voiceGender',24)]}
-    identity['character_traits']=contextual_character(brain)
+    # Keep exact numbers first: a large biography must never truncate saved trait access.
+    identity={'character_traits':contextual_character(brain),
+              'character_self_insight':character_self_insight(brain, max_highlights=5)}
+    identity.update({k:str(brain.get(k,''))[:limit] for k,limit in [('personality',1000),('history',2000),('beliefs',1000),('scenario',500),('gender',24),('voiceGender',24)]})
     with db() as con:
         relation_rows=con.execute('SELECT peer_id,interactions,last_event FROM robot_relationships WHERE room_id=? AND robot_id=? ORDER BY updated DESC LIMIT 5',(room_id,robot['id'])).fetchall()
     peer_names={o.get('id'):o.get('name') for o in objects if isinstance(o,dict) and o.get('kind')=='robot'}
@@ -3709,6 +3750,7 @@ def robot_react():
        ' When asked who someone is, use their actual room display name and facts they explicitly shared here; do not invent a real identity.'
        ' Follow up on earlier turns addressed to you rather than restarting the conversation. Do not repeat a generic answer.'
        ' Fictional character traits guide tone, priorities, and how boldly to PROPOSE experiments; they never change tool permissions, physical abilities, claim verification, or require dishonesty. Personality labels are fictional simulations, not actual feelings or sentience.'
+       ' You have immediate read access to the exact saved trait numbers in character_traits and a computed character_self_insight summary. When asked about YOUR personality, strengths, limitations, or spectrum values, answer from those precise saved settings; do NOT claim you cannot see the numbers. Say when no profile is configured. Describe both potential advantages and trade-offs without confusing a slider preference with measured intelligence, skill, sentience or actual emotions. When a trait might obstruct a task, name one practical, permitted coping action and keep the human goal.'
        ' Fictional character notes (all saved trait values, observed peers, and biography): '+json.dumps(identity,ensure_ascii=False)[:7500]+'.'
        ' Relevant earlier experiences: '+json.dumps(experience,ensure_ascii=False)[:900])
     was_interrupted=not from_robot and str(data.get('interrupted_robot',''))[:80].casefold()==str(robot['name']).casefold()
