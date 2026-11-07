@@ -5,7 +5,7 @@ import {houseBlueprint,houseWallSettings,houseGoal,operatorFailure,publicPresetI
 import {cleanAutonomyDecision,cleanAutonomyOrder} from '../js/robot-autonomy-core.js';
 const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 test('bounded construction API defines concrete house geometry and independent door/window/roof tools',()=>{
- assert.deepEqual(Object.keys(ROBOT_TOOL_DESCRIPTIONS).sort(),['visit','deliver','build','build_house','furnish_room','use_preset','remove','rest','ask','inspect','idle'].sort());
+ assert.deepEqual(Object.keys(ROBOT_TOOL_DESCRIPTIONS).sort(),['creative_build','visit','deliver','build','build_house','furnish_room','use_preset','remove','rest','ask','inspect','idle'].sort());
  const p=houseBlueprint({width:9000,depth:0.1,height:1000,roof:'danger',color:'not hex'});
  assert.deepEqual([p.width,p.depth,p.height,p.roof,p.color],[8,3,4,'pyramid','#d0d4c9']);
  const wall=houseWallSettings({width:6,depth:4.5,roof:'shed'});

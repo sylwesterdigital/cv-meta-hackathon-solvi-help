@@ -1664,6 +1664,60 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);this.refreshList();
   return obj;
  }
+ // A real reusable 3D primitive creation tool for authorised creative robots.
+ // It uses the human editor's scene object, physics, undo and persistence
+ // pipeline. Every part is checked against *other* scene geometry before Add.
+ createRobotCreativePart(robot,part,{site,tag,index=0}={}){
+  const numeric=[site?.x,site?.z,part?.offset?.x,part?.offset?.y,part?.offset?.z,
+   part?.size?.width,part?.size?.height,part?.size?.depth];
+  if(!robot||robot.userData?.editorKind!=='robot'||!this.items.includes(robot)||!this.canEdit(robot)||
+     !numeric.every(Number.isFinite)||!/^#[a-f0-9]{6}$/i.test(part?.color||'')||
+     !/^[\w:.-]{1,90}$/.test(tag||'')||!Number.isInteger(index)||index<0||index>15)return null;
+  const {width,height,depth}=part.size;
+  if(Math.min(width,height,depth)<.1||Math.max(width,height,depth)>7||
+     part.offset.y<0||part.offset.y+height>12||
+     Math.abs(part.offset.x)+width/2>4.6||Math.abs(part.offset.z)+depth/2>4.6)return null;
+  const x=site.x+part.offset.x,z=site.z+part.offset.z,y=part.offset.y+height/2;
+  if(Math.abs(x)>480||Math.abs(z)>480||Math.hypot(robot.position.x-x,robot.position.z-z)>13||
+     Math.abs(robot.position.y)>.85)return null;
+  const box=new THREE.Box3(new THREE.Vector3(x-width/2,y-height/2,z-depth/2),
+                           new THREE.Vector3(x+width/2,y+height/2,z+depth/2));
+  const prefix='SOLVI Creative · '+tag+' · ';
+  this.world.scene.updateMatrixWorld(true);
+  for(const other of this.items){
+   if(other===robot||!other.visible||other.userData?.storage||other.userData?.carriedBy||
+      other.userData?.editorKind==='light'||other.userData?.editorKind==='plane'||
+      other.userData?.editorKind==='points'||other.userData?.editorKind==='curve')continue;
+   // Other workers and nearby visitors are real occupied space. Only
+   // decorative avatar rigs are ignored, never their body footprint.
+   if(other.userData?.editorKind==='robot'){
+    const px=other.position.x,py=other.position.y,pz=other.position.z;
+    const avatar=new THREE.Box3(new THREE.Vector3(px-.48,py,pz-.48),
+                                new THREE.Vector3(px+.48,py+2,pz+.48));
+    if(box.intersectsBox(avatar))return null;
+    continue;
+   }
+   if(other.name?.startsWith(prefix))continue; // this same planned structure
+   if(other.userData?.editorKind==='cube'&&other.name?.endsWith(' · house floor'))continue;
+   if(other.userData?.editorKind==='furniture'&&
+      ['road','footpath','curb'].includes(other.userData.furniture?.infraType))continue;
+   const occupied=new THREE.Box3().setFromObject(other);
+   if(!occupied.isEmpty()&&box.intersectsBox(occupied))return null;
+  }
+  const obj=objectFor('cube');
+  obj.name=prefix+index+' · '+String(part.label||'part').slice(0,45);
+  obj.userData.primitive=sanitisePrimitive('cube',{width,height,depth});
+  obj.geometry.dispose();obj.geometry=buildPrimitive('cube',obj.userData.primitive);
+  obj.material.color.set(part.color);obj.position.set(x,y,z);
+  obj.userData.physics={mode:'static'};
+  obj.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
+  if(!obj.userData.ownerId){this.disposeObject(obj);return null;}
+  obj.userData.autonomyCreatedBy=robot.userData.editorId;
+  obj.userData.autonomyCreatedRoom=window.solviRoom||'main';
+  this.items.push(obj);this.world.scene.add(obj);this.physics.sync(obj);
+  this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);this.refreshList();
+  return obj;
+ }
  // Saved presets are account-scoped. The caller must obtain them through the
  // authenticated /api/object-presets endpoint and revalidate the current user.
  createRobotPreset(robot,saved){

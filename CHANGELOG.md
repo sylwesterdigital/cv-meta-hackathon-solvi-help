@@ -1,3 +1,11 @@
+## v0.2.236 — Creative builders: actual primitives, independent team projects, saved receipts
+
+- Route authenticated human `@All` creative building instructions (including “procedural mega strcutures”) into three server-committed roles rather than idle Meta model dialogue. Existing non-creative city/team and cargo workflows continue.
+- Add a direct robot-addressed tool path for a real 1 m coloured cube in the robot's forward direction, respecting the scene object-edit permission and local collider checks.
+- Build new 8-part procedural towers, arches and pavilions with owned cube objects, robot worksite navigation, per-part server-save acknowledgements, and resumable site/part IDs; use a short local action burst instead of a 180 s conversational delay between milestones.
+- Detect a stalled team, safely release a claim after bounded failures, and let another free editable worker resume from previously persisted parts. Never count a camera caption or speech as a saved geometry change.
+- Independently require eight new, task-named, owner-owned procedural pieces in the authoritative SQLite scene for a group-completion receipt. Preserve all existing avatars, worlds, bin cleanup and watcher gates. Explicit limitation: work requires active browser and new realm *instances* are not autonomously created.
+
 ## v0.2.235 — Correct Mac watcher group-queue integration assertion
 
 - Reproduce failed v0.2.234 watcher test at `backend/test_api.py`: after Lea had already claimed the Box-copy job, the second claim switched only the outer `robot_id` to Lola; its embedded `order.robotId` still pointed to Lea. The API correctly rejected this malformed order as HTTP 400, while the test incorrectly required 409.

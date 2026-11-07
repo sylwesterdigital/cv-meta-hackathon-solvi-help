@@ -46,7 +46,7 @@ test('group cleanup is queued durably and only claimed atomically before robot c
  assert.match(source,/editor\.inventory\.storeInBin\(bot,box,bin\)/);
  assert.match(source,/editor\.inventory\.drop\(bot,box\)/);
  assert.match(source,/await editor\.persistObject\(box,run\.room\)/);
- assert.match(studio,/work>0&&groupBoxCleanupInstruction\(text\)/);
+ assert.match(studio,/else if\(!\(work>0\)\)await reactToRobotMessage/);
  assert.match(backend,/def robot_group_queue_add\(/);
  assert.match(backend,/con\.execute\('BEGIN IMMEDIATE'\)/);
  assert.match(backend,/def robot_group_queue_claim\(/);
@@ -58,14 +58,14 @@ test('actual @all router queues already-authenticated message even with no free 
  const begin=runtime.indexOf('  const groupCleanup=groupBoxCleanupInstruction(message.text);');
  const end=runtime.indexOf('  // New @all destination corrections',begin);
  assert.ok(begin>0&&end>begin);
- const args=['message','api','room','handledChatMessages','groupBoxCleanupInstruction','chatConstructionInstruction','cityTeamIntent','emitLog','toast','dispatchPendingGroupTasks'];
+ const args=['message','api','room','handledChatMessages','groupBoxCleanupInstruction','groupCreativeIntent','chatConstructionInstruction','cityTeamIntent','emitLog','toast','dispatchPendingGroupTasks'];
  const run=new Function(...args,`return (async()=>{${runtime.slice(begin,end)}return 0;})()`);
  const message={id:'human-msg-143503',text:'@all guys I see plenty of boxes (Box copy...) - they need to be moved to the Bbig bin I mentioned earlier'};
  const events=[],handled=new Set();
  const api={req:async (endpoint,params)=>{assert.equal(endpoint,'/api/robots/autonomy/group/queue');
    assert.deepEqual(JSON.parse(params.body),{room:'loft-16',message_id:message.id});events.push('PERSIST');
    return {task:{kind:'cleanup_boxes'},deduplicated:false};}};
- const accepted=await run(message,api,()=> 'loft-16',handled,groupBoxCleanupInstruction,()=>null,()=>null,
+ const accepted=await run(message,api,()=> 'loft-16',handled,groupBoxCleanupInstruction,()=>null,()=>null,()=>null,
    ()=>{},()=>{},async()=>{events.push('DISPATCH');return 0;});
  assert.equal(accepted,1);
  assert.deepEqual(events,['PERSIST','DISPATCH']);

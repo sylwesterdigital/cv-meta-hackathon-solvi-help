@@ -1,4 +1,12 @@
-# SOLVI.help Master LLM Handover — v0.2.235
+# SOLVI.help Master LLM Handover — v0.2.236
+
+## v0.2.236 — Persistent creative robot teams and checked primitive creation
+
+- New `js/robot-creative-builder.js` parses human-authorised broad building requests and creates deterministic, distinct eight-part tower/arch/pavilion blueprints; a named 1 m yellow cube is one supported primitive.
+- `backend/server.py` atomically splits one saved @All creative request into three independently claimed, task-owned group assignments and validates every creative scene part on completion. Original-human identity, owner permission, scene ID and 8-part completion checks remain mandatory.
+- `js/editor.js#createRobotCreativePart` uses the normal cube geometry/ownership/physics/undo/scene-save path without selecting or teleporting the operator; it checks actual surrounding scene geometry and bounds.
+- `js/robot-autonomy.js` persists and resumes creative site, part IDs, pending scene saves, and delegates on repeated blockages. Short local bursts advance from verified actions rather than repeating speeches. Existing job and bin task paths remain intact.
+- Tests: `tests/release-236-creative-build.test.mjs` plus extended Flask integration. Run the Mac watcher and live two-client visual acceptance; no browser-closed physics execution or arbitrary realm creation is asserted.
 
 ## v0.2.235 — Watcher claim-concurrency test correction
 

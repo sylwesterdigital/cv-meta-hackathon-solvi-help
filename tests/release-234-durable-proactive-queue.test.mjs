@@ -49,8 +49,8 @@ test('negative @all phrases do not authorize construction work or unnecessary sp
  assert.equal(chatConstructionInstruction('@all please do not build a park'),null);
  assert.ok(chatConstructionInstruction('@all please start building more homes'));
  const studio=read('js/studio.js');
- assert.match(studio,/work>0&&\(chatConstructionInstruction\(text\)/);
- assert.match(studio,/work>0&&groupBoxCleanupInstruction\(text\)/);
+ assert.match(studio,/else if\(!\(work>0\)\)await reactToRobotMessage/);
+ assert.match(studio,/else if\(!\(work>0\)\)await reactToRobotMessage/);
 });
 
 test('server message classifier and scene receipt use actual list positions and explicit authorization',()=>{

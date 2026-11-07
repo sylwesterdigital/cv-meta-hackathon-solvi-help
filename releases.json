@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.235",
+  "currentVersion": "0.2.236",
   "releases": [
+    {
+      "version": "0.2.236",
+      "publishedAt": "2026-11-07T22:43:59Z",
+      "changes": [
+        "Enable authorised @all mega-structure goals as three independently claimable, persistent creative team projects; preserve existing robot tasks and allow pending claims.",
+        "Add checked primitive creation and eight-part tower/arch/pavilion structures with real Three.js meshes, physics, editable owner IDs and scene-save receipts.",
+        "Make named 1m yellow cube requests and Work orders creative local projects executable with a real robot-relative scene placement.",
+        "Persist project site and per-part IDs across refresh/retry and reject group completion unless every expected original owner-owned cube is verified in SQLite scene.",
+        "Protect other avatars from new procedural geometry, enforce limited dimensions/height, retry and safely hand off after failures, and suppress chat-only acknowledgements when work is accepted.",
+        "Preserve uploaded avatars, existing worlds, bin cleanup, Meta settings, and release watcher gates; browser-active 3D execution and live two-client acceptance remain necessary."
+      ]
+    },
     {
       "version": "0.2.235",
       "publishedAt": "2026-11-07T22:07:15Z",
@@ -295,16 +307,6 @@
         "Explicitly positioned, non-persistent infrastructure paths, fences, hedges, vegetation/ground plots, freehand 3D curves and portal pairs bypass the smart furniture planner until their drawing tools position completed objects.",
         "Normal furniture, tools, primitive objects and presets retain safe camera-aware collision-checked placement and existing multiplayer per-object saves.",
         "Preserve all previous indoor tabletop placement, scene backups, database recovery protections, Meta AI workflows and original 3D avatar/model binaries."
-      ]
-    },
-    {
-      "version": "0.2.198",
-      "publishedAt": "2026-11-05T13:24:11Z",
-      "changes": [
-        "Correct indoor placement regression: small props now prefer visible non-overlapping table, stool and cabinet tops rather than being rejected as overlapping the supporting furniture.",
-        "Support low broad cube floors and horizontal plane platforms as actual walkable surfaces, so existing indoor floors do not block placement of other furniture.",
-        "Use full world-space footprint containment, vertical support height, per-support collider exclusion, occlusion checks, recent-item proximity, and a safe ground fallback.",
-        "Preserve existing per-object authoritative multiplayer scene saves, scene-recovery protections, previous releases and original model binaries."
       ]
     }
   ]

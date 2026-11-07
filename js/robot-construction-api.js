@@ -5,6 +5,7 @@ export const ROBOT_TOOL_DESCRIPTIONS=Object.freeze({
  visit:'Navigate to an existing scene ID using the current A* robot movement system.',
  deliver:'Pick up an existing Pickable scene ID, navigate to a destination ID and drop it.',
  build:'Create one supported furniture or basic prop item (including can and bottle) using the human editor generator.',
+ creative_build:'Assemble a bounded, multi-part tower, arch, pavilion or human-requested 1m cube; every primitive has a real scene receipt.',
  build_house:'Build one bounded 3–8m room shell with an actual door opening, windows and roof; optionally furnish it.',
  furnish_room:'Place one supported fridge, TV or furniture item on the actual nearby editable house floor, with physical collision checks and an acknowledged scene save.',
  use_preset:'Place one existing, account-owned Furniture or Architecture preset; preset_id must be in available_presets.',

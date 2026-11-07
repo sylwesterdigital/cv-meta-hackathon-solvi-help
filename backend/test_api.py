@@ -1339,6 +1339,61 @@ assert c.post(endpoint+'result',headers=headers,json={
     'room':queue_room,'message_id':build_id,'robot_id':_queue_bot2['id'],'outcome':'completed'}).status_code==409
 print('PASS: authenticated group queue, idempotence, atomic worker claim, independent scene receipt, held-cargo safety and multiple project types')
 
+# 0.2.236: one human authorisation becomes three distinct concurrently
+# claimable design roles. Neither a model reply nor an empty work order is a
+# scene receipt. The server checks every newly saved primitive by task prefix.
+creative_instruction=_msg('@All hey robots, can you mess around and start building procedural mega strcutures please.')
+assert creative_instruction.status_code==200
+creative_mid=creative_instruction.get_json()['message']['id']
+creative_queue=c.post(endpoint+'queue',headers=headers,json={'room':queue_room,'message_id':creative_mid})
+assert creative_queue.status_code==200,(creative_queue.status_code,creative_queue.data)
+assert creative_queue.get_json()['subtasks']==3
+assert creative_queue.get_json()['task']['kind']=='creative_build'
+assert c.post(endpoint+'queue',headers=headers,json={'room':queue_room,'message_id':creative_mid}).get_json()['deduplicated'] is True
+roles=[t for t in c.get(endpoint+'queue?room='+queue_room,headers=headers).get_json()['tasks'] if t['source_message_id'].startswith(creative_mid+':')]
+assert {task['source_message_id'] for task in roles}=={creative_mid+':'+str(i) for i in range(3)}
+# Add a new free operator-owned robot. The existing house builder is not stolen.
+creative_bot={**_queue_robot,'id':'queue-test-creative-bot','name':'Albert','position':[8,0,8]}
+with db() as con:
+    objects=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    objects.append(creative_bot)
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(objects),queue_room))
+creative_job=creative_mid+':0'
+creative_order={**_order,'robotId':creative_bot['id'],'goal':creative_instruction.get_json()['message']['text']}
+creative_state={'groupJobId':creative_job,'creativeSite':{'x':20.0,'z':20.0},'creativeBuilt':[]}
+creative_claim={'room':queue_room,'message_id':creative_job,'robot_id':creative_bot['id'],'order':creative_order,'state':creative_state}
+assert c.post(endpoint+'claim',headers=headers,json=creative_claim).status_code==200
+creative_result={'room':queue_room,'message_id':creative_job,'robot_id':creative_bot['id'],'outcome':'completed'}
+assert c.post(endpoint+'result',headers=headers,json=creative_result).status_code==409
+creative_parts=[]
+for index in range(8):
+    creative_parts.append({'id':'creative-test-piece-'+str(index),'name':'SOLVI Creative · '+creative_job+' · '+str(index)+' · beam',
+       'kind':'cube','owner':_user_id,'position':[20+index*.5,1,20],
+       'rotation':[0,0,0],'scale':[1,1,1],'color':'#e0a749',
+       'primitive':{'width':1,'height':2,'depth':1}})
+with db() as con:
+    objects=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    objects.extend(creative_parts)
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(objects),queue_room))
+creative_state['creativeBuilt']=[{'id':o['id'],'index':i} for i,o in enumerate(creative_parts)]
+assert c.put('/api/robots/autonomy/order',headers=headers,json={
+    'room':queue_room,'robot_id':creative_bot['id'],'order':creative_order,'state':creative_state,'enabled':True}).status_code==200
+# A part borrowed from a different project cannot certify a structure.
+with db() as con:
+    objects=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    objects[-1]['name']='Wrong project part'
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(objects),queue_room))
+assert c.post(endpoint+'result',headers=headers,json=creative_result).status_code==409
+with db() as con:
+    objects=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    objects[-1]=creative_parts[-1]
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(objects),queue_room))
+finished=c.post(endpoint+'result',headers=headers,json=creative_result)
+assert finished.status_code==200 and finished.get_json()['status']=='completed',(finished.status_code,finished.data)
+assert len([t for t in c.get(endpoint+'queue?room='+queue_room,headers=headers).get_json()['tasks'] if t['source_message_id'].startswith(creative_mid+':') and t['status']=='pending'])==2
+print('PASS: creative authorisation splits into three distinct roles; unfinished/fake parts rejected; saved eight-part structure confirmed')
+
+
 # Logging out revokes the token server-side; the same browser tab cannot use it again.
 assert c.post('/api/logout',headers=headers,json={}).status_code==200
 assert c.get('/api/me',headers=headers).status_code==401

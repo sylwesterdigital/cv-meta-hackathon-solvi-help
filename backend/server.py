@@ -247,7 +247,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.235',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.236',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1889,7 +1889,7 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending','groupJobId','groupNoProgress'}
+    safe_keys={'creativeSite','creativeBuilt','creativePending','completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending','groupJobId','groupNoProgress'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
@@ -1942,6 +1942,19 @@ def valid_robot_work_order(order,state):
     built=stored.get('teamBuilt',[])
     if not isinstance(built,list) or len(built)>8 or any(not isinstance(p,dict) or set(p)!={'id','variant'} or
          not isinstance(p['id'],str) or len(p['id'])>100 or p['variant'] not in ('road','footpath') for p in built):return None
+    creative_site=stored.get('creativeSite')
+    if creative_site is not None and (not isinstance(creative_site,dict) or set(creative_site)!={'x','z'} or any(
+        type(creative_site[key]) not in (int,float) or not math.isfinite(creative_site[key]) or abs(creative_site[key])>480 for key in ('x','z'))):return None
+    creative_built=stored.get('creativeBuilt',[])
+    if not isinstance(creative_built,list) or len(creative_built)>12 or any(
+        not isinstance(entry,dict) or set(entry)!={'id','index'} or
+        not isinstance(entry['id'],str) or not 1<=len(entry['id'])<=100 or
+        type(entry['index']) is not int or not 0<=entry['index']<=15 for entry in creative_built):return None
+    if len({e['index'] for e in creative_built})!=len(creative_built) or len({e['id'] for e in creative_built})!=len(creative_built):return None
+    creative_pending=stored.get('creativePending')
+    if creative_pending is not None and (not isinstance(creative_pending,dict) or set(creative_pending)!={'id','index'} or
+       not isinstance(creative_pending['id'],str) or not 1<=len(creative_pending['id'])<=100 or
+       type(creative_pending['index']) is not int or not 0<=creative_pending['index']<=15):return None
     houses=stored.get('completedHouses',[])
     if not isinstance(houses,list) or len(houses)>3 or any(not isinstance(id,str) or len(id)>100 for id in houses):return None
     return cleaned,stored
@@ -1959,7 +1972,21 @@ def group_intent_kind(text):
     if (re.search(r'\b(?:build|building|construct|constructing|create|creating|make)\b',text,re.I) and
         re.search(r'\b(?:homes?|houses?|cabins?|parks?|picnic\s+(?:areas?|spots?))\b',text,re.I)):
         return 'local_build'
+    # An @all creative-build request is explicit project authorisation, not
+    # merely an invitation for model-generated speeches. This does NOT permit
+    # arbitrary code, uncontrolled deletion or new realms/accounts.
+    if (re.search(r'\b(?:build|building|construct|constructing|create|creating|make|design|add|place)\b',text,re.I) and
+        re.search(r'\b(?:mega\s*str\w*|str\w*ctures?|towers?|arches?|bridges?|pavilions?|sculptures?|monuments?|landmarks?|cubes?|procedural\s+(?:api|objects?)|new\s+realms?)\b',text,re.I)):
+        return 'creative_build'
     return ''
+
+def group_creative_part_count(goal):
+    # A single 1-metre cube request is one supported primitive, whereas
+    # architectural projects have eight independently persisted components.
+    text=str(goal or '')
+    unit=bool(re.search(r'\b(?:1\s*(?:m|met(?:re|er)s?)|one\s+met(?:re|er))\b',text,re.I))
+    single=bool(re.search(r'\bcubes?\b',text,re.I)) and unit and not re.search(r'\b(?:mega|towers?|structures?|stacks?)\b',text,re.I)
+    return 1 if single else 8
 
 def group_intent_public(row):
     return {key:row[key] for key in ('room_id','source_message_id','kind','source_text','status',
@@ -2015,11 +2042,23 @@ def robot_group_queue_add():
         if kind=='cleanup_boxes':
             active=con.execute("SELECT * FROM robot_group_intents WHERE room_id=? AND user_id=? AND kind=? AND status IN ('pending','assigned') ORDER BY created DESC LIMIT 1",(room_id,user['id'],kind)).fetchone()
             if active:return jsonify(ok=True,task=group_intent_public(active),deduplicated=True)
+        # A creative team is three separately claimable, jointly authorised
+        # pieces of ONE human group request. Each immutable sub-ID is derived
+        # from the original saved human message; agents cannot enqueue them.
+        # Each role can run on a different free robot while other missions remain.
+        if kind=='creative_build':
+            active=con.execute("SELECT * FROM robot_group_intents WHERE room_id=? AND user_id=? AND kind='creative_build' AND source_text=? AND status IN ('pending','assigned') ORDER BY created DESC LIMIT 1",
+                  (room_id,user['id'],row['text'])).fetchone()
+            if active:return jsonify(ok=True,task=group_intent_public(active),deduplicated=True)
+            if active_count>22:return json_error('Creative group requires three available queue slots',429)
         stamp=now()
-        con.execute('INSERT INTO robot_group_intents(room_id,source_message_id,user_id,kind,source_text,created,updated) VALUES(?,?,?,?,?,?,?)',
-             (room_id,mid,user['id'],kind,row['text'],stamp,stamp))
-        task=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=?',(room_id,mid)).fetchone()
-    return jsonify(ok=True,task=group_intent_public(task),deduplicated=False)
+        identifiers=[mid+':'+str(index) for index in range(3)] if kind=='creative_build' else [mid]
+        for ident in identifiers:
+            if len(ident)>100:return json_error('Group message ID too long',400)
+            con.execute('INSERT INTO robot_group_intents(room_id,source_message_id,user_id,kind,source_text,created,updated) VALUES(?,?,?,?,?,?,?)',
+                 (room_id,ident,user['id'],kind,row['text'],stamp,stamp))
+        task=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=?',(room_id,identifiers[0])).fetchone()
+    return jsonify(ok=True,task=group_intent_public(task),deduplicated=False,subtasks=len(identifiers))
 
 @app.get('/api/robots/autonomy/group/queue')
 def robot_group_queue_list():
@@ -2082,9 +2121,11 @@ def robot_group_queue_claim():
             if not any(name.lower() in row['text'].lower() for row in messages):return json_error('Destination must be explicitly named in earlier human chat',409)
             if not group_copy_objects(objects):return json_error('No Box copies present in saved scene',409)
             if state.get('cleanupBinId')!=target_id or name.lower() not in order['goal'].lower():return json_error('Task destination ID and name mismatch',400)
-        elif task['kind']=='local_build':
+        elif task['kind'] in ('local_build','creative_build'):
             target_id='';name=''
             if order['goal']!=task['source_text']:return json_error('Construction goal does not match authorized human message',400)
+            if task['kind']=='creative_build' and not re.fullmatch(re.escape(mid[:-2])+r':[0-2]',mid):
+                return json_error('Unknown creative team role',400)
         else:return json_error('Unknown group intent kind',400)
         stamp=now()
         scene_before=json.dumps([o.get('id') for o in group_scene_objects(con,room_id) if isinstance(o,dict) and isinstance(o.get('id'),str)])
@@ -2167,6 +2208,26 @@ def robot_group_queue_result():
             boxes=group_copy_objects(objects)
             if not boxes or not all(group_destination_confirmed(objects,task['target_id'],box) for box in boxes):
                 return json_error('Server scene does not verify all Box copies delivered',409)
+        if outcome=='completed' and task['kind']=='creative_build':
+            # Eight distinct grounded primitives belonging to THIS human
+            # subtask, with dimensions, positions and server owner verified.
+            # Work-order text and model claims do not constitute scene edits.
+            state=json.loads(row['state_json'])
+            entries=state.get('creativeBuilt',[])
+            indices={entry.get('index') for entry in entries if isinstance(entry,dict)}
+            count=group_creative_part_count(task['source_text'])
+            if len(entries)!=count or indices!=set(range(count)):
+                return json_error('Creative structure has unfinished verified parts',409)
+            tag=re.sub(r'[^\w:.-]','_',mid[:90])
+            for entry in entries:
+                ident=entry.get('id')
+                object_row=next((obj for obj in objects if isinstance(obj,dict) and obj.get('id')==ident),None)
+                if (not object_row or object_row.get('kind')!='cube' or
+                    object_row.get('owner')!=user['id'] or
+                    not str(object_row.get('name','')).startswith('SOLVI Creative · '+tag+' · '+str(entry['index'])+' · ') or
+                    not isinstance(object_row.get('primitive'),dict) or
+                    not all(type(object_row['primitive'].get(k)) in (int,float) and 0.1<=object_row['primitive'][k]<=7 for k in ('width','height','depth'))):
+                    return json_error('Creative part missing or not confirmed in authoritative scene',409)
         if outcome=='completed' and task['kind']=='local_build':
             # Build completion is asserted only by the browser's independently
             # saved object IDs, and still requires a server scene check.
@@ -2233,7 +2294,7 @@ def robot_work_order_save():
 
 # Autonomous work receipts are explicit client reports, not new commands. They
 # let robot discussions reference concrete recent project work without fabricating success.
-ROBOT_WORK_ACTIONS={'build_house','build','deliver','visit','rest','ask','inspect','use_preset','remove','research','idle','task','cleanup_cans','cleanup_boxes','build_infrastructure'}
+ROBOT_WORK_ACTIONS={'build_house','build','deliver','visit','rest','ask','inspect','use_preset','remove','research','idle','task','cleanup_cans','cleanup_boxes','build_infrastructure','creative_build'}
 @app.post('/api/robots/autonomy/report')
 def robot_autonomy_report():
     user,msg,status=actor()

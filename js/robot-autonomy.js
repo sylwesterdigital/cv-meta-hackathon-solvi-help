@@ -15,6 +15,7 @@ import {metaRetryDelay,workRecoveryPlan,projectOutcome,localProjectSequence,requ
 import {visibleWorkFields,workModeHelp} from './robot-workorder-ui.js';
 import {cityTeamIntent,cityRoles,cityRoleGoal,cityRoleTarget,cityTeamState,cityMilestoneCount} from './robot-city-team.js';
 import {chatSingleObjectTransfer} from './robot-object-intent.js';
+import {creativeBuildIntent,groupCreativeIntent,namedCreativeIntent,creativeBlueprint,creativeRole,creativeProjectTag,nextCreativeIndex} from './robot-creative-builder.js';
 import {cargoConstraints,groundedBoxMatch,safeThrowCandidate} from './robot-transfer-decisions.js';
 import {predictThrowPath,cleanThrowSettings,pickUpClip} from './object-carry.js';
 const $=id=>document.getElementById(id);
@@ -112,7 +113,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   return {house,step:run.step,completed:run.completed,last:run.last,metaFailures:run.metaFailures,
    nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,contacted:run.contacted,
    placedSupplies:run.placedSupplies,projectPlaced:run.projectPlaced,projectPending:run.projectPending,projectDeferred:run.projectDeferred,completedHouses:run.completedHouses,
-   researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,cleanupThrowTried:run.cleanupThrowTried,askedPreferences:run.askedPreferences,roofPreference:run.roofPreference,furnishingColors:run.furnishingColors,intentMessageId:run.intentMessageId,groupJobId:run.groupJobId,groupNoProgress:run.groupNoProgress,team:run.team,teamBuilt:run.teamBuilt};
+   researchNotes:run.researchNotes,pendingAction:run.pendingAction,creativeSite:run.creativeSite,creativeBuilt:run.creativeBuilt,creativePending:run.creativePending,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,cleanupThrowTried:run.cleanupThrowTried,askedPreferences:run.askedPreferences,roofPreference:run.roofPreference,furnishingColors:run.furnishingColors,intentMessageId:run.intentMessageId,groupJobId:run.groupJobId,groupNoProgress:run.groupNoProgress,team:run.team,teamBuilt:run.teamBuilt};
  }
  function restoreHouse(state){
   if(!state||typeof state!=='object')return null;
@@ -141,6 +142,9 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    projectPending:Array.isArray(state.projectPending)?state.projectPending.filter(p=>p&&typeof p.id==='string'&&typeof p.variant==='string').slice(0,6):[],
    completedHouses:Array.isArray(state.completedHouses)?state.completedHouses.filter(id=>typeof id==='string').slice(0,3):[],
    team:cityTeamState(state.team),teamBuilt:Array.isArray(state.teamBuilt)?state.teamBuilt.filter(x=>x&&['road','footpath'].includes(x.variant)&&typeof x.id==='string').slice(0,8):[],
+   creativeSite:state.creativeSite&&Number.isFinite(state.creativeSite.x)&&Number.isFinite(state.creativeSite.z)?{x:state.creativeSite.x,z:state.creativeSite.z}:null,
+   creativeBuilt:Array.isArray(state.creativeBuilt)?state.creativeBuilt.filter(p=>p&&typeof p.id==='string'&&Number.isInteger(p.index)&&p.index>=0&&p.index<16).slice(0,12):[],
+   creativePending:state.creativePending&&typeof state.creativePending.id==='string'&&Number.isInteger(state.creativePending.index)?state.creativePending:null,
    cleanupBinId:String(state.cleanupBinId||'').slice(0,100),cleanupHomeId:String(state.cleanupHomeId||'').slice(0,100),cleanupDone:Array.isArray(state.cleanupDone)?state.cleanupDone.filter(id=>typeof id==='string').slice(0,48):[],
    cleanupSkipped:Array.isArray(state.cleanupSkipped)?state.cleanupSkipped.filter(v=>v&&typeof v.id==='string'&&typeof v.reason==='string'&&Number.isInteger(v.attempts)&&Number.isFinite(v.retryAt)).slice(0,32):[],
    cleanupThrowTried:Array.isArray(state.cleanupThrowTried)?state.cleanupThrowTried.filter(id=>typeof id==='string'&&id.length<101).slice(0,32):[],
@@ -740,6 +744,64 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   trace(bot,'BUILD',`Constructed ${item.name} at a clear position; scene persisted using the human Add tool`);
   return item;
  }
+ // Assemble a persistent creative structure ONE checked primitive per cycle.
+ // Reconstruct past parts by unique human-message/project ID on reload or
+ // handoff; a chat promise or camera caption is never completion evidence.
+ async function constructCreative(run,bot){
+  if(!run.order.allowChanges)throw Error('Creative building requires authorised scene changes');
+  requireActive(run,bot);
+  const tag=creativeProjectTag(run.groupJobId||run.intentMessageId,run.id);
+  const blueprint=creativeBlueprint(run.order.goal,creativeRole(run.groupJobId));
+  const prefix='SOLVI Creative · '+tag+' · ';
+  for(let index=0;index<blueprint.parts.length;index++){
+   const existing=editor.items.find(o=>o.userData.editorKind==='cube'&&editor.canEdit(o)&&o.name?.startsWith(prefix+index+' · '));
+   if(existing&&!run.creativeBuilt.some(p=>p.index===index)){
+    run.creativeBuilt.push({id:existing.userData.editorId,index});
+    const part=blueprint.parts[index];
+    if(!run.creativeSite)run.creativeSite={x:+(existing.position.x-part.offset.x).toFixed(3),z:+(existing.position.z-part.offset.z).toFixed(3)};
+    trace(bot,'CREATIVE RESUMED',`Found earlier scene primitive ${existing.userData.editorId} at stage ${index+1}. Server must independently verify final project.`);
+   }
+  }
+  run.creativeBuilt=run.creativeBuilt.filter(entry=>editor.items.some(o=>o.userData.editorId===entry.id&&o.name?.startsWith(prefix+entry.index+' · ')));
+  const index=nextCreativeIndex(blueprint.parts,run.creativeBuilt);
+  if(index<0)return `CREATIVE VERIFIED: ${blueprint.name} already has ${blueprint.parts.length} actual scene parts`;
+  if(!run.creativeSite){
+   let at;
+   if(blueprint.direct){
+    // 'in front of you' means a real robot-relative offset, not the
+    // operator's mouse cursor or a 547-second-old camera description.
+    at={x:bot.position.x+Math.sin(bot.rotation.y)*2.7,z:bot.position.z+Math.cos(bot.rotation.y)*2.7};
+    if(!Number.isFinite(at.x)||!Number.isFinite(at.z))throw Error('Robot heading is not finite');
+   }else{
+    const site=editor.planRobotBuildSite?.(bot,'house',{width:blueprint.span,depth:blueprint.span});
+    if(!site)throw Error('NO CLEAR CREATIVE WORKSITE: existing objects/route block this location; require an alternate accessible open area');
+    at=await walkToWorksite(run,bot,site,blueprint.name);
+   }
+   requireActive(run,bot);
+   run.creativeSite={x:+at.x.toFixed(3),z:+at.z.toFixed(3)};
+   await saveOrder(run,true); // destination committed before the first edit
+   trace(bot,'CREATIVE SITE COMMITTED',`${blueprint.name} at ${run.creativeSite.x},${run.creativeSite.z}; project ${tag}`);
+  }
+  const part=blueprint.parts[index],oldPending=run.creativePending;
+  let object=oldPending?.index===index&&editor.items.find(o=>o.userData.editorId===oldPending.id&&editor.canEdit(o));
+  if(!object){
+   const stale=oldPending?.index===index;
+   if(stale)trace(bot,'CREATIVE RETRY','Unsaved part no longer present; reconstructing only the missing part');
+   object=editor.createRobotCreativePart?.(bot,part,{site:run.creativeSite,tag,index});
+   if(!object)throw Error('CREATIVE PLACEMENT REJECTED: no collision-free, operator-editable position for '+part.label);
+   run.creativePending={id:object.userData.editorId,index};
+  }
+  requireActive(run,bot);
+  const saveTimer=editor.pendingSaves?.get(object.userData.editorId);
+  if(saveTimer){clearTimeout(saveTimer);editor.pendingSaves.delete(object.userData.editorId);}
+  const receipt=await editor.persistObject?.(object,run.room);
+  requireActive(run,bot);
+  if(!receipt)throw Error('Creative primitive scene save was not acknowledged; retaining exact object for retry');
+  if(!run.creativeBuilt.some(entry=>entry.index===index))run.creativeBuilt.push({id:object.userData.editorId,index});
+  run.creativePending=null;
+  trace(bot,'CREATIVE PART SAVED',`${blueprint.name}: ${index+1}/${blueprint.parts.length} ${part.label} (${object.userData.editorId}); confirmed by scene persistence`);
+  return `Creative part ${index+1}/${blueprint.parts.length} verified: ${part.label} (${object.userData.editorId})`;
+ }
  async function furnishRoom(run,bot,variant){
   if(!run.order.allowChanges)throw Error('Scene changes are disabled for furnishing');
   requireActive(run,bot);
@@ -949,6 +1011,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   if(plan.action==='cleanup_boxes')return cleanBoxes(run,bot);
   if(plan.action==='cleanup_cans')return cleanCans(run,bot);
   if(plan.action==='build_infrastructure')return constructInfrastructure(run,bot,plan.variant);
+  if(plan.action==='creative_build')return constructCreative(run,bot);
   if(plan.action==='enter_room'){
    const entry=plan.entry;
    if(!entry?.staging)throw Error('No reachable editable ground-floor room with a path');
@@ -1050,7 +1113,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
     return;
    }
    if(run.order.mode==='agent'||run.order.mode==='local_project'){
-    if(run.order.mode==='local_project')plan=recovery(run,bot,'Locally authorised construction; no Meta model call');
+    if(creativeBuildIntent(run.order.goal)&&run.order.allowChanges)plan={action:'creative_build',recovery:true,reason:'Create the next original procedural part with actual editor tools'};
+    else if(run.order.mode==='local_project')plan=recovery(run,bot,'Locally authorised construction; no Meta model call');
     else if((houseGoal(run.order.goal)||roomFurnishingSequence(run.order.goal).length>0)&&run.order.allowChanges){
      // Local procedural tools do not need a paid Meta call or its backoff.
      plan=recovery(run,bot,'Executable authorised construction/furnishing goal; Meta planning optional');
@@ -1133,6 +1197,20 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
      }catch(error){trace(bot,'GROUP RECEIPT PENDING','Built objects saved; task receipt needs server verification: '+error.message);}
     }else stop(run.id,'verified project milestones completed');
    }
+   if(plan.action==='creative_build'&&run.creativeBuilt.length>=creativeBlueprint(run.order.goal,creativeRole(run.groupJobId)).parts.length){
+    // Store the final list before the server independently reads the scene.
+    try{
+     await saveOrder(run,true);
+     if(run.groupJobId){
+      const result=await api.req('/api/robots/autonomy/group/result',{method:'POST',body:JSON.stringify({room:run.room,message_id:run.groupJobId,robot_id:run.id,outcome:'completed'})});
+      trace(bot,'CREATIVE PROJECT VERIFIED',`${run.creativeBuilt.length} primitives accepted in saved world; group receipt ${result.status}`);
+      stop(run.id,'creative structure verified',false);
+     }else{
+      trace(bot,'CREATIVE PROJECT VERIFIED',`${run.creativeBuilt.length} individually persisted scene parts; project closed`);
+      stop(run.id,'creative structure verified');
+     }
+    }catch(error){trace(bot,'CREATIVE RECEIPT PENDING',`Scene parts exist but completion is NOT verified by server: ${error.message}`);}
+   }
    if(plan.action==='named_transfer'&&run.order.mode==='local_project'&&detail.startsWith('Delivered ')){trace(bot,'TRANSFER FINISHED','Named target move has a saved scene receipt.');stop(run.id,'verified named object transfer');}
    if(plan.action==='cleanup_boxes'&&detail.startsWith('All ')&&/ Box copies verified (?:in|beside) /.test(detail)){
     if(run.groupJobId){
@@ -1174,7 +1252,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    if(!run.cancelled&&run.loop&&plan.recovery&&plan.action!=='idle'&&run.localBurst<(canCleanupGoal(run.order.goal)||boxCleanupGoal(run.order.goal)?48:run.order.sourceId?3:10)){
     run.localBurst++;
     clearTimeout(run.localTimer);
-    run.localTimer=setTimeout(()=>void cycle(run),plan.action==='furnish_room'?2500:12000);
+    run.localTimer=setTimeout(()=>void cycle(run),plan.action==='furnish_room'?2500:plan.action==='creative_build'?2800:12000);
    }
    // Account-configured model retry must not be stretched to a 180s work-order tick.
    // Only a blocked model request waits; unrelated local actions continue above.
@@ -1188,7 +1266,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    const diagnosis=operatorFailure(error);run.last={...autonomyResult('task',false,error.message),diagnosis};
    $('autonomyFailure').textContent=`FAILED · ${diagnosis.code}\n${diagnosis.reason}\nNEXT: ${diagnosis.remedy}`;
    trace(bot,'UNFINISHED',diagnosis.reason+' · Next: '+diagnosis.remedy+' · No unverified completion is claimed');
-   if(run.groupJobId&&run.pendingAction==='cleanup_boxes'&&!run.cancelled){
+   if(run.groupJobId&&['cleanup_boxes','creative_build'].includes(run.pendingAction)&&!run.cancelled){
     run.groupNoProgress=Math.min(15,run.groupNoProgress+1);
     if(run.groupNoProgress>=3){
      const holding=editor.items.some(o=>o.userData.storage?.type==='held'&&o.userData.storage.holderId===run.id);
@@ -1204,6 +1282,9 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
      clearTimeout(run.localTimer);
      run.localTimer=setTimeout(()=>void cycle(run),3000);
     }
+   }
+   if(run.pendingAction==='creative_build'&&!run.groupJobId&&!run.cancelled){
+    clearTimeout(run.localTimer);run.localTimer=setTimeout(()=>void cycle(run),8000);
    }
    if(run.pendingAction==='furnish_room'&&run.lastPlanVariant){
     const prev=run.projectDeferred.find(p=>p.variant===run.lastPlanVariant);
@@ -1245,7 +1326,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   if(order.mode==='preset'&&!order.presetId){toast('Choose an account-owned saved preset');return;}
   if(order.mode==='agent'&&!order.goal){toast('Describe a goal for the autonomous agent');return;}
   if(order.mode==='local_project'&&!requestedHomeCount(order.goal)&&!localProjectSequence(order.goal).length){
-   if(!canCleanupGoal(order.goal)&&!boxCleanupGoal(order.goal)){toast('Describe homes, a park, picnic area, cans cleanup or collecting Box copies into a named bin');return;}
+   if(!canCleanupGoal(order.goal)&&!boxCleanupGoal(order.goal)&&!creativeBuildIntent(order.goal)){toast('Describe a creative structure, homes, a park, picnic area, cans cleanup or collecting Box copies into a named bin');return;}
   }
   const billable=order.mode==='agent'||order.mode==='assist';
   if(billable&&!await confirmAction(`This ${loop?'loop':'task'} will send billable Meta API requests${order.vision?' with six real head-camera images per decision':''}. ${loop?'Each decision repeats no more frequently than every '+order.interval+' seconds; this opted-in loop is saved on the server and resumes after browser refresh when the signed-in visible 3D scene loads. It does not run while the browser is closed.':'Only one cycle runs and will not auto-resume.'} Scene changes are ${order.allowChanges?'enabled for robot-built objects':'disabled'}.`,{title:'Enable autonomous robot operator?',confirmLabel:'Enable autonomy'}))return;
@@ -1337,7 +1418,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
     savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});
     runs.set(id,run);
     run.timer=setInterval(()=>void cycle(run),order.interval*1000);
-    trace(worker,'GROUP DELEGATED',`Human message ${task.source_message_id}, ${task.kind}; nearest free editable worker ${worker.name}; ${boxes.length} boxes; bin ${selection?.targetName||'(construction)'} · one atomic server claim.`);
+    trace(worker,'GROUP DELEGATED',`Human message ${task.source_message_id}, ${task.kind}; free editable worker ${worker.name}; ${boxes.length} boxes; ${task.kind==='creative_build'?'creative role '+creativeRole(task.source_message_id):'bin '+(selection?.targetName||'(construction)')} · one atomic server claim.`);
     trace(worker,'ORDER COMMITTED',`SQLite group assignment and robot order saved together BEFORE physical movement.`);
     toast(`${worker.name}: ${task.kind==='cleanup_boxes'?'box cleanup':'construction'} accepted; follow physical receipts in Brain.`);
     void cycle(run);assigned++;
@@ -1375,7 +1456,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   // when no robot is free or a named bin has not loaded yet. Chat replies are
   // never a substitute for physical tool receipts.
   const groupCleanup=groupBoxCleanupInstruction(message.text);
-  const groupBuild=cityTeamIntent(message.text)?null:chatConstructionInstruction(message.text);
+  const groupCreative=groupCreativeIntent(message.text);
+  const groupBuild=groupCreative||(!cityTeamIntent(message.text)?chatConstructionInstruction(message.text):null);
   if(groupCleanup||groupBuild){
    handledChatMessages.add(message.id);
    try{
@@ -1533,6 +1615,23 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   if(roomBuilder){
    handledChatMessages.add(message.id);
    return assignRoomFurnishing(roomBuilder,namedRoomFurnishingInstruction(message.text,roomBuilder.name),'direct human furnishing instruction',{messageId:message.id});
+  }
+  // A saved direct human request for an actual primitive is immediately
+  // executable, rather than returning an imaginary 'try a cube' suggestion.
+  const creativeBot=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&namedCreativeIntent(message.text,o.name));
+  if(creativeBot){
+   handledChatMessages.add(message.id);
+   const id=creativeBot.userData.editorId,old=runs.get(id);
+   if(old&&old.groupJobId){trace(creativeBot,'CREATIVE REQUEST DEFERRED','Robot owns a human group task; another available robot can take this request without discarding work.');return -1;}
+   const goal=namedCreativeIntent(message.text,creativeBot.name);
+   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
+   const run=newRun(order,true,creativeBot);run.intentMessageId=message.id;
+   try{await saveOrder(run,true);}catch(error){trace(creativeBot,'CREATIVE NOT STARTED',error.message);return -1;}
+   if(old)stop(id,'superseded by direct human creative project',false);
+   savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});runs.set(id,run);
+   run.timer=setInterval(()=>void cycle(run),order.interval*1000);
+   trace(creativeBot,'CREATIVE ORDER COMMITTED',`Human instruction ${message.id}: ${creativeBlueprint(goal).name}; real part-by-part scene edits will follow.`);
+   void cycle(run);update();return 1;
   }
   // A fresh direct construction request outranks the robot's old generic
   // agent order. A conversation reply alone never authorises scene edits.
