@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
+import {spawnSync} from './helpers/subprocess-test.mjs';
 import {fileURLToPath} from 'node:url';
 const server=new URL('../backend/server.py',import.meta.url);
 const script=String.raw`

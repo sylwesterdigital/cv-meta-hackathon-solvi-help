@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
+import {spawnSync} from './helpers/subprocess-test.mjs';
 import {sanitiseWall,wallSegments} from '../js/office-wall-math.js';
 import {canPreset,presetEntry,presetCategory} from '../js/object-preset-data.js';
 const read=f=>readFileSync(new URL('../'+f,import.meta.url),'utf8');

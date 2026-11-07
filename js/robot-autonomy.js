@@ -1,4 +1,5 @@
 import {characterPolicy} from './robot-character-core.js';
+import {groupBoxCleanupInstruction,groupBinClarification,selectCleanupTarget,nearestAvailableCleanupWorker,boxCleanupProjectGoal,sceneBinTargets} from './robot-group-cleanup.js';
 import {namedRoomFurnishingInstruction,namedWorkContinuation,namedFurnishingPreference,recentHumanFurnishingAuthority,promisedRoomFurnishing,roomFurnishingSequence,nextRoomFurnishing} from './robot-room-furnishing.js';
 // v0.2.192: server-durable work orders with browser-controlled scene execution. Never simulates keyboard events:
 // the same checked editor/physics tools used by human keys are invoked directly.
@@ -574,13 +575,25 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   requireActive(run,bot);
   if(!run.order.allowChanges)throw Error('Object collection requires scene-change permission');
   const goal=run.order.goal.toLowerCase();
-  const bins=editor.items.filter(o=>o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='bin'&&o.name&&goal.includes(o.name.toLowerCase())).sort((a,b)=>b.name.length-a.name.length);
-  if(!bins.length||bins.length>1&&bins[0].name.length===bins[1].name.length)throw Error('No unique explicitly named junk bin found; will not select an unrelated container');
-  const bin=bins[0];
+  // The actual target ID from an authorised group dispatch outranks the
+  // conversational wording of an older robot work order. Without an ID,
+  // require one explicitly named matching scene object, never Small Bin.
+  const isBin=o=>o?.userData?.editorId&&['furniture','model','cube','cylinder'].includes(o.userData.editorKind)&&
+   /\b(?:bin|junk)\b/i.test(o.name||'');
+  const existing=editor.items.find(o=>o.userData.editorId===run.cleanupBinId);
+  const candidates=editor.items.filter(o=>isBin(o)&&goal.includes(o.name.toLowerCase()));
+  const bin=isBin(existing)?existing:candidates.length===1?candidates[0]:null;
+  if(!bin)throw Error(`No unique named junk-bin object loaded for ${run.order.goal.slice(0,120)}; do not use Small Bin as a substitute`);
   if(!editor.canEdit(bin))throw Error(`${bin.name} is not editable by the current robot operator`);
   run.cleanupBinId=bin.userData.editorId;
-  // Retain receipts only while the same object is still in the requested bin.
-  run.cleanupDone=run.cleanupDone.filter(id=>editor.items.some(o=>o.userData.editorId===id&&o.userData.storage?.type==='container'&&o.userData.storage.containerId===bin.userData.editorId));
+  const procedural=bin.userData.furniture?.variant==='bin';
+  const verified=box=>procedural
+   ?box.userData.storage?.type==='container'&&box.userData.storage.containerId===bin.userData.editorId
+   :!box.userData.storage&&Math.hypot(box.position.x-bin.position.x,box.position.z-bin.position.z)<=2.5;
+  // A modelled junk bin has no inventory container API. For that case only,
+  // a close-by physical drop and persisted scene pose is a delivered-near
+  // receipt, never a claim of storage inside the model.
+  run.cleanupDone=run.cleanupDone.filter(id=>editor.items.some(o=>o.userData.editorId===id&&verified(o)));
   const descriptors=cargoConstraints(run.order.goal);
   const allBoxes=editor.items.filter(o=>o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='box'&&/^Box copy\d+$/i.test(o.name));
   const boxes=allBoxes.filter(o=>groundedBoxMatch(o,descriptors).ok);
@@ -589,17 +602,17 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    throw Error(allBoxes.length?`No Box copies can be verified against the requested ${description||'name'}; no unrelated boxes touched`:'No procedural Box copies exist in this room; nothing was moved');
   }
   if(descriptors.colour||descriptors.content)trace(bot,'CARGO FILTER',`Requested ${descriptors.colour||'any colour'}${descriptors.content?' containing '+descriptors.content:''}: ${boxes.length}/${allBoxes.length} boxes confirmed by scene metadata; others untouched`);
-  const isStored=o=>o.userData.storage?.type==='container'&&o.userData.storage.containerId===bin.userData.editorId;
+  const isStored=verified;
   // A successfully saved object can still need its work-order receipt if the
   // tab refreshed after the scene save but before the order-state save.
   for(const box of boxes.filter(isStored)){
    if(!run.cleanupDone.includes(box.userData.editorId)){
     const saved=await editor.persistObject(box,run.room);
-    if(saved){run.cleanupDone.push(box.userData.editorId);trace(bot,'DISPOSAL RECOVERED',`${box.name} is stored in ${bin.name}; save acknowledged`);}
+    if(saved){run.cleanupDone.push(box.userData.editorId);trace(bot,'DISPOSAL RECOVERED',`${box.name} ${procedural?'stored in':'delivered beside'} ${bin.name}; save acknowledged`);}
    }
   }
   const pending=boxes.filter(o=>!run.cleanupDone.includes(o.userData.editorId));
-  if(!pending.length)return `All ${boxes.length} Box copies verified in ${bin.name}`;
+  if(!pending.length)return `All ${boxes.length} Box copies verified ${procedural?'in':'beside'} ${bin.name}`;
   const now=Date.now(),skippedById=new Map(run.cleanupSkipped.map(e=>[e.id,e]));
   // Finish anything already held before attempting a second pickup.
   const held=pending.find(o=>o.userData.storage?.type==='held'&&o.userData.storage.holderId===run.id);
@@ -621,7 +634,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
     await approachTransferTarget(run,bot,box,1.85);
     requireActive(run,bot);
     if(!autonomyProximity(bot,box,2.4)||Math.abs(bot.position.y-box.position.y)>1.7)throw Error('Box remains outside physical pickup reach on this floor');
-    if(await tryThrowBox(run,bot,box,bin))return `Cleanup progress: ${run.cleanupDone.length}/${boxes.length} Box copies stored in ${bin.name} (verified throw)`;
+    if(procedural&&await tryThrowBox(run,bot,box,bin))return `Cleanup progress: ${run.cleanupDone.length}/${boxes.length} Box copies stored in ${bin.name} (verified throw)`;
+    if(box.userData.storage&&!(box.userData.storage.type==='held'&&box.userData.storage.holderId===run.id))throw Error('Box was claimed by another worker during approach');
     // A missed physical throw may have moved the box: reacquire its CURRENT
     // scene position before holding it. Inventory.hold alone does not check
     // reach, so it must never become a remote telekinetic pickup.
@@ -644,14 +658,18 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    await approachTransferTarget(run,bot,bin,2.35);
    requireActive(run,bot);
    if(!autonomyProximity(bot,bin,2.65)||Math.abs(bot.position.y-bin.position.y)>1.7)throw Error('Junk bin remains out of reach on this floor');
-   if(!editor.inventory.storeInBin(bot,box,bin))throw Error('Bin refused the box (capacity, size or permissions)');
-   if(!isStored(box))throw Error('Storage receipt not reflected in scene state');
+   if(procedural){
+    if(!editor.inventory.storeInBin(bot,box,bin))throw Error('Bin refused the box (capacity, size or permissions)');
+   }else{
+    if(!editor.inventory.drop(bot,box))throw Error('Physical drop beside modelled bin was refused');
+   }
+   if(!isStored(box))throw Error(procedural?'Storage receipt not reflected in scene state':'Box was not dropped within 2.5m of the named modelled bin');
    // A local draw state alone is not proof of a saved multiplayer edit.
    if(!await editor.persistObject(box,run.room))throw Error('Scene server did not acknowledge the stored box; save pending retry');
    if(!run.cleanupDone.includes(id))run.cleanupDone.push(id);
    run.cleanupSkipped=run.cleanupSkipped.filter(e=>e.id!==id);
-   trace(bot,'BOX STORED',`${box.name} saved inside ${bin.name}; ${run.cleanupDone.length}/${boxes.length} verified items`);
-   return `Cleanup progress: ${run.cleanupDone.length}/${boxes.length} Box copies stored in ${bin.name}`;
+   trace(bot,procedural?'BOX STORED':'BOX DELIVERED NEAR',`${box.name} saved ${procedural?'inside':'beside'} ${bin.name}; ${run.cleanupDone.length}/${boxes.length} verified items`);
+   return `Cleanup progress: ${run.cleanupDone.length}/${boxes.length} Box copies ${procedural?'stored in':'delivered beside'} ${bin.name}`;
   }catch(error){
    const old=skippedById.get(id),attempts=Math.min(20,(old?.attempts||0)+1);
    const retryAt=Date.now()+Math.min(120000,12000*2**Math.min(attempts-1,3));
@@ -1079,7 +1097,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
     stop(run.id,'verified project milestones completed');
    }
    if(plan.action==='named_transfer'&&run.order.mode==='local_project'&&detail.startsWith('Delivered ')){trace(bot,'TRANSFER FINISHED','Named target move has a saved scene receipt.');stop(run.id,'verified named object transfer');}
-   if(plan.action==='cleanup_boxes'&&detail.startsWith('All ')&&detail.includes(' Box copies verified in ')){trace(bot,'CLEANUP FINISHED','All Box copies have server-acknowledged storage receipts.');stop(run.id,'verified box collection');}
+   if(plan.action==='cleanup_boxes'&&detail.startsWith('All ')&&/ Box copies verified (?:in|beside) /.test(detail)){trace(bot,'CLEANUP FINISHED','All Box copies have server-acknowledged storage receipts.');stop(run.id,'verified box collection');}
    if(plan.action==='cleanup_cans'&&detail.startsWith('All detected table cans cleared')){trace(bot,'CLEANUP FINISHED','Table clear per current scene objects; work order stopped.');stop(run.id,'verified table can cleanup');}
    if(run.last.status==='blocked'&&run.loop)trace(bot,'WHY BLOCKED',detail+' · A new direct assignment can replace the old work order. Existing objects remain untouched.');
    if(plan.action==='idle'&&/^GOAL REACHED:/.test(detail))stop(run.id,'verified project target reached');
@@ -1215,6 +1233,63 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   if(!message?.id||handledChatMessages.has(message.id)||!api.online||!api.auth())return 0;
   // Never fall through to a misleading model promise when the sender cannot
   // operate the addressed robot. Real scene-edit permissions are required.
+  // @all cleanup is one shared human assignment, not five independent
+  // robot chat promises. Rank by distance to real Box copy scene objects;
+  // only an idle editable robot can receive the persisted work order.
+  const groupCleanup=groupBoxCleanupInstruction(message.text);
+  if(groupCleanup){
+   handledChatMessages.add(message.id);
+   let history=[];
+   try{history=(await api.req('/api/messages?room='+encodeURIComponent(room()))).messages||[];}
+   catch(error){emitLog(null,'GROUP DISPATCH FAILED','Cannot read the preceding user-named bin: '+error.message);return 0;}
+   const selected=selectCleanupTarget(editor.items,groupCleanup,history);
+   if(!selected.targetName){emitLog(null,'GROUP NEEDS EXACT BIN','No uniquely named Big Junk destination in current scene or recent human messages; no wrong bin was selected.');
+    toast('Box cleanup: name the destination bin first.');return 0;}
+   const boxes=editor.items.filter(o=>o.userData.editorKind==='furniture'&&o.userData.furniture?.variant==='box'&&/^Box copy\d+$/i.test(o.name)&&!o.userData.storage);
+   const robots=editor.items.filter(o=>o.userData.editorKind==='robot');
+   const worker=nearestAvailableCleanupWorker(robots,boxes,{
+    busyIds:[...runs.keys()],controlledId:editor.controlledRobot?.()?.userData.editorId||'',canEdit:bot=>editor.canEdit(bot)});
+   if(!worker){emitLog(null,'GROUP DEFERRED',`${boxes.length} free Box copies; no editable idle robot available. Existing robot work orders remain intact.`);
+    toast('Box cleanup: no free editable robot found.');return 0;}
+   const id=worker.userData.editorId,goal=boxCleanupProjectGoal(selected.targetName);
+   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
+   const run=newRun(order,true,worker);
+   run.cleanupBinId=selected.target?.userData.editorId||'';
+   run.intentMessageId=String(message.id).slice(0,100);
+   try{await saveOrder(run,true);}
+   catch(error){trace(worker,'GROUP ORDER REJECTED',error.message);return 0;}
+   // Retire stale unverified copies of this same job AFTER the new work
+   // order is committed, to prevent duplicate box claims.
+   for(const other of [...runs.values()])if(other.id!==id&&!other.busy&&boxCleanupGoal(other.order.goal))stop(other.id,'superseded by authorised nearest-idle group cleanup');
+   savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});
+   runs.set(id,run);run.timer=setInterval(()=>void cycle(run),order.interval*1000);
+   trace(worker,'GROUP DELEGATED',`Human message ${message.id}: nearest idle worker ${worker.name}, ${boxes.length} Box copies, target ${selected.targetName}${selected.target?' · scene ID '+run.cleanupBinId:' · target not loaded'}. Single owner to prevent duplicate pickups.`);
+   trace(worker,'ORDER COMMITTED',`Saved ${goal}; physical pickup, route and server receipt required. Target state: ${selected.reason}.`);
+   toast(`${worker.name} assigned to group Box copy cleanup → ${selected.targetName}. Follow verified scene receipts in Brain.`);
+   void cycle(run);update();return 1;
+  }
+  // New @all destination corrections update the existing cleanup order
+  // rather than becoming five conversational acknowledgements.
+  if(groupBinClarification(message.text)){
+   const active=[...runs.values()].filter(r=>boxCleanupGoal(r.order.goal)&&editor.canEdit(robotFor(r.id)));
+   if(active.length){
+    handledChatMessages.add(message.id);
+    let history=[];
+    try{history=(await api.req('/api/messages?room='+encodeURIComponent(room()))).messages||[];}
+    catch(error){emitLog(null,'BIN UPDATE FAILED',error.message);return 0;}
+    const selected=selectCleanupTarget(editor.items,message.text,history);
+    if(!selected.targetName)return 0;
+    let accepted=0;
+    for(const run of active){
+     const bot=robotFor(run.id),oldGoal=run.order.goal,oldId=run.cleanupBinId;
+     run.order.goal=boxCleanupProjectGoal(selected.targetName);run.cleanupBinId=selected.target?.userData.editorId||'';
+     try{await saveOrder(run,true);trace(bot,'BIN TARGET UPDATED',`${selected.targetName}: ${selected.reason}; actual bin scene ID ${run.cleanupBinId||'not yet loaded'}`);accepted++;
+      if(!run.busy)void cycle(run);}
+     catch(error){run.order.goal=oldGoal;run.cleanupBinId=oldId;trace(bot,'BIN UPDATE FAILED',error.message);}
+    }
+    return accepted;
+   }
+  }
   const denied=editor.items.find(o=>o.userData.editorKind==='robot'&&!editor.canEdit(o)&&
    (namedRoomFurnishingInstruction(message.text,o.name)||namedWorkContinuation(message.text,o.name)||
     namedFurnishingPreference(message.text,o.name)));

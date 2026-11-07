@@ -25,6 +25,7 @@ import {initCameraBookmarks} from './camera-bookmarks.js';
 import {initExtendedSettings} from './settings-extended.js';
 import {initRobotRoutines} from './robot-routines.js';
 import {initRobotAutonomy} from './robot-autonomy.js';
+import {groupBoxCleanupInstruction} from './robot-group-cleanup.js';
 import {initRobotLife} from './robot-life.js';
 import {ROBOT_PATH_ALL_KEY,robotPathVisible,setRobotPath,readPathSelection} from './robot-debug.js';
 
@@ -621,7 +622,7 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
     try{const work=await window.solviStartChatProjects?.(response.message);
      if(work>0)$('chatStatus').textContent='Verified robot work order stored; follow execution receipts in Robot Brains.';
      if(work<0){$('chatStatus').textContent='Robot task not authorised; no action or work order created.';return;}
-     const eyes=/@([^\n@]+?)\s+\/eyes(?:\s+(180|360))?\s*$/i.exec(text);if(eyes){const name=eyes[1].trim().toLowerCase();const robot=window.solviEditor?.items.find(o=>o.userData.editorKind==='robot'&&o.name.toLowerCase()===name);if(robot)await window.solviPublishRobotEyes?.(Number(eyes[2]||180),robot);else toast('Robot for /eyes not found');}else await reactToRobotMessage(response.message,0,interruptedRobot);}
+     const eyes=/@([^\n@]+?)\s+\/eyes(?:\s+(180|360))?\s*$/i.exec(text);if(eyes){const name=eyes[1].trim().toLowerCase();const robot=window.solviEditor?.items.find(o=>o.userData.editorKind==='robot'&&o.name.toLowerCase()===name);if(robot)await window.solviPublishRobotEyes?.(Number(eyes[2]||180),robot);else toast('Robot for /eyes not found');}else if(!(work>0&&groupBoxCleanupInstruction(text)))await reactToRobotMessage(response.message,0,interruptedRobot);}
     catch(error){$('chatStatus').textContent='Message delivered; robot reaction failed: '+error.message;}
   }
  }catch(e){playCue('error');$('chatStatus').textContent=e.message;toast(e.message);$('chatInput').value=text;}

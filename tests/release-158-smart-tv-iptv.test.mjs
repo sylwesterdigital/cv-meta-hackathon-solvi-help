@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import fs from 'node:fs';import {spawnSync} from 'node:child_process';
+import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import fs from 'node:fs';import {spawnSync} from './helpers/subprocess-test.mjs';
 const read=f=>fs.readFileSync(new URL('../'+f,import.meta.url),'utf8');
 const api=()=>vm.runInNewContext(read('js/smart-media-playlist.js').replace(/^import .*?;\s*$/gm,'').replaceAll('export ','')+'\n({parseIPTVPlaylist,safeIPTVPlaylistURL,cleanSmartOptions,safeChannelUrl,cleanChannels})',{URL,WeakMap,Map,Object,Array,Math,Number,String});
 test('IPTV parser reads named stream entries but not non-HTTPS, script, or unsupported formats',()=>{

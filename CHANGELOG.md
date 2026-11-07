@@ -1,3 +1,18 @@
+## v0.2.233 — Reliable Mac watcher test subprocesses
+
+- Investigate v0.2.232 watcher failure: `npm test` assertion `actual: null`, `expected: 0` after package hashes passed; no files reached production.
+- Address test-only subprocess reliability: retry only transient process-launch errors / timeouts; give timed subprocesses a minimum 30 s budget, report abnormal signals/errors; do not retry or mask real nonzero exits.
+- Use Node's built-in spec reporter to put failing test names and stack traces at the end of test output for visibility in shortened Mac watcher logs.
+- Preserve live autonomy, group delegation, object-save verification and original media/assets unchanged; watcher must still validate deployment.
+
+## v0.2.232 — Nearest-free group box delegation and grounded disposal
+
+- Make authenticated @all Box copy cleanup messages create exactly one server-persisted group assignment for the nearest idle editable robot, not several non-executable Meta chat promises.
+- Ground the destination in the actual scene object ID and earlier explicit human name Bin - Big Junk; never substitute Small Bin or a model-suggested target.
+- Extend verified box movement to a named imported-model bin as a physically approached, saved delivery BESIDE the model; procedural bins continue to use real inventory storage inside.
+- Allow group destination clarifications to update a committed cleanup task; check live permissions, physical pickup, movement and save acknowledgements, avoid concurrent group worker duplicates.
+- Maintain Mac watcher release-feed staging parity, original avatar assets, scene history, and deployment test gates. No browser-closed or server-side autonomous simulation.
+
 ## v0.2.231 — Fix watcher-stage release metadata regression
 
 - Reproduced the Mac-only test failure: release-195-public-readme-about.test.mjs incorrectly requires v0.2.195 and v0.2.200 in a watcher-published releases.json file that is explicitly trimmed to 30 releases. This produces the logged ERR_ASSERTION (actual false, expected true).

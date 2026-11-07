@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
+import {spawnSync} from './helpers/subprocess-test.mjs';
 import {chatNamedConstructionInstruction,namedRoofChoice,requestedHomeCount,workRecoveryPlan} from '../js/robot-autonomy-policy.js';
 const source=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 

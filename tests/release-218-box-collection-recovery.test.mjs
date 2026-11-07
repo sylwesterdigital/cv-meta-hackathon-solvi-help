@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
+import {spawnSync} from './helpers/subprocess-test.mjs';
 import {boxCleanupGoal,chatBoxCleanupInstruction,canCleanupGoal,workRecoveryPlan} from '../js/robot-autonomy-policy.js';
 import {cargoConstraints,groundedBoxMatch} from '../js/robot-transfer-decisions.js';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');

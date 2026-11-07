@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
+import {spawnSync} from './helpers/subprocess-test.mjs';
 import {validateSceneSnapshot} from '../js/scene-snapshot-guard.js';
 const source=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
 const python=code=>spawnSync('python3',['-c',code,new URL('../backend/server.py',import.meta.url).pathname,new URL('./fixtures/release-196-furniture-configs.json',import.meta.url).pathname],{encoding:'utf8'});

@@ -1,3 +1,18 @@
+# SOLVI.help Master LLM Handover — v0.2.233
+
+## v0.2.233 — Mac watcher subprocess gate
+
+Mac watcher rejected v0.2.232 during npm test with `actual:null expected:0`; this is consistent with a test subprocess that never exited normally, but the pasted log lacks the test name and cannot prove its exact cause. Test-only helper retries transient `EAGAIN`, `ENOMEM`, `EINTR`, `EBUSY`, `ETIMEDOUT` and improves diagnostics, leaving actual nonzero exits as hard failures. `npm test` retains all test files with the built-in spec reporter. Keep the watcher running and drop the entire release ZIP into updates/. No live deployment claim.
+
+
+## v0.2.232 — @all box cleanup dispatch
+
+- Make authenticated @all Box copy cleanup messages create exactly one server-persisted group assignment for the nearest idle editable robot, not several non-executable Meta chat promises.
+- Ground the destination in the actual scene object ID and earlier explicit human name Bin - Big Junk; never substitute Small Bin or a model-suggested target.
+- Extend verified box movement to a named imported-model bin as a physically approached, saved delivery BESIDE the model; procedural bins continue to use real inventory storage inside.
+- Allow group destination clarifications to update a committed cleanup task; check live permissions, physical pickup, movement and save acknowledgements, avoid concurrent group worker duplicates.
+- Maintain Mac watcher release-feed staging parity, original avatar assets, scene history, and deployment test gates. No browser-closed or server-side autonomous simulation.
+
 ## v0.2.231 — Mac watcher staging parity and release history
 
 - Watcher merge_history(stage,manifest) replaces app/releases.json from its local root and keeps newest 30 records. The old release-195 test asserted the existence of 0.2.195 and 0.2.200 in that short, valid history. A direct extracted-ZIP npm test therefore passed but watcher-staged npm test failed. Reproduced that specific failure and repaired the incorrect test condition. Older full change history remains in CHANGELOG.md.

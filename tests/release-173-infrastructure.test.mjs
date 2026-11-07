@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {spawnSync} from 'node:child_process';
+import {spawnSync} from './helpers/subprocess-test.mjs';
 const read=f=>fs.readFileSync(new URL('../'+f,import.meta.url),'utf8');
 const code=read('js/procedural-infrastructure.js').replace(/^import .*;\s*$/gm,'').replace(/export (const|function|class) /g,'$1 ');
 function mockThree(){

@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.231",
+  "currentVersion": "0.2.233",
   "releases": [
+    {
+      "version": "0.2.233",
+      "publishedAt": "2026-11-07T19:14:20Z",
+      "changes": [
+        "Harden the Mac watcher npm test gate: retry only transient child-process launch/timeout failures, keep genuine assertions and exits intact, and report subprocess signal/error details.",
+        "Increase test-only Python child startup budget from five-second or twelve-second deadlines to at least thirty seconds without altering application runtime behaviour.",
+        "Print failed test names and assertion locations at the end of npm test using the built-in Node spec reporter so truncated watcher logs no longer conceal the failing case.",
+        "Preserve v0.2.232 group delegation and verified box cleanup, portal pair presets, bed animations, scene permissions, and original assets."
+      ]
+    },
     {
       "version": "0.2.231",
       "publishedAt": "2026-11-07T14:30:43Z",
@@ -296,16 +306,6 @@
         "Collision and occlusion checks consider real transformed mesh bounds, individual wall surfaces, open doorways, long fence segments, floor elevations and camera frustum.",
         "Reject unsafe/no-view candidates before publishing; clean up rejected preset objects and rigid bodies without persisting deletions.",
         "Maintain existing v0.2.196 scene persistence, backups, multiplayer event validation, all previous features and original 3D assets."
-      ]
-    },
-    {
-      "version": "0.2.196",
-      "publishedAt": "2026-11-05T11:22:36Z",
-      "changes": [
-        "Fix rejected procedural furniture/tool/device scene saves and presets: full client 129-field configurations pass strict 200-field server compatibility limits, with type/range/allowlist/media validation intact.",
-        "Introduce checksummed, compressed room scene history with pre-upgrade startup snapshots, read-only backup endpoints, explicit bulk-delete safeguards and offline recovery utility.",
-        "Reject malformed or unexpectedly empty same-room loads without clearing locally rendered objects; retain a bounded read-only browser scene copy.",
-        "Preserve existing v0.2.195 README/ABOUT/CHANGELOG separation, multiplayer robot functionality, avatar model assets, and watcher ZIP contract."
       ]
     }
   ]
