@@ -237,7 +237,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.225',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.226',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1585,8 +1585,8 @@ def ai_vision():
 # endpoint NEVER edits scenes; the browser must use authorised scene tools.
 ROBOT_AUTONOMY_LAST = {}
 ROBOT_AUTONOMY_DAILY = {}
-AUTONOMY_ACTIONS = {'visit','deliver','build','build_house','use_preset','remove','rest','ask','inspect','idle'}
-AUTONOMY_BUILD_VARIANTS = {'chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can'}
+AUTONOMY_ACTIONS = {'visit','deliver','build','build_house','furnish_room','use_preset','remove','rest','ask','inspect','idle'}
+AUTONOMY_BUILD_VARIANTS = {'chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can','tv','fridge','lamp','speaker','monitor'}
 
 def validate_autonomy_decision(value,objects,robot_id,allow_changes=False,presets=None):
     if not isinstance(value,dict) or not isinstance(value.get('action'),str) or value['action'] not in AUTONOMY_ACTIONS:return None
@@ -1596,7 +1596,8 @@ def validate_autonomy_decision(value,objects,robot_id,allow_changes=False,preset
     if action=='deliver' and (not destination or destination not in by_id or destination in (robot_id,target) or by_id[target].get('kind')=='robot'):return None
     if action=='ask' and by_id[target].get('kind')!='robot':return None
     if action=='remove' and by_id[target].get('kind') in ('robot','light'):return None
-    if action in ('build','build_house','use_preset','remove') and not allow_changes:return None
+    if action in ('build','build_house','furnish_room','use_preset','remove') and not allow_changes:return None
+    if action=='furnish_room' and value.get('variant') not in ('chair','bed','sofa','stool','table','cabinet','tv','fridge','lamp','speaker','monitor'):return None
     preset_id=str(value.get('preset_id') or '')[:100]
     if action=='use_preset' and preset_id not in (presets or []):return None
     raw_house=value.get('house') if isinstance(value.get('house'),dict) else {}
@@ -1724,6 +1725,7 @@ def robot_autonomy_plan():
     tools={'visit':'travel to scene target_id', 'deliver':'pickup target_id, deliver to destination_id',
            'build':'create a small chair/bed/table/sofa/officeChair/stool/cabinet/bottle/can near robot',
            'build_house':'create a 3–8m house shell, floor, door, windows, roof and optional furnishings',
+           'furnish_room':'place one fridge/TV/furniture item on the room floor where the robot is physically present; needs a free footprint',
            'use_preset':'place an account-owned Furniture/Architecture preset by preset_id',
            'remove':'remove only robot-created objects from this session',
            'rest':'sit on existing seat or create one (if allowed)', 'ask':'ask another robot for help',
@@ -1731,7 +1733,7 @@ def robot_autonomy_plan():
     # Versioned, editable trait weights inform preference among REAL existing tools.
     # No new tool IDs are invented and preferences never override a human goal.
     action_families={'visit':'explore','deliver':'deliver','build':'build','build_house':'build',
-      'use_preset':'build','remove':'inspect','rest':'wait','ask':'communicate',
+      'furnish_room':'build','use_preset':'build','remove':'inspect','rest':'wait','ask':'communicate',
       'inspect':'inspect','idle':'wait'}
     persona_action_preferences={action:evaluate_action(brain.get('character'),family,True)['preference']
                                  for action,family in action_families.items()}
@@ -1739,7 +1741,7 @@ def robot_autonomy_plan():
         'You are selecting ONE safe tool call for a fictional robot in a 3D world. Use simple practical reasoning. '
         'The attached camera JPEG views (when provided) are 0,60,120,180,240,300 degrees. If only text is provided, never claim visual sight. '
         'The scene index has real IDs and positions, but does not prove objects are visible in a camera. '
-        'For a request to construct a little house, prefer build_house if scene changes are enabled; do not merely reply in prose. '
+        'For a request to construct a little house, prefer build_house if scene changes are enabled; do not merely reply in prose. For a request to furnish the current room with an actual procedural variant such as tv or fridge, prefer furnish_room; a failed older house order does not prevent this new task. '
         'Check available_presets FIRST when they are useful; use_preset only with an actual preset_id. '
         'For larger tasks, a verified first step can include constructing a complete house with local substeps. '
         'Return exactly ONE JSON object, without prose or markdown: '
@@ -1749,7 +1751,7 @@ def robot_autonomy_plan():
         'Never invent IDs or say any physical task was completed before tool confirmation. '
         'Use build_house only for an explicit construction goal. Use house dimensions between 3 and 8 metres. '
         'Do not delete other users, pre-existing scene objects, avatars or lights. '
-        'Do not select build, build_house, use_preset or remove unless allow_changes is true. '
+        'Do not select build, build_house, furnish_room, use_preset or remove unless allow_changes is true. '
         'For visit/inspect/ask/deliver use exact IDs from the scene index; ask requires a robot ID. '
         'Use last_result and previous verified actions to avoid duplicate construction and repeated failed moves. If an action failed, try a different available tool instead of repeating forever. If the objective includes a hospital, do not claim medicines or patient care; those tools are unavailable. '
         'If nothing is feasible, return idle with a clear reason. '
@@ -1853,7 +1855,7 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference'}
+    safe_keys={'completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','projectDeferred','projectPending'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
@@ -1873,8 +1875,20 @@ def valid_robot_work_order(order,state):
     projects=stored.get('projectPlaced',[])
     if (not isinstance(projects,list) or len(projects)>6 or
         any(not isinstance(p,dict) or not isinstance(p.get('id'),str) or len(p['id'])>100 or
-            p.get('variant') not in ('chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can') for p in projects)):
+            p.get('variant') not in ('chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can','tv','fridge','lamp','speaker','monitor') for p in projects)):
         return None
+    pending=stored.get('projectPending',[])
+    if (not isinstance(pending,list) or len(pending)>6 or any(
+        not isinstance(p,dict) or set(p)!={'id','variant'} or
+        not isinstance(p['id'],str) or not 1<=len(p['id'])<=100 or
+        p['variant'] not in ('chair','bed','sofa','stool','table','cabinet','tv','fridge','lamp','speaker','monitor') for p in pending)):return None
+    deferred=stored.get('projectDeferred',[])
+    if (not isinstance(deferred,list) or len(deferred)>6 or any(
+         not isinstance(p,dict) or set(p)!={'variant','attempts','retryAt','reason'} or
+         p['variant'] not in ('chair','bed','sofa','stool','table','cabinet','tv','fridge','lamp','speaker','monitor') or
+         type(p['attempts']) is not int or not 1<=p['attempts']<=5 or
+         type(p['retryAt']) not in (int,float) or not math.isfinite(p['retryAt']) or not 0<=p['retryAt']<=9999999999999 or
+         not isinstance(p['reason'],str) or len(p['reason'])>110 for p in deferred)):return None
     team=stored.get('team')
     if team is not None:
         if not isinstance(team,dict) or set(team)-{'id','role','anchor','label'} or len(team)>4:return None
@@ -3740,7 +3754,7 @@ def robot_react():
        ' Only claim direct visual perception from last_real_camera_observation, and qualify by its age; the scene index is not direct sight. Respond naturally, not with a canned camera-status disclaimer.'
        ' Answer the actual person first. If it adds something, include ONE brief casual aside about what caught your attention or your next practical move, in your own voice and everyday jargon. This is a character remark, not a report of hidden reasoning. Skip the aside when it would be filler.'
        ' Prefer real task receipts and recent actions over old camera descriptions. If last_client_reported_exploration exists, do not claim the robot has only made an older short walk; distinguish a completed client-reported exploration from an active mission.'
-       ' When invited to improve or build the world, name a specific achievable next step or a saved work order. A friendly reply or broad group invitation is NOT scene construction, and must never be described as completed world edits.'
+       ' When invited to improve or build the world, name a specific achievable next step or a saved work order. A friendly reply or broad group invitation is NOT scene construction, and must never be described as completed world edits. A new authorised human request to add specified procedural furniture can create a persistent local work order before this chat reply. Consult saved_work_order and recent receipts. Do not tell the user that chat can never trigger tools or claim you saved a preference that has no recorded state. Report a queued request as queued, not completed.'
        ' Describe places naturally with distinctive objects, buildings, paths, entrances and landmarks rather than raw X/Z coordinates unless the human explicitly asks for measurements. Do not invent landmarks or claim a place was seen in camera when only the scene index lists it.'
        ' Avoid repetitive sky/tiles reports, formal evidence-debate wording, generic self-assessment, and [S1] reference labels unless explicitly requested.'
        ' Do not claim to be walking, moving, rerouting, or executing a mission unless the server provided an actual scene command. A chat reply alone does not move the avatar.'

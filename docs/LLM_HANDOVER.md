@@ -1,4 +1,12 @@
-# SOLVI.help Master LLM Handover — v0.2.225
+# SOLVI.help Master LLM Handover — v0.2.226
+
+## v0.2.226 — Grounded room furnishing (7 November 2026)
+
+- Turn explicit human @Robot add/place/install requests for a TV, fridge and other supported procedural furniture into a saved local interior work order, replacing an unrelated blocked old house mission.
+- Use actual editable house-floor bounds and collision obstacles to choose an indoor placement; never put requested room furniture through a wall, outside the room, or on a different storey.
+- Require a successful /api/scene/object save acknowledgement for every room furnishing; preserve pending object IDs across transient failures and defer blocked items while working on other requested variants.
+- Expose furnish_room as a permitted, bounded Meta planning action with matching browser/server validation, while direct authorised instructions work without a Meta model request.
+- Avoid dialogue falsely claiming chat cannot trigger tools; retain live permission checks, robot personality, existing scene content and deploy-gate integration tests.
 
 ## v0.2.225 — Saved-trait self-awareness (7 November 2026)
 

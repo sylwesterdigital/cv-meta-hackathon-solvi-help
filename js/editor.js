@@ -1426,15 +1426,65 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   if(this.routeRobot(robot,point))return true;
   interruptRobotMission(robot);return false;
  }
+ // The interior furnishing tool uses an actual house floor as its support.
+ // It only works when this robot is already on that floor; no placement through
+ // a wall or at a remote scene coordinate is inferred from a chat sentence.
+ planRobotRoomFurnishing(robot,variant){
+  if(!robot||!this.canEdit(robot)||!this.items.includes(robot)||
+     !['fridge','tv','sofa','bed','table','chair','cabinet','lamp','speaker','monitor','stool'].includes(variant))return null;
+  const probe=objectFor('furniture');rebuildFurniture(probe,{variant});
+  const dims=new THREE.Box3().setFromObject(probe).getSize(new THREE.Vector3());this.disposeObject(probe);
+  const obstacles=this.navigationObstacles(robot),floors=this.items.filter(o=>
+   o.userData.editorKind==='cube'&&(o.userData.autonomyFloor===true||o.name?.endsWith(' · house floor'))&&this.canEdit(o));
+  let best=null;
+  for(const floor of floors){
+   const b=new THREE.Box3().setFromObject(floor);
+   if(b.isEmpty()||Math.abs(robot.position.y-b.max.y)>1.25)continue;
+   // Require actual presence in the room, rather than a remote placement
+   // across another building's wall or on a different storey.
+   if(robot.position.x<b.min.x-.35||robot.position.x>b.max.x+.35||
+      robot.position.z<b.min.z-.35||robot.position.z>b.max.z+.35)continue;
+   const mx=dims.x/2+.30,mz=dims.z/2+.30;
+   const startX=b.min.x+mx,endX=b.max.x-mx,startZ=b.min.z+mz,endZ=b.max.z-mz;
+   if(startX>endX||startZ>endZ)continue;
+   for(let x=startX;x<=endX+.001;x+=.35)for(let z=startZ;z<=endZ+.001;z+=.35){
+    if(Math.hypot(x-robot.position.x,z-robot.position.z)<.85)continue;
+    const blocked=obstacles.some(o=>o.minX<x+dims.x/2+.10&&o.maxX>x-dims.x/2-.10&&
+     o.minZ<z+dims.z/2+.10&&o.maxZ>z-dims.z/2-.10);
+    if(blocked)continue;
+    const score=Math.hypot(x-robot.position.x,z-robot.position.z);
+    if(!best||score<best.score)best={at:{x,y:b.max.y,z},floorId:floor.userData.editorId,score};
+   }
+  }
+  return best;
+ }
+ createRobotRoomFurniture(robot,variant){
+  const site=this.planRobotRoomFurnishing(robot,variant);
+  return site?this.createRobotFurniture(robot,variant,{at:site.at,roomFloorId:site.floorId}):null;
+ }
  createRobotFurniture(robot,variant='chair',options={}){
   if(!robot||robot.userData.editorKind!=='robot'||!this.canEdit(robot)||
-     !['chair','officeChair','stool','bed','armchair','sofa','table','cabinet','bottle','can','bin'].includes(variant))return null;
+     !['chair','officeChair','stool','bed','armchair','sofa','table','cabinet','bottle','can','bin','tv','fridge','lamp','speaker','monitor'].includes(variant))return null;
   const obj=objectFor('furniture');rebuildFurniture(obj,{variant});obj.userData.physics={mode:'static'};
   const bb=new THREE.Box3().setFromObject(obj),size=bb.getSize(new THREE.Vector3());
   const margin=Math.max(1.05,size.x*.6,size.z*.6);
   // Respect all nearby footprints; never build furniture across a doorway or
   // inside another scene object. The robot's own capsule is excluded here.
   const obstacles=this.navigationObstacles(robot);
+  let roomFloor=null,roomBounds=null;
+  if(options.roomFloorId){
+   roomFloor=this.items.find(o=>o.userData.editorId===options.roomFloorId&&
+     o.userData.editorKind==='cube'&&(o.userData.autonomyFloor===true||o.name?.endsWith(' · house floor'))&&this.canEdit(o));
+   if(!roomFloor){this.disposeObject(obj);return null;}
+   roomBounds=new THREE.Box3().setFromObject(roomFloor);
+   const x=options.at?.x,z=options.at?.z,y=options.at?.y;
+   if(!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(y)||
+     Math.abs(y-roomBounds.max.y)>.07||Math.abs(robot.position.y-y)>1.25||
+     robot.position.x<roomBounds.min.x-.35||robot.position.x>roomBounds.max.x+.35||
+     robot.position.z<roomBounds.min.z-.35||robot.position.z>roomBounds.max.z+.35||
+     x-size.x/2<roomBounds.min.x+.28||x+size.x/2>roomBounds.max.x-.28||
+     z-size.z/2<roomBounds.min.z+.28||z+size.z/2>roomBounds.max.z-.28){this.disposeObject(obj);return null;}
+  }
   let position=null;
   if(!options.at)for(const radius of [3.2,4.5,5.8])for(const angle of [0,Math.PI/2,-Math.PI/2,Math.PI,Math.PI/4,-Math.PI/4]){
    const heading=robot.rotation.y+angle;
@@ -1448,7 +1498,7 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
    position={x,z};
   }
   if(!position){this.disposeObject(obj);return null;}
-  positionNewOnGround(obj,{x:position.x,y:0,z:position.z});
+  positionNewOnGround(obj,{x:position.x,y:roomBounds?roomBounds.max.y:0,z:position.z});
   obj.name=robot.name+' · '+variant;
   obj.userData.ownerId=window.solviAPI?.auth()?.profile?.id||null;
   obj.userData.autonomyCreatedBy=robot.userData.editorId;

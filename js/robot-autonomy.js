@@ -1,4 +1,5 @@
 import {characterPolicy} from './robot-character-core.js';
+import {namedRoomFurnishingInstruction,roomFurnishingSequence,nextRoomFurnishing} from './robot-room-furnishing.js';
 // v0.2.192: server-durable work orders with browser-controlled scene execution. Never simulates keyboard events:
 // the same checked editor/physics tools used by human keys are invoked directly.
 import * as THREE from 'three';
@@ -108,7 +109,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    inspectionFailed:run.house.inspectionFailed||''}:null;
   return {house,step:run.step,completed:run.completed,last:run.last,metaFailures:run.metaFailures,
    nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,contacted:run.contacted,
-   placedSupplies:run.placedSupplies,projectPlaced:run.projectPlaced,completedHouses:run.completedHouses,
+   placedSupplies:run.placedSupplies,projectPlaced:run.projectPlaced,projectPending:run.projectPending,projectDeferred:run.projectDeferred,completedHouses:run.completedHouses,
    researchNotes:run.researchNotes,pendingAction:run.pendingAction,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,cleanupThrowTried:run.cleanupThrowTried,askedPreferences:run.askedPreferences,roofPreference:run.roofPreference,team:run.team,teamBuilt:run.teamBuilt};
  }
  function restoreHouse(state){
@@ -134,6 +135,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    invitations:Array.isArray(state.invitations)?state.invitations.slice(0,20):[],
    contacted:Array.isArray(state.contacted)?state.contacted.slice(0,20):[],placedSupplies:Number(state.placedSupplies)||0,
    projectPlaced:Array.isArray(state.projectPlaced)?state.projectPlaced.filter(p=>p&&typeof p.id==='string'&&typeof p.variant==='string').slice(0,6):[],
+   projectDeferred:Array.isArray(state.projectDeferred)?state.projectDeferred.filter(p=>p&&typeof p.variant==='string'&&Number.isInteger(p.attempts)&&Number.isFinite(p.retryAt)&&typeof p.reason==='string').slice(0,6):[],
+   projectPending:Array.isArray(state.projectPending)?state.projectPending.filter(p=>p&&typeof p.id==='string'&&typeof p.variant==='string').slice(0,6):[],
    completedHouses:Array.isArray(state.completedHouses)?state.completedHouses.filter(id=>typeof id==='string').slice(0,3):[],
    team:cityTeamState(state.team),teamBuilt:Array.isArray(state.teamBuilt)?state.teamBuilt.filter(x=>x&&['road','footpath'].includes(x.variant)&&typeof x.id==='string').slice(0,8):[],
    cleanupBinId:String(state.cleanupBinId||'').slice(0,100),cleanupHomeId:String(state.cleanupHomeId||'').slice(0,100),cleanupDone:Array.isArray(state.cleanupDone)?state.cleanupDone.filter(id=>typeof id==='string').slice(0,48):[],
@@ -213,7 +216,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
     existingHouse:!!existingRobotHouse(run),peerId:peer?.userData.editorId||'',attempts:run.recoveryAttempts,hasSeat,
     invitationTargets:remaining.map(o=>({id:o.userData.editorId,name:o.name})),
     contactTargets:contacts.map(o=>({id:o.userData.editorId,name:o.name})),placedSupplies:run.placedSupplies,
-    projectPlaced:run.projectPlaced,completedHouses:run.completedHouses,
+    projectPlaced:run.projectPlaced,projectPending:run.projectPending,projectDeferred:run.projectDeferred,completedHouses:run.completedHouses,
     retryBudget:bot.userData.robotBrain?.character?characterPolicy(bot.userData.robotBrain.character).retryBudget:8});
   if(run.order.sourceId&&run.order.destinationId&&run.order.mode==='local_project')return {action:'named_transfer',target_id:run.order.sourceId,destination_id:run.order.destinationId,recovery:true};
   const role=run.team?.role;
@@ -230,7 +233,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   return chosen;
  }
  function report(run,bot,plan,status,detail){
-  const payload={room:run.room,robot_id:run.id,action:['site_check','site_scout'].includes(plan?.action)?'visit':plan?.action==='named_transfer'?'deliver':plan?.action||'task',status,detail:String(detail).slice(0,440)};
+  const payload={room:run.room,robot_id:run.id,action:['site_check','site_scout'].includes(plan?.action)?'visit':plan?.action==='named_transfer'?'deliver':plan?.action==='furnish_room'?'build':plan?.action||'task',status,detail:String(detail).slice(0,440)};
   if(payload.action==='idle')payload.status='blocked';
   // Reporting is best-effort and never changes the result of the physical tool.
   void api.req('/api/robots/autonomy/report',{method:'POST',body:JSON.stringify(payload)}).catch(e=>emitLog(bot,'WORK RECEIPT UNAVAILABLE',e.message));
@@ -685,6 +688,38 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   trace(bot,'BUILD',`Constructed ${item.name} at a clear position; scene persisted using the human Add tool`);
   return item;
  }
+ async function furnishRoom(run,bot,variant){
+  if(!run.order.allowChanges)throw Error('Scene changes are disabled for furnishing');
+  requireActive(run,bot);
+  // A failed network save must not create another local duplicate on retry.
+  const pending=run.projectPending.find(p=>p.variant===variant);
+  let item=pending&&editor.items.find(o=>o.userData.editorId===pending.id&&editor.canEdit(o));
+  if(!item){
+   run.projectPending=run.projectPending.filter(p=>p.variant!==variant);
+   const floor=editor.items.find(o=>o.userData.editorKind==='cube'&&
+    (o.userData.autonomyFloor===true||o.name?.endsWith(' · house floor'))&&editor.canEdit(o)&&
+    Math.hypot(o.position.x-bot.position.x,o.position.z-bot.position.z)<6);
+   if(!floor)throw Error('NO ROOM FLOOR: enter an existing editable room before furnishing; no remote placement was attempted');
+   item=editor.createRobotRoomFurniture?.(bot,variant);
+   if(!item)throw Error('NO CLEAR ROOM SPOT: no '+variant+' footprint fits without crossing a wall or overlapping furniture');
+   run.projectPending.push({id:item.userData.editorId,variant});
+  }
+  requireActive(run,bot);
+  const id=item.userData.editorId;
+  // Normal editor queueSave is asynchronous. Ask that very same persistence
+  // method for an actual server acknowledgement before claiming completion.
+  const pendingTimer=editor.pendingSaves?.get(id);
+  if(pendingTimer){clearTimeout(pendingTimer);editor.pendingSaves.delete(id);}
+  const acknowledged=await editor.persistObject?.(item,run.room);
+  requireActive(run,bot);
+  if(!acknowledged)throw Error('SCENE SAVE NOT ACKNOWLEDGED: '+variant+' remains pending; will retry original object ID');
+  const owned=created.get(run.id)||new Set();owned.add(id);created.set(run.id,owned);
+  run.projectPlaced.push({id,variant});
+  run.projectPending=run.projectPending.filter(p=>p.variant!==variant);
+  run.projectDeferred=run.projectDeferred.filter(p=>p.variant!==variant);
+  trace(bot,'ROOM FURNITURE SAVED',`${variant} on verified room floor; server acknowledged scene object ${id}`);
+  return `Verified room furnishing: ${variant} (${id})`;
+ }
  async function constructInfrastructure(run,bot,variant){
   if(!run.order.allowChanges||!['road','footpath'].includes(variant))throw Error('City infrastructure requires authorised scene changes');
   requireActive(run,bot);
@@ -903,6 +938,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    return 'Built '+built.name;
   }
   if(plan.action==='build_house')return constructHouse(run,bot,plan.house);
+  if(plan.action==='furnish_room')return furnishRoom(run,bot,plan.variant);
   if(plan.action==='use_preset')return usePreset(run,bot,plan.preset_id);
   if(plan.action==='remove')return remove(run,bot,obj);
   if(plan.action==='rest')return rest(run,bot,obj);
@@ -960,7 +996,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    else if(run.order.mode==='rest')plan={action:'rest',target_id:run.order.destinationId};
    else plan={action:'ask',target_id:run.order.destinationId,message:run.order.goal};
    requireActive(run,bot);
-   run.pendingAction=plan.action;run.lastPlanAction=plan.action;
+   run.pendingAction=plan.action;run.lastPlanAction=plan.action;run.lastPlanVariant=plan.variant||'';
    if(plan.recovery)run.recoveryAttempts[plan.action]=(run.recoveryAttempts[plan.action]||0)+1;
    // Missing objects are not evidence of completion after a reload or delete.
    run.projectPlaced=run.projectPlaced.filter(p=>editor.items.some(o=>o.userData.editorId===p.id));
@@ -1020,6 +1056,10 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    if(plan.action==='cleanup_cans'&&detail.startsWith('All detected table cans cleared')){trace(bot,'CLEANUP FINISHED','Table clear per current scene objects; work order stopped.');stop(run.id,'verified table can cleanup');}
    if(run.last.status==='blocked'&&run.loop)trace(bot,'WHY BLOCKED',detail+' · A new direct assignment can replace the old work order. Existing objects remain untouched.');
    if(plan.action==='idle'&&/^GOAL REACHED:/.test(detail))stop(run.id,'verified project target reached');
+   if(plan.action==='idle'&&detail.startsWith('FURNISHING DEFERRED:')){
+    const next=nextRoomFurnishing(roomFurnishingSequence(run.order.goal),run.projectPlaced,run.projectDeferred);
+    if(next.nextRetryAt){clearTimeout(run.localTimer);run.localTimer=setTimeout(()=>void cycle(run),Math.max(1000,next.nextRetryAt-Date.now()+100));}
+   }
    // While Meta is unavailable, continue actual verified local building steps
    // rather than taking another 180-second silence after placing one object.
    // This bounded burst does not invoke the model or bypass an edit check.
@@ -1040,6 +1080,15 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    const diagnosis=operatorFailure(error);run.last={...autonomyResult('task',false,error.message),diagnosis};
    $('autonomyFailure').textContent=`FAILED · ${diagnosis.code}\n${diagnosis.reason}\nNEXT: ${diagnosis.remedy}`;
    trace(bot,'UNFINISHED',diagnosis.reason+' · Next: '+diagnosis.remedy+' · No unverified completion is claimed');
+   if(run.pendingAction==='furnish_room'&&run.lastPlanVariant){
+    const prev=run.projectDeferred.find(p=>p.variant===run.lastPlanVariant);
+    const attempts=Math.min(5,(prev?.attempts||0)+1);
+    const retryAt=Date.now()+Math.min(120000,12000*2**(attempts-1));
+    run.projectDeferred=[...run.projectDeferred.filter(p=>p.variant!==run.lastPlanVariant),
+     {variant:run.lastPlanVariant,attempts,retryAt,reason:String(error.message).slice(0,110)}].slice(0,6);
+    trace(bot,'FURNISHING DEFERRED',`${run.lastPlanVariant}: ${error.message}; trying another requested furnishing before retrying this one`);
+    clearTimeout(run.localTimer);run.localTimer=setTimeout(()=>void cycle(run),1500);
+   }
    if(run.recoveryAttempts[run.pendingAction])run.recoveryAttempts[run.pendingAction]=Math.max(1,run.recoveryAttempts[run.pendingAction]);
    report(run,bot,{action:run.pendingAction||'task'},'failed',diagnosis.reason);
   }finally{
@@ -1144,6 +1193,21 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    runs.set(id,run);run.timer=setInterval(()=>void cycle(run),order.interval*1000);
    trace(assigned,'CLEANUP ASSIGNED',`Human request became an executable, persistent ${boxes?'box':'can'}-clearing order; older ${old?.order.mode||'idle'} work was superseded`);
    toast(`${assigned.name}: ${boxes?'box':'can'} cleanup saved; the action log will show actual pickup and verified storage.`);
+   void cycle(run);update();return 1;
+  }
+  const roomBuilder=editor.items.find(o=>o.userData.editorKind==='robot'&&editor.canEdit(o)&&
+   namedRoomFurnishingInstruction(message.text,o.name));
+  if(roomBuilder){
+   handledChatMessages.add(message.id);
+   const id=roomBuilder.userData.editorId,goal=namedRoomFurnishingInstruction(message.text,roomBuilder.name);
+   const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,allowChanges:true,vision:false,interval:180});
+   const old=runs.get(id);if(old)stop(id,'superseded by explicit furnished-room instruction',false);
+   const run=newRun(order,true,roomBuilder);
+   try{await saveOrder(run,true);}catch(error){trace(roomBuilder,'FURNISHING NOT STARTED',error.message);return 0;}
+   savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});runs.set(id,run);
+   run.timer=setInterval(()=>void cycle(run),order.interval*1000);
+   trace(roomBuilder,'ROOM FURNISHING ASSIGNED',`${roomFurnishingSequence(goal).join(' + ')} requested by human; old ${old?.order.mode||'idle'} order superseded. Uses real editor scene tools and keeps original object IDs.`);
+   toast(`${roomBuilder.name}: furnishing work order saved. Verified placement attempts are in Work orders.`);
    void cycle(run);update();return 1;
   }
   // A fresh direct construction request outranks the robot's old generic

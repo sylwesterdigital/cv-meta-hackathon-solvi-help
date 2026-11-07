@@ -7,8 +7,8 @@ from pathlib import Path
 source=ast.parse((Path(__file__).resolve().parent/'server.py').read_text())
 functions=[node for node in source.body if isinstance(node,ast.FunctionDef) and node.name in ('validate_autonomy_decision','parse_autonomy_decision')]
 assert len(functions)==2
-allowed=ast.Assign(targets=[ast.Name(id='AUTONOMY_ACTIONS',ctx=ast.Store())],value=ast.Set(elts=[ast.Constant(x) for x in ('visit','deliver','build','build_house','use_preset','remove','rest','ask','inspect','idle')]))
-variants=ast.Assign(targets=[ast.Name(id='AUTONOMY_BUILD_VARIANTS',ctx=ast.Store())],value=ast.Set(elts=[ast.Constant(x) for x in ('chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can')]))
+allowed=ast.Assign(targets=[ast.Name(id='AUTONOMY_ACTIONS',ctx=ast.Store())],value=ast.Set(elts=[ast.Constant(x) for x in ('visit','deliver','build','build_house','furnish_room','use_preset','remove','rest','ask','inspect','idle')]))
+variants=ast.Assign(targets=[ast.Name(id='AUTONOMY_BUILD_VARIANTS',ctx=ast.Store())],value=ast.Set(elts=[ast.Constant(x) for x in ('chair','officeChair','bed','sofa','stool','table','cabinet','bottle','can','tv','fridge','lamp','speaker','monitor')]))
 module=ast.Module(body=[allowed,variants]+functions,type_ignores=[])
 ns={'json':json,'re':re,'math':math};exec(compile(ast.fix_missing_locations(module),'autonomy validator','exec'),ns)
 validate=ns['validate_autonomy_decision'];parse=ns['parse_autonomy_decision']
@@ -29,4 +29,7 @@ assert parse('{"action":"eval"}',room,'bot1') is None
 assert validate({'action':'build_house','house':{'width':999}},room,'bot1',True)['house']['width']==8
 assert validate({'action':'use_preset','preset_id':'saved'},room,'bot1',True) is None
 assert validate({'action':'use_preset','preset_id':'saved'},room,'bot1',True,{'saved'})['preset_id']=='saved'
+assert validate({'action':'furnish_room','variant':'tv'},room,'bot1',True)['variant']=='tv'
+assert validate({'action':'furnish_room','variant':'fridge'},room,'bot1',False) is None
+assert validate({'action':'furnish_room','variant':'unsupported'},room,'bot1',True) is None
 print('PASS: Meta autonomous decision validation and refusal of ungrounded/unsafe actions')

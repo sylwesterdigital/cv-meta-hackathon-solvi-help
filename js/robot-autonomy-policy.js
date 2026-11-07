@@ -1,6 +1,7 @@
 // v0.2.192: bounded, deterministic recovery strategy. A model can propose
 // tools, but the runtime owns actual state, retries and completion evidence.
 import {houseGoal} from './robot-construction-api.js';
+import {roomFurnishingSequence,nextRoomFurnishing} from './robot-room-furnishing.js';
 // Per-account settings are fetched from the authenticated server, not buried in a retry loop.
 // Defaults are intentionally short; only the failing model call backs off.
 export const META_RECOVERY_MIN_MS=30000;
@@ -36,7 +37,7 @@ export function chatCanCleanupInstruction(text='',robotName=''){
 export function localProjectSequence(goal=''){
  if(/\b(picnic|party area|outdoor dining)\b/i.test(goal))return ['table','chair','chair','bottle'];
  if(/\b(park|parks|garden|playground|playgrounds|public square)\b/i.test(goal))return ['table','chair','chair','stool'];
- return [];
+ return !houseGoal(goal)?roomFurnishingSequence(goal):[];
 }
 export function requestedHomeCount(goal=''){
  if(!houseGoal(goal))return 0;
@@ -70,7 +71,7 @@ export function chatNamedConstructionInstruction(text='',robotName=''){
  return message;
 }
 
-export function workRecoveryPlan({goal='',allowChanges=false,house=null,existingHouse=false,peerId='',attempts={},hasSeat=false,invitationTargets=[],contactTargets=[],placedSupplies=0,projectPlaced=[],completedHouses=[],retryBudget=8}={}){
+export function workRecoveryPlan({goal='',allowChanges=false,house=null,existingHouse=false,peerId='',attempts={},hasSeat=false,invitationTargets=[],contactTargets=[],placedSupplies=0,projectPlaced=[],projectDeferred=[],completedHouses=[],retryBudget=8}={}){
  if(boxCleanupGoal(goal))return {action:'cleanup_boxes',reason:'Collect explicitly named procedural boxes into the matching junk bin; skip blocked objects and retry them later'};
  if(canCleanupGoal(goal))return {action:'cleanup_cans',reason:'Perform the assigned can collection using the existing inventory and bin tools'};
  const construction=houseGoal(goal);
@@ -83,6 +84,8 @@ export function workRecoveryPlan({goal='',allowChanges=false,house=null,existing
  const houseRetryLimit=Math.max(2,Math.min(8,retryBudget))+4*Math.min(2,count('site_scout'));
  const installed=new Set(projectPlaced.map(entry=>entry?.id).filter(Boolean));
  const sequence=localProjectSequence(goal);
+ const roomSequence=!construction?roomFurnishingSequence(goal):[];
+ const roomNext=nextRoomFurnishing(roomSequence,projectPlaced,projectDeferred);
  const counts=new Map();
  for(const entry of projectPlaced)if(entry?.id&&entry?.variant)counts.set(entry.variant,(counts.get(entry.variant)||0)+1);
  const remainingProject=[];
@@ -114,6 +117,13 @@ export function workRecoveryPlan({goal='',allowChanges=false,house=null,existing
   return {action:'build',variant:placedSupplies%2?'can':'bottle',reason:'Place the requested drink props; they are cosmetic, not medical supplies'};
  if(construction&&house&&party&&invitationTargets.length&&count('ask')<Math.max(2,invitationTargets.length+1))
   return {action:'ask',target_id:invitationTargets[0].id,message:'The building is ready for inspection. Would you like to visit the opening? Here is what remains unfinished.',reason:'Invite the next named colleague to see the work'};
+ // When a single furnishing placement is blocked, try the next item and revisit
+ // deferred ones. This is a separate executable tool, not a house retry.
+ if(roomSequence.length&&allowChanges){
+  if(roomNext.done)return {action:'idle',reason:'GOAL REACHED: all requested room furnishings have saved scene-object IDs'};
+  if(roomNext.variant)return {action:'furnish_room',variant:roomNext.variant,reason:'Place the requested '+roomNext.variant+' on an inspected room floor'};
+  return {action:'idle',reason:'FURNISHING DEFERRED: no free interior footprint yet; retry after '+new Date(roomNext.nextRetryAt).toISOString()};
+ }
  // Build small community areas in verified, bounded steps even when Meta
  // cannot answer. No playground equipment or landscaping is fabricated.
  if(!construction&&allowChanges&&remainingProject.length&&count('build')<Math.max(2,Math.min(8,retryBudget)))
