@@ -1,7 +1,7 @@
 import {validCreativeBuild} from './creative-build-preset.js';
 import {validPortalPairPreset} from './portal-preset-data.js';
 // Shared, side-effect-free schema for reproducible procedural-object presets.
-const TYPES=new Set(['portalPair','furniture','cube','sphere','cylinder','plane','torus','surface','curve','text','ladder','stairs','wall']);
+const TYPES=new Set(['portalPair','furniture','cube','sphere','cylinder','plane','torus','amorphous','surface','curve','text','ladder','stairs','wall']);
 const NATURE=new Set(['tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch']);
 const INFRASTRUCTURE=new Set(['infrastructure']);
 const TOOLS=new Set(['shovel','axe','rake','stick','broom','mop','saw']);

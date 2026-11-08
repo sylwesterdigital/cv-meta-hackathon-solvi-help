@@ -12,7 +12,7 @@ export function validateSceneSnapshot(data,{localCount=0,sameRoom=false}={}){
   if(!entry||typeof entry!=='object'||typeof entry.id!=='string'||entry.id.length<1||ids.has(entry.id)||typeof entry.kind!=='string')
    return {ok:false,reason:'Scene response contains missing or duplicate object identifiers'};
   ids.add(entry.id);
-  if(!['cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'].includes(entry.kind)||
+  if(!['cube','sphere','cylinder','plane','torus','amorphous','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'].includes(entry.kind)||
      !['position','rotation','scale'].every(field=>Array.isArray(entry[field])&&entry[field].length===3&&entry[field].every(n=>typeof n==='number'&&Number.isFinite(n))))
    return {ok:false,reason:'Scene response contains invalid object geometry or transform'};
  }

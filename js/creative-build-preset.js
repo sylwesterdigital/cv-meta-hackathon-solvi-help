@@ -1,6 +1,6 @@
 // Portable collections of bounded procedural primitives. Saved scene IDs,
 // robot identities and owners are never copied into a preset.
-const TYPES=new Set(['cube','sphere','cylinder','plane','torus']);
+const TYPES=new Set(['cube','sphere','cylinder','plane','torus','amorphous']);
 const KEYS=['kind','name','position','rotation','scale','color','texture','primitive','openings'];
 const finite3=arr=>Array.isArray(arr)&&arr.length===3&&arr.every(x=>typeof x==='number'&&Number.isFinite(x));
 export function validCreativePart(part){

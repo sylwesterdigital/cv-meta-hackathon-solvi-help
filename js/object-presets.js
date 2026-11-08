@@ -62,7 +62,7 @@ function previewSource(preset){
  if(data.kind==='furniture')return makeFurniture(data.furniture||{});
  if(data.kind==='stairs'&&data.stairs?.variant!=='lift')return makeOfficeStairs(data.stairs||{});
  if(data.kind==='wall')return makeOfficeWall(data.wall||{});
- if(['cube','sphere','cylinder','plane','torus'].includes(data.kind)){
+ if(['cube','sphere','cylinder','plane','torus','amorphous'].includes(data.kind)){
   const geometry=buildPrimitive(data.kind,data.primitive||{});
   return geometry?new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:data.color||'#b2bdc8',roughness:.76})):null;
  }
@@ -148,7 +148,7 @@ export function setupObjectPresets(editor){
   if(!members.length||!members.every(o=>editor.canEdit(o))){editor.toast('Only fully editable collections can be saved.');return false;}
   const group=collectionOf(members[0]);
   const data=portableCreativeBuild(members.map(o=>({...editor.snapshot(o),name:memberDisplayName(o)})));
-  if(!data){editor.toast('Creative Builds presets support 1–64 portable cubes, spheres, cylinders, planes and toruses.');return false;}
+  if(!data){editor.toast('Creative Builds presets support 1–64 portable primitives, including amorphous geometry.');return false;}
   const title=(await textEntry('Save Creative Build',group?.name||'Creative build',{message:`Save ${members.length} primitives as a reusable assembly under Creative Builds?`}))?.trim().slice(0,90);
   if(!title)return false;
   const source=previewSource({payload:data});let thumbnail='';

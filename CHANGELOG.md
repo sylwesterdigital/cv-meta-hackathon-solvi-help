@@ -1,3 +1,16 @@
+## v0.2.252 — Public README deployment-gate repair (2026-11-08)
+
+- Resolve a reproducible v0.2.251 watcher failure: `npm test` failed because the public README exceeded its existing 12,000-character limit.
+- Keep the README as a project introduction and retain full historical detail in `CHANGELOG.md` and release specification files. The README size limit is **not** increased.
+- Synchronize the package, browser cache mappings, installer, backend and tests to v0.2.252; add a focused documentation-gate regression test.
+- Preserve the v0.2.251 Amorphous Geometry, Meta Vehicle Lab, `/ai`, scene data format, permissions, saved worlds and avatar/model assets. No functional runtime changes.
+
+## v0.2.251 — Amorphous, Meta Vehicle Lab and /ai
+
+- Organic procedural geometry, effects, save/load/physics integration.
+- Native vehicle blueprint panel and collidable scene collections; driving simulation is a separate milestone.
+- Explicit authenticated Meta AI in world chat with image/context/file draft support, no arbitrary server execution.
+
 ## v0.2.250 — Verified wide panorama, reliable model audit and bounded site recovery (2026-11-08)
 
 - Pass each head-camera JPEG Blob to `createImageBitmap` in the 210° stitcher; keep automatic Eyes enabled and show a simple refresh icon.

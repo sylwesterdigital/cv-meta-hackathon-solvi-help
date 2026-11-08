@@ -14,7 +14,8 @@ import {SceneEditor} from './editor.js';
 import {captureRobotView,captureRobotPortrait,robotHeadCameraPose} from './robots.js';
 import {stitchRobotPanorama,panoramaMode} from './robot-panorama.js';
 import {captureRobotWideSurvey,WIDE_EYE_FOV} from './robot-wide-eye.js';
-import {initRobotBrains,runRobotVisualSearch,emitBrainTrace,rememberRobotObservationFrame} from './robot-brains.js';
+import {initRobotBrains,runRobotVisualSearch,emitBrainTrace,rememberRobotObservationFrame,latestRobotObservationFrame} from './robot-brains.js';
+import {parseAiChatCommand,safeAiFileName} from './ai-chat-command.js';
 import {observationPlan,scanSummary} from './robot-observation.js';
 import {observationTarget,matchesObservationTarget,pickTargetViews} from './target-view-filter.js';
 import {readPreferences,updatePreferences,applyPreferences,themePalette,THEME_PRESETS,uiScalePercent,safeFontName,exportRoomTranscript,shouldGroupMessages} from './preferences.js';
@@ -141,7 +142,7 @@ const api={
   const sessionAdmin=activeAdminToken();
   if(sessionAdmin&&url.startsWith('/api/'))headers['X-Solvi-Admin']=sessionAdmin;
   headers['X-Solvi-Tab']=tab;
-  if(['/api/models','/api/chat','/api/robots/react','/api/robots/discussion/step','/api/robots/discussion/start','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/robots/autonomy/plan','/api/robots/autonomy/design','/api/ai/vision','/api/ai/analyze-logs','/api/ai/key-status'].includes(url.split('?')[0])){
+  if(['/api/models','/api/chat','/api/robots/react','/api/robots/discussion/step','/api/robots/discussion/start','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/robots/autonomy/plan','/api/robots/autonomy/design','/api/ai/vision','/api/ai/assist','/api/ai/analyze-logs','/api/ai/key-status'].includes(url.split('?')[0])){
     const key=sessionStorage.getItem('solvi-meta-session-key');if(key)headers['X-Solvi-Model-Key']=key;
   }
   const res=await fetch(url,{...options,headers,cache:'no-store'});
@@ -303,7 +304,7 @@ async function bubble(entry){
   }
   fragment.append(document.createTextNode((entry.text||'').slice(last)));content.replaceChildren(fragment);
  }
- if(role==='assistant'&&!renderingChat&&!entry.isBrainTrace&&(!entry.media||(Array.isArray(entry.media)?entry.media.length===0:entry.media==='[]')))typeRobotReply(content,entry.text||'',{active:()=>renderEpoch===chatEpoch&&roomAtBubble===activeRoom,onProgress:()=>{if(followChat)scrollChatToLatest();}});
+ if(role==='assistant'&&entry.speaker!=='Meta AI'&&!renderingChat&&!entry.isBrainTrace&&(!entry.media||(Array.isArray(entry.media)?entry.media.length===0:entry.media==='[]')))typeRobotReply(content,entry.text||'',{active:()=>renderEpoch===chatEpoch&&roomAtBubble===activeRoom,onProgress:()=>{if(followChat)scrollChatToLatest();}});
  const marker=String(entry.text||'').match(/#bookmark=([0-9a-f-]{36})/i);
  if(marker){const teleport=document.createElement('button');teleport.type='button';teleport.className='chat-bookmark-teleport';teleport.textContent='Teleport to camera view';teleport.onclick=()=>window.dispatchEvent(new CustomEvent('solvi:bookmark-teleport',{detail:{id:marker[1]}}));content.append(document.createTextNode(' '),teleport);}
 
@@ -331,10 +332,10 @@ async function bubble(entry){
   }).catch(()=>{if(slot.isConnected&&roomAtBubble===activeRoom&&renderEpoch===chatEpoch)slot.textContent='Attachment unavailable';}));
  }
  lastBubbleEntry=entry;if(!renderingChat)scrollChatToLatest();
- if(!renderingChat&&role==='assistant'&&!entry.isBrainTrace&&entry.text){
+ if(!renderingChat&&role==='assistant'&&entry.speaker!=='Meta AI'&&!entry.isBrainTrace&&entry.text){
   window.dispatchEvent(new CustomEvent('solvi:robot-comic',{detail:{name:entry.speaker,text:entry.text,kind:'speech'}}));
  }
- if(!suppressRobotSpeech&&role==='assistant'&&!entry.isBrainTrace)robotSpeech?.speak(entry);
+ if(!suppressRobotSpeech&&role==='assistant'&&entry.speaker!=='Meta AI'&&!entry.isBrainTrace)robotSpeech?.speak(entry);
 }
 function observeChatAttachment(slot,load){
  // Defer large robot panoramas and thumbnails until they enter the chat viewport.
@@ -631,6 +632,31 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
  const interruptedRobot=currentlySpeakingRobot;
  if(interruptedRobot)robotSpeech?.stop(); // A human can interrupt a spoken turn.
  if(!online){await bubble({role:'user',text,speaker:me.name,user_id:me.id,created:new Date().toISOString()});toast('Local demo only. AI requires backend and MODEL_API_KEY.');return;}
+ const ai=parseAiChatCommand(text);
+ if(ai){
+  if(!ai.prompt){$('chatStatus').textContent='Usage: /ai your question, /ai --file draft request, or /ai --eyes @Robot: question';return;}
+  if(ai.mode==='image-generate'){$('chatStatus').textContent='Image generation is not configured in this Meta API integration; no image will be invented.';return;}
+  const media=[...ids];
+  if(ai.mode==='eyes'){
+   const candidates=(window.solviEditor?.items||[]).filter(o=>o.userData.editorKind==='robot');
+   const robot=ai.robot?candidates.find(o=>o.name.toLocaleLowerCase()===ai.robot.toLocaleLowerCase()):window.solviEditor?.selected;
+   if(!robot||robot.userData.editorKind!=='robot'){$('chatStatus').textContent='Select a robot, or use /ai --eyes @Lemox: your question';return;}
+   const last=latestRobotObservationFrame(robot.userData.editorId,activeRoom);
+   if(!last?.blob){$('chatStatus').textContent='No real camera capture for this robot in the current realm; capture its eyes first.';return;}
+   try{const uploaded=await uploadFile(new File([last.blob],`robot-eye-${Date.now()}.jpg`,{type:'image/jpeg'}));if(media.length>=3)media.pop();media.push(uploaded.id);}catch(error){$('chatStatus').textContent='Robot-eye upload failed: '+error.message;return;}
+  }
+  $('sendChat').disabled=true;$('chatStatus').textContent='Meta AI is analyzing the request…';
+  try{
+   const response=await api.req('/api/ai/assist',{method:'POST',body:JSON.stringify({room:activeRoom,prompt:ai.prompt,mode:ai.mode==='file'?'file':'ask',media,model:$('modelSelect')?.value||'muse-spark-1.3'})});
+   $('chatInput').value='';pending=[];updatePending();await bubble(response.message);await bubble(response.answer);
+   if(response.artifact?.text){const name=safeAiFileName(response.artifact.name);const row=$('chatFeed').lastElementChild?.querySelector('.chat-bubble');if(row){
+     const button=document.createElement('button');button.type='button';button.className='chat-ai-download';button.textContent='Download draft · '+name;
+     button.onclick=()=>{const url=URL.createObjectURL(new Blob([response.artifact.text],{type:'text/plain;charset=utf-8'}));const anchor=document.createElement('a');anchor.href=url;anchor.download=name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};row.append(button);
+   }}
+   $('chatStatus').textContent=`Meta AI · ${response.latency_ms||0} ms · answered without changing the scene`;
+  }catch(error){$('chatStatus').textContent=error.message;toast(error.message);}finally{$('sendChat').disabled=false;}
+  return;
+ }
  const useAI=false; // Ordinary messages always go to shared chat; robots have their own AI route.
  $('sendChat').disabled=true;$('chatStatus').textContent='Model processing…';
  try{const response=await api.req(useAI?'/api/chat':'/api/message',{method:'POST',body:JSON.stringify({room:activeRoom,text,model:$('modelSelect').value,media:ids})});

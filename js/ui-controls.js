@@ -15,7 +15,7 @@ const iconIds={
 };
 // One semantic pictogram per type; never treat every geometry as a cube.
 export const objectKindIcons=Object.freeze({
- cube:'cube',sphere:'sphere',cylinder:'cylinder',plane:'plane',torus:'torus',
+ cube:'cube',sphere:'sphere',cylinder:'cylinder',plane:'plane',torus:'torus',amorphous:'sphere',
  curve:'curve',surface:'surface',text:'text-object',points:'points',
  light:'light',robot:'avatar-3d',model:'model',wall:'square',
  'walls':'square','add 3d model':'model','point light':'light','spot light':'light',

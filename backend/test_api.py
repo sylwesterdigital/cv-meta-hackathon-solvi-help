@@ -1600,6 +1600,36 @@ _claim_new_247={**_named_claim_247,'message_id':_named_amend_mid_247,
 assert c.post(endpoint+'claim',headers=headers,json=_claim_new_247).status_code in (400,409)
 print('PASS: named creative dialogue becomes human-authorized, robot-bound durable work; amendments cannot overwrite busy jobs')
 
+# v0.2.252: /ai is authenticated, realm-scoped, read-only with user-owned media.
+import server as _server251
+_ai_routes251=[r for r in app.url_map.iter_rules() if r.rule=='/api/ai/assist' and 'POST' in r.methods]
+assert len(_ai_routes251)==1
+_ai_payload251={'room':'main','prompt':'What geometry does SOLVI use?','mode':'ask','media':[]}
+assert c.post('/api/ai/assist',json=_ai_payload251).status_code==401
+_ai_header251={**headers,'X-Solvi-Model-Key':'test-meta-session-key-0001'}
+_saved_meta_request251=_server251.meta_request
+def _mock_meta_request251(method,path,payload):
+    assert method=='POST' and path=='/responses'
+    assert payload['store'] is False
+    assert any(msg.get('role')=='developer' and 'Read-only application context' in msg['content'][0]['text'] for msg in payload['input'])
+    assert 'What geometry' in payload['input'][-1]['content'][0]['text'] or 'draft' in payload['input'][-1]['content'][0]['text']
+    return {'output_text':'SOLVI uses validated procedural geometry, subject to scene permissions.','usage':{'input_tokens':10,'output_tokens':15}}
+try:
+    _server251.meta_request=_mock_meta_request251
+    _server251.chat_attempts.pop(data['user']['id'],None)
+    _ai_resp251=c.post('/api/ai/assist',headers=_ai_header251,json=_ai_payload251)
+    assert _ai_resp251.status_code==200,(_ai_resp251.status_code,_ai_resp251.data)
+    assert _ai_resp251.get_json()['answer']['speaker']=='Meta AI'
+    assert _ai_resp251.get_json()['usage']['images']==0
+    _ai_file251=c.post('/api/ai/assist',headers=_ai_header251,json={**_ai_payload251,'prompt':'draft a geometry guide','mode':'file'})
+    assert _ai_file251.status_code==200 and _ai_file251.get_json()['artifact']['name'].endswith('.txt')
+    assert c.post('/api/ai/assist',headers=_ai_header251,json={**_ai_payload251,'mode':'image-generate'}).status_code==422
+    assert c.post('/api/ai/assist',headers=_ai_header251,json={**_ai_payload251,'media':['00000000-0000-0000-0000-000000000001']}).status_code==404
+    assert c.post('/api/ai/assist',headers=_ai_header251,json={**_ai_payload251,'model':'unauthorized-code-executor'}).status_code==422
+finally:
+    _server251.meta_request=_saved_meta_request251
+print('PASS: /ai real POST route, authentication, account-owned media, approved model, text drafts and read-only response')
+
 # Logging out revokes the token server-side; the same browser tab cannot use it again.
 assert c.post('/api/logout',headers=headers,json={}).status_code==200
 assert c.get('/api/me',headers=headers).status_code==401

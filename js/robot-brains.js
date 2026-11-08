@@ -21,6 +21,7 @@ function rememberFrame(id,blob,label){
  window.dispatchEvent(new CustomEvent('solvi:robot-eye-frame',{detail:{robotId:id,blob,label,at,room}}));
  return rec;
 }
+export function latestRobotObservationFrame(robotId,room=String(window.solviRoom||'')){const item=latestFrames.get(String(robotId||''));return item?.room===room?item:null;}
 export function rememberRobotObservationFrame(robotId,blob,label){
  rememberFrame(robotId,blob,label);
  window.dispatchEvent(new CustomEvent('solvi:brain-frame',{detail:{robotId,blob,label}}));

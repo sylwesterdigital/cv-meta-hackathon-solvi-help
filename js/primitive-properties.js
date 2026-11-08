@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {buildAmorphousGeometry} from './amorphous-geometry.js';
 import {wallPresetTexture} from './office-walls.js';
 import {EQUIPMENT_TYPES,EQUIPMENT_NUMERIC,buildEquipment} from './procedural-equipment.js';
 import {TOOL_TYPES,TOOL_NUMERIC,buildTool} from './procedural-tools.js';
@@ -8,6 +9,7 @@ import {INFRASTRUCTURE_NUMERIC,cleanInfrastructure,infrastructureParts} from './
 
 // Parameter bounds prevent generating enormous meshes through a shared scene payload.
 export const PRIMITIVE_FIELDS={
+ amorphous:{radius:[1,.1,12],distortion:[.28,0,.85],frequency:[2.4,.3,10],seed:[7,0,10000],resolution:[28,6,64],smoothing:[1,0,1],base:[0,0,2],effect:[0,0,3],speed:[1,0,5]},
  cube:{width:[1,.05,30],height:[1,.05,30],depth:[1,.05,30],widthSegments:[1,1,32],heightSegments:[1,1,32],depthSegments:[1,1,32]},
  sphere:{radius:[.55,.05,20],widthSegments:[28,3,96],heightSegments:[18,2,64]},
  cylinder:{radiusTop:[.4,0,20],radiusBottom:[.4,0,20],height:[1.2,.05,30],radialSegments:[32,3,96],heightSegments:[1,1,32]},
@@ -25,6 +27,7 @@ export function sanitisePrimitive(kind,input={}){
 }
 export function buildPrimitive(kind,values){
  const p=sanitisePrimitive(kind,values);if(!p)return null;
+ if(kind==='amorphous')return buildAmorphousGeometry(p);
  if(kind==='cube')return new THREE.BoxGeometry(p.width,p.height,p.depth,p.widthSegments,p.heightSegments,p.depthSegments);
  if(kind==='sphere')return new THREE.SphereGeometry(p.radius,p.widthSegments,p.heightSegments);
  if(kind==='cylinder')return new THREE.CylinderGeometry(p.radiusTop,p.radiusBottom,p.height,p.radialSegments,p.heightSegments);

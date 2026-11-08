@@ -1,6 +1,15 @@
 {
-  "currentVersion": "0.2.250",
+  "currentVersion": "0.2.252",
   "releases": [
+    {
+      "version": "0.2.252",
+      "publishedAt": "2026-11-08T17:07:25Z",
+      "changes": [
+        "Repair the v0.2.251 Mac watcher npm test failure by moving accumulated version notes out of the public README, leaving the unchanged 12,000-character size gate intact.",
+        "Update active release metadata, browser cache URLs, backend installer and strict version tests to v0.2.252; retain previous history in CHANGELOG and archived specs.",
+        "Preserve the Amorphous Geometry, Meta Vehicle Lab and /ai implementation from v0.2.251 with no runtime feature or scene-format changes; add documentation regression coverage."
+      ]
+    },
     {
       "version": "0.2.250",
       "publishedAt": "2026-11-08T15:53:00Z",
@@ -297,17 +306,6 @@
         "Stream owner XYZ poses during manual keyboard walking as well as autonomous navigation, preserving the existing robot-input predictive path and avoiding rebroadcast loops.",
         "Ship read-only API 502/429/CORS diagnostics and Rantlist media-host origin repair guidance, preserving existing external CORS and SOLVI-only Nginx boundaries.",
         "Preserve rooms, 3D assets, robot work orders, scene persistence and permissions; no schema migration."
-      ]
-    },
-    {
-      "version": "0.2.215",
-      "publishedAt": "2026-11-06T18:59:08Z",
-      "changes": [
-        "Treat horizontal structural ceilings and flat roofs from procedural multi-storey wall arrays as usable furniture-placement floors at their actual elevation.",
-        "Use the top mesh triangles to preserve irregular structural outlines and lift/skylight holes; do not support furniture spanning missing floor areas.",
-        "Ignore only the supporting slab collider, not the remaining walls in its procedural room group; retain object visibility, clearance and ownership rules.",
-        "Do not fall back to ground-level placement when an elevated supporting floor exists under the camera but has no clear spot; keep scene and object ID persistence unchanged.",
-        "Preserve all prior robot autonomy, city teamwork, multiplayer, metadata, GLBs, media and persistent room contents; no schema migration."
       ]
     }
   ]

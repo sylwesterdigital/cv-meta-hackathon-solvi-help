@@ -28,9 +28,9 @@ test('searching a readable collection name returns the objects without renaming 
  assert.equal(result.folders.length,35);
  assert.equal(result.folders[0].items[0].name,items[0].name);
 });
-test('v0.2.250 metadata agrees and existing scene/ownership persistence is retained',()=>{
+test('v0.2.252 metadata agrees and existing scene/ownership persistence is retained',()=>{
  const pkg=JSON.parse(read('package.json'));const releases=JSON.parse(read('releases.json'));
- assert.equal(pkg.version,'0.2.250');assert.equal(releases.currentVersion,'0.2.250');
+ assert.equal(pkg.version,'0.2.252');assert.equal(releases.currentVersion,'0.2.252');
  const source=read('js/editor.js');assert.match(source,/collection:o\.userData\.editorKind/);
  assert.match(source,/this\.queueSave\(object\)/);
 });
