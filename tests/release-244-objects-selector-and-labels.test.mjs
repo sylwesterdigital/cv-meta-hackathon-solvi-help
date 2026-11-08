@@ -32,14 +32,14 @@ test('icon-only mode retains object names and folder headings, actions',()=>{
  assert.match(css,/html\[data-button-labels='icon'\] body #sceneItems \.scene-collection-heading button>.ui-button-label\{\s*display:block!important/);
  const editor=read('js/editor.js');
  assert.match(editor,/toggle\.textContent=\(expanded\?'▾ ':'▸ '\)\+label/);
- assert.match(editor,/move\.textContent='Move'/);
- assert.match(editor,/rename\.textContent='Rename'/);
- assert.match(editor,/ungroup\.textContent='Ungroup'/);
+ assert.match(editor,/collectionIcon\('Transform collection','move'/);
+ assert.match(editor,/collectionIcon\('Rename collection','edit'/);
+ assert.match(editor,/collectionIcon\('Ungroup collection','ungroup'/);
 });
 test('the backend state and persisted scene schema are unchanged by the frontend hotfix',()=>{
  const editor=read('js/editor.js');
  assert.match(editor,/collection:o\.userData\.editorKind/);
  assert.match(editor,/sceneCollection=cleanSceneCollection/);
- assert.equal(JSON.parse(read('package.json')).version,'0.2.246');
- assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.246');
+ assert.equal(JSON.parse(read('package.json')).version,'0.2.247');
+ assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.247');
 });

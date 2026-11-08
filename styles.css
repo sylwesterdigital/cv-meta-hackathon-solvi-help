@@ -3026,3 +3026,29 @@ html[data-button-labels='icon'] body #sceneItems .scene-collection-heading butto
 
 /* v0.2.246: Five collection actions remain readable at narrow drawer widths. */
 #sceneItems .scene-collection-actions button.scene-collection-action{flex:1 1 95px!important;min-width:88px!important;white-space:normal!important;line-height:1.2!important}
+
+/* v0.2.247 — five compact, accessible collection actions in ONE row. */
+#sceneItems .scene-collection-actions{
+ display:flex!important;flex-wrap:nowrap!important;align-items:center!important;
+ gap:5px!important;padding:5px!important;min-width:0!important;
+}
+#sceneItems .scene-collection-actions button.scene-collection-icon{
+ display:inline-flex!important;align-items:center!important;justify-content:center!important;
+ flex:1 1 0!important;min-width:0!important;max-width:none!important;
+ width:0!important;height:34px!important;min-height:34px!important;
+ padding:5px!important;white-space:nowrap!important;overflow:hidden!important;
+ font-size:0!important;line-height:0!important;
+}
+#sceneItems .scene-collection-actions button.scene-collection-icon::before{
+ content:''!important;display:block!important;flex:0 0 19px!important;
+ width:19px!important;height:19px!important;
+ background:var(--ui-button-icon) center / contain no-repeat!important;
+ filter:var(--ui-icon-filter)!important;
+}
+#sceneItems .scene-collection-actions button.scene-collection-icon>.ui-button-label{display:none!important}
+#sceneItems .scene-collection-actions button.scene-collection-delete{min-width:0!important;}
+#sceneItems .scene-collection-actions button.scene-collection-icon:focus-visible{outline:2px solid #bb9ce8!important;outline-offset:-2px!important}
+
+/* v0.2.247: panorama is letterboxed, never stretched to a fake camera FOV. */
+#robotEyePreview:has(#robotEyePreviewImage[src]){contain:layout paint}
+#controlSwitcher #robotEyePreviewImage{object-fit:contain!important;background:#050d19!important}

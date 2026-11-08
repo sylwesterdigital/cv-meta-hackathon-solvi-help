@@ -1542,6 +1542,64 @@ assert _timed_finished.status_code==200,(_timed_finished.status_code,_timed_fini
 assert _timed_finished.get_json()['status']=='completed'
 print('PASS: timed 15-minute group task preserves assignment, rejects early/fake receipts, verifies later series and history')
 
+# v0.2.247: a HUMAN named, creative amendment is a durable single-robot
+# queue entry. It cannot be executed by another robot, silently overwrite an
+# active work order, or be certified complete without authoritative scene IDs.
+from server import named_creative_request as _named_creative_247
+_ideas_247=[
+    '@Bee please start now creative session flanking the north corner cap with two conker guards',
+    '@Bee I mean you should continue to create the maze until I ask you to stop',
+    '@Viola go to @Bee and help help to embellish the maze with figures of gate keepers',
+]
+assert _named_creative_247(_ideas_247[0],[{'id':'x','kind':'robot','name':'Bee'}])['id']=='x'
+assert _named_creative_247(_ideas_247[1],[{'id':'x','kind':'robot','name':'Bee'}])['id']=='x'
+assert _named_creative_247(_ideas_247[2],[{'id':'x','kind':'robot','name':'Bee'},{'id':'y','kind':'robot','name':'Viola'}])['id']=='y'
+assert not _named_creative_247('@Bee please explain how to build a maze',[{'id':'x','kind':'robot','name':'Bee'}])
+_named_bot_247={**_queue_robot,'id':'queue-test-named-bee-247','name':'Bee','position':[9,0,12]}
+_other_bot_247={**_queue_robot,'id':'queue-test-named-viola-247','name':'Viola','position':[10,0,12]}
+with db() as con:
+    scene=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    scene.extend([_named_bot_247,_other_bot_247])
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(scene),queue_room))
+_named_message_247=_msg(_ideas_247[0])
+assert _named_message_247.status_code==200,(_named_message_247.status_code,_named_message_247.data)
+_named_mid_247=_named_message_247.get_json()['message']['id']
+_named_queued_247=c.post(endpoint+'queue',headers=headers,json={'room':queue_room,'message_id':_named_mid_247})
+assert _named_queued_247.status_code==200,(_named_queued_247.status_code,_named_queued_247.data)
+assert _named_queued_247.get_json()['subtasks']==1
+assert _named_queued_247.get_json()['task']['kind']=='named_creative_build'
+assert _named_queued_247.get_json()['task']['target_id']==_named_bot_247['id']
+assert c.post(endpoint+'queue',headers=headers,json={'room':queue_room,'message_id':_named_mid_247}).get_json()['deduplicated'] is True
+_started_247=dt.datetime.fromisoformat(_named_queued_247.get_json()['task']['created'].replace('Z','+00:00')).timestamp()
+_deadline_247=int((_started_247+900)*1000)
+_named_order_247={**_order,'robotId':_named_bot_247['id'],'goal':_ideas_247[0],'variant':'creative'}
+_named_state_247={'groupJobId':_named_mid_247,'intentMessageId':_named_mid_247,'creativeDeadline':_deadline_247,
+                  'creativeSeriesIndex':0,'creativeBuilt':[]}
+_named_claim_247={'room':queue_room,'message_id':_named_mid_247,'robot_id':_named_bot_247['id'],
+                  'order':_named_order_247,'state':_named_state_247}
+assert c.post(endpoint+'claim',headers=headers,json={**_named_claim_247,
+    'robot_id':_other_bot_247['id'],'order':{**_named_order_247,'robotId':_other_bot_247['id']}}).status_code==403
+_named_ok_247=c.post(endpoint+'claim',headers=headers,json=_named_claim_247)
+assert _named_ok_247.status_code==200,(_named_ok_247.status_code,_named_ok_247.data)
+with db() as con:
+    saved=con.execute('SELECT enabled,order_json,state_json FROM robot_work_orders WHERE room_id=? AND robot_id=?',
+                     (queue_room,_named_bot_247['id'])).fetchone()
+assert saved and saved['enabled']==1 and json.loads(saved['state_json'])['groupJobId']==_named_mid_247
+_named_amend_247=_msg(_ideas_247[1])
+assert _named_amend_247.status_code==200
+_named_amend_mid_247=_named_amend_247.get_json()['message']['id']
+_named_pending_247=c.post(endpoint+'queue',headers=headers,json={'room':queue_room,'message_id':_named_amend_mid_247})
+assert _named_pending_247.status_code==200 and _named_pending_247.get_json()['task']['status']=='pending'
+assert c.post(endpoint+'result',headers=headers,json={
+  'room':queue_room,'message_id':_named_mid_247,'robot_id':_named_bot_247['id'],'outcome':'completed'}).status_code==409
+# The second queued creative request cannot steal the same robot until the
+# first project is independently completed or released.
+_claim_new_247={**_named_claim_247,'message_id':_named_amend_mid_247,
+               'order':{**_named_order_247,'goal':_ideas_247[1]},
+               'state':{**_named_state_247,'groupJobId':_named_amend_mid_247,'intentMessageId':_named_amend_mid_247}}
+assert c.post(endpoint+'claim',headers=headers,json=_claim_new_247).status_code in (400,409)
+print('PASS: named creative dialogue becomes human-authorized, robot-bound durable work; amendments cannot overwrite busy jobs')
+
 # Logging out revokes the token server-side; the same browser tab cannot use it again.
 assert c.post('/api/logout',headers=headers,json={}).status_code==200
 assert c.get('/api/me',headers=headers).status_code==401

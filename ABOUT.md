@@ -1,4 +1,4 @@
-SOLVI.help v0.2.245 — Model-planned, identity-bound creative projects.
+SOLVI.help v0.2.247 — Realm-scoped creative work orders, peripheral robot-eye panoramas.
 
 # About SOLVI.help
 

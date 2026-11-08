@@ -27,7 +27,7 @@ test('Creative Builds refuse scripts, stale IDs, unbounded parts, models and cus
 });
 test('Collection UI saves a full folder as a Creative Builds preset',()=>{
  const editor=read('js/editor.js'),presets=read('js/object-presets.js'),api=read('backend/server.py');
- assert.match(editor,/savePreset\.textContent='Save preset'/);
+ assert.match(editor,/collectionIcon\('Save collection preset','drawing-save'/);
  assert.match(editor,/objectPresets\?\.saveCollection\(folder\.id\)/);
  assert.match(presets,/category===c/);assert.match(presets,/'Creative Builds'/);
  assert.match(presets,/portableCreativeBuild\(members\.map/);

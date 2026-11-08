@@ -39,7 +39,7 @@ const words=[
  [/settings|config|setup|theme|palette/i,'config'],[/log|history|refresh|reload/i,'history'],
  [/more|options|tools/i,'more'],[/copy|duplicate/i,'copy'],[/share|link/i,'share']
 ];
-const fileIcons=new Set('map attach opened minified reset move rotate scale add config chat rooms avatar-3d render download fullscreen captions mic sound-on sound-mute video camera photo eye brain send close x more profile users edit delete stop play pause copy window sidebar-in sidebar-out history preview file stream link check plus share drawing game chat-3d-orbit change-camera transcript background bottom exit media full grab cancel swap speak avatar-maker chat-3d-capture cube square sphere cylinder torus plane curve surface text-object points light model list-objects collapse lock unlock upload webcam'.split(' '));
+const fileIcons=new Set('map attach opened minified reset move rotate scale drawing-save ungroup add config chat rooms avatar-3d render download fullscreen captions mic sound-on sound-mute video camera photo eye brain send close x more profile users edit delete stop play pause copy window sidebar-in sidebar-out history preview file stream link check plus share drawing game chat-3d-orbit change-camera transcript background bottom exit media full grab cancel swap speak avatar-maker chat-3d-capture cube square sphere cylinder torus plane curve surface text-object points light model list-objects collapse lock unlock upload webcam'.split(' '));
 const utilityIconOnly=new Set(['webcamButton','minimizeScenePanel','toolboxMinimize','composerMinimize','composerFloat','minimapMinimize','minimapClose']);
 // Header close controls have an accessible name but no extra visible x or text.
 export function shouldUseIconOnlyControl(button){return /^(?:close[A-Z]|close$)/.test(button.id||'')||utilityIconOnly.has(button.id||'')||button.classList.contains('scene-item-delete')||button.classList.contains('scene-item-lock');}
@@ -50,8 +50,8 @@ export function iconForButton(button){
  if(button.classList.contains('theme-swatch')||button.classList.contains('theme-preset'))return null;
  // Collection controls must retain their visible names even in icon-only mode.
  if(button.closest?.('.scene-collection-heading'))return null;
- if(button.closest?.('.scene-collection-actions'))return null;
- if(button.dataset?.uiIcon&&fileIcons.has(button.dataset.uiIcon))return button.dataset.uiIcon;
+ // Collection actions are accessible icon buttons; their titles and aria labels retain full descriptions.
+ if(button.dataset?.uiIcon&&(fileIcons.has(button.dataset.uiIcon)||button.dataset.uiIcon==='ungroup'))return button.dataset.uiIcon;
  const kind=button.dataset?.objectKind;
  if(kind)return iconForObjectKind(kind);
  if(button.closest?.('.scene-item-row')&&!button.classList.contains('scene-item-delete'))return null;

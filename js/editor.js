@@ -435,7 +435,7 @@ export class SceneEditor{
   const eyePanel=byId('robotEyePreview'),eyeImage=byId('robotEyePreviewImage');
   const eyeName=byId('robotEyePreviewName'),eyeTime=byId('robotEyePreviewTime');
   let eyesEnabled=true,eyeURL=null,displayedBlob=null;
-  const eyeFrames=new Map();
+  const eyeFrames=new Map(),wideEyeFrames=new Map();
   try{eyesEnabled=localStorage.getItem('solvi-robot-eyes-preview-v1')!=='0';}catch{}
   eyesToggle.checked=eyesEnabled;
   const clearEyeImage=()=>{
@@ -447,7 +447,9 @@ export class SceneEditor{
    eyePanel.hidden=!eyesEnabled||!robot;
    if(eyePanel.hidden){clearEyeImage();return;}
    eyeName.textContent=robot.name+' · last real eye view';
-   const frame=eyeFrames.get(robot.userData.editorId);
+   const recentWide=wideEyeFrames.get(robot.userData.editorId);
+   const frame=recentWide&&Date.now()-recentWide.at<240000&&recentWide.room===String(window.solviRoom||'')
+    ?recentWide:eyeFrames.get(robot.userData.editorId);
    if(!frame||frame.room!==String(window.solviRoom||'')){
     clearEyeImage();eyeTime.textContent='No camera frame captured in this realm';eyeTime.removeAttribute('datetime');return;
    }
@@ -468,9 +470,11 @@ export class SceneEditor{
   window.addEventListener('solvi:robot-eye-frame',event=>{
    const frame=event.detail;
    if(!frame?.robotId||!frame?.blob?.size||frame.room!==String(window.solviRoom||''))return;
-   eyeFrames.set(frame.robotId,frame);updateEyePreview();
+   eyeFrames.set(frame.robotId,frame);
+   if(/^Stitched wide eyes/.test(String(frame.label||'')))wideEyeFrames.set(frame.robotId,frame);
+   updateEyePreview();
   });
-  window.addEventListener('solvi:room-changed',()=>{eyeFrames.clear();clearEyeImage();updateEyePreview();});
+  window.addEventListener('solvi:room-changed',()=>{eyeFrames.clear();wideEyeFrames.clear();clearEyeImage();updateEyePreview();});
   window.addEventListener('pagehide',clearEyeImage);
   setInterval(()=>{if(!eyePanel.hidden)updateEyePreview();},15000);
   const speakingPortrait=e=>{
@@ -2689,15 +2693,14 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    heading.append(toggle,title,count);box.append(heading);
    if(expanded){
     const actions=document.createElement('div');actions.className='scene-collection-actions';
-    const move=document.createElement('button');move.type='button';move.className='scene-collection-action';move.textContent='Move';move.title='One translate/rotate/scale gizmo for all editable collection members';move.disabled=!this.canMoveCollection(this.collectionMembers(folder.id));move.onclick=()=>this.selectCollection(folder.id);
-    const rename=document.createElement('button');rename.type='button';rename.className='scene-collection-action';rename.textContent='Rename';rename.disabled=!this.collectionMembers(folder.id).every(o=>this.canEdit(o));rename.onclick=()=>this.renameCollection(folder.id);
-    const ungroup=document.createElement('button');ungroup.type='button';ungroup.className='scene-collection-action';ungroup.textContent='Ungroup';ungroup.disabled=!this.collectionMembers(folder.id).every(o=>this.canEdit(o)&&cleanSceneCollection(o.userData.sceneCollection));ungroup.onclick=()=>this.ungroupCollection(folder.id);
-    const removeGroup=document.createElement('button');removeGroup.type='button';removeGroup.className='scene-collection-action scene-collection-delete';
-    removeGroup.textContent='Delete group';removeGroup.dataset.uiIcon='delete';removeGroup.title='Delete this collection and all its member objects';
-    removeGroup.setAttribute('aria-label','Delete collection '+label+' and all '+this.collectionMembers(folder.id).length+' objects');
+    const collectionIcon=(name,icon,title)=>{const button=document.createElement('button');button.type='button';button.className='scene-collection-action scene-collection-icon';button.dataset.uiIcon=icon;button.title=title;button.setAttribute('aria-label',name+' '+label);return button;};
+    const move=collectionIcon('Transform collection','move','Transform the whole collection: move, rotate or scale');move.disabled=!this.canMoveCollection(this.collectionMembers(folder.id));move.onclick=()=>this.selectCollection(folder.id);
+    const rename=collectionIcon('Rename collection','edit','Rename collection');rename.disabled=!this.collectionMembers(folder.id).every(o=>this.canEdit(o));rename.onclick=()=>this.renameCollection(folder.id);
+    const ungroup=collectionIcon('Ungroup collection','ungroup','Remove the folder without deleting its components');ungroup.disabled=!this.collectionMembers(folder.id).every(o=>this.canEdit(o)&&cleanSceneCollection(o.userData.sceneCollection));ungroup.onclick=()=>this.ungroupCollection(folder.id);
+    const removeGroup=collectionIcon('Delete collection','delete','Delete this collection and all '+this.collectionMembers(folder.id).length+' objects');removeGroup.classList.add('scene-collection-delete');
     removeGroup.disabled=!collectionDeletionPlan(this.items,[folder.id],o=>this.canEdit(o)).permitted.length;
     removeGroup.onclick=()=>this.deleteCollections([folder.id]);
-    const savePreset=document.createElement('button');savePreset.type='button';savePreset.className='scene-collection-action';savePreset.textContent='Save preset';savePreset.title='Save this assembly to Creative Builds';savePreset.disabled=!window.solviAPI?.online||!this.collectionMembers(folder.id).every(o=>this.canEdit(o));savePreset.onclick=()=>this.objectPresets?.saveCollection(folder.id);
+    const savePreset=collectionIcon('Save collection preset','drawing-save','Save this assembly under Creative Builds');savePreset.disabled=!window.solviAPI?.online||!this.collectionMembers(folder.id).every(o=>this.canEdit(o));savePreset.onclick=()=>this.objectPresets?.saveCollection(folder.id);
     actions.append(move,rename,ungroup,savePreset,removeGroup);box.append(actions);
     const children=document.createElement('div');children.className='scene-collection-members';folder.items.forEach(o=>children.append(makeRow(o)));box.append(children);
    }

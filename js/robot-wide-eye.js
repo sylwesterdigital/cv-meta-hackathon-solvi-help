@@ -59,3 +59,21 @@ export async function stitchRobotWideEye(frames,{width=1280,height=832}={}){
  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.88));
  if(!blob?.size)throw Error('Wide eye capture could not produce a JPEG');return blob;
 }
+
+// Capture the same six genuine viewpoints used by the manual Wide Eyes action.
+// The caller supplies its already-authorised render function and a realm guard.
+// On room switches, abort BEFORE publishing the panorama.
+export async function captureRobotWideSurvey(capture,{stillCurrent=()=>true,width=1008,height=648}={}){
+ if(typeof capture!=='function')throw Error('A real camera capture function is required');
+ const frames=[];
+ for(const view of WIDE_EYE_VIEWS){
+  if(!stillCurrent())throw Error('Robot or realm changed during wide capture');
+  const blob=await capture(view);
+  if(!blob?.size)throw Error('Wide camera returned an empty '+view.label+' view');
+  frames.push({...view,blob});
+ }
+ if(!stillCurrent())throw Error('Robot or realm changed during wide capture');
+ const stitched=await stitchRobotWideEye(frames,{width,height});
+ if(!stillCurrent())throw Error('Robot or realm changed during wide stitching');
+ return {blob:stitched,frames,coverage:{horizontal:WIDE_EYE_HORIZONTAL,vertical:WIDE_EYE_VERTICAL}};
+}

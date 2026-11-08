@@ -825,7 +825,15 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
      requireActive(run,bot);
     }
    }else{
-    const site=editor.planRobotBuildSite?.(bot,'house',{width:blueprint.span,depth:blueprint.span});
+    // An explicit 'go to @Bee and help embellish her maze' assignment must
+    // use Bee's CURRENT scene position as a worksite hint, not old memories.
+    // Never teleport: the normal A* approach still verifies the route.
+    const collaborator=/\b(?:go\s+to|near|beside|help|with)\s+@([\p{L}\p{N}_-]+)/iu.exec(run.order.goal);
+    const peer=collaborator&&editor.items.find(o=>o.userData.editorKind==='robot'&&o!==bot&&
+      o.name.toLocaleLowerCase()===collaborator[1].toLocaleLowerCase());
+    const anchor=peer?{x:peer.position.x,z:peer.position.z}:run.team?.anchor;
+    const site=editor.planRobotBuildSite?.(bot,'house',{width:blueprint.span,depth:blueprint.span,anchor});
+    if(peer)trace(bot,'COLLABORATIVE SITE',`Planning beside current realm robot ${peer.name}, with A* and scene collision checks.`);
     if(!site)throw Error('NO CLEAR CREATIVE WORKSITE: existing objects/route block this location; require an alternate accessible open area');
     at=await walkToWorksite(run,bot,site,blueprint.name);
    }
@@ -1510,16 +1518,22 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
      if(!selection.ready){emitLog(null,'GROUP WAITING',`${task.source_message_id}: ${selection.reason}; no wrong bin selected.`);continue;}
      if(!editor.canEdit(selection.target)){emitLog(null,'GROUP WAITING','Bin exists but is not editable by this operator');continue;}
     }
-    const worker=chooseQueuedWorker(editor.items,[...runs.keys()],editor.controlledRobot?.()?.userData.editorId||'',
-     bot=>editor.canEdit(bot),task.failed_worker_id,task.kind,selection?.target||null);
+    // Named amendments are directed to exactly the scene robot named by the
+    // human. If it is busy, leave the SQLite intent pending instead of
+    // handing it to a random colleague or discarding the earlier assignment.
+    const worker=task.kind==='named_creative_build'
+     ?editor.items.find(bot=>bot.userData.editorKind==='robot'&&bot.userData.editorId===task.target_id&&
+        editor.canEdit(bot)&&!runs.has(bot.userData.editorId)&&!bot.userData.robotMission)
+     :chooseQueuedWorker(editor.items,[...runs.keys()],editor.controlledRobot?.()?.userData.editorId||'',
+       bot=>editor.canEdit(bot),task.failed_worker_id,task.kind,selection?.target||null);
     if(!worker){emitLog(null,'GROUP WAITING',`Task ${task.source_message_id}: no free editable worker; preserving other projects.`);continue;}
     const id=worker.userData.editorId;
     const goal=task.kind==='cleanup_boxes'?boxCleanupProjectGoal(selection.targetName):task.source_text;
-    const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,variant:task.kind==='creative_build'?'creative':'',allowChanges:true,vision:false,interval:180});
+    const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,variant:['creative_build','named_creative_build'].includes(task.kind)?'creative':'',allowChanges:true,vision:false,interval:180});
     const run=newRun(order,true,worker);
     run.groupJobId=task.source_message_id;
     run.intentMessageId=task.source_message_id;
-    if(task.kind==='creative_build'){
+    if(['creative_build','named_creative_build'].includes(task.kind)){
      run.creativeDeadline=creativeSessionDeadline(task.source_text,Date.parse(task.created||''));
      if(run.creativeDeadline&&Date.now()>=run.creativeDeadline){
       trace(worker,'GROUP TIMED OUT','The shared work window elapsed before this robot became free; no late construction will start.');
@@ -1528,12 +1542,12 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
     }
     run.cleanupBinId=selection?.target?.userData.editorId||'';
     try{
-     await api.req('/api/robots/autonomy/group/claim',{method:'POST',body:JSON.stringify({room:room(),message_id:task.source_message_id,robot_id:id,target_id:run.cleanupBinId,order,state:stateOf(run)})});
+     await api.req('/api/robots/autonomy/group/claim',{method:'POST',body:JSON.stringify({room:room(),message_id:task.source_message_id,robot_id:id,target_id:task.kind==='named_creative_build'?task.target_id:run.cleanupBinId,order,state:stateOf(run)})});
     }catch(error){emitLog(worker,'GROUP CLAIM REFUSED',error.message+'; no scene task started');continue;}
     savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});
     runs.set(id,run);
     run.timer=setInterval(()=>void cycle(run),order.interval*1000);
-    trace(worker,'GROUP DELEGATED',`Human message ${task.source_message_id}, ${task.kind}; free editable worker ${worker.name}; ${boxes.length} boxes; ${task.kind==='creative_build'?'creative role '+creativeRole(task.source_message_id):'bin '+(selection?.targetName||'(construction)')} · one atomic server claim.`);
+    trace(worker,'GROUP DELEGATED',`Human message ${task.source_message_id}, ${task.kind}; free editable worker ${worker.name}; ${boxes.length} boxes; ${['creative_build','named_creative_build'].includes(task.kind)?'creative stage '+creativeRole(task.source_message_id):'bin '+(selection?.targetName||'(construction)')} · one atomic server claim.`);
     trace(worker,'ORDER COMMITTED',`SQLite group assignment and robot order saved together BEFORE physical movement.`);
     toast(`${worker.name}: ${task.kind==='cleanup_boxes'?'box cleanup':'construction'} accepted; follow physical receipts in Brain.`);
     void cycle(run);assigned++;
@@ -1632,6 +1646,24 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    handledChatMessages.add(message.id);
    await dispatchPendingGroupTasks(true);
    return 1; // Pending task now has a new human-authored bin name.
+  }
+  // The named human creative command can also be an AMENDMENT to an existing
+  // project. Queue it durably, with exact robot+realm identity; do not replace
+  // a currently building robot or reinterpret a peer suggestion as authority.
+  const namedCreative=addressedCreativeRobot(message.text,editor.items.filter(o=>o.userData.editorKind==='robot')
+    .map(o=>({id:o.userData.editorId,name:o.name,kind:'robot'})));
+  if(namedCreative){
+   const namedBot=editor.items.find(o=>o.userData.editorId===namedCreative.robotId);
+   handledChatMessages.add(message.id);
+   if(!namedBot||!editor.canEdit(namedBot)){
+    emitLog(namedBot,'NAMED TASK REFUSED','Current operator lacks scene robot permissions; no work order created');return -1;
+   }
+   try{
+    const queued=await api.req('/api/robots/autonomy/group/queue',{method:'POST',body:JSON.stringify({room:room(),message_id:message.id})});
+    emitLog(namedBot,'NAMED CREATIVE QUEUED',`Saved human message ${message.id}; ${queued.task.kind}; ${queued.deduplicated?'deduplicated':'pending assignment'}; robot ID ${namedCreative.robotId}.`);
+    await dispatchPendingGroupTasks(true);
+    return 1;
+   }catch(error){emitLog(namedBot,'NAMED TASK NOT QUEUED',error.message);toast('Named creative task not saved: '+error.message);return -1;}
   }
   const denied=editor.items.find(o=>o.userData.editorKind==='robot'&&!editor.canEdit(o)&&
    (namedRoomFurnishingInstruction(message.text,o.name)||namedWorkContinuation(message.text,o.name)||

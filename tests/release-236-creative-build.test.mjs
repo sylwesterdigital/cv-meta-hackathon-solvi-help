@@ -52,8 +52,8 @@ test('creative dispatch and real editor persistence are connected to group recei
  assert.match(editor,/this\.physics\.sync\(obj\)/);
  assert.match(editor,/const avatar=new THREE\.Box3\(/);
  assert.match(editor,/this\.queueSave\(obj\)/);
- assert.match(backend,/elif task\['kind'\] in \('local_build','creative_build'\)/);
- assert.match(backend,/if outcome=='completed' and task\['kind'\]=='creative_build'/);
+ assert.match(backend,/elif task\['kind'\] in \('local_build','creative_build','named_creative_build'\)/);
+ assert.match(backend,/if outcome=='completed' and task\['kind'\] in \('creative_build','named_creative_build'\)/);
  assert.match(backend,/count=len\(design\['parts'\]\)/);
  assert.match(backend,/object_row\.get\('owner'\)!=user\['id'\]/);
  assert.match(studio,/else if\(!\(work>0\)\)await reactToRobotMessage/);

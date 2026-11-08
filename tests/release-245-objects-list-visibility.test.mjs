@@ -18,7 +18,7 @@ test('folder titles and counts are persistent text independent of button decorat
  assert.match(editor,/summary\.className='scene-list-summary'/);
  assert.match(editor,/empty\.className='scene-list-empty'/);
  assert.match(editor,/actions\.className='scene-collection-actions'/);
- const ui=read('js/ui-controls.js');assert.match(ui,/button\.closest\?\.\('\.scene-collection-actions'\)\)return null/);
+ const ui=read('js/ui-controls.js');assert.match(ui,/button\.dataset\.uiIcon===\'ungroup\'/);
 });
 test('searching a readable collection name returns the objects without renaming IDs',()=>{
  const editor=read('js/editor.js');
@@ -28,9 +28,9 @@ test('searching a readable collection name returns the objects without renaming 
  assert.equal(result.folders.length,35);
  assert.equal(result.folders[0].items[0].name,items[0].name);
 });
-test('v0.2.246 metadata agrees and existing scene/ownership persistence is retained',()=>{
+test('v0.2.247 metadata agrees and existing scene/ownership persistence is retained',()=>{
  const pkg=JSON.parse(read('package.json'));const releases=JSON.parse(read('releases.json'));
- assert.equal(pkg.version,'0.2.246');assert.equal(releases.currentVersion,'0.2.246');
+ assert.equal(pkg.version,'0.2.247');assert.equal(releases.currentVersion,'0.2.247');
  const source=read('js/editor.js');assert.match(source,/collection:o\.userData\.editorKind/);
  assert.match(source,/this\.queueSave\(object\)/);
 });

@@ -38,7 +38,8 @@ test('group cleanup is queued durably and only claimed atomically before robot c
  const backend=readFileSync(new URL('../backend/server.py',import.meta.url),'utf8');
  assert.match(source,/const groupCleanup=groupBoxCleanupInstruction\(message\.text\)/);
  assert.match(source,/await dispatchPendingGroupTasks\(true\)/);
- assert.match(source,/const worker=chooseQueuedWorker\(editor\.items/);
+ assert.match(source,/:chooseQueuedWorker\(editor\.items/);
+ assert.match(source,/task\.kind==='named_creative_build'/);
  assert.match(source,/\/api\/robots\/autonomy\/group\/claim/);
  const claim=source.indexOf("await api.req('/api/robots/autonomy/group/claim'");
  assert.ok(claim>0&&source.indexOf('runs.set(id,run);',claim)>claim);

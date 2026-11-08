@@ -72,5 +72,5 @@ test('browser and backend persist the same optional collection + opt-out schema'
  assert.match(backend,/if 'collection' in obj and/);
  assert.match(backend,/'seating','collection','collectionOptOut'/);
  assert.match(html,/id="sceneGroupSelected"/);
- assert.match(html,/"\.\/js\/scene-collections\.js":"\.\/js\/scene-collections\.js\?v=0\.2\.246"/);
+ assert.match(html,/"\.\/js\/scene-collections\.js":"\.\/js\/scene-collections\.js\?v=0\.2\.247"/);
 });

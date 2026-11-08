@@ -1,3 +1,10 @@
+## v0.2.247 — Automatic peripheral eyes, named creative work orders, compact folders (2026-11-08)
+
+- Opt-in Eyes shows stitched 210° × 135° six-frame panorama after autonomous reconnaissance, preserving central-frame model evidence and original image privacy.
+- Explicit human chat instructions for named robot creative projects and collaborator assistance enter an authenticated durable per-realm queue; busy robots retain old work. Completion verifies saved primitives, and untimed sessions are bounded to 15 minutes.
+- Single icon row for collection transform, rename, ungroup, save preset and delete, with accessible labels and permissions.
+- Version-specific usage examples and watcher tests. Flask integration and live scene acceptance remain for the Mac watcher.
+
 ## v0.2.246 — Creative Builds presets, batch collection deletion, resizable map and wider robot eyes (2026-11-08)
 
 - Collection folder Save preset → Creative Builds; store portable relative primitive geometry with new IDs on placement.

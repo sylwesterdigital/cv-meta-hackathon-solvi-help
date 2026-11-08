@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.246",
+  "currentVersion": "0.2.247",
   "releases": [
+    {
+      "version": "0.2.247",
+      "publishedAt": "2026-11-08T13:18:18Z",
+      "changes": [
+        "Use current-realm, human-authorized named creative assignments; queue busy robot amendments without overwriting active projects.",
+        "Automatically show optional, genuine six-direction peripheral robot-eye panoramas after autonomous reconnaissance.",
+        "Use a single accessible icon row for collection transform, rename, ungroup, save preset and delete.",
+        "Add integration and regression tests plus version-specific valid usage examples."
+      ]
+    },
     {
       "version": "0.2.246",
       "publishedAt": "2026-11-08T12:10:23Z",
@@ -298,17 +308,6 @@
         "Keep the original collision-aware path and fence checkpoint pauses on the owner client while remote avatars smoothly follow that same route and use walking/run/idle animations.",
         "Preserve the manual keyboard-prediction network path, lift transport, room permissions and persistent scene objects; avoid stale checkpoint rewinds while a live motion stream is active.",
         "Bound and authorise robot-motion WebSocket relay and sequence numbers; continue saving final positions and five-second recovery checkpoints without writing every animation frame."
-      ]
-    },
-    {
-      "version": "0.2.210",
-      "publishedAt": "2026-11-06T05:04:53Z",
-      "changes": [
-        "Navigate around long picket fences, hedges and path walls with adaptive, bounded 8-connected A* search instead of repeatedly plotting a failed straight crossing; validated 120\u2013320m barrier detours and angled physical footprints.",
-        "At significant barrier-route bends, briefly stop to capture real 3-direction head-camera JPEGs, keep the same mission/destination, and replan if live scene geometry changes. Existing 120-second Meta perception reservations may additionally interpret the forward view, with the same quotas and spending guards.",
-        "Correct robot route debug: a blocked goal now shows its red destination ring and obstacles, not a red straight line pretending to be a usable route. Measured movement trail remains cyan and planned safe path green.",
-        "Renew authenticated one-time robot-life leases during long journeys, preventing another tab from taking control while the same robot navigates; terminate safely on lost renewal. Keep casual social visits local and avoid repetitive recently visited targets.",
-        "Improve robot conversation grounding in recent client-reported exploration; distinguish actual saved work orders and completed world edits from enthusiastic but non-executable group discussion."
       ]
     }
   ]

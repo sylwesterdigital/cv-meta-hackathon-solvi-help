@@ -46,7 +46,7 @@ test('the backend independently checks group deadline, series tag and actual sav
  const src=read('backend/server.py');
  assert.match(src,/def group_creative_deadline\(task\):/);
  assert.match(src,/Timed group work session is not yet finished/);
- assert.match(src,/if task\['kind'\]=='creative_build':\n\s+expected=group_creative_deadline\(task\)/);
+ assert.match(src,/if outcome=='completed' and task\['kind'\] in \('creative_build','named_creative_build'\):\n\s+deadline=group_creative_deadline\(task\)/);
  assert.match(src,/if deadline and series and len\(history\)!=series/);
  assert.match(src,/suffix=':series'\+str\(series\) if series else ''/);
  assert.match(src,/if type\(stored\.get\('creativeSeriesIndex',0\)\) is not int or not 0<=stored\.get\('creativeSeriesIndex',0\)<=8/);

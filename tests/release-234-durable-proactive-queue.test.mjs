@@ -57,7 +57,7 @@ test('server message classifier and scene receipt use actual list positions and 
  const server=new URL('../backend/server.py',import.meta.url).pathname;
  const script=`import ast,math,re,sys
 src=open(sys.argv[1]).read();tree=ast.parse(src)
-names=['group_intent_kind','group_copy_objects','group_destination_confirmed','group_has_held_cargo']
+names=['named_creative_request','group_intent_kind','group_copy_objects','group_destination_confirmed','group_has_held_cargo']
 nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in names]
 scope={'math':math,'re':re};exec(compile(ast.Module(body=nodes,type_ignores=[]),'<group-helpers>','exec'),scope)
 recognize=scope['group_intent_kind'];confirm=scope['group_destination_confirmed'];boxes=scope['group_copy_objects']

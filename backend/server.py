@@ -248,7 +248,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.246',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.247',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -2002,11 +2002,36 @@ def valid_robot_work_order(order,state):
     if not isinstance(houses,list) or len(houses)>3 or any(not isinstance(id,str) or len(id)>100 for id in houses):return None
     return cleaned,stored
 
+# A named human amendment must become durable work, rather than a robot's
+# spoken promise. This deliberately checks the action VERB, not an object noun
+# whitelist. A social proposal from a robot has no authority here.
+def named_creative_request(text,objects):
+    value=str(text or '').strip()[:1800]
+    if not value.startswith('@') or re.match(r'^@(?:all|everyone)\b',value,re.I):return None
+    if re.search(r"\b(?:do not|don't|never|stop|cancel|avoid)\s+(?:\w+\s+){0,4}(?:create|build|add|start|continue|extend|embellish|decorate|make)\b",value,re.I):return None
+    choices=[]
+    for obj in objects or []:
+        if not isinstance(obj,dict) or obj.get('kind')!='robot' or not isinstance(obj.get('id'),str):continue
+        name=str(obj.get('name','')).strip()
+        if name and value.casefold().startswith(('@'+name).casefold()) and (len(value)==len(name)+1 or value[len(name)+1] in ' \t,;:'):
+            choices.append(obj)
+    if len(choices)!=1:return None
+    statement=value[len(str(choices[0]['name']).strip())+1:].lstrip(' ,;:')
+    if re.search(r'^(?:please\s+)?(?:explain|describe|discuss|tell|show|summari[sz]e)\b|^(?:can|could|would|do)\s+you\s+(?:please\s+)?(?:explain|describe|tell|discuss)\b|^(?:how|why|what)\b',statement,re.I):return None
+    authorizes=bool(re.search(r'^\s*(?:please\s+)?(?:start|begin|continue|keep|resume|perform|develop|create|build|make|construct|design|add|place|embellish|extend|decorate|sculpt)\b',statement,re.I) or
+      re.search(r'\b(?:please|can you|could you|go ahead|you should|i (?:mean|want) you to|do it|start now)\b',statement,re.I))
+    purpose=bool(re.search(r'\b(?:creat\w*|build\w*|construct\w*|design\w*|assemble|make|sculpt\w*|embellish|decorate|extend|develop|creative\s+session)\b',statement,re.I))
+    go_help=bool(re.search(r'^go\s+to\s+@[^\s]+.*?\band\s+help\b.*?\b(?:embellish|create|build|decorate|make|extend|design)\b',statement,re.I))
+    if not (go_help or (authorizes and purpose)):return None
+    return choices[0]
+
 # Group intent queue: ONLY authenticated, already saved human chat can authorize
 # a scene-changing task. Queuing persists without a free robot. Claim + work
 # order commit are one SQLite transaction, so two clients cannot duplicate it.
-def group_intent_kind(text):
-    if not isinstance(text,str) or not 1<=len(text)<=1800 or not re.match(r'^\s*@(?:all|everyone)\b',text,re.I):return ''
+def group_intent_kind(text,objects=None):
+    if not isinstance(text,str) or not 1<=len(text)<=1800:return ''
+    if not re.match(r'^\s*@(?:all|everyone)\b',text,re.I):
+        return 'named_creative_build' if named_creative_request(text,objects) else ''
     if re.search(r"\b(?:don't|do\s+not|never|stop)\s+(?:\w+\s+){0,3}(?:move|moved|collect|put|pick|dispose|start|begin|build|building|construct|constructing|create|creating|make)\b",text,re.I):return ''
     if (re.search(r'\b(?:boxes|box\s+cop(?:y|ies))\b',text,re.I) and
         re.search(r'\b(?:bin|junk|rubbish|trash)\b',text,re.I) and
@@ -2039,7 +2064,10 @@ def group_creative_part_count(goal):
 
 def group_creative_duration_seconds(goal):
     match=re.search(r'\b(\d{1,2})\s*(minutes?|mintues?|mins?|hours?|hrs?)\b',str(goal or ''),re.I)
-    if not match:return 900 if re.search(r'\b(?:creative\s+(?:building\s+)?session|session\s+of\s+(?:building|creating|designing))\b',str(goal or ''),re.I) and re.search(r'\b(?:build|building|create|creating|design|designing)\b',str(goal or ''),re.I) else 0
+    if not match:
+        goal_text=str(goal or '')
+        return 900 if (re.search(r'\b(?:creative\s+(?:building\s+)?session|session\s+of\s+(?:building|creating|designing))\b',goal_text,re.I) or
+                       re.search(r'\b(?:continue|keep|resume)\b.*?\b(?:creat\w*|build\w*|extend|embellish)\b.*?\buntil\b.*?\bstop\b',goal_text,re.I)) else 0
     amount=int(match.group(1))
     if amount<1:return 0
     return min(3600,amount*(3600 if match.group(2).lower().startswith('h') else 60))
@@ -2095,8 +2123,12 @@ def robot_group_queue_add():
     with db() as con:
         row=con.execute('SELECT id,user_id,role,text,created FROM messages WHERE id=? AND room_id=?',(mid,room_id)).fetchone()
         if not row or row['user_id']!=user['id'] or row['role']!='user':return json_error('Original human chat authority required',403)
-        kind=group_intent_kind(row['text'])
-        if not kind:return json_error('Only explicit supported @all tasks can be queued',400)
+        scene=group_scene_objects(con,room_id)
+        named_target=named_creative_request(row['text'],scene)
+        kind=group_intent_kind(row['text'],scene)
+        if not kind:return json_error('Only explicit human group or named creative instructions can be queued',400)
+        if kind=='named_creative_build' and (not named_target or not may_edit(user['id'],named_target,room_policy(room_id))):
+            return json_error('Named robot in this realm is not editable by this operator',403)
         existing=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=?',(room_id,mid)).fetchone()
         if existing:return jsonify(ok=True,task=group_intent_public(existing),deduplicated=True)
         active_count=con.execute("SELECT COUNT(*) AS n FROM robot_group_intents WHERE room_id=? AND user_id=? AND status IN ('pending','assigned')",(room_id,user['id'])).fetchone()['n']
@@ -2119,8 +2151,8 @@ def robot_group_queue_add():
         identifiers=[mid+':'+str(index) for index in range(3)] if kind=='creative_build' else [mid]
         for ident in identifiers:
             if len(ident)>100:return json_error('Group message ID too long',400)
-            con.execute('INSERT INTO robot_group_intents(room_id,source_message_id,user_id,kind,source_text,created,updated) VALUES(?,?,?,?,?,?,?)',
-                 (room_id,ident,user['id'],kind,row['text'],row['created'],stamp))
+            con.execute('INSERT INTO robot_group_intents(room_id,source_message_id,user_id,kind,source_text,target_id,target_name,created,updated) VALUES(?,?,?,?,?,?,?,?,?)',
+                 (room_id,ident,user['id'],kind,row['text'],named_target['id'] if named_target else '',named_target['name'] if named_target else '',row['created'],stamp))
         task=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=?',(room_id,identifiers[0])).fetchone()
     return jsonify(ok=True,task=group_intent_public(task),deduplicated=False,subtasks=len(identifiers))
 
@@ -2145,7 +2177,7 @@ def robot_group_queue_list():
             # never stolen merely because a browser timer was throttled.
             con.execute("UPDATE robot_group_intents SET status='pending',failed_worker_id=?,worker_id='',retry_at=0,detail='Previous worker or saved order unavailable; safe pending reassignment',updated=? WHERE room_id=? AND source_message_id=?",
                         (task['worker_id'],now(),room_id,task['source_message_id']))
-        for pending in con.execute("SELECT * FROM robot_group_intents WHERE room_id=? AND user_id=? AND kind='creative_build' AND status='pending'",(room_id,user['id'])).fetchall():
+        for pending in con.execute("SELECT * FROM robot_group_intents WHERE room_id=? AND user_id=? AND kind IN ('creative_build','named_creative_build') AND status='pending'",(room_id,user['id'])).fetchall():
             deadline=group_creative_deadline(pending)
             if deadline and time.time()*1000>=deadline:
                 con.execute("UPDATE robot_group_intents SET status='blocked',detail='Timed creative request expired before an eligible worker was assigned',updated=? WHERE room_id=? AND source_message_id=?",
@@ -2173,7 +2205,7 @@ def robot_group_queue_claim():
         task=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=? AND user_id=?',(room_id,mid,user['id'])).fetchone()
         if not task:return json_error('Unknown group intent',404)
         if task['status']!='pending' or task['retry_at']>time.time():return json_error('Group intent not ready for claiming',409)
-        if task['kind']=='creative_build':
+        if task['kind'] in ('creative_build','named_creative_build'):
             expected=group_creative_deadline(task)
             received=state.get('creativeDeadline',0)
             if expected and (type(received) not in (int,float) or abs(received-expected)>2500):
@@ -2197,11 +2229,18 @@ def robot_group_queue_claim():
             if not any(name.lower() in row['text'].lower() for row in messages):return json_error('Destination must be explicitly named in earlier human chat',409)
             if not group_copy_objects(objects):return json_error('No Box copies present in saved scene',409)
             if state.get('cleanupBinId')!=target_id or name.lower() not in order['goal'].lower():return json_error('Task destination ID and name mismatch',400)
-        elif task['kind'] in ('local_build','creative_build'):
+        elif task['kind'] in ('local_build','creative_build','named_creative_build'):
             target_id='';name=''
             if order['goal']!=task['source_text']:return json_error('Construction goal does not match authorized human message',400)
             if task['kind']=='creative_build' and not re.fullmatch(re.escape(mid[:-2])+r':[0-2]',mid):
                 return json_error('Unknown creative team role',400)
+            if task['kind']=='named_creative_build':
+                if rid!=task['target_id'] or bot.get('id')!=task['target_id']:
+                    return json_error('Named creative task belongs to another robot',403)
+                # Recheck named identity and scene presence at claim time too.
+                named=named_creative_request(task['source_text'],group_scene_objects(con,room_id))
+                if not named or named.get('id')!=rid:return json_error('Named target changed in this realm',409)
+                target_id=rid;name=bot.get('name','')
         else:return json_error('Unknown group intent kind',400)
         stamp=now()
         scene_before=json.dumps([o.get('id') for o in group_scene_objects(con,room_id) if isinstance(o,dict) and isinstance(o.get('id'),str)])
@@ -2280,7 +2319,7 @@ def robot_group_queue_result():
         row=con.execute('SELECT state_json FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',(room_id,rid,user['id'])).fetchone()
         if not row or json.loads(row['state_json']).get('groupJobId')!=mid:return json_error('Missing authoritative group work order',409)
         objects=group_scene_objects(con,room_id)
-        if outcome=='completed' and task['kind']=='creative_build':
+        if outcome=='completed' and task['kind'] in ('creative_build','named_creative_build'):
             deadline=group_creative_deadline(task)
             if deadline and time.time()*1000<deadline:
                 return json_error('Timed group work session is not yet finished; retain assignment and continue building',409)
@@ -2288,7 +2327,7 @@ def robot_group_queue_result():
             boxes=group_copy_objects(objects)
             if not boxes or not all(group_destination_confirmed(objects,task['target_id'],box) for box in boxes):
                 return json_error('Server scene does not verify all Box copies delivered',409)
-        if outcome=='completed' and task['kind']=='creative_build':
+        if outcome=='completed' and task['kind'] in ('creative_build','named_creative_build'):
             state=json.loads(row['state_json'])
             entries=state.get('creativeBuilt',[])
             design=validate_design(state.get('creativePlan')) if state.get('creativePlan') else None
@@ -4303,6 +4342,7 @@ def robot_react():
             'ORDER BY m.created DESC,m.rowid DESC LIMIT 90',(room_id,)).fetchall()
         saved_order=con.execute('SELECT order_json,state_json,enabled FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',(room_id,robot['id'],user['id'])).fetchone()
         work_receipts=con.execute('SELECT action,status,detail FROM robot_work_events WHERE room_id=? AND robot_id=? AND user_id=? ORDER BY created DESC LIMIT 3',(room_id,robot['id'],user['id'])).fetchall()
+        queued_for_this_robot=con.execute("SELECT kind,status,source_text,created FROM robot_group_intents WHERE room_id=? AND user_id=? AND kind='named_creative_build' AND target_id=? AND status IN ('pending','assigned') ORDER BY created ASC LIMIT 3",(room_id,user['id'],robot['id'])).fetchall()
     # Keep exact numbers first: a large biography must never truncate saved trait access.
     identity={'character_traits':contextual_character(brain),
               'character_self_insight':character_self_insight(brain, max_highlights=5)}
@@ -4329,6 +4369,9 @@ def robot_react():
                 'goal':str(assignment.get('goal',''))[:250], 'mode':str(assignment.get('mode',''))[:40],
                 'last_result':str(progress.get('last',''))[:300], 'step':progress.get('step',0)}
         except (TypeError,ValueError):pass
+    if queued_for_this_robot:
+        spatial_context['pending_human_creative_tasks']=[{'status':r['status'],'goal':r['source_text'][:240]}
+            for r in queued_for_this_robot]
     if work_receipts:spatial_context['recent_work_receipts']=[{'action':r['action'],'status':r['status'],
         'detail':r['detail'][:180]} for r in work_receipts]
     # The browser-run life loop is distinct from server-issued chat commands.
@@ -4352,7 +4395,7 @@ def robot_react():
        ' Only claim direct visual perception from last_real_camera_observation, and qualify by its age; the scene index is not direct sight. Respond naturally, not with a canned camera-status disclaimer.'
        ' Answer the actual person first. If it adds something, include ONE brief casual aside about what caught your attention or your next practical move, in your own voice and everyday jargon. This is a character remark, not a report of hidden reasoning. Skip the aside when it would be filler.'
        ' Prefer real task receipts and recent actions over old camera descriptions. If last_client_reported_exploration exists, do not claim the robot has only made an older short walk; distinguish a completed client-reported exploration from an active mission.'
-       ' When invited to improve or build the world, name a specific achievable next step or a saved work order. A friendly reply or broad group invitation is NOT scene construction, and must never be described as completed world edits. A new authorised human request to add specified procedural furniture can create a persistent local work order before this chat reply. Consult saved_work_order and recent receipts. Do not tell the user that chat can never trigger tools or claim you saved a preference that has no recorded state. Report a queued request as queued, not completed. Never say an item is queued or a work order exists unless saved_work_order.enabled is true in the current World situation. A colour preference is optional; default colours never block furnishing. If the current work order is absent, state no actual tool task is scheduled, instead of repeating a construction promise.'
+       ' When invited to improve or build the world, name a specific achievable next step or a saved work order. A friendly reply or broad group invitation is NOT scene construction, and must never be described as completed world edits. A new authorised human request to add specified procedural furniture can create a persistent local work order before this chat reply. Consult saved_work_order and recent receipts. Do not tell the user that chat can never trigger tools or claim you saved a preference that has no recorded state. Report a queued request as queued, not completed. Never report a task as scheduled unless saved_work_order.enabled is true or pending_human_creative_tasks has entries in the current realm; describe pending work as WAITING for a free robot rather than actively building. A colour preference is optional; default colours never block furnishing. If neither a saved work order nor a pending human task exists, report no active construction job when relevant, not as a canned disclaimer in every answer.'
        ' Describe places naturally with distinctive objects, buildings, paths, entrances and landmarks rather than raw X/Z coordinates unless the human explicitly asks for measurements. Do not invent landmarks or claim a place was seen in camera when only the scene index lists it.'
        ' Avoid repetitive sky/tiles reports, formal evidence-debate wording, generic self-assessment, and [S1] reference labels unless explicitly requested.'
        ' Do not claim to be walking, moving, rerouting, or executing a mission unless the server provided an actual scene command. A chat reply alone does not move the avatar.'

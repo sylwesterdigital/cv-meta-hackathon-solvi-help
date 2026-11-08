@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import {SceneEditor} from './editor.js';
 import {captureRobotView,captureRobotPortrait,robotHeadCameraPose} from './robots.js';
 import {stitchRobotPanorama,panoramaMode} from './robot-panorama.js';
+import {captureRobotWideSurvey,WIDE_EYE_FOV} from './robot-wide-eye.js';
 import {initRobotBrains,runRobotVisualSearch,emitBrainTrace,rememberRobotObservationFrame} from './robot-brains.js';
 import {observationPlan,scanSummary} from './robot-observation.js';
 import {observationTarget,matchesObservationTarget,pickTargetViews} from './target-view-filter.js';
@@ -638,7 +639,7 @@ async function send(){const text=$('chatInput').value.trim();if(!text&&!pending.
   if(response.usage?.totals)$('metaUsageStatus').textContent=`Recorded ${response.usage.totals.requests} requests · ~US$${Number(response.usage.totals.usd).toFixed(4)} estimated`;
   if(response.message?.id && text){
     try{const work=await window.solviStartChatProjects?.(response.message);
-     if(work>0)$('chatStatus').textContent='Verified robot work order stored; follow execution receipts in Robot Brains.';
+     if(work>0)$('chatStatus').textContent='Human instruction saved to the task queue. Watch Robot Brains for assignment and verified scene receipts.';
      if(work<0){$('chatStatus').textContent='Robot task not authorised; no action or work order created.';return;}
      const eyes=/@([^\n@]+?)\s+\/eyes(?:\s+(180|360))?\s*$/i.exec(text);if(eyes){const name=eyes[1].trim().toLowerCase();const robot=window.solviEditor?.items.find(o=>o.userData.editorKind==='robot'&&o.name.toLowerCase()===name);if(robot)await window.solviPublishRobotEyes?.(Number(eyes[2]||180),robot);else toast('Robot for /eyes not found');}else if(!(work>0))await reactToRobotMessage(response.message,0,interruptedRobot);}
     catch(error){$('chatStatus').textContent='Message delivered; robot reaction failed: '+error.message;}
@@ -1764,6 +1765,10 @@ function bindUI(world){
  // avoids duplicate billable work across tabs; frames are sent transiently and
  // stored only as short evidence-labelled memories, not published as chat images.
  let perceptionBusy=false,perceptionCursor=0;
+ // Wide previews are intentionally local and non-billable. They do not
+ // replace the exact central JPEG submitted to Muse for an observation.
+ const wideSurveyLastAt=new Map();
+
  const observeAutonomously=async()=>{
    if(perceptionBusy||document.visibilityState!=='visible'||!online||!auth||!me||!window.solviEditor)return;
    if(!window.solviRoom||window.solviRoom!==activeRoom)return;
@@ -1789,6 +1794,24 @@ function bindUI(world){
        emitBrainTrace(robot.userData.editorId,robot.name,'PRIVATE CAMERA OBSERVATION',`${observed.observation} · yaw ${yaw}° · model usage ~US$${Number(observed.usage?.estimated_usd||0).toFixed(6)}`);
        if(observed.inference)emitBrainTrace(robot.userData.editorId,robot.name,'PERCEPTION MODEL I/O (text + frame reference)',observed.inference);
        robot.userData.lastCameraObservation={text:observed.observation,at:observed.observed_at};
+     }
+     // Eyes previously displayed only the 72° square evidence photo. When
+     // enabled, perform a separate six-direction 210° × 135° survey and show
+     // its stitched result in the same 16:9 preview. No extra Meta call.
+     if(document.getElementById('showRobotEyes')?.checked&&
+        Date.now()-(wideSurveyLastAt.get(currentRoom+':'+robot.userData.editorId)||0)>=120000&&
+        document.visibilityState==='visible'){
+      const stillCurrent=()=>activeRoom===currentRoom&&window.solviRoom===currentRoom&&editor.items.includes(robot)&&document.visibilityState==='visible';
+      try{
+       const wide=await captureRobotWideSurvey(view=>captureRobotView(editor.world,robot,{
+        yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch,fovDegrees:WIDE_EYE_FOV,wideCapture:true
+       }),{stillCurrent});
+       if(stillCurrent()){
+        wideSurveyLastAt.set(currentRoom+':'+robot.userData.editorId,Date.now());
+        rememberRobotObservationFrame(robot.userData.editorId,wide.blob,'Stitched wide eyes · 210° horizontal × 135° vertical · six real camera views · peripheral panorama');
+        emitBrainTrace(robot.userData.editorId,robot.name,'WIDE RECONNAISSANCE','Local stitched 210° × 135° field from six head-camera images; central JPEG remains the Muse evidence frame. Not binocular stereo.');
+       }
+      }catch(error){emitBrainTrace(robot.userData.editorId,robot.name,'WIDE EYES UNAVAILABLE',String(error.message||error));}
      }
    }catch(error){
      emitBrainTrace(robot.userData.editorId,robot.name,'PERCEPTION UNAVAILABLE',error.message);
