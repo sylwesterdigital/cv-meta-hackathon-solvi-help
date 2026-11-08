@@ -28,7 +28,7 @@ test('partial stopping is a distinct mission result, never sitting or arrived',(
 
 test('offscreen robot-eye capture includes real sky, stars and nebula',()=>{
  const robots=read('js/robots.js'),env=read('js/scene-environment.js');
- assert.match(robots,/new THREE\.PerspectiveCamera\(72,1,\.04,Math\.max\(1500,Number\(world\?\.camera\?\.far\)\|\|1500\)\)/);
+ assert.match(robots,/new THREE\.PerspectiveCamera\(options\.fovDegrees\|\|72,1,\.04,Math\.max\(1500,Number\(world\?\.camera\?\.far\)\|\|1500\)\)/);
  assert.match(robots,/world\.skyDome\.position\.copy\(camera\.getWorldPosition/);
  assert.match(env,/skyModeIndex/);
 });

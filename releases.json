@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.245",
+  "currentVersion": "0.2.246",
   "releases": [
+    {
+      "version": "0.2.246",
+      "publishedAt": "2026-11-08T12:10:23Z",
+      "changes": [
+        "Delete a single collection or selected collections with one explicit confirmation and protected-member checks.",
+        "Save complete primitive collections as account-scoped Creative Builds presets and restore as new independently identified editable groups.",
+        "Resize the floating minimap freely, redraw its canvas at true pixel size, and correct map drag direction.",
+        "Offer genuine stitched six-direction robot-eye imagery spanning 210 degrees horizontally and 135 degrees vertically."
+      ]
+    },
     {
       "version": "0.2.245",
       "publishedAt": "2026-11-08T11:02:37Z",
@@ -299,16 +309,6 @@
         "Correct robot route debug: a blocked goal now shows its red destination ring and obstacles, not a red straight line pretending to be a usable route. Measured movement trail remains cyan and planned safe path green.",
         "Renew authenticated one-time robot-life leases during long journeys, preventing another tab from taking control while the same robot navigates; terminate safely on lost renewal. Keep casual social visits local and avoid repetitive recently visited targets.",
         "Improve robot conversation grounding in recent client-reported exploration; distinguish actual saved work orders and completed world edits from enthusiastic but non-executable group discussion."
-      ]
-    },
-    {
-      "version": "0.2.209",
-      "publishedAt": "2026-11-06T04:28:17Z",
-      "changes": [
-        "Separate opt-in Autonomous roaming & peer visits in Brains: visible signed-in browser explores using collision-checked A* paths (typically 11\u201319m) and visits new scene points instead of repeated 2\u20133m walks.",
-        "Every 6 seconds the local robot life loop considers new activity without billing Meta. The server grants a 22-second ownership lease, defers to explicit human tasks and saved work orders, and rejects unauthorized or replayed movement receipts.",
-        "Arrival or collision outcomes, including measured actual displacement, are traced and consolidated as explicitly client-reported experience in existing robot memory; real camera frames can be captured after exploration and existing Meta visual analysis remains separate.",
-        "Upon an actual arrival beside another robot, optionally ask a bounded evidence-based question using the existing authorised robot-to-robot communication route, subject to cooldowns; no uncontrolled world edits or object mutations."
       ]
     }
   ]

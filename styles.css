@@ -3008,3 +3008,21 @@ html[data-button-labels='icon'] body #sceneItems .scene-collection-heading butto
 }
 #sceneItems .scene-item-row {height:auto!important;min-height:36px!important;}
 #sceneItems .scene-collection-heading:focus-within{outline:2px solid var(--solvi-accent,#ae80d4)!important;outline-offset:-2px!important;}
+
+/* v0.2.246: The minimap is an actual freely resizable floating viewport. */
+.minimap-panel{width:330px;height:370px;min-width:220px;min-height:180px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);resize:both;overflow:hidden;display:flex;flex-direction:column}
+.minimap-panel[hidden]{display:none!important}
+.minimap-panel.is-minimized{height:auto!important;min-height:0!important;resize:none}
+.minimap-header{flex:0 0 auto}
+.minimap-body{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden}
+#minimapCanvas{width:100%;height:100%;min-height:1px;min-width:1px;aspect-ratio:auto;flex:1 1 auto;object-fit:fill}
+.minimap-foot{flex:0 0 auto;justify-content:flex-end}
+.minimap-panel::after{content:'';position:absolute;bottom:4px;right:4px;width:12px;height:12px;pointer-events:none;background:linear-gradient(135deg,transparent 40%,#a4bed1 41% 47%,transparent 48% 62%,#a4bed1 63% 70%,transparent 71%)}
+.minimap-panel.is-minimized::after{display:none}
+#sceneItems .scene-collection-check{width:17px!important;height:17px!important;margin:0 2px 0 0!important;flex:0 0 auto!important;z-index:3;position:relative;accent-color:var(--solvi-accent,#b684d6)}
+#sceneItems .scene-collection-actions{flex-wrap:wrap!important}
+#sceneItems .scene-collection-actions button.scene-collection-delete{color:#ffdbdc!important;border-color:#a85c71!important;min-width:90px!important}
+#sceneBulkRow #sceneDeleteGroups{border-color:#a85c71;color:#ffd9e2}
+
+/* v0.2.246: Five collection actions remain readable at narrow drawer widths. */
+#sceneItems .scene-collection-actions button.scene-collection-action{flex:1 1 95px!important;min-width:88px!important;white-space:normal!important;line-height:1.2!important}

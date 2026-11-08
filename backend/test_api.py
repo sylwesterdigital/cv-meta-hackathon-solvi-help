@@ -93,6 +93,29 @@ r=c.post('/api/onboard',json={'name':name,'tab':'test-tab-unique-001'},headers={
 assert r.status_code==200,(r.status_code,r.data)
 data=r.get_json();assert data['user']['name']==name and data['token'] and data['recovery']
 headers={'Authorization':'Bearer '+data['token'],'X-Solvi-Tab':'test-tab-unique-001','Origin':origin}
+# v0.2.246: complete Creative Builds are account-scoped portable presets,
+# never a back door for importing existing owner or scene IDs.
+from server import valid_creative_build_preset
+_buildpart={'kind':'sphere','name':'pearl','position':[0,0,0],
+            'rotation':[0,0,0],'scale':[1,1,1],'color':'#ee77aa','texture':'none',
+            'primitive':{'radius':1}}
+_buildpreset={'kind':'creativeBuild','parts':[_buildpart,{**_buildpart,'name':'second','position':[2,1,0]}]}
+assert valid_creative_build_preset(_buildpreset)
+for bad in ({**_buildpreset,'parts':[{**_buildpart,'id':'old-id'}]},
+            {**_buildpreset,'parts':[{**_buildpart,'owner':'other-user'}]},
+            {**_buildpreset,'parts':[{**_buildpart,'position':[float('nan'),0,0]}]},
+            {**_buildpreset,'parts':[{**_buildpart,'kind':'model'}]}):
+    assert not valid_creative_build_preset(bad)
+creation=c.post('/api/object-presets',headers=headers,json={'name':'Pink Elephant Plaza','payload':_buildpreset,'thumbnail':''})
+assert creation.status_code==201,(creation.status_code,creation.data)
+created=creation.get_json()['preset']
+assert created['category']=='Creative Builds' and created['payload']['parts']==_buildpreset['parts']
+listing=c.get('/api/object-presets',headers=headers)
+assert listing.status_code==200 and any(p['id']==created['id'] and p['category']=='Creative Builds' for p in listing.get_json()['presets'])
+invalid=c.post('/api/object-presets',headers=headers,json={'name':'Unsafe copy','payload':{**_buildpreset,'parts':[{**_buildpart,'owner':'other-user'}]}})
+assert invalid.status_code==400,(invalid.status_code,invalid.data)
+assert c.delete('/api/object-presets/'+created['id'],headers=headers).status_code==200
+print('PASS: portable Creative Builds save, category, listing, deletion, and strict old-ID/owner rejection')
 # Shared library: action counts, owner-checked export, referenced-file protection,
 # confirmed deletion, and no modification of bundled release avatars.
 import io as _io, struct as _struct, zipfile as _zipfile

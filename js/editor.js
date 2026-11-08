@@ -33,6 +33,8 @@ import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach,robotRouteCheckpoints} from './robot-pathfinding.js';
 import {smoothRobotWaypoints} from './robot-path-smoothing.js';
 import {cleanSceneCollection,collectionOf,groupSceneItems,memberDisplayName,creativeCollectionTitle,findSceneObjectRow} from './scene-collections.js';
+import {collectionDeletionPlan} from './collection-deletion.js';
+import {validCreativeBuild} from './creative-build-preset.js';
 import {robotPosePacket,appendRobotPose,sampleRobotPose} from './robot-motion-sync.js';
 import {planRobotMeeting,canMeetRobot,sameRobotFloor,remainingRouteBlocked} from './robot-social-navigation.js';
 import {findRobotWorksite,footprintClear} from './robot-worksite.js';
@@ -143,7 +145,7 @@ export class SceneEditor{
  constructor(world,onToast){
   this.world=world;this.toast=onToast;configureSceneModelRenderer(world.renderer);this.physics=new ScenePhysics(this);this.carry=new ObjectCarry(this);this.inventory=new RobotInventory(this);this.items=[];this.selected=null;this.lastSmartPlacement=null;this.revision=0;this.controlMode='scene';this.controlledRobotId=null;
   this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
-  this.history=new EditHistory(120);this.transformBefore=null;this.collectionExpanded=new Set();this.collectionTarget=null;this.collectionDrag=null;this.activeCollectionId=null;
+  this.history=new EditHistory(120);this.transformBefore=null;this.collectionExpanded=new Set();this.bulkCollections=new Set();this.collectionTarget=null;this.collectionDrag=null;this.activeCollectionId=null;
   this.transform=new TransformControls(world.camera,world.renderer.domElement);
   // Recent Three.js exposes TransformControls as an Object3D wrapper plus a helper gizmo.
   world.scene.add(this.transform.getHelper());
@@ -268,8 +270,17 @@ export class SceneEditor{
   byId('sceneObjectSearch').addEventListener('input',bulkFilter);
   byId('sceneObjectFilter').addEventListener('change',bulkFilter);
   byId('sceneSelectAll').addEventListener('change',e=>{for(const o of this.visibleSceneItems()){if(this.canEdit(o)){if(e.target.checked)this.bulkChecked.add(o.userData.editorId);else this.bulkChecked.delete(o.userData.editorId);}}this.refreshList();});
-  byId('sceneBulkToggle').onclick=()=>{const panel=byId('scenePanel'),active=panel.classList.toggle('bulk-mode');byId('sceneBulkToggle').setAttribute('aria-expanded',String(active));byId('sceneBulkRow').hidden=!active;if(!active)this.bulkChecked.clear();this.refreshList();};
+  byId('sceneBulkToggle').onclick=()=>{const panel=byId('scenePanel'),active=panel.classList.toggle('bulk-mode');byId('sceneBulkToggle').setAttribute('aria-expanded',String(active));byId('sceneBulkRow').hidden=!active;if(!active){this.bulkChecked.clear();this.bulkCollections.clear();}this.refreshList();};
   byId('sceneDeleteSelected').onclick=()=>this.removeBulk(false);
+  byId('sceneDeleteGroups').onclick=()=>this.deleteCollections([...this.bulkCollections]);
+  byId('sceneSelectGroups').onchange=e=>{
+   const folders=groupSceneItems(this.visibleSceneItems()).folders;
+   for(const folder of folders){const plan=collectionDeletionPlan(this.items,[folder.id],o=>this.canEdit(o));
+    if(!plan.permitted.length)continue;
+    if(e.target.checked)this.bulkCollections.add(folder.id);else this.bulkCollections.delete(folder.id);
+   }
+   this.refreshList();
+  };
   byId('sceneDeleteAll').onclick=()=>this.removeBulk(true);
   byId('sceneGroupSelected').onclick=()=>this.groupBulkSelection();
   byId('objectsButton').onclick=()=>{
@@ -1896,10 +1907,50 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
    return entry;
   }catch(error){rollback();console.warn('Could not add linked portal preset',error);this.toast('Could not add linked portal pair.');return null;}
  }
+ addCreativeBuildFromPreset(data,label='Creative build'){
+  if(!validCreativeBuild(data))return null;
+  if(!window.solviAPI?.online){this.toast('Sign in to place a Creative Builds preset.');return null;}
+  const room=String(window.solviRoom||'main'),owner=window.solviAPI?.auth()?.profile?.id;
+  if(!owner){this.toast('Sign in to place a Creative Builds preset.');return null;}
+  // Measure the whole assembly with actual procedural geometry, rather than
+  // dropping each piece independently and destroying its relative layout.
+  const preview=new THREE.Group();
+  try{
+   for(const part of data.parts){
+    const geometry=buildPrimitive(part.kind,part.primitive||{});
+    if(!geometry)throw Error('Unsupported primitive');
+    const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:part.color}));
+    mesh.position.fromArray(part.position);mesh.rotation.fromArray(part.rotation);mesh.scale.fromArray(part.scale);preview.add(mesh);
+   }
+   if(!this.placeSmartNewObject(preview)){this.toast('No collision-free site for the full Creative Build. Aim at an open area.');return null;}
+   if(room!==String(window.solviRoom||'main'))return null;
+   const group=cleanSceneCollection({id:'group:'+crypto.randomUUID(),name:String(label).slice(0,80).trim()||'Creative build'});
+   const created=[];
+   const rollback=()=>{for(const obj of created){this.items=this.items.filter(o=>o!==obj);this.world.scene.remove(obj);this.physics.remove(obj.userData.editorId);this.disposeObject(obj);}this.refreshList();};
+   try{
+    for(const part of data.parts){
+     if(room!==String(window.solviRoom||'main'))throw Error('Realm changed');
+     const entry={...structuredClone(part),id:crypto.randomUUID(),owner,collection:group,
+      name:part.name,position:part.position.map((v,i)=>Number((v+preview.position.getComponent(i)).toFixed(5)))};
+     this.addSceneEntry(entry);
+     const obj=this.items.find(o=>o.userData.editorId===entry.id);
+     if(!obj)throw Error('Could not instantiate a member');
+     created.push(obj);
+    }
+    // No scene writes until the full arrangement has instantiated successfully.
+    if(room!==String(window.solviRoom||'main'))throw Error('Realm changed');
+    for(const obj of created){this.recordEdit(null,this.snapshot(obj));this.queueSave(obj);}
+    this.collectionExpanded.add(group.id);this.refreshList();this.select(created[0]);
+    this.toast(`Placed ${created.length} objects · ${group.name}`);return created[0];
+   }catch(error){rollback();this.toast('Creative Build not placed: '+String(error.message||error));return null;}
+  }catch(error){this.toast('Invalid Creative Build: '+String(error.message||error));return null;}
+  finally{preview.traverse(o=>{o.geometry?.dispose?.();o.material?.dispose?.();});}
+ }
  addFromPreset(saved){
-  const data=presetEntry(saved);
+  const data=presetEntry(saved?.kind==='creativeBuild'?{kind:'creativeBuild',parts:saved.parts}:saved);
   if(!data)return null;
   if(data.kind==='portalPair')return this.addPortalPairFromPreset(data);
+  if(data.kind==='creativeBuild')return this.addCreativeBuildFromPreset(data,saved.name||'Creative build');
   const entry={...data,id:crypto.randomUUID(),name:data.name||'Preset object',owner:window.solviAPI?.auth()?.profile?.id||null,position:[0,0,0],rotation:Array.isArray(data.rotation)&&data.rotation.length===3?data.rotation:[0,0,0],scale:Array.isArray(data.scale)&&data.scale.length===3?data.scale:[1,1,1]};
   this.addSceneEntry(entry);
   const obj=this.items.find(o=>o.userData.editorId===entry.id);
@@ -2553,6 +2604,34 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   for(const item of members){const before=this.snapshot(item);item.userData.sceneCollection=renamed;item.userData.sceneCollectionOptOut=false;this.recordEdit(before,this.snapshot(item));this.queueSave(item);}
   this.refreshList();
  }
+ async deleteCollections(ids){
+  const room=String(window.solviRoom||'main');
+  const plan=collectionDeletionPlan(this.items,ids,o=>this.canEdit(o));
+  if(plan.blocked.length){this.toast(`${plan.blocked.length} collection(s) cannot be deleted: missing, read-only or protected members.`);return false;}
+  if(!plan.objects.length)return false;
+  const labels=plan.permitted.map(id=>collectionOf(plan.objects.find(o=>collectionOf(o)?.id===id))?.name||'Collection');
+  const title=labels.length===1?`Delete collection "${labels[0]}" and all ${plan.objects.length} objects?`:`Delete ${labels.length} collections and all ${plan.objects.length} objects?`;
+  // Always confirm a multi-object irreversible operation, independently of
+  // the optional single-object confirmation setting.
+  if(!await confirmAction(title+' This cannot be undone.',{title:'Delete collections',confirmLabel:'Delete collections',danger:true}))return false;
+  if(String(window.solviRoom||'main')!==room)return false;
+  this.clearCollectionTarget();
+  let saved=0,failed=0;
+  // Use ordinary per-object removal receipts; the scene backend has no atomic
+  // delete-collection transaction. Never claim every item was saved if it was not.
+  for(const object of plan.objects){
+   if(String(window.solviRoom||'main')!==room)break;
+   if(!this.items.includes(object)||!this.canEdit(object)){failed++;continue;}
+   this.selected=object;
+   const result=await this.remove(true,{deferList:true});
+   if(result)saved++;else failed++;
+   this.bulkChecked.delete(object.userData.editorId);
+  }
+  for(const id of plan.permitted)this.bulkCollections.delete(id);
+  this.selected=null;this.updateInspector();this.refreshList();
+  this.toast(`${saved} object deletion(s) ${window.solviAPI?.online?'acknowledged':'saved locally'}${failed?`; ${failed} failed or unfinished`:''}`);
+  return failed===0&&saved===plan.objects.length;
+ }
  ungroupCollection(id){
   const members=this.collectionMembers(id);if(!members.every(o=>this.canEdit(o)&&cleanSceneCollection(o.userData.sceneCollection)))return this.toast('Owner only');
   this.clearCollectionTarget();
@@ -2562,6 +2641,8 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
  refreshList(){this.syncControlSwitcher?.();const list=byId('sceneItems');if(!list)return;list.replaceChildren();
   const visible=this.visibleSceneItems();const ids=new Set(this.items.map(o=>o.userData.editorId));
   for(const id of this.bulkChecked)if(!ids.has(id))this.bulkChecked.delete(id);
+  const knownCollections=new Set(this.items.map(o=>collectionOf(o)?.id).filter(Boolean));
+  for(const id of this.bulkCollections)if(!knownCollections.has(id))this.bulkCollections.delete(id);
   const makeRow=obj=>{
    const row=document.createElement('div');row.className='scene-item-row'+(obj===this.selected?' is-active':'');row.dataset.objectId=obj.userData.editorId;
    const check=document.createElement('input');check.type='checkbox';check.className='scene-row-check';check.title='Select '+obj.name;check.setAttribute('aria-label','Select '+obj.name);check.checked=this.bulkChecked.has(obj.userData.editorId);check.disabled=!this.canEdit(obj);check.onchange=()=>{if(check.checked)this.bulkChecked.add(obj.userData.editorId);else this.bulkChecked.delete(obj.userData.editorId);this.updateBulkControls();};
@@ -2596,13 +2677,28 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    const count=document.createElement('span');count.className='scene-collection-count';count.textContent=String(folder.items.length);
    title.setAttribute('aria-hidden','true');count.setAttribute('aria-hidden','true');
    toggle.onclick=()=>{if(expanded)this.collectionExpanded.delete(folder.id);else this.collectionExpanded.add(folder.id);this.refreshList();};
+   if(byId('scenePanel').classList.contains('bulk-mode')){
+    const folderCheck=document.createElement('input');folderCheck.type='checkbox';folderCheck.className='scene-collection-check';
+    folderCheck.checked=this.bulkCollections.has(folder.id);
+    folderCheck.disabled=!collectionDeletionPlan(this.items,[folder.id],o=>this.canEdit(o)).permitted.length;
+    folderCheck.setAttribute('aria-label','Select whole collection '+label);
+    folderCheck.title='Select all members of '+label;
+    folderCheck.onchange=()=>{if(folderCheck.checked)this.bulkCollections.add(folder.id);else this.bulkCollections.delete(folder.id);this.updateBulkControls();};
+    heading.prepend(folderCheck);
+   }
    heading.append(toggle,title,count);box.append(heading);
    if(expanded){
     const actions=document.createElement('div');actions.className='scene-collection-actions';
     const move=document.createElement('button');move.type='button';move.className='scene-collection-action';move.textContent='Move';move.title='One translate/rotate/scale gizmo for all editable collection members';move.disabled=!this.canMoveCollection(this.collectionMembers(folder.id));move.onclick=()=>this.selectCollection(folder.id);
     const rename=document.createElement('button');rename.type='button';rename.className='scene-collection-action';rename.textContent='Rename';rename.disabled=!this.collectionMembers(folder.id).every(o=>this.canEdit(o));rename.onclick=()=>this.renameCollection(folder.id);
     const ungroup=document.createElement('button');ungroup.type='button';ungroup.className='scene-collection-action';ungroup.textContent='Ungroup';ungroup.disabled=!this.collectionMembers(folder.id).every(o=>this.canEdit(o)&&cleanSceneCollection(o.userData.sceneCollection));ungroup.onclick=()=>this.ungroupCollection(folder.id);
-    actions.append(move,rename,ungroup);box.append(actions);
+    const removeGroup=document.createElement('button');removeGroup.type='button';removeGroup.className='scene-collection-action scene-collection-delete';
+    removeGroup.textContent='Delete group';removeGroup.dataset.uiIcon='delete';removeGroup.title='Delete this collection and all its member objects';
+    removeGroup.setAttribute('aria-label','Delete collection '+label+' and all '+this.collectionMembers(folder.id).length+' objects');
+    removeGroup.disabled=!collectionDeletionPlan(this.items,[folder.id],o=>this.canEdit(o)).permitted.length;
+    removeGroup.onclick=()=>this.deleteCollections([folder.id]);
+    const savePreset=document.createElement('button');savePreset.type='button';savePreset.className='scene-collection-action';savePreset.textContent='Save preset';savePreset.title='Save this assembly to Creative Builds';savePreset.disabled=!window.solviAPI?.online||!this.collectionMembers(folder.id).every(o=>this.canEdit(o));savePreset.onclick=()=>this.objectPresets?.saveCollection(folder.id);
+    actions.append(move,rename,ungroup,savePreset,removeGroup);box.append(actions);
     const children=document.createElement('div');children.className='scene-collection-members';folder.items.forEach(o=>children.append(makeRow(o)));box.append(children);
    }
    list.append(box);
@@ -2610,16 +2706,31 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   for(const obj of ungrouped)list.append(makeRow(obj));
   this.updateBulkControls();
  }
- updateBulkControls(){const visible=this.visibleSceneItems().filter(o=>this.canEdit(o));const n=this.items.filter(o=>this.bulkChecked.has(o.userData.editorId)&&this.canEdit(o)).length;byId('sceneGroupSelected').disabled=n<2;byId('sceneDeleteSelected').disabled=n===0;byId('sceneDeleteSelected').textContent=`Delete ${n||'selected'}`;byId('sceneDeleteAll').disabled=!this.items.some(o=>this.canEdit(o));byId('sceneSelectAll').checked=visible.length>0&&visible.every(o=>this.bulkChecked.has(o.userData.editorId));byId('sceneSelectAll').indeterminate=visible.some(o=>this.bulkChecked.has(o.userData.editorId))&&!byId('sceneSelectAll').checked;}
+ updateBulkControls(){
+  const visible=this.visibleSceneItems().filter(o=>this.canEdit(o));
+  const n=this.items.filter(o=>this.bulkChecked.has(o.userData.editorId)&&this.canEdit(o)).length;
+  byId('sceneGroupSelected').disabled=n<2;
+  byId('sceneDeleteSelected').disabled=n===0;byId('sceneDeleteSelected').textContent=`Delete ${n||'selected'}`;
+  byId('sceneDeleteAll').disabled=!this.items.some(o=>this.canEdit(o));
+  byId('sceneSelectAll').checked=visible.length>0&&visible.every(o=>this.bulkChecked.has(o.userData.editorId));
+  byId('sceneSelectAll').indeterminate=visible.some(o=>this.bulkChecked.has(o.userData.editorId))&&!byId('sceneSelectAll').checked;
+  const folderIds=groupSceneItems(this.visibleSceneItems()).folders.map(f=>f.id).filter(id=>collectionDeletionPlan(this.items,[id],o=>this.canEdit(o)).permitted.length);
+  const selected=folderIds.filter(id=>this.bulkCollections.has(id)).length;
+  byId('sceneSelectGroups').checked=folderIds.length>0&&selected===folderIds.length;
+  byId('sceneSelectGroups').indeterminate=selected>0&&selected<folderIds.length;
+  byId('sceneDeleteGroups').disabled=!this.bulkCollections.size;
+  byId('sceneDeleteGroups').textContent=`Delete ${this.bulkCollections.size||'selected'} groups`;
+ }
+
  async removeBulk(all){const targets=this.items.filter(o=>this.canEdit(o)&&(all||this.bulkChecked.has(o.userData.editorId)));if(!targets.length)return;
   if(readDeleteConfirmation()&&!await confirmAction(`Delete ${targets.length} ${all?'editable objects from this room':'selected objects'}? This cannot be undone.`,{title:'Delete scene objects',confirmLabel:'Delete',danger:true}))return;
   // Respect ownership on each object and persist each deletion to the room backend.
   for(const o of targets){if(!this.items.includes(o))continue;this.selected=o;await this.remove(true);this.bulkChecked.delete(o.userData.editorId);}this.selected=null;this.updateInspector();this.refreshList();this.toast(`Deleted ${targets.length} objects`);}
 
- async remove(skipConfirmation=false){if(!this.selected)return;
+ async remove(skipConfirmation=false,{deferList=false}={}){if(!this.selected)return false;
   const deleting=this.selected;
   if(!skipConfirmation&&readDeleteConfirmation()&&!await confirmAction(`Delete object "${deleting.name}" from the shared scene?`,{title:'Delete scene object',confirmLabel:'Delete',danger:true}))return;
-  if(this.selected!==deleting||!this.items.includes(deleting))return;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);if(['fridge','bin'].includes(o.userData.furniture?.variant))this.inventory.releaseContainer(o);for(const bot of this.items){if(bot.userData.robotSeatedTarget===o.userData.editorId)standUp(bot,this);}if(this.infrastructureDrawing?.editTarget===o)cancelInfrastructureDrawing(this,{keepTarget:true});if(this.wallEditTarget===o)this.endWallDrawing();this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();this.recordEdit(before,null);this.persistRemoval(o.userData.editorId);}
+  if(this.selected!==deleting||!this.items.includes(deleting))return false;this.clearLightHelper();if(!this.canEdit(this.selected))return this.toast('Owner only');const o=this.selected;const before=this.snapshot(o);if(['fridge','bin'].includes(o.userData.furniture?.variant))this.inventory.releaseContainer(o);for(const bot of this.items){if(bot.userData.robotSeatedTarget===o.userData.editorId)standUp(bot,this);}if(this.infrastructureDrawing?.editTarget===o)cancelInfrastructureDrawing(this,{keepTarget:true});if(this.wallEditTarget===o)this.endWallDrawing();this.transform.detach();this.items=this.items.filter(x=>x!==o);this.world.scene.remove(o);this.physics.remove(o.userData.editorId);this.disposeObject(o);this.selected=null;if(!deferList){this.updateInspector();byId('propertiesPanel').hidden=true;this.refreshList();}this.recordEdit(before,null);const saved=await this.persistRemoval(o.userData.editorId);return saved;}
  texture(name){if(!this.selected||this.selected.userData.editorKind==='robot'||!this.canEdit(this.selected))return;
   const obj=this.selected;
   if(obj.userData.editorKind==='stairs'){
@@ -2633,7 +2744,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
 
   serialize(){return this.items.filter(o=>!o.userData.temporaryCarryTest).map(o=>({id:o.userData.editorId,kind:o.userData.editorKind,name:o.name,collection:o.userData.editorKind==='robot'?undefined:(cleanSceneCollection(o.userData.sceneCollection)||undefined),collectionOptOut:o.userData.sceneCollectionOptOut===true?true:undefined,position:xyz(o.userData.carryOrigin?.position||o.position),rotation:xyz(o.userData.carryOrigin?.rotation||o.rotation),scale:xyz(o.scale),color:o.material?.color?'#'+o.material.color.getHexString():null,texture:o.userData.textureName||'none',owner:o.userData.ownerId||null,avatar:o.userData.avatarUrl||undefined,seating:o.userData.editorKind==='robot'&&o.userData.robotSeated?structuredClone(o.userData.robotSeatState):undefined,light:o.userData.editorKind==='light'?cleanLightSettings(o.userData.light):undefined,physics:['robot','light'].includes(o.userData.editorKind)?undefined:physicsOptions(o.userData.physics),pickable:canBePickable(o.userData.editorKind)?o.userData.pickable===true:undefined,followHandRotation:canBePickable(o.userData.editorKind)?o.userData.followHandRotation!==false:undefined,inventory:canBePickable(o.userData.editorKind)&&o.userData.pickable===true?cleanInventory(o.userData.inventory):undefined,storage:canBePickable(o.userData.editorKind)&&o.userData.pickable===true?cleanStorage(o.userData.storage):undefined,climbable:canBeClimbable(o.userData.editorKind)?o.userData.climbable===true:undefined,strafeSpeed:o.userData.editorKind==='robot'?(o.userData.robotStrafeSpeed??2.5):undefined,speed:o.userData.editorKind==='robot'?(o.userData.robotSpeed??1.8):undefined,runMultiplier:o.userData.editorKind==='robot'?(o.userData.robotRunMultiplier??2.8):undefined,turnSpeed:o.userData.editorKind==='robot'?(o.userData.robotTurnSpeed??4):undefined,climbSpeed:o.userData.editorKind==='robot'?(o.userData.robotClimbSpeed??1.25):undefined,backpackEnabled:o.userData.editorKind==='robot'?o.userData.backpackEnabled===true:undefined,combat:o.userData.editorKind==='robot'?combatSettings(o.userData.robotCombat):undefined,animationSpeed:o.userData.editorKind==='robot'?animationSpeedSettings(o.userData.robotAnimationSpeed):undefined,throwSettings:o.userData.editorKind==='robot'?cleanThrowSettings(o.userData.robotThrowSettings):undefined,transformLocked:isTransformLocked(o),brain:o.userData.editorKind==='robot'?(o.userData.robotBrain||{}):undefined,model:o.userData.editorKind==='model'?o.userData.modelUrl:undefined,media:o.userData.editorKind==='media'?structuredClone(o.userData.media||{}):undefined,primitive:PRIMITIVE_FIELDS[o.userData.editorKind]?structuredClone(o.userData.primitive||sanitisePrimitive(o.userData.editorKind)):undefined,curve:o.userData.editorKind==='curve'?structuredClone(cleanCurve(o.userData.curve)):undefined,text:o.userData.editorKind==='text'?structuredClone(cleanText(o.userData.text)):undefined,openings:o.userData.editorKind==='cube'?cleanOpenings(o.userData.openings):undefined,wall:o.userData.editorKind==='wall'?structuredClone(o.userData.wall):undefined,stairs:o.userData.editorKind==='stairs'?structuredClone(o.userData.stairs):undefined,ladder:o.userData.editorKind==='ladder'?structuredClone(o.userData.ladder):undefined,furniture:o.userData.editorKind==='furniture'?structuredClone(o.userData.furniture):undefined,portal:o.userData.editorKind==='portal'?cleanPortal(o.userData.portal):undefined}));}
  beginRealmTransition(room,previousRoom){
-  this.clearCollectionTarget();this.collectionExpanded.clear();
+  this.clearCollectionTarget();this.collectionExpanded.clear();this.bulkCollections.clear();
   // Finish old-room debounced saves before changing scene identity. A delayed
   // write must never end up in whichever room is active 650ms later.
   this.flushPendingRoomSaves(previousRoom);
@@ -2979,14 +3090,14 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   }
   async persistRemoval(id){
    const room=window.solviRoom||'main',api=window.solviAPI;this.pendingRemovals.add(id);
-   if(!api?.online){localStorage.setItem('solvi-scene-'+room,JSON.stringify(this.serialize()));return;}
+   if(!api?.online){localStorage.setItem('solvi-scene-'+room,JSON.stringify(this.serialize()));return true;}
    for(let attempt=0;attempt<3;attempt++){
     try{const result=await api.req('/api/scene/object',{method:'POST',body:JSON.stringify({room,action:'remove',object:{id}})});
      if(room===(window.solviRoom||'main'))this.revision=Math.max(this.revision,result.revision||0);
      this.pendingRemovals.delete(id);this.dirtyGenerations.delete(id);
-     this.sceneDiagnostic('scene-object-removed',{room,id,action:'remove',revision:result.revision});return;
+     this.sceneDiagnostic('scene-object-removed',{room,id,action:'remove',revision:result.revision});return true;
     }catch(error){this.sceneDiagnostic('scene-remove-failed',{room,id,action:'remove',reason:String(error.message),attempt:attempt+1});
-     if(attempt===2){this.toast('Remove NOT saved: '+error.message);return;}
+     if(attempt===2){this.toast('Remove NOT saved: '+error.message);return false;}
      await new Promise(resolve=>setTimeout(resolve,[1500,3500][attempt]));
     }
    }

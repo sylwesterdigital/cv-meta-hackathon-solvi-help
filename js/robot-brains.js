@@ -3,6 +3,7 @@ import {initCharacterEditor} from './robot-character-editor.js';
 import {captureRobotView,captureRobotPortrait,robotHeadCameraPose} from './robots.js';
 import {observationPlan,scanSummary} from './robot-observation.js';
 import {stitchRobotPanorama,panoramaMode} from './robot-panorama.js';
+import {WIDE_EYE_FOV,WIDE_EYE_VIEWS,stitchRobotWideEye} from './robot-wide-eye.js';
 import {observationTarget,matchesObservationTarget,pickTargetViews} from './target-view-filter.js';
 const $=id=>document.getElementById(id);
 const fields={personality:'brainsPersonality',history:'brainsHistory',beliefs:'brainsBeliefs',triggers:'brainsTriggers',scenario:'brainsScenario'};
@@ -385,6 +386,28 @@ export function initRobotBrains(world,api,getRoom,toast){
    }catch(error){$('brainsVisionResult').textContent=`${degrees}° scan failed: `+error.message;}
    finally{button.disabled=false;}
  }
+ async function captureWideEyes(){
+  if(!activeRobot)return;
+  const button=$('captureBrainsWide');button.disabled=true;
+  const robot=activeRobot,id=robot.userData.editorId,room=String(window.solviRoom||'main');
+  try{
+   const frames=[];
+   for(const view of WIDE_EYE_VIEWS){
+    if(String(window.solviRoom||'main')!==room||activeRobot!==robot)throw Error('Robot or realm changed');
+    const blob=await captureRobotView(world,robot,{yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch,fovDegrees:WIDE_EYE_FOV,wideCapture:true});
+    if(!blob?.size)throw Error('Head-camera capture failed at '+view.label);
+    frames.push({...view,blob});
+   }
+   const panorama=await stitchRobotWideEye(frames);
+   if(String(window.solviRoom||'main')!==room||activeRobot!==robot)return;
+   const label='Stitched wide eyes · 210° horizontal × 135° vertical · 6 actual camera views';
+   rememberFrame(id,panorama,label);renderFrameGallery();showFrame(panorama,label);
+   emitBrainTrace(id,robot.name,'WIDE EYES',label+'; a stitched peripheral survey, not human binocular stereo or a foveated retinal image.');
+   $('brainsVisionResult').textContent='Wide eye mosaic captured locally. Use “Describe frame · Muse Spark” to analyse this image.';
+  }catch(error){$('brainsVisionResult').textContent='Wide eyes failed: '+String(error.message||error);}
+  finally{button.disabled=false;}
+ }
+ $('captureBrainsWide').onclick=captureWideEyes;
  $('captureBrainsPanorama').onclick=()=>sweepRobotEyes(360);
  $('captureBrainsHemisphere').onclick=()=>sweepRobotEyes(180);
  window.addEventListener('solvi:robot-eyes-action',event=>{

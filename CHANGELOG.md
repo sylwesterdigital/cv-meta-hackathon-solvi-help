@@ -1,3 +1,10 @@
+## v0.2.246 — Creative Builds presets, batch collection deletion, resizable map and wider robot eyes (2026-11-08)
+
+- Collection folder Save preset → Creative Builds; store portable relative primitive geometry with new IDs on placement.
+- Confirmed delete group and Bulk delete selected groups, with owner/locked guards.
+- Resize the map and pan in the same direction as pointer motion.
+- Wide Eyes 210° × 135° stitched from six real head-camera frames; not binocular stereo.
+
 ## v0.2.245 — Restore readable Objects collection list (2026-11-08)
 
 - Fix the underlying CSS grid collapse: collection headers retained a 43-pixel layout but were compressed to approximately 19 pixels and clipped.

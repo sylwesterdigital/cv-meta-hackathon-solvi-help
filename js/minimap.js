@@ -1,3 +1,4 @@
+import {mapPanAfterDrag,mapCanvasSize} from './minimap-geometry.js';
 import * as THREE from 'three';
 // Live top-down map of the shared scene. Uses existing Three.js objects; no extra WebGL context.
 export function initMinimap(world){
@@ -11,10 +12,10 @@ export function initMinimap(world){
   if(obj){highlighted={id:e.detail.id,name:e.detail.name,until:performance.now()+12000};paint();}
  });
  window.addEventListener('solvi:room-changed',()=>highlighted=null);
- function show(open){panel.hidden=!open;button.setAttribute('aria-expanded',String(open));if(open)paint();}
+ function show(open){panel.hidden=!open;button.setAttribute('aria-expanded',String(open));if(open)requestAnimationFrame(resizeCanvas);}
  button.addEventListener('click',()=>show(panel.hidden));
  $('minimapClose').addEventListener('click',()=>show(false));
- $('minimapMinimize').addEventListener('click',()=>{minimized=!minimized;body.hidden=minimized;$('minimapMinimize').textContent=minimized?'+':'−';$('minimapMinimize').setAttribute('aria-label',minimized?'Expand minimap':'Minimize minimap');$('minimapMinimize').title=minimized?'Expand minimap':'Minimize minimap';});
+ $('minimapMinimize').addEventListener('click',()=>{minimized=!minimized;body.hidden=minimized;panel.classList.toggle('is-minimized',minimized);$('minimapMinimize').textContent=minimized?'+':'−';$('minimapMinimize').setAttribute('aria-label',minimized?'Expand minimap':'Minimize minimap');$('minimapMinimize').title=minimized?'Expand minimap':'Minimize minimap';if(!minimized)requestAnimationFrame(resizeCanvas);});
  $('minimapReset').addEventListener('click',()=>{panX=0;panZ=0;zoom=35;paint();});
  // Move the floating window by its header, including touch gestures.
  const drag=$('minimapDrag');let pointer=null;
@@ -24,8 +25,18 @@ export function initMinimap(world){
  canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(6,Math.min(120,zoom*Math.exp(e.deltaY*.001)));paint();},{passive:false});
  let mapDrag=null;
  canvas.addEventListener('pointerdown',e=>{mapDrag={id:e.pointerId,x:e.clientX,y:e.clientY,panX,panZ};canvas.setPointerCapture(e.pointerId);});
- canvas.addEventListener('pointermove',e=>{if(!mapDrag||mapDrag.id!==e.pointerId)return;panX=mapDrag.panX-(e.clientX-mapDrag.x)/canvas.clientWidth*(2*zoom);panZ=mapDrag.panZ+(e.clientY-mapDrag.y)/canvas.clientHeight*(2*zoom);paint();});
+ canvas.addEventListener('pointermove',e=>{if(!mapDrag||mapDrag.id!==e.pointerId)return;({panX,panZ}=mapPanAfterDrag(mapDrag,e.clientX-mapDrag.x,e.clientY-mapDrag.y,zoom,canvas.clientWidth,canvas.clientHeight));paint();});
  canvas.addEventListener('pointerup',()=>mapDrag=null);canvas.addEventListener('pointercancel',()=>mapDrag=null);
+ // Resize the actual pixel buffer whenever the user resizes the floating map.
+ // This avoids stretching a stale 300px bitmap over a large viewport.
+ function resizeCanvas(){
+  if(panel.hidden||minimized)return;
+  const size=mapCanvasSize(canvas.clientWidth,canvas.clientHeight,window.devicePixelRatio||1);
+  if(canvas.width!==size.width||canvas.height!==size.height){canvas.width=size.width;canvas.height=size.height;}
+  paint();
+ }
+ if(typeof ResizeObserver==='function')new ResizeObserver(resizeCanvas).observe(panel);
+ window.addEventListener('resize',resizeCanvas);
  function paint(){
   if(panel.hidden||minimized)return;
   const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h); // Transparent canvas; no opaque background fill.

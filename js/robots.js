@@ -305,19 +305,19 @@ export function setRobotDestination(robot,point,run=false){
 }
 export function robotHeadCameraPose(robot,options={}){
  if(!robot||robot.userData.editorKind!=='robot')throw Error('Robot head camera requires a robot.');
- const camera=new THREE.PerspectiveCamera(72,1,.04,1500);
+ const camera=new THREE.PerspectiveCamera(options.fovDegrees||72,1,.04,1500);
  robot.add(camera);camera.position.set(0,1.62,0);camera.rotation.order='YXZ';
  camera.rotation.y=Math.PI-(Number(options.yawOffset)||0);
- camera.rotation.x=THREE.MathUtils.degToRad(Math.max(-70,Math.min(70,Number(options.pitchDegrees)||0)));
+ camera.rotation.x=THREE.MathUtils.degToRad(Math.max(options.wideCapture?-90:-70,Math.min(options.wideCapture?90:70,Number(options.pitchDegrees)||0)));
  camera.updateMatrixWorld(true);
- const pose={position:camera.getWorldPosition(new THREE.Vector3()).clone(),quaternion:camera.getWorldQuaternion(new THREE.Quaternion()).clone(),fov:72,width:512,height:512};
+ const pose={position:camera.getWorldPosition(new THREE.Vector3()).clone(),quaternion:camera.getWorldQuaternion(new THREE.Quaternion()).clone(),fov:camera.fov,width:512,height:512};
  robot.remove(camera);return pose;
 }
 export async function captureRobotView(world,robot,options={}){
   if(!robot||robot.userData.editorKind!=='robot')throw Error('Select a robot in Objects first.');
-  const camera=new THREE.PerspectiveCamera(72,1,.04,Math.max(1500,Number(world?.camera?.far)||1500));robot.add(camera);
+  const camera=new THREE.PerspectiveCamera(options.fovDegrees||72,1,.04,Math.max(1500,Number(world?.camera?.far)||1500));robot.add(camera);
   camera.position.set(0,1.62,0);camera.rotation.order='YXZ';camera.rotation.y=Math.PI-(Number(options.yawOffset)||0); // forward head view plus scan direction
-  camera.rotation.x=THREE.MathUtils.degToRad(Math.max(-70,Math.min(70,Number(options.pitchDegrees)||0))); // negative tilt points downward
+  camera.rotation.x=THREE.MathUtils.degToRad(Math.max(options.wideCapture?-90:-70,Math.min(options.wideCapture?90:70,Number(options.pitchDegrees)||0))); // negative tilt points downward
   const rt=new THREE.WebGLRenderTarget(512,512),renderer=world.renderer,old=renderer.getRenderTarget();
   // The normal canvas is sRGB, but WebGLRenderTarget defaults to unencoded
   // linear pixels. Request sRGB *before* rendering, not after JPEG creation.

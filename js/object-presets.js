@@ -2,6 +2,8 @@ import {portalPairPreset} from './portal-preset-data.js';
 import {pairedPortal} from './portal-core.js';
 import {makePortal} from './portal-geometry.js';
 import {canPreset,presetEntry} from './object-preset-data.js';
+import {portableCreativeBuild} from './creative-build-preset.js';
+import {memberDisplayName,collectionOf} from './scene-collections.js';
 import {makeFurniture,buildPrimitive} from './primitive-properties.js';
 import {makeOfficeStairs} from './office-stairs.js';
 import {makeOfficeWall} from './office-walls.js';
@@ -55,6 +57,7 @@ export function capturePresetThumbnail(editor,source){
 // while an editor gizmo or world camera was active.
 function previewSource(preset){
  const data=preset.payload||{};
+ if(data.kind==='creativeBuild'){const group=new THREE.Group();for(const part of data.parts||[]){const geometry=buildPrimitive(part.kind,part.primitive||{});if(!geometry)continue;const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:part.color||'#b2bdc8'}));mesh.position.fromArray(part.position);mesh.rotation.fromArray(part.rotation);mesh.scale.fromArray(part.scale);group.add(mesh);}return group;}
  if(data.kind==='portalPair'){const group=new THREE.Group();for(const part of [data.entry,data.exit]){const obj=makePortal(part.portal);obj.position.fromArray(part.position);obj.rotation.fromArray(part.rotation);obj.scale.fromArray(part.scale);group.add(obj);}return group;}
  if(data.kind==='furniture')return makeFurniture(data.furniture||{});
  if(data.kind==='stairs'&&data.stairs?.variant!=='lift')return makeOfficeStairs(data.stairs||{});
@@ -90,7 +93,7 @@ export function setupObjectPresets(editor){
 
  const note=value=>{status.textContent=value;};
  const close=()=>{backdrop.hidden=true;};
- const categories=['All','Furniture','Tools','Nature','Props','Geometry','Architecture'];
+ const categories=['All','Creative Builds','Furniture','Tools','Nature','Props','Geometry','Architecture'];
  function render(){
   tabs.replaceChildren();for(const c of categories){const button=document.createElement('button');button.type='button';button.textContent=c;button.setAttribute('aria-selected',String(category===c));button.onclick=()=>{category=c;render();};tabs.append(button);}
   const q=search.value.trim().toLocaleLowerCase();const shown=records.filter(p=>(category==='All'||p.category===category)&&p.name.toLocaleLowerCase().includes(q));
@@ -100,7 +103,7 @@ export function setupObjectPresets(editor){
    const preview=document.createElement('div');preview.className='object-preset-image';preview.setAttribute('role','button');preview.tabIndex=0;preview.title='Add '+preset.name;preview.setAttribute('aria-label','Add '+preset.name);
    const thumbnail=thumbnailFor(preset);if(/^data:image\/(webp|png|jpeg);base64,/.test(thumbnail)){const img=document.createElement('img');img.src=thumbnail;img.alt=preset.name+' preview';img.loading='lazy';preview.append(img);}else{const icon=document.createElement('span');icon.className='object-preset-placeholder';icon.textContent='▱';preview.append(icon);}
    const heading=document.createElement('strong');heading.textContent=preset.name;heading.title=preset.name;
-   const meta=document.createElement('small');meta.textContent=(preset.kind==='portalPair'?'Linked Entry + Exit':preset.payload?.furniture?.variant||preset.kind)+' · '+preset.category;
+   const meta=document.createElement('small');meta.textContent=(preset.kind==='creativeBuild'?`${preset.payload?.parts?.length||0} primitives`:preset.kind==='portalPair'?'Linked Entry + Exit':preset.payload?.furniture?.variant||preset.kind)+' · '+preset.category;
    const caption=document.createElement('div');caption.className='object-preset-caption';caption.append(heading,meta);
    const actions=document.createElement('div');actions.className='object-preset-actions';
    const create=()=>{
@@ -139,9 +142,23 @@ export function setupObjectPresets(editor){
   try{await window.solviAPI.req('/api/object-presets',{method:'POST',body:JSON.stringify({name:title,payload,thumbnail})});editor.toast('Preset saved · '+title);}
   catch(e){editor.toast('Preset could not be saved: '+e.message);}
  }
+ async function saveCollection(collectionId){
+  if(!window.solviAPI?.online){editor.toast('Sign in to save Creative Builds presets.');return false;}
+  const members=editor.collectionMembers(collectionId);
+  if(!members.length||!members.every(o=>editor.canEdit(o))){editor.toast('Only fully editable collections can be saved.');return false;}
+  const group=collectionOf(members[0]);
+  const data=portableCreativeBuild(members.map(o=>({...editor.snapshot(o),name:memberDisplayName(o)})));
+  if(!data){editor.toast('Creative Builds presets support 1–64 portable cubes, spheres, cylinders, planes and toruses.');return false;}
+  const title=(await textEntry('Save Creative Build',group?.name||'Creative build',{message:`Save ${members.length} primitives as a reusable assembly under Creative Builds?`}))?.trim().slice(0,90);
+  if(!title)return false;
+  const source=previewSource({payload:data});let thumbnail='';
+  try{if(source)thumbnail=capturePresetThumbnail(editor,source);if(thumbnail.length>140000)thumbnail='';}catch(error){console.warn('Creative Builds thumbnail unavailable',error);}finally{releasePreviewSource(source);}
+  try{await window.solviAPI.req('/api/object-presets',{method:'POST',body:JSON.stringify({name:title,payload:data,thumbnail})});editor.toast('Creative Build preset saved · '+title);return true;}
+  catch(error){editor.toast('Creative Build preset not saved: '+error.message);return false;}
+ }
  $('objectPresetsClose').onclick=close;backdrop.addEventListener('pointerdown',e=>{if(e.target===backdrop)close();});
  search.oninput=render;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!backdrop.hidden)close();});
  $('saveObjectPreset').onclick=save;
- return {open,save,refresh};
+ return {open,save,saveCollection,refresh};
 }

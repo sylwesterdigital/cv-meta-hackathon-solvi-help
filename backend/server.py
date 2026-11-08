@@ -248,7 +248,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.245',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.246',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1017,8 +1017,8 @@ def bookmark_payload(obj):
 # User-owned catalogue of procedural object configurations. Templates cannot include
 # asset URLs, ownership, robot data or uploaded media; every instance gets a fresh ID.
 MAX_FURNITURE_FIELDS = 200  # Aligned with complete procedural builder schema; all names and values are validated below.
-_PRESET_TYPES={'portalPair','furniture','cube','sphere','cylinder','plane','torus','surface','curve','text','ladder','stairs','wall'}
-_PRESET_FIELDS={'kind','name','rotation','scale','color','texture','physics','pickable','inventory','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture','wall','entry','exit'}
+_PRESET_TYPES={'creativeBuild','portalPair','furniture','cube','sphere','cylinder','plane','torus','surface','curve','text','ladder','stairs','wall'}
+_PRESET_FIELDS={'parts','kind','name','rotation','scale','color','texture','physics','pickable','inventory','followHandRotation','climbable','primitive','curve','text','openings','stairs','ladder','furniture','wall','entry','exit'}
 
 def _preset_finite(value,depth=0):
     if depth>14:return False
@@ -1046,6 +1046,28 @@ def valid_portal_pair_preset(value):
         if portal.get('texture') not in ('none','concrete','bricks','metal','tiles'):return False
     return all(v==0 for v in value['entry']['position']) and _preset_finite(value)
 
+def valid_creative_build_preset(value):
+    # A collection preset is declarative geometry only. Never permit arbitrary
+    # scene ids, ownership, media references, scripts, or external model URLs.
+    if not isinstance(value,dict) or set(value)!={'kind','parts'} or value.get('kind')!='creativeBuild':return False
+    parts=value.get('parts')
+    if not isinstance(parts,list) or not 1<=len(parts)<=64:return False
+    allowed={'kind','name','position','rotation','scale','color','texture','primitive','openings'}
+    for part in parts:
+        if not isinstance(part,dict) or any(key not in allowed for key in part):return False
+        if part.get('kind') not in ('cube','sphere','cylinder','plane','torus'):return False
+        if not isinstance(part.get('name'),str) or not 1<=len(part['name'])<=100:return False
+        for key in ('position','rotation','scale'):
+            seq=part.get(key)
+            if not isinstance(seq,list) or len(seq)!=3 or any(type(v) not in (int,float) or not math.isfinite(v) for v in seq):return False
+        if any(abs(n)>100 for n in part['position']) or any(abs(n)>1000 for n in part['rotation']):return False
+        if any(n<.001 or n>1000 for n in part['scale']):return False
+        if not isinstance(part.get('color'),str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',part['color']):return False
+        if part.get('texture','none')!='none':return False
+        if 'primitive' in part and not isinstance(part['primitive'],dict):return False
+        if 'openings' in part and (part['kind']!='cube' or not valid_cube_openings(part['openings'])):return False
+    return _preset_finite(value) and len(json.dumps(value,allow_nan=False,separators=(',',':')))<=120000
+
 @app.route('/api/object-presets',methods=['GET','POST'])
 def object_presets():
     user,msg,status=actor()
@@ -1059,7 +1081,9 @@ def object_presets():
     if not isinstance(name,str) or not 1<=len(name.strip())<=90:return json_error('Preset name must be 1–90 characters')
     if not isinstance(entry,dict) or entry.get('kind') not in _PRESET_TYPES:return json_error('Unsupported preset object type')
     if entry['kind']=='portalPair' and not valid_portal_pair_preset(entry):return json_error('Invalid linked portal preset')
-    if entry['kind']!='portalPair' and ('entry' in entry or 'exit' in entry):return json_error('Invalid nested preset components')
+    if entry['kind']=='creativeBuild' and not valid_creative_build_preset(entry):return json_error('Invalid creative build preset')
+    if entry['kind'] not in ('portalPair','creativeBuild') and ('entry' in entry or 'exit' in entry):return json_error('Invalid nested preset components')
+    if entry['kind']=='creativeBuild' and set(entry)!={'kind','parts'}:return json_error('Invalid creative build fields')
     if 'name' in entry and (not isinstance(entry['name'],str) or len(entry['name'])>100):return json_error('Invalid original object name')
     if 'rotation' in entry and (not isinstance(entry['rotation'],list) or len(entry['rotation'])!=3 or any(type(v) not in (int,float) or not math.isfinite(v) for v in entry['rotation'])):return json_error('Invalid preset rotation')
     if 'color' in entry and entry['color'] is not None and (not isinstance(entry['color'],str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',entry['color'])):return json_error('Invalid preset colour')
@@ -1078,12 +1102,12 @@ def object_presets():
     if entry['kind']=='stairs' and (entry.get('stairs') or {}).get('variant')=='lift':return json_error('Lift systems cannot be saved as single-object presets')
     if not isinstance(thumb,str) or (thumb and (len(thumb)>145000 or not re.fullmatch(r'data:image/(?:webp|png);base64,[A-Za-z0-9+/=]+',thumb))):return json_error('Invalid preset preview')
     entry={key:value for key,value in entry.items() if key in _PRESET_FIELDS}
-    if entry['kind']!='portalPair' and (not isinstance(entry.get('scale'),list) or len(entry['scale'])!=3 or any(type(n) not in (int,float) or not math.isfinite(n) or not 0.001<=n<=1000 for n in entry['scale'])):return json_error('Invalid preset scale')
+    if entry['kind'] not in ('portalPair','creativeBuild') and (not isinstance(entry.get('scale'),list) or len(entry['scale'])!=3 or any(type(n) not in (int,float) or not math.isfinite(n) or not 0.001<=n<=1000 for n in entry['scale'])):return json_error('Invalid preset scale')
     if not _preset_finite(entry):return json_error('Invalid preset properties')
     payload=json.dumps(entry,allow_nan=False,separators=(',',':'))
-    if len(payload)>48000:return json_error('Preset configuration too large')
+    if len(payload)>(120000 if entry['kind']=='creativeBuild' else 48000):return json_error('Preset configuration too large')
     variant=(entry.get('furniture') or {}).get('variant','table') if entry['kind']=='furniture' else ''
-    category='Architecture' if entry['kind']=='portalPair' else 'Tools' if variant in ('shovel','axe','rake','stick','broom','mop','saw') else 'Nature' if variant in ('tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch') else 'Props' if variant in ('plate','mug','glass','bowl','bottle','can','flowerpot','box') else 'Furniture' if entry['kind']=='furniture' else 'Geometry' if entry['kind'] in ('cube','sphere','cylinder','plane','torus','surface','curve','text','points') else 'Architecture'
+    category='Creative Builds' if entry['kind']=='creativeBuild' else 'Architecture' if entry['kind']=='portalPair' else 'Tools' if variant in ('shovel','axe','rake','stick','broom','mop','saw') else 'Nature' if variant in ('tree','shrub','vegetationArea','groundPlot','cropBed','waterPatch') else 'Props' if variant in ('plate','mug','glass','bowl','bottle','can','flowerpot','box') else 'Furniture' if entry['kind']=='furniture' else 'Geometry' if entry['kind'] in ('cube','sphere','cylinder','plane','torus','surface','curve','text','points') else 'Architecture'
     with db() as con:
         if con.execute('SELECT COUNT(*) FROM object_presets WHERE user_id=?',(user['id'],)).fetchone()[0]>=250:return json_error('Maximum 250 saved presets')
         uid=str(uuid.uuid4());con.execute('INSERT INTO object_presets VALUES(?,?,?,?,?,?,?,?)',(uid,user['id'],name.strip(),category,entry['kind'],payload,thumb,now()))
