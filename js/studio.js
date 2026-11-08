@@ -1730,6 +1730,7 @@ function bindUI(world){
    for(const direction of directions){
     const blob=await captureRobotView(world,robot,{yawOffset:direction.yaw*Math.PI/180,pitchDegrees:direction.pitch});
     if(!blob?.size)throw Error('Camera returned an empty frame');
+    rememberRobotObservationFrame(robot.userData.editorId,blob,`Panorama sweep · ${direction.label} · raw head camera`);
     frames.push({blob,yaw:direction.yaw,pitch:direction.pitch,label:direction.label});
    }
    if(panoramaMode(frames)!==degrees)throw Error('Camera sweep did not cover '+degrees+'°');
@@ -1780,6 +1781,7 @@ function bindUI(world){
      const yaw=[0,90,-90,180][Math.floor(perceptionCursor/Math.max(robots.length,1))%4];
      const photo=await captureRobotView(editor.world,robot,{yawOffset:yaw});
      if(!photo?.size||activeRoom!==currentRoom)return;
+     rememberRobotObservationFrame(robot.userData.editorId,photo,`Autonomous head-camera reconnaissance · yaw ${yaw}° · raw JPEG`);
      const form=new FormData();form.append('room',currentRoom);form.append('robot_id',robot.userData.editorId);form.append('token',plan.token);
      form.append('frame',photo,`perception-${robot.userData.editorId}.jpg`);
      const observed=await api.req('/api/robots/perception/complete',{method:'POST',body:form});

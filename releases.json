@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.241",
+  "currentVersion": "0.2.242",
   "releases": [
+    {
+      "version": "0.2.242",
+      "publishedAt": "2026-11-08T02:40:46Z",
+      "changes": [
+        "Optional opt-in A* waypoint smoothing, with full obstacle checking and safe raw-route fallback.",
+        "Display the latest actual local robot-eye JPEG in a 16:9 panel above the roundel selector, with capture age and realm isolation.",
+        "Automatically preview genuine autonomous reconnaissance, SAM and panorama-sweep frames; no new server-side camera publishing.",
+        "Preserve the original scene/avatars/media, include v0.2.242 example commands and regression tests."
+      ]
+    },
     {
       "version": "0.2.241",
       "publishedAt": "2026-11-08T01:45:46Z",
@@ -297,16 +307,6 @@
         "An authored Digging clip is selected when the avatar GLB provides one; the bundled avatar has no Digging clip, so a lightweight procedural arm-and-spine motion is used by default.",
         "Add configurable per-tool action clip choices, an authenticated WebSocket pose relay, and strict shared realm validation for excavation and held-tool animation events.",
         "Retain B \u2192 Held \u2192 Drop, Store, Switch hand, Grip, all previous changes and original media assets. Excavation is a visual ground marker, not physical ground cutting; other tool actions are optional animation only."
-      ]
-    },
-    {
-      "version": "0.2.204",
-      "publishedAt": "2026-11-06T00:16:01Z",
-      "changes": [
-        "Provide per-tool, per-hand adjustable skinned-bone grip profiles: exact rig bone or hand aliases, follow-rotation, local hand offsets, tool rotation offsets and handle contact point.",
-        "Default to the actual avatar hand bone instead of finger joints; use tool-specific handle grips for shovel, axe, rake, broom, mop, stick and saw.",
-        "Expose Inventory \u2192 Held \u2192 Switch hand / Grip and Selected Tool \u2192 Tool grip settings, with live preview, reset and persistent multiplayer profiles.",
-        "Validate and persist grip profiles in scene objects, object presets, realm exports and imports; retain all v0.2.203 authorization and prior improvements. No DB migration or tool-action claim."
       ]
     }
   ]

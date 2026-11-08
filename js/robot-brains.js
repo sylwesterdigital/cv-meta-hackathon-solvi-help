@@ -12,8 +12,12 @@ export function robotTraceEntries(id){return (taskTraces.get(id)||[]).map(e=>({.
 export function robotTraceText(id){return robotTraceEntries(id).map(e=>`[${e.at}] ${e.step}: ${e.detail}`).join('\n\n');}
 export function robotTraceExport(id,name='Robot'){return JSON.stringify({schema:'solvi-robot-diagnostics-v1',version:'0.2.196',robot:{id,name},exportedAt:new Date().toISOString(),scope:'this browser tab only; last 1500 events per robot',events:robotTraceEntries(id)},null,2);}
 function rememberFrame(id,blob,label){
- const rec={blob,label,boxes:[],usage:null};latestFrames.set(id,rec);
+ const at=Date.now(),room=String(window.solviRoom||'');
+ const rec={blob,label,boxes:[],usage:null,at,room};latestFrames.set(id,rec);
  const history=frameHistory.get(id)||[];history.push(rec);if(history.length>10)history.shift();frameHistory.set(id,history);
+ // The control switcher displays the actual latest local robot-head image,
+ // never a synthetic approximation or an image from a different realm.
+ window.dispatchEvent(new CustomEvent('solvi:robot-eye-frame',{detail:{robotId:id,blob,label,at,room}}));
  return rec;
 }
 export function rememberRobotObservationFrame(robotId,blob,label){
@@ -59,7 +63,11 @@ export async function runRobotVisualSearch(world,editor,robot,command,api,isCanc
    emitBrainTrace(id,name,'CAPTURE',`View ${index+1}/${directions.length} · head yaw ${facing}°, pitch ${directions[index].pitch}° · 512 × 512 JPEG`);
    const image=await captureRobotView(world,robot,{yawOffset:directions[index].yaw,pitchDegrees:directions[index].pitch,onPose:p=>{pose=p;}});
    if(!image)throw Error('Head-camera screenshot returned no JPEG');
-   // Keep negative images out of the gallery; only a SAM candidate is evidence worth reviewing.
+   // Every reconnaissance image is real eye evidence, including views where
+   // SAM finds nothing. The preview is updated BEFORE remote inference.
+   const captured=rememberFrame(id,image,`SAM scan ${index+1}/${directions.length} · ${facing}°`);
+   window.dispatchEvent(new CustomEvent('solvi:brain-frame',{detail:{robotId:id,blob:image,label:captured.label}}));
+   window.dispatchEvent(new CustomEvent('solvi:brain-gallery',{detail:{robotId:id}}));
    emitBrainTrace(id,name,'META REQUEST',`POST /v1/responses · model sam-3.1 · prompt "${phrase}" · image/jpeg ${image.size} bytes · store=false`);
    const started=performance.now();
    const response=await api.req('/api/ai/vision',{method:'POST',body:JSON.stringify({mode:'segment',prompt:phrase,image:await asDataURL(image)})});
@@ -67,9 +75,8 @@ export async function runRobotVisualSearch(world,editor,robot,command,api,isCanc
    spend+=Number(response.usage?.estimated_usd||0);
    const boxes=response.result?.boxes||[];
    if(boxes.length){
-     const captured=rememberFrame(id,image,`SAM · candidate ${index+1}/${directions.length} · ${facing}° · prompt "${phrase}"`);
+     captured.label=`SAM · candidate ${index+1}/${directions.length} · ${facing}° · prompt "${phrase}"`;
      captured.boxes=boxes;captured.usage=response.usage;
-     window.dispatchEvent(new CustomEvent('solvi:brain-frame',{detail:{robotId:id,blob:image,label:`SAM candidate at head yaw ${facing}°`}}));
      window.dispatchEvent(new CustomEvent('solvi:brain-gallery',{detail:{robotId:id}}));
    }
    emitBrainTrace(id,name,'SAM RESPONSE',`${Math.round(performance.now()-started)} ms · ${boxes.length} parsed detection(s) · response ${response.result?.id||'unknown'} · estimated US$${Number(response.usage?.estimated_usd||0).toFixed(6)} · total US$${spend.toFixed(6)}`);

@@ -31,6 +31,7 @@ import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
 import {portalPairEntries} from './portal-preset-data.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach,robotRouteCheckpoints} from './robot-pathfinding.js';
+import {smoothRobotWaypoints} from './robot-path-smoothing.js';
 import {robotPosePacket,appendRobotPose,sampleRobotPose} from './robot-motion-sync.js';
 import {planRobotMeeting,canMeetRobot,sameRobotFloor,remainingRouteBlocked} from './robot-social-navigation.js';
 import {findRobotWorksite,footprintClear} from './robot-worksite.js';
@@ -408,6 +409,57 @@ export class SceneEditor{
   const modeButton=byId('controlModeButton'),robotSelect=byId('controlledRobotSelect'),robotFaces=byId('controlledRobotFaces');
   attachControlSwitcherDrag(byId('controlSwitcher'));
   const switcher=byId('controlSwitcher');
+  // Optional smooth routes only affect NEW A* plans. The default remains the
+  // original, already verified robot route. Never smooth manual key controls.
+  const smoothWalkToggle=byId('smoothRobotWalks'),eyesToggle=byId('showRobotEyes');
+  try{this.smoothRobotPathsEnabled=localStorage.getItem('solvi-smooth-robot-walks-v1')==='1';}
+  catch{this.smoothRobotPathsEnabled=false;}
+  smoothWalkToggle.checked=this.smoothRobotPathsEnabled;
+  smoothWalkToggle.onchange=()=>{
+   this.smoothRobotPathsEnabled=smoothWalkToggle.checked;
+   try{localStorage.setItem('solvi-smooth-robot-walks-v1',this.smoothRobotPathsEnabled?'1':'0');}catch{}
+  };
+  const eyePanel=byId('robotEyePreview'),eyeImage=byId('robotEyePreviewImage');
+  const eyeName=byId('robotEyePreviewName'),eyeTime=byId('robotEyePreviewTime');
+  let eyesEnabled=true,eyeURL=null,displayedBlob=null;
+  const eyeFrames=new Map();
+  try{eyesEnabled=localStorage.getItem('solvi-robot-eyes-preview-v1')!=='0';}catch{}
+  eyesToggle.checked=eyesEnabled;
+  const clearEyeImage=()=>{
+   if(eyeURL)URL.revokeObjectURL(eyeURL);
+   eyeURL=null;displayedBlob=null;eyeImage.hidden=true;eyeImage.removeAttribute('src');
+  };
+  const updateEyePreview=()=>{
+   const robot=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===this.controlledRobotId&&this.canEdit(o));
+   eyePanel.hidden=!eyesEnabled||!robot;
+   if(eyePanel.hidden){clearEyeImage();return;}
+   eyeName.textContent=robot.name+' · last real eye view';
+   const frame=eyeFrames.get(robot.userData.editorId);
+   if(!frame||frame.room!==String(window.solviRoom||'')){
+    clearEyeImage();eyeTime.textContent='No camera frame captured in this realm';eyeTime.removeAttribute('datetime');return;
+   }
+   if(displayedBlob!==frame.blob){
+    clearEyeImage();eyeURL=URL.createObjectURL(frame.blob);eyeImage.src=eyeURL;eyeImage.hidden=false;displayedBlob=frame.blob;
+   }
+   const seconds=Math.max(0,Math.floor((Date.now()-frame.at)/1000));
+   const age=seconds<60?`${seconds}s ago`:seconds<3600?`${Math.floor(seconds/60)}m ago`:`${Math.floor(seconds/3600)}h ago`;
+   eyeTime.textContent=`${age} · ${frame.label}`;
+   eyeTime.dateTime=new Date(frame.at).toISOString();
+   eyePanel.title=`${robot.name}: head-camera JPEG captured ${new Date(frame.at).toLocaleString()} · ${frame.label}. This is the last capture, not a live stream.`;
+  };
+  eyesToggle.onchange=()=>{
+   eyesEnabled=eyesToggle.checked;
+   try{localStorage.setItem('solvi-robot-eyes-preview-v1',eyesEnabled?'1':'0');}catch{}
+   updateEyePreview();
+  };
+  window.addEventListener('solvi:robot-eye-frame',event=>{
+   const frame=event.detail;
+   if(!frame?.robotId||!frame?.blob?.size||frame.room!==String(window.solviRoom||''))return;
+   eyeFrames.set(frame.robotId,frame);updateEyePreview();
+  });
+  window.addEventListener('solvi:room-changed',()=>{eyeFrames.clear();clearEyeImage();updateEyePreview();});
+  window.addEventListener('pagehide',clearEyeImage);
+  setInterval(()=>{if(!eyePanel.hidden)updateEyePreview();},15000);
   const speakingPortrait=e=>{
    const name=String(e.detail?.name||'').toLocaleLowerCase();
    for(const button of robotFaces.children){const bot=this.items.find(o=>o.userData.editorId===button.dataset.robotId);
@@ -489,6 +541,7 @@ export class SceneEditor{
    modeButton.setAttribute('aria-label',robotMode?`Control ${modeName}; click to control scene`:'Scene control; click to control robot');
    modeButton.setAttribute('aria-pressed',String(robotMode));
    modeButton.title=robotMode?'Return arrow keys to scene navigation':'Control selected robot with arrow keys';
+   updateEyePreview();
   };
   modeButton.onclick=()=>{
    if(this.controlMode==='robot'){
@@ -3194,7 +3247,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     return [...scene,...supplements];
   }
   routeRobot(robot,point){
-    const {preserveMission=false,quiet=false,wholePath=false}=arguments[2]||{};
+    const {preserveMission=false,quiet=false,wholePath=false,smooth=this.smoothRobotPathsEnabled}=arguments[2]||{};
     if(!robot||!point)return false;
     // A work route must first release its avatar from a seating collider.
     // Try the seat front and three other exits, never cutting through walls;
@@ -3211,7 +3264,12 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     if(distance>600){this.toast('Robot route exceeds 600 m safety limit');return false;}
     // Use reachable, obstacle-aware intermediate waypoints. The previous fixed
     // straight-line midpoints could lie inside a house and reject a valid detour.
-    const waypoints=planRobotTravelRoute(start,{x:point.x,z:point.z},obstacles)||[];
+    const rawWaypoints=planRobotTravelRoute(start,{x:point.x,z:point.z},obstacles)||[];
+    // Barrier camera checkpoints must remain exact. Otherwise round only
+    // corners whose full curve clears the same scene collision footprints.
+    const rawCheckpoints=robotRouteCheckpoints(start,rawWaypoints,obstacles);
+    const waypoints=smooth&&rawCheckpoints.length===0
+      ?smoothRobotWaypoints(start,rawWaypoints,obstacles):rawWaypoints;
     if(!waypoints.length){
       robot.userData.robotDebugRoute={start,waypoints:[],obstacles,destination:{x:point.x,z:point.z},blocked:true};
       if(typeof this.robotPathDebugVisible==='function'&&this.robotPathDebugVisible(robot))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
@@ -3228,7 +3286,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     }
     robot.userData.robotWaypoints=waypoints.slice(1);
     robot.userData.robotRouteCheckpointHoldUntil=0;
-    robot.userData.robotRouteCheckpoints=robotRouteCheckpoints(start,waypoints,obstacles);
+    robot.userData.robotRouteCheckpoints=rawCheckpoints;
     robot.userData.robotProgressSample=null;
     robot.userData.robotPathObstacles=obstacles;
     if(!preserveMission)robot.userData.robotRecoveryAttempts=0;

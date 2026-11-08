@@ -2881,3 +2881,35 @@ body>#inspectorValueSlider #inspectorActiveRange{
 
 #chatFeed .chat-object-ref{display:inline!important;min-height:0!important;padding:1px 5px!important;margin:0 2px!important;vertical-align:baseline;border-radius:5px!important;border:1px solid #83b6d5!important;background:#294d60!important;color:#f5faff!important;font:inherit!important;cursor:pointer}
 #chatFeed .chat-object-ref:disabled{opacity:.55;cursor:default}
+
+/* v0.2.242: optional robot-eye evidence preview and collision-safe walk smoothing. */
+#controlSwitcher #robotEyePreview.robot-eye-preview{
+ position:relative!important;box-sizing:border-box!important;display:block!important;
+ width:min(330px,calc(100vw - 26px))!important;max-width:100%!important;
+ aspect-ratio:16/9!important;margin:0 0 7px 0!important;padding:0!important;
+ border:1px solid rgba(188,174,221,.72)!important;border-radius:10px!important;
+ overflow:hidden!important;background:rgba(6,15,27,.94)!important;box-shadow:0 3px 12px #0007!important;
+ cursor:default!important;pointer-events:auto!important;
+}
+#controlSwitcher #robotEyePreview[hidden]{display:none!important;}
+#controlSwitcher #robotEyePreviewImage{
+ position:absolute!important;inset:0!important;width:100%!important;height:100%!important;
+ object-fit:contain!important;object-position:center!important;display:block!important;
+}
+#controlSwitcher #robotEyePreviewImage[hidden]{display:none!important;}
+#controlSwitcher #robotEyePreview figcaption{
+ position:absolute!important;left:0!important;right:0!important;bottom:0!important;z-index:2!important;
+ display:flex!important;flex-direction:column!important;gap:1px!important;
+ padding:6px 9px!important;background:linear-gradient(transparent,rgba(3,8,17,.92) 20%)!important;
+ color:#f4effd!important;font:600 11px/1.35 system-ui,sans-serif!important;
+ max-height:56%!important;overflow:hidden!important;pointer-events:none!important;
+}
+#controlSwitcher #robotEyePreviewName{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+#controlSwitcher #robotEyePreviewTime{font:400 10px/1.3 system-ui,sans-serif!important;opacity:.83!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+#controlSwitcher .robot-path-smoothing-toggle,#controlSwitcher .robot-eyes-toggle{
+ display:inline-flex!important;align-items:center!important;flex:0 0 auto!important;gap:4px!important;
+ font:600 10px/1.1 system-ui,sans-serif!important;color:var(--ui-fg,#fff)!important;
+ cursor:pointer!important;white-space:nowrap!important;padding:3px 4px!important;
+}
+#controlSwitcher :is(#smoothRobotWalks,#showRobotEyes){width:13px!important;height:13px!important;min-width:13px!important;margin:0!important;accent-color:var(--solvi-accent,#bd81eb)!important;cursor:pointer!important;}
+@media(max-width:600px){#controlSwitcher .robot-path-smoothing-toggle,#controlSwitcher .robot-eyes-toggle{font-size:9px!important;padding:2px!important;}#controlSwitcher #robotEyePreview{width:min(285px,calc(100vw - 22px))!important;}}

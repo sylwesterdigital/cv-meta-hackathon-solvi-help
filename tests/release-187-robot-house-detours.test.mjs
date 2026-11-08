@@ -64,7 +64,7 @@ test('Safe pursuit uses robot feet capsule and reconsiders reachable sides as ta
  assert.match(editor,/const approach=planRobotMeeting\(\{\.\.\.start,y:robot\.position\.y\},\{x:target\.position\.x,y:target\.position\.y,z:target\.position\.z\},obstacles\)/);
  assert.match(editor,/canMeetRobot\(\{x:robot\.position\.x,y:robot\.position\.y,z:robot\.position\.z\}/);
  assert.match(editor,/this\.routeRobot\(robot,approach\.point,\{preserveMission:true\}\)/);
- assert.match(editor,/const waypoints=planRobotTravelRoute\(start,\{x:point\.x,z:point\.z\},obstacles\)/);
+ assert.match(editor,/const rawWaypoints=planRobotTravelRoute\(start,\{x:point\.x,z:point\.z\},obstacles\)/);
  assert.doesNotMatch(editor,/const target=\{x:start\.x\+\(point\.x-start\.x\)\*i\/steps/);
 });
 

@@ -50,7 +50,7 @@ test('blocked path debug never renders an impossible straight red route',()=>{
  assert.match(visuals,/if\(!blocked&&points\.length>1\)group\.add\(ribbon/);
  assert.match(visuals,/if\(!blocked&&dest/);
  const editor=read('js/editor.js');
- assert.match(editor,/robotRouteCheckpoints\(start,waypoints,obstacles\)/);
+ assert.match(editor,/robotRouteCheckpoints\(start,rawWaypoints,obstacles\)/);
  assert.match(editor,/inspectRobotRouteCheckpoint\(robot,reached\)/);
  assert.match(editor,/remainingRouteBlocked\(/);
  assert.match(editor,/status:'blocked',reason:'Remaining detour obstructed at observation checkpoint'/);

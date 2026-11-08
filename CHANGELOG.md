@@ -1,3 +1,10 @@
+## v0.2.242 — Optional obstacle-checked smooth walking and robot-eye previews (2026-11-08)
+
+- Opt-in **Smooth paths** adds short sampled, quadratic curves around verified A* waypoints. Every new segment is tested against the actual scene obstacle footprints and the original route is retained when a curve would reduce clearance. Barrier camera checkpoints stay exact.
+- A new **Eyes** checkbox displays the selected robot's latest actual JPEG head-camera capture in a 16:9 panel above its profile roundels. The timestamp distinguishes a past capture from live video; image content is letterboxed rather than distorted.
+- Autonomous reconnaissance and SAM scan frames register with the local preview as soon as captured; a failed vision API call does not erase evidence that a capture occurred. Changing realms clears preview data and revokes the active image URL.
+- Store both toggles as local browser preferences, without modifying robot/database schema. Include new tests and version-specific example commands. Browser-closed execution and live camera streaming are not implied.
+
 ## v0.2.241 — Speech amplitude, scene references and creative mission routing (2026-11-08)
 
 - Drive in-world speech balloon border opacity from TTS PCM waveform (approximate visual cadence for device TTS, which does not expose samples).
