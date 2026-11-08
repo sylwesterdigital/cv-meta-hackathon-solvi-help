@@ -1,3 +1,10 @@
+## v0.2.245 — Restore readable Objects collection list (2026-11-08)
+
+- Fix the underlying CSS grid collapse: collection headers retained a 43-pixel layout but were compressed to approximately 19 pixels and clipped.
+- Render collections at natural height within a scrollable list; show independent text names and counts.
+- Move folder actions into the expanded section; search by collection names; display empty-state and item counts.
+- Add regression checks and headless Chromium layout verification. Scene persistence, avatars and robot task code are unchanged.
+
 ## v0.2.244 — Objects panel hotfix: visible folder names and valid stage-selection lookup (2026-11-08)
 
 - Remove malformed `querySelector` interpolation from stage-click selection; find the exact saved object ID using DOM dataset comparisons.

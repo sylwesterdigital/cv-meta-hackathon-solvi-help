@@ -40,6 +40,6 @@ test('the backend state and persisted scene schema are unchanged by the frontend
  const editor=read('js/editor.js');
  assert.match(editor,/collection:o\.userData\.editorKind/);
  assert.match(editor,/sceneCollection=cleanSceneCollection/);
- assert.equal(JSON.parse(read('package.json')).version,'0.2.244');
- assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.244');
+ assert.equal(JSON.parse(read('package.json')).version,'0.2.245');
+ assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.245');
 });

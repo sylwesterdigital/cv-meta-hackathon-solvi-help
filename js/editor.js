@@ -2490,7 +2490,7 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
   const clips=obj.userData.robotAvailableActions||[];if(clips.length){const group=document.createElement('optgroup');group.label='Model animations';group.dataset.realActions='1';for(const name of clips.slice(0,120))group.append(new Option(name,'clip:'+name));select.append(group);}
   select.value=[...select.options].some(o=>o.value===obj.userData.robotMode)?obj.userData.robotMode:'idle';
  }
-  visibleSceneItems(){const term=byId('sceneObjectSearch')?.value?.trim().toLocaleLowerCase()||'';const filter=byId('sceneObjectFilter')?.value||'all';return this.items.filter(o=>!o.userData.temporaryCarryTest&&(filter==='all'||(filter==='robot')===(o.userData.editorKind==='robot'))&&(!term||(`${o.name} ${o.userData.editorKind}`).toLocaleLowerCase().includes(term)));}
+  visibleSceneItems(){const term=byId('sceneObjectSearch')?.value?.trim().toLocaleLowerCase()||'';const filter=byId('sceneObjectFilter')?.value||'all';return this.items.filter(o=>!o.userData.temporaryCarryTest&&(filter==='all'||(filter==='robot')===(o.userData.editorKind==='robot'))&&(!term||(`${o.name} ${o.userData.editorKind} ${collectionOf(o)?.name||''}`).toLocaleLowerCase().includes(term)));}
  // Visible names are friendly, while stable IDs remain authoritative for save/recovery.
  sceneObjectLabel(obj){return memberDisplayName(obj);}
  revealSceneObject(obj){
@@ -2571,19 +2571,40 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
    if(byId('scenePanel').classList.contains('bulk-mode'))row.append(check);row.append(b,lock,remove);return row;
   };
   const {folders,ungrouped}=groupSceneItems(visible);
+  // This is a scrolling collection list, NOT an equal-height CSS grid.
+  // A large realm can have hundreds of folders. Each must keep its natural height.
+  const summary=document.createElement('div');summary.className='scene-list-summary';
+  const plural=(n,s)=>`${n} ${s}${n===1?'':'s'}`;
+  summary.textContent=`${plural(folders.length,'collection')} · ${plural(visible.length,'object')}`;
+  list.append(summary);
+  if(!visible.length){
+   const empty=document.createElement('p');empty.className='scene-list-empty';
+   empty.textContent=this.items.length?'No objects match this search or filter.':'No scene objects are loaded in this realm.';
+   list.append(empty);
+  }
   for(const folder of folders){
-   const box=document.createElement('div');box.className='scene-collection';box.dataset.collectionId=folder.id;
+   const box=document.createElement('section');box.className='scene-collection';box.dataset.collectionId=folder.id;
    const heading=document.createElement('div');heading.className='scene-collection-heading'+(this.activeCollectionId===folder.id?' is-target':'');
    const expanded=this.collectionExpanded.has(folder.id)||folder.items.some(o=>o===this.selected);
    const toggle=document.createElement('button');toggle.type='button';toggle.className='scene-collection-toggle';
    const label=folder.name;
-   toggle.textContent=(expanded?'▾ ':'▸ ')+label+` (${folder.items.length})`;toggle.title=label;toggle.setAttribute('aria-expanded',String(expanded));
+   toggle.textContent=(expanded?'▾ ':'▸ ')+label+` (${folder.items.length})`;
+   toggle.title=label;toggle.setAttribute('aria-expanded',String(expanded));
+   // Keep an ordinary text label as well as the button's accessible name.
+   // Global icon-only decoration must never be able to erase a collection name.
+   const title=document.createElement('span');title.className='scene-collection-visible-title';title.textContent=(expanded?'▾ ':'▸ ')+label;
+   const count=document.createElement('span');count.className='scene-collection-count';count.textContent=String(folder.items.length);
+   title.setAttribute('aria-hidden','true');count.setAttribute('aria-hidden','true');
    toggle.onclick=()=>{if(expanded)this.collectionExpanded.delete(folder.id);else this.collectionExpanded.add(folder.id);this.refreshList();};
-   const move=document.createElement('button');move.type='button';move.className='scene-collection-action';move.textContent='Move';move.title='One translate/rotate/scale gizmo for all editable collection members';move.disabled=!this.canMoveCollection(this.collectionMembers(folder.id));move.onclick=()=>this.selectCollection(folder.id);
-   const rename=document.createElement('button');rename.type='button';rename.className='scene-collection-action';rename.textContent='Rename';rename.disabled=!this.collectionMembers(folder.id).every(o=>this.canEdit(o));rename.onclick=()=>this.renameCollection(folder.id);
-   const ungroup=document.createElement('button');ungroup.type='button';ungroup.className='scene-collection-action';ungroup.textContent='Ungroup';ungroup.disabled=!this.collectionMembers(folder.id).every(o=>this.canEdit(o)&&cleanSceneCollection(o.userData.sceneCollection));ungroup.onclick=()=>this.ungroupCollection(folder.id);
-   heading.append(toggle,move,rename,ungroup);box.append(heading);
-   if(expanded){const children=document.createElement('div');children.className='scene-collection-members';folder.items.forEach(o=>children.append(makeRow(o)));box.append(children);}
+   heading.append(toggle,title,count);box.append(heading);
+   if(expanded){
+    const actions=document.createElement('div');actions.className='scene-collection-actions';
+    const move=document.createElement('button');move.type='button';move.className='scene-collection-action';move.textContent='Move';move.title='One translate/rotate/scale gizmo for all editable collection members';move.disabled=!this.canMoveCollection(this.collectionMembers(folder.id));move.onclick=()=>this.selectCollection(folder.id);
+    const rename=document.createElement('button');rename.type='button';rename.className='scene-collection-action';rename.textContent='Rename';rename.disabled=!this.collectionMembers(folder.id).every(o=>this.canEdit(o));rename.onclick=()=>this.renameCollection(folder.id);
+    const ungroup=document.createElement('button');ungroup.type='button';ungroup.className='scene-collection-action';ungroup.textContent='Ungroup';ungroup.disabled=!this.collectionMembers(folder.id).every(o=>this.canEdit(o)&&cleanSceneCollection(o.userData.sceneCollection));ungroup.onclick=()=>this.ungroupCollection(folder.id);
+    actions.append(move,rename,ungroup);box.append(actions);
+    const children=document.createElement('div');children.className='scene-collection-members';folder.items.forEach(o=>children.append(makeRow(o)));box.append(children);
+   }
    list.append(box);
   }
   for(const obj of ungrouped)list.append(makeRow(obj));

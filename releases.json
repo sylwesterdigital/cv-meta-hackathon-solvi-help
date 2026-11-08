@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.244",
+  "currentVersion": "0.2.245",
   "releases": [
+    {
+      "version": "0.2.245",
+      "publishedAt": "2026-11-08T11:02:37Z",
+      "changes": [
+        "Fix collapsed Objects folders: natural-height scrolling instead of height-compressed CSS grid rows.",
+        "Make collection titles/counts always readable, with accessible expansion and visible group action controls.",
+        "Support search by collection name, list counts, and a real no-results state.",
+        "Preserve saved scene IDs and collection transforms; add Chromium reproduction and tests."
+      ]
+    },
     {
       "version": "0.2.244",
       "publishedAt": "2026-11-08T03:47:42Z",
@@ -299,16 +309,6 @@
         "Every 6 seconds the local robot life loop considers new activity without billing Meta. The server grants a 22-second ownership lease, defers to explicit human tasks and saved work orders, and rejects unauthorized or replayed movement receipts.",
         "Arrival or collision outcomes, including measured actual displacement, are traced and consolidated as explicitly client-reported experience in existing robot memory; real camera frames can be captured after exploration and existing Meta visual analysis remains separate.",
         "Upon an actual arrival beside another robot, optionally ask a bounded evidence-based question using the existing authorised robot-to-robot communication route, subject to cooldowns; no uncontrolled world edits or object mutations."
-      ]
-    },
-    {
-      "version": "0.2.207",
-      "publishedAt": "2026-11-06T03:01:30Z",
-      "changes": [
-        "Make I a true pickup/drop toggle for held equipment: pressing I while holding a shovel releases it to the shared world, without requiring a backpack or opening Inventory. Existing transient-carry drop stays intact; Shift+I remains backpack handling.",
-        "Make B toggle inventory visibility, label I/U/B directly in Held controls and shortcut help, remove duplicate Drop from tool cards and keep Inventory open during grip editing and aimed digging.",
-        "Match the Transform inspector format: single-line Attach (hand, bone, Follow), Angle X/Y/Z and reset, Action clip; Advanced contains hand offset/contact axes only, initially collapsed. Remove repetitive instructions and unify label font size.",
-        "Suppress incorrect missing-physics-body warning for currently equipped items (their physics bodies are deliberately removed while held). Preserve object IDs, per-hand grips, saved scenes, avatars and backend schema without migration."
       ]
     }
   ]

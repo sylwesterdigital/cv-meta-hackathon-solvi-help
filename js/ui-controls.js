@@ -50,6 +50,7 @@ export function iconForButton(button){
  if(button.classList.contains('theme-swatch')||button.classList.contains('theme-preset'))return null;
  // Collection controls must retain their visible names even in icon-only mode.
  if(button.closest?.('.scene-collection-heading'))return null;
+ if(button.closest?.('.scene-collection-actions'))return null;
  if(button.dataset?.uiIcon&&fileIcons.has(button.dataset.uiIcon))return button.dataset.uiIcon;
  const kind=button.dataset?.objectKind;
  if(kind)return iconForObjectKind(kind);
