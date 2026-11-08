@@ -1,4 +1,4 @@
-import {mapPanAfterDrag,mapCanvasSize} from './minimap-geometry.js';
+import {mapPanAfterDrag,mapCanvasSize,mapPixelsPerMeter} from './minimap-geometry.js';
 import * as THREE from 'three';
 // Live top-down map of the shared scene. Uses existing Three.js objects; no extra WebGL context.
 export function initMinimap(world){
@@ -40,7 +40,7 @@ export function initMinimap(world){
  function paint(){
   if(panel.hidden||minimized)return;
   const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h); // Transparent canvas; no opaque background fill.
-  const toXY=(x,z)=>[w/2+(x-panX)/(2*zoom)*w,h/2+(z-panZ)/(2*zoom)*h];
+  const metres=mapPixelsPerMeter(zoom,w,h);const toXY=(x,z)=>[w/2+(x-panX)*metres,h/2+(z-panZ)*metres];
   ctx.lineWidth=1;ctx.strokeStyle='#29475a';
   for(let v=-35;v<=35;v+=5){const [x1,y1]=toXY(v,-35),[x2,y2]=toXY(v,35);ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();const [xa,ya]=toXY(-35,v),[xb,yb]=toXY(35,v);ctx.beginPath();ctx.moveTo(xa,ya);ctx.lineTo(xb,yb);ctx.stroke();}
   ctx.strokeStyle='#5b7d8b';const [fl,ft]=toXY(-35,-35),[fr,fb]=toXY(35,35);ctx.strokeRect(fl,ft,fr-fl,fb-ft);

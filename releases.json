@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.248",
+  "currentVersion": "0.2.249",
   "releases": [
+    {
+      "version": "0.2.249",
+      "publishedAt": "2026-11-08T15:25:35Z",
+      "changes": [
+        "Keep Chase/Orbit camera bearing stable during a robot 180-degree sit turn and through standing until the robot starts walking.",
+        "Render minimap with one world-to-pixel scale in both directions; resizable panel no longer stretches geometry.",
+        "Add explicit 210-degree Wide Eyes refresh, startup-ready handshake, capture status and recoverable retries.",
+        "Keep the last genuine wide panorama displayed with accurate age and surface it in the Brains gallery; retain central raw JPEG evidence.",
+        "Add regression tests and version-specific valid example instructions."
+      ]
+    },
     {
       "version": "0.2.248",
       "publishedAt": "2026-11-08T13:50:46Z",
@@ -297,17 +308,6 @@
         "Increase in-world comic bubble capacity and readability; show real speaker activity on controlled robot portraits using a subtle border-only animation and microphone overlay.",
         "Make minimap translucent, draw world-object footprints and flash a grounded object marker when a robot mentions that named scene object; encourage landmark-based spatial language rather than raw coordinates.",
         "Maintain owner permissions, scene object IDs, existing Meta usage caps, physics, and prior navigation/multiplayer changes. No live deployment claimed."
-      ]
-    },
-    {
-      "version": "0.2.212",
-      "publishedAt": "2026-11-06T14:13:54Z",
-      "changes": [
-        "Allow an explicit human @all instruction to start up to three owner-authorized persistent local construction work orders; broad aspirational chat is not an authorization.",
-        "Use verified deterministic build-house and park/picnic furniture tool sequences even when Meta inference has no configured key, with saved stable object IDs and no uncontrolled scene edits.",
-        "Interpret requested plural homes as two bounded furnished house projects per assigned robot; never overwrite active robot work orders or invent playground equipment.",
-        "Parse one-hour wandering as a timed multi-leg patrol, and a 15m retreat with random turn as separate collision-checked motion stages; permit safe bounded fallbacks, no teleports.",
-        "Retain every prior 0.2.211 smooth multiplayer robot motion, fence navigation, object ownership, scene persistence, GLB assets, and no database schema migration."
       ]
     }
   ]

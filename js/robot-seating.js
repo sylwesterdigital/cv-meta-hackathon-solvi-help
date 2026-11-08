@@ -83,6 +83,8 @@ export function takeSeat(robot,target,editor){
  const occupying=(editor.items||[]).filter(other=>other!==robot&&other.userData?.robotSeated&&other.userData.robotSeatedTarget===target.userData.editorId);
  const slots=occupying.map(other=>Number.isInteger(other.userData.robotSeatState?.slot)?other.userData.robotSeatState.slot:other.userData.robotSeatSlot??0);
  const plan=seatPlan(target,robot.position,slots);if(!plan)return false;
+ // Keep the viewer's azimuth fixed before turning the avatar to face the seat.
+ editor.world?.lockCameraForSeating?.(robot);
  // Anchor the avatar in front of the visible seat, not in empty space.
  robot.position.x=plan.spot.x;robot.position.z=plan.spot.z;
  robot.rotation.y=plan.yaw;robot.userData.robotSeated=true;

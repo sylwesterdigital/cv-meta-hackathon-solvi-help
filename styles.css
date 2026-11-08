@@ -3052,3 +3052,12 @@ html[data-button-labels='icon'] body #sceneItems .scene-collection-heading butto
 /* v0.2.247: panorama is letterboxed, never stretched to a fake camera FOV. */
 #robotEyePreview:has(#robotEyePreviewImage[src]){contain:layout paint}
 #controlSwitcher #robotEyePreviewImage{object-fit:contain!important;background:#050d19!important}
+
+/* v0.2.249: Explicit on-demand peripheral survey without obscuring the image. */
+#controlSwitcher #robotEyeRefreshWide{
+ position:absolute!important;top:5px!important;right:5px!important;z-index:4!important;
+ border:1px solid #b7aad6!important;border-radius:6px!important;padding:3px 7px!important;
+ background:rgba(9,20,36,.86)!important;color:#f3eaff!important;
+ font:700 10px system-ui,sans-serif!important;cursor:pointer!important;
+}
+#controlSwitcher #robotEyeRefreshWide:focus-visible{outline:2px solid #f9d0ff!important;outline-offset:2px!important}

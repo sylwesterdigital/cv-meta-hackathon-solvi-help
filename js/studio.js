@@ -1772,14 +1772,16 @@ function bindUI(world){
  // Any genuine head-camera frame (including a barrier checkpoint) can refresh
  // the selected robot's wide preview. Previously ONLY periodic reconnaissance
  // triggered a wide capture, so the user mostly saw square JPEGs.
- const publishSelectedWideEye=async(robotId,room)=>{
+ const publishSelectedWideEye=async(robotId,room,force=false)=>{
   const editor=window.solviEditor,robot=editor?.items?.find(o=>o.userData.editorId===robotId&&o.userData.editorKind==='robot');
   const key=room+':'+robotId;
   if(!robot||!editor.canEdit(robot)||!document.getElementById('showRobotEyes')?.checked||
      document.visibilityState!=='visible'||editor.controlledRobotId!==robotId||
      activeRoom!==room||window.solviRoom!==room||editor.world?.renderer?.xr?.isPresenting||
-     wideSurveyBusy.has(key)||Date.now()-(wideSurveyLastAt.get(key)||0)<120000)return;
-  wideSurveyBusy.add(key);
+     wideSurveyBusy.has(key)||Date.now()-(wideSurveyLastAt.get(key)||0)<(force?8000:120000))return;
+  const notify=(state,reason='')=>window.dispatchEvent(new CustomEvent('solvi:robot-eyes-wide-status',
+   {detail:{robotId,room,state,reason}}));
+  wideSurveyBusy.add(key);notify('capturing');
   // Limit repeated attempts even if a browser capture fails; do not put camera
   // work in the critical path of a real movement or a billable Muse request.
   wideSurveyLastAt.set(key,Date.now());
@@ -1791,16 +1793,17 @@ function bindUI(world){
    }),{stillCurrent,width:1152,height:744});
    if(stillCurrent()){
     rememberRobotObservationFrame(robotId,survey.blob,'Stitched wide eyes · 210° horizontal × 135° vertical · six real head-camera views');
+    notify('complete');
     emitBrainTrace(robotId,robot.name,'WIDE EYES PREVIEW','Selected robot wide view refreshed locally from six actual camera frames; the central raw JPEG remains independent Muse evidence.');
    }
-  }catch(error){emitBrainTrace(robotId,robot.name,'WIDE EYES UNAVAILABLE',String(error.message||error));}
+  }catch(error){wideSurveyLastAt.set(key,Date.now()-95000);notify('unavailable',String(error.message||error));emitBrainTrace(robotId,robot.name,'WIDE EYES UNAVAILABLE',String(error.message||error));}
   finally{wideSurveyBusy.delete(key);}
  };
  window.addEventListener('solvi:robot-eyes-wide-request',event=>{
-  const {robotId,room}=event.detail||{};
+  const {robotId,room,force=false}=event.detail||{};
   if(typeof robotId!=='string'||room!==activeRoom)return;
   // Yield to the original camera/event pipeline before using the renderer.
-  setTimeout(()=>{void publishSelectedWideEye(robotId,room);},100);
+  setTimeout(()=>{void publishSelectedWideEye(robotId,room,force);},100);
  });
  window.addEventListener('solvi:robot-eye-frame',event=>{
   const frame=event.detail;
@@ -1810,6 +1813,7 @@ function bindUI(world){
    setTimeout(()=>{void publishSelectedWideEye(frame.robotId,frame.room);},100);
  });
 
+ window.dispatchEvent(new CustomEvent('solvi:robot-eyes-wide-ready'));
  const observeAutonomously=async()=>{
    if(perceptionBusy||document.visibilityState!=='visible'||!online||!auth||!me||!window.solviEditor)return;
    if(!window.solviRoom||window.solviRoom!==activeRoom)return;

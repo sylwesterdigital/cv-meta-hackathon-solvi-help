@@ -39,7 +39,7 @@ test('autonomous camera captures real peripheral images in the same realm, witho
  assert.match(studio,/const wideSurveyLastAt=new Map\(\)/);
  assert.match(studio,/form\.append\('frame',photo/);
  assert.match(editor,/wideEyeFrames=new Map\(\)/);
- assert.match(editor,/Date\.now\(\)-recentWide\.at<240000/);
+ assert.match(editor,/const hasWide=!!/);
  assert.match(editor,/wideEyeFrames\.clear\(\)/);
 });
 test('wide survey never continues if the realm changes',async()=>{

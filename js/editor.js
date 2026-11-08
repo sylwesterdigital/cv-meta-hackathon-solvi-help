@@ -433,9 +433,9 @@ export class SceneEditor{
    try{localStorage.setItem('solvi-smooth-robot-walks-v1',this.smoothRobotPathsEnabled?'1':'0');}catch{}
   };
   const eyePanel=byId('robotEyePreview'),eyeImage=byId('robotEyePreviewImage');
-  const eyeName=byId('robotEyePreviewName'),eyeTime=byId('robotEyePreviewTime');
+  const eyeName=byId('robotEyePreviewName'),eyeTime=byId('robotEyePreviewTime'),eyeRefresh=byId('robotEyeRefreshWide');
   let eyesEnabled=true,eyeURL=null,displayedBlob=null;
-  const eyeFrames=new Map(),wideEyeFrames=new Map(),widePreviewRequests=new Map();
+  const eyeFrames=new Map(),wideEyeFrames=new Map(),widePreviewRequests=new Map(),widePreviewStatus=new Map();
   try{eyesEnabled=localStorage.getItem('solvi-robot-eyes-preview-v1')!=='0';}catch{}
   eyesToggle.checked=eyesEnabled;
   const clearEyeImage=()=>{
@@ -446,32 +446,54 @@ export class SceneEditor{
    const robot=this.items.find(o=>o.userData.editorKind==='robot'&&o.userData.editorId===this.controlledRobotId&&this.canEdit(o));
    eyePanel.hidden=!eyesEnabled||!robot;
    if(eyePanel.hidden){clearEyeImage();return;}
-   eyeName.textContent=robot.name+' · last real eye view';
+   const room=String(window.solviRoom||''),key=room+':'+robot.userData.editorId;
    const recentWide=wideEyeFrames.get(robot.userData.editorId);
-   const wideFresh=recentWide&&Date.now()-recentWide.at<240000&&recentWide.room===String(window.solviRoom||'');
-   const frame=wideFresh?recentWide:eyeFrames.get(robot.userData.editorId);
-   // If the last view is narrow or no image exists, ask the browser to capture
-   // genuine peripheral coverage. Never fabricate an image or reuse old realms.
-   if(!wideFresh){
-    const room=String(window.solviRoom||''),key=room+':'+robot.userData.editorId;
-    if(room&&Date.now()-(widePreviewRequests.get(key)||0)>=120000){
-     widePreviewRequests.set(key,Date.now());
-     setTimeout(()=>window.dispatchEvent(new CustomEvent('solvi:robot-eyes-wide-request',
-       {detail:{robotId:robot.userData.editorId,room}})),50);
-    }
+   const hasWide=!!(recentWide&&recentWide.room===room);
+   const wideAge=hasWide?Date.now()-recentWide.at:Infinity;
+   // The wide preview is NOT a perspective still. Keep the last authentic
+   // panorama visible with its true age while requesting a newer survey.
+   const frame=hasWide?recentWide:eyeFrames.get(robot.userData.editorId);
+   const status=widePreviewStatus.get(key);
+   eyeName.textContent=robot.name+(hasWide?' · wide eyes 210°':' · central eye (72°)');
+   if(room&&wideAge>=120000&&status?.state!=='capturing'&&Date.now()-(widePreviewRequests.get(key)||0)>=20000){
+    widePreviewRequests.set(key,Date.now());
+    setTimeout(()=>window.dispatchEvent(new CustomEvent('solvi:robot-eyes-wide-request',
+      {detail:{robotId:robot.userData.editorId,room}})),50);
    }
    if(!frame||frame.room!==String(window.solviRoom||'')){
-    clearEyeImage();eyeTime.textContent='No camera frame captured in this realm';eyeTime.removeAttribute('datetime');return;
+    clearEyeImage();eyeTime.textContent=status?.state==='capturing'?'Capturing genuine 210° panorama…':status?.state==='unavailable'?('Wide view unavailable · '+String(status.reason||'capture error').slice(0,75)):'No camera frame in this realm · requesting 210° view';eyeTime.removeAttribute('datetime');return;
    }
    if(displayedBlob!==frame.blob){
     clearEyeImage();eyeURL=URL.createObjectURL(frame.blob);eyeImage.src=eyeURL;eyeImage.hidden=false;displayedBlob=frame.blob;
    }
    const seconds=Math.max(0,Math.floor((Date.now()-frame.at)/1000));
    const age=seconds<60?`${seconds}s ago`:seconds<3600?`${Math.floor(seconds/60)}m ago`:`${Math.floor(seconds/3600)}h ago`;
-   eyeTime.textContent=`${age} · ${frame.label}`;
+   eyeTime.textContent=`${age} · ${frame.label}`+(status?.state==='capturing'?' · updating wide view…':status?.state==='unavailable'?' · wide capture unavailable':'');
    eyeTime.dateTime=new Date(frame.at).toISOString();
-   eyePanel.title=`${robot.name}: head-camera JPEG captured ${new Date(frame.at).toLocaleString()} · ${frame.label}. This is the last capture, not a live stream.`;
+   eyePanel.title=`${robot.name}: captured ${new Date(frame.at).toLocaleString()} · ${frame.label}. This is a recorded image, not a live feed.`;
   };
+  eyeRefresh.onclick=()=>{
+   const robot=this.controlledRobot?.();if(!robot)return;
+   const room=String(window.solviRoom||''),key=room+':'+robot.userData.editorId;
+   widePreviewRequests.set(key,Date.now());
+   window.dispatchEvent(new CustomEvent('solvi:robot-eyes-wide-request',
+    {detail:{robotId:robot.userData.editorId,room,force:true}}));
+  };
+  // The wide-capture listener is registered later during studio startup.
+  // Its ready handshake retries a first request that otherwise gets lost.
+  window.addEventListener('solvi:robot-eyes-wide-ready',()=>{
+   const robot=this.controlledRobot?.();if(!robot||!eyesEnabled)return;
+   const key=String(window.solviRoom||'')+':'+robot.userData.editorId;
+   widePreviewRequests.delete(key);updateEyePreview();
+  });
+  window.addEventListener('solvi:robot-eyes-wide-status',event=>{
+   const {robotId,room,state,reason}=event.detail||{};
+   if(!robotId||!room)return;
+   const key=room+':'+robotId;
+   widePreviewStatus.set(key,{state,reason:reason||''});
+   if(state==='unavailable')widePreviewRequests.set(key,Date.now());
+   updateEyePreview();
+  });
   eyesToggle.onchange=()=>{
    eyesEnabled=eyesToggle.checked;
    try{localStorage.setItem('solvi-robot-eyes-preview-v1',eyesEnabled?'1':'0');}catch{}
@@ -484,7 +506,7 @@ export class SceneEditor{
    if(/^Stitched wide eyes/.test(String(frame.label||'')))wideEyeFrames.set(frame.robotId,frame);
    updateEyePreview();
   });
-  window.addEventListener('solvi:room-changed',()=>{eyeFrames.clear();wideEyeFrames.clear();widePreviewRequests.clear();clearEyeImage();updateEyePreview();});
+  window.addEventListener('solvi:room-changed',()=>{eyeFrames.clear();wideEyeFrames.clear();widePreviewRequests.clear();widePreviewStatus.clear();clearEyeImage();updateEyePreview();});
   window.addEventListener('pagehide',clearEyeImage);
   setInterval(()=>{if(!eyePanel.hidden)updateEyePreview();},15000);
   const speakingPortrait=e=>{

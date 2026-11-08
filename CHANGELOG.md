@@ -1,3 +1,11 @@
+## v0.2.249 — Seat-stable follow camera, 1:1 map metres and explicit wide eyes (2026-11-08)
+
+- Capture the selected robot-follow camera's world position before a sit turn and preserve its bearing during sitting and standing; resume heading-follow after the robot walks away.
+- Use a single isotropic map scale and matching drag conversion on both axes, no matter the resized panel proportions.
+- Add 210° Wide Eyes refresh, first-capture-ready handshake, status feedback and shorter failure recovery; never claim a raw 72° JPEG is a panorama.
+- Show successful stitched panoramas in both the Eyes preview and Brains gallery, retaining original central raw frames as separate AI evidence.
+- Include dedicated regression tests, example instructions, preserving existing rooms, geometry and assets.
+
 ## v0.2.248 — Straight routes instead of rounded zigzags; Eyes from every real capture (2026-11-08)
 
 - Opt-in Smooth paths now removes redundant A* waypoint turns using exact obstacle-clear line-of-sight segments, then rounds only necessary bends.

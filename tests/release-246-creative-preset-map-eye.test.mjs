@@ -43,7 +43,7 @@ test('Collection delete has single and bulk actions but rejects locked/read-only
  assert.match(list,/!canEdit\(obj\)/);
 });
 test('Map drag follows the pointer and framebuffer tracks resizing',()=>{
- assert.deepEqual(mapPanAfterDrag({panX:0,panZ:0},40,20,35,400,200),{panX:-7,panZ:-7});
+ assert.deepEqual(mapPanAfterDrag({panX:0,panZ:0},40,20,35,400,200),{panX:-14,panZ:-7});
  assert.deepEqual(mapCanvasSize(420,260,2),{width:840,height:520});
  const css=read('styles.css'),map=read('js/minimap.js');
  assert.match(css,/\.minimap-panel\{width:330px;height:370px/);

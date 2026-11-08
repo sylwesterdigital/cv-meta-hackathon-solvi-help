@@ -418,6 +418,14 @@ export function initRobotBrains(world,api,getRoom,toast){
    if(scan==='front')$('captureBrainsEye').click();
    else if(scan==='180'||scan==='360')sweepRobotEyes(Number(scan));
  });
+ // When a completed wide capture arrives, show it in the open Vision gallery
+ // as an authentic multi-frame panorama. Keep raw JPEG evidence in history.
+ window.addEventListener('solvi:robot-eye-frame',event=>{
+   const view=event.detail;
+   if(panel.hidden||!activeRobot||view?.robotId!==activeRobot.userData.editorId||
+      view.room!==String(window.solviRoom||'')||!String(view.label||'').startsWith('Stitched wide eyes'))return;
+   renderFrameGallery();showFrame(view.blob,view.label);
+ });
  $('captureBrainsEye').onclick=async()=>{
    if(!activeRobot){toast('No robot selected');return;}
    $('brainsVisionResult').textContent='Capturing head camera…';

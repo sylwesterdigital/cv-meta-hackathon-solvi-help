@@ -45,7 +45,7 @@ export class SolviWorld {
     this.cameraOrbitGesture=null;this.editorGizmoPointer=false;
     this.cameraVelocity=new THREE.Vector3();
     this.cameraFollowMode=['free','chase','chase-smart','orbit'].includes(localStorage.getItem('solvi-camera-follow'))?localStorage.getItem('solvi-camera-follow'):'free';
-    this.followRobotId=null;this.smartFollowYaw=null;this.smartChaseEngaged=false;this.followOrbitOffset=null;this.followOrbitDistance=clampChaseDistance(localStorage.getItem('solvi-orbit-distance'),8);this.followOrbitCustomized=localStorage.getItem('solvi-orbit-distance')!==null;this.followChaseCustomized=localStorage.getItem('solvi-chase-distance')!==null;this.followChaseDistance=clampChaseDistance(localStorage.getItem('solvi-chase-distance'));this.lastFollowLabel='';this.smartTurnThreshold=Math.max(5,Math.min(120,Number(localStorage.getItem('solvi-smart-chase-threshold'))||35));
+    this.followRobotId=null;this.smartFollowYaw=null;this.smartChaseEngaged=false;this.followOrbitOffset=null;this.seatCameraLock=null;this.followOrbitDistance=clampChaseDistance(localStorage.getItem('solvi-orbit-distance'),8);this.followOrbitCustomized=localStorage.getItem('solvi-orbit-distance')!==null;this.followChaseCustomized=localStorage.getItem('solvi-chase-distance')!==null;this.followChaseDistance=clampChaseDistance(localStorage.getItem('solvi-chase-distance'));this.lastFollowLabel='';this.smartTurnThreshold=Math.max(5,Math.min(120,Number(localStorage.getItem('solvi-smart-chase-threshold'))||35));
     // Left drag = orbit, right drag = pan, wheel = dolly; gizmos temporarily lock orbit.
     this.controls.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN};
     this.controls.touches={ONE:THREE.TOUCH.ROTATE,TWO:THREE.TOUCH.DOLLY_PAN};
@@ -734,7 +734,7 @@ export class SolviWorld {
   setCameraFollowMode(mode){
     if(!['free','chase','chase-smart','orbit'].includes(mode))return;
     this.cameraFollowMode=mode;localStorage.setItem('solvi-camera-follow',mode);
-    this.followRobotId=null;this.smartFollowYaw=null;this.smartChaseEngaged=false;this.followOrbitOffset=null;this.cameraVelocity.set(0,0,0);
+    this.followRobotId=null;this.smartFollowYaw=null;this.smartChaseEngaged=false;this.followOrbitOffset=null;this.seatCameraLock=null;this.cameraVelocity.set(0,0,0);
     if(mode!=='free'&&document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();
     this.refreshFollowButton();
   }
@@ -749,10 +749,19 @@ export class SolviWorld {
     this.followRobotId=robot.userData.editorId;
     this.refreshFollowButton();
   }
+  // Capture a world-space camera offset BEFORE the seat changes the robot yaw.
+  // This keeps the viewer where it is while the avatar turns to sit.
+  lockCameraForSeating(robot){
+    if(this.cameraFollowMode==='free'||this.renderer.xr.isPresenting||this.robotEditor?.cameraTargetRobot?.()!==robot)return;
+    const anchor=followAnchor(robot);
+    this.seatCameraLock={id:robot.userData.editorId,
+      offset:this.camera.position.clone().sub(new THREE.Vector3(anchor.x,anchor.y,anchor.z)),
+      standingOrigin:null};
+  }
   updateFollowCamera(dt){
     if(this.renderer.xr.isPresenting||document.pointerLockElement===this.renderer.domElement||this.cameraFollowMode==='free')return;
     const robot=this.robotEditor?.cameraTargetRobot?.();
-    if(!robot){this.followRobotId=null;this.followOrbitOffset=null;this.refreshFollowButton();return;}
+    if(!robot){this.followRobotId=null;this.followOrbitOffset=null;this.seatCameraLock=null;this.refreshFollowButton();return;}
     if(this.editorDragging||this.editorGizmoPointer)return;
     const anchor=followAnchor(robot),yaw=robot.rotation.y,id=robot.userData.editorId;
     if(![anchor.x,anchor.y,anchor.z,yaw].every(Number.isFinite)){
@@ -770,6 +779,20 @@ export class SolviWorld {
       else this.setOrbitDistance(this.followOrbitDistance);
       this.refreshFollowButton();
     }
+    // A seated robot can rotate by 180° to face its chair. Preserve the
+    // camera's world bearing through that change (and through standing).
+    if(this.seatCameraLock?.id!==id)this.seatCameraLock=null;
+    if(robot.userData.robotSeated&&!this.seatCameraLock)this.lockCameraForSeating(robot);
+    const seatLock=this.seatCameraLock;
+    if(seatLock&&!robot.userData.robotSeated){
+      if(!seatLock.standingOrigin)seatLock.standingOrigin={x:anchor.x,z:anchor.z};
+      if(Math.hypot(anchor.x-seatLock.standingOrigin.x,anchor.z-seatLock.standingOrigin.z)>.55){
+        // Resume chase after the robot actually walks; do not spin on stand-up.
+        this.seatCameraLock=null;
+        this.followOrbitOffset=localOrbitOffset(this.camera.position,anchor,yaw);
+        this.smartFollowYaw=yaw;this.smartChaseEngaged=false;
+      }
+    }
     const target=this.controls.target;
     const orbiting=this.cameraOrbitGesture===true&&this.controls.enabled;
     if(this.cameraFollowMode==='orbit'&&orbiting){
@@ -777,9 +800,18 @@ export class SolviWorld {
       const previous=target.clone();target.lerp(new THREE.Vector3(anchor.x,anchor.y,anchor.z),smoothFactor(dt,12));
       this.camera.position.add(target.clone().sub(previous));
       this.followOrbitOffset=localOrbitOffset(this.camera.position,target,yaw);
+      if(this.seatCameraLock)this.seatCameraLock.offset=this.camera.position.clone().sub(new THREE.Vector3(anchor.x,anchor.y,anchor.z));
       this.followOrbitDistance=clampChaseDistance(Math.hypot(this.followOrbitOffset.x,this.followOrbitOffset.y,this.followOrbitOffset.z));
       if(this.followOrbitCustomized)localStorage.setItem('solvi-orbit-distance',String(this.followOrbitDistance));
       this.updateChaseDistanceUI();this.controls.update();return;
+    }
+    if(this.seatCameraLock){
+      // The camera follows the seat's translation without reacting to the
+      // avatar's seating/standing yaw. The lock is released on real walking.
+      target.lerp(new THREE.Vector3(anchor.x,anchor.y,anchor.z),smoothFactor(dt,12));
+      const held=this.seatCameraLock.offset;
+      this.camera.position.lerp(new THREE.Vector3(anchor.x+held.x,anchor.y+held.y,anchor.z+held.z),smoothFactor(dt,10));
+      this.controls.update();return;
     }
     if(this.cameraFollowMode==='chase-smart'){const smart=chaseSmartStep(this.smartFollowYaw??yaw,yaw,this.smartTurnThreshold,dt,this.smartChaseEngaged);this.smartFollowYaw=smart.yaw;this.smartChaseEngaged=smart.engaged;}
     const followingChase=['chase','chase-smart'].includes(this.cameraFollowMode);
