@@ -32,7 +32,9 @@ async function imagePixels(blob){
 function rgb(view,u,v){const x=Math.min(view.width-1,Math.max(0,Math.floor(u*(view.width-1)))),y=Math.min(view.height-1,Math.max(0,Math.floor(v*(view.height-1)))),i=(y*view.width+x)*4;return [view.pixels[i],view.pixels[i+1],view.pixels[i+2]];}
 export async function stitchRobotWideEye(frames,{width=1280,height=832}={}){
  if(!Array.isArray(frames)||frames.length!==WIDE_EYE_VIEWS.length||frames.some((f,i)=>!f?.blob||f.yaw!==WIDE_EYE_VIEWS[i].yaw||f.pitch!==WIDE_EYE_VIEWS[i].pitch))throw Error('Wide eyes require six matching real head-camera images.');
- const sources=await Promise.all(frames.map(imagePixels));
+ // Each frame record wraps an actual JPEG Blob. Passing the record itself to
+ // createImageBitmap throws TypeError, leaving the UI on its narrow raw frame.
+ const sources=await Promise.all(frames.map(frame=>imagePixels(frame.blob)));
  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
  const ctx=canvas.getContext('2d');const out=ctx.createImageData(width,height);
  for(let y=0;y<height;y++){

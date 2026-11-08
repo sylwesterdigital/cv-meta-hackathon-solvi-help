@@ -1517,7 +1517,12 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
      return {...near,teamAnchor:true};
    }
   }
-  return findRobotWorksite(start,obstacles,{width,depth},{yaw:robot.rotation.y,navigationObstacles:routeObstacles});
+  const nearby=findRobotWorksite(start,obstacles,{width,depth},{yaw:robot.rotation.y,navigationObstacles:routeObstacles});
+  if(nearby)return nearby;
+  // A packed local radius is not proof the whole realm is full. Scan a few
+  // larger footprints, accepting only sites with an actual collision-checked
+  // route under the existing 90-metre movement limit. No teleportation.
+  return findRobotWorksite(start,obstacles,{width,depth},{yaw:robot.rotation.y,navigationObstacles:routeObstacles,radii:[44,56,68]});
  }
  // Shares the movement controller, A* route and authoritative arrival event with
  // user-issued walk commands. It never teleports a robot or a construction item.

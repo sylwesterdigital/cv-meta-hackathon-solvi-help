@@ -35,7 +35,7 @@ test('a completed design checkpoint remains active, persistence retains the last
  assert.match(src,/if\(state==='slot-wait'\|\|state==='budget-wait'\)/);
  assert.match(src,/run\.creativeSeriesIndex\+\+;run\.creativePlan=null/);
  assert.match(src,/creativeDeadline:run\.creativeDeadline,creativeNextAt:run\.creativeNextAt,creativeHistory:run\.creativeHistory/);
- assert.match(src,/plan\.action==='creative_build'\|\|run\.localBurst</);
+ assert.match(src,/plan\.action==='creative_build'\|\|plan\.action==='site_scout'/);
  assert.match(src,/if\(showConstructionGesture\)\{robotAction\(bot,'pickUp'\)/);
  assert.match(src,/TIMED EXPLORATION VERIFIED/);
  assert.match(src,/creativeRoamedIndex:run\.creativeRoamedIndex/);

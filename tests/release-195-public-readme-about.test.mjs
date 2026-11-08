@@ -16,7 +16,7 @@ test('historic development log preserved separately in changelog and technical h
  assert.ok(history.length>155000);
  assert.match(history,/v0\.2\.194 — Reliable shared scene editing/);
  assert.match(history,/v0\.2\.181 — multiplayer presence/);
- assert.match(read('docs/LLM_HANDOVER.md'),/Master LLM Handover — v0\.2\.249/);
+ assert.match(read('docs/LLM_HANDOVER.md'),/Master LLM Handover — v0\.2\.250/);
 });
 test('in-app About view has accessible independent tab and local static content',()=>{
  for(const id of ['devAboutTab','devReleasesTab','devDiagnosticsTab','devAbout','logEntries','devDiagnostics'])assert.ok(html.includes(`id="${id}"`));
@@ -37,8 +37,8 @@ test('ABOUT is human readable and explicit about prototype limitations',()=>{
 });
 test('release 195 keeps historical release metadata distinct',()=>{
  const pkg=JSON.parse(read('package.json')),releases=JSON.parse(read('releases.json'));
- assert.equal(pkg.version,'0.2.249');assert.equal(releases.currentVersion,'0.2.249');
- assert.equal(releases.releases[0].version,'0.2.249');
+ assert.equal(pkg.version,'0.2.250');assert.equal(releases.currentVersion,'0.2.250');
+ assert.equal(releases.releases[0].version,'0.2.250');
  // Deployment watcher deliberately publishes a rolling 30-release feed.
  // Older releases remain in CHANGELOG.md; they must NOT be required in a pruned feed.
  const versions=releases.releases.map(r=>r.version);
@@ -46,6 +46,6 @@ test('release 195 keeps historical release metadata distinct',()=>{
  assert.equal(versions.filter(v=>v===pkg.version).length,1,'Current version is published once');
  assert.ok(releases.releases.every(r=>/^0\.2\.\d+$/.test(r.version)&&Array.isArray(r.changes)&&r.changes.length));
  assert.match(history,/v0\.2\.195/);assert.match(history,/v0\.2\.200/);
- assert.match(html,/styles\.css\?v=0\.2\.249/);
- assert.match(html,/js\/main\.js\?v=0\.2\.249/);
+ assert.match(html,/styles\.css\?v=0\.2\.250/);
+ assert.match(html,/js\/main\.js\?v=0\.2\.250/);
 });

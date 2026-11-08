@@ -248,7 +248,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.249',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.250',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1867,7 +1867,7 @@ def robot_autonomy_plan():
             return jsonify(decision={'action':'idle','target_id':'','destination_id':'','variant':'chair','message':'',
                 'reason':'Meta returned no valid tool call. The editor will not execute model prose.'},usage=usage,validated=False,
                 failure_code='invalid-model-plan',vision_fallback=vision_fallback,views=used_images)
-        audit_event('robot-autonomy-proposed',room=room_id,robot_id=rid,action=plan['action'],images=used_images)
+        audit_event('robot-autonomy-proposed',room=room_id,robot_id=rid,proposed_action=plan['action'],images=used_images)
         return jsonify(decision=plan,usage=usage,validated=True,views=used_images,model='muse-spark-1.3',vision_fallback=vision_fallback)
     except Exception as exc:
         # Do not expose exception text, raw provider response, payload, API key

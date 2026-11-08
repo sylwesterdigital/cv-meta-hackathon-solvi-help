@@ -13,7 +13,8 @@ export function findRobotWorksite(robot,obstacles=[],size={},options={}){
  const width=Math.max(.3,Math.min(9,size.width)),depth=Math.max(.3,Math.min(9,size.depth));
  const routeObstacles=Array.isArray(options.navigationObstacles)?options.navigationObstacles:obstacles;
  const minRadius=Math.max(3.8,Math.hypot(width,depth)/2+2.2);
- const radii=[minRadius,minRadius+3.5,minRadius+7,minRadius+12,minRadius+19,minRadius+27].filter(v=>v<=40);
+ const radii=(Array.isArray(options.radii)?options.radii:[minRadius,minRadius+3.5,minRadius+7,minRadius+12,minRadius+19,minRadius+27])
+  .filter(v=>Number.isFinite(v)&&v>=3.8&&v<=75).slice(0,8);
  const heading=Number(options.yaw)||0;
  const headings=[0,Math.PI/2,-Math.PI/2,Math.PI,Math.PI/4,-Math.PI/4,3*Math.PI/4,-3*Math.PI/4];
  let best=null;

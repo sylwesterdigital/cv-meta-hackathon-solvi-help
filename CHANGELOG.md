@@ -1,3 +1,10 @@
+## v0.2.250 — Verified wide panorama, reliable model audit and bounded site recovery (2026-11-08)
+
+- Pass each head-camera JPEG Blob to `createImageBitmap` in the 210° stitcher; keep automatic Eyes enabled and show a simple refresh icon.
+- Fix `audit_event` double-binding its `action` argument on every valid Meta autonomy proposal. This previously produced a 502 with stage `parse-decision`.
+- Creative worksite search now checks additional collision-safe reachable locations and attempts at most two physical recovery moves before deferring. An unverified upper floor blocks ground-only construction without a high-frequency retry loop.
+- Preserve realm and robot IDs, existing object formats, permissions, all assets and prior release history. Live multi-robot acceptance remains a watcher gate.
+
 ## v0.2.249 — Seat-stable follow camera, 1:1 map metres and explicit wide eyes (2026-11-08)
 
 - Capture the selected robot-follow camera's world position before a sit turn and preserve its bearing during sitting and standing; resume heading-follow after the robot walks away.
