@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.2.242",
+  "currentVersion": "0.2.243",
   "releases": [
+    {
+      "version": "0.2.243",
+      "publishedAt": "2026-11-08T03:07:57Z",
+      "changes": [
+        "Use the most recent @/$ chat trigger so @Albert go to $ opens the current-realm object picker.",
+        "Selecting a stage object opens the Objects panel, expands its folder, highlights its saved ID and scrolls into view.",
+        "Group new robot-created primitives under human-readable names and show legacy creations as collapsible collections.",
+        "Create, rename, and ungroup editable collections using the existing accessible app dialogs.",
+        "Translate, rotate and scale a collection with a single temporary pivot while preserving individual object IDs, persistence and ownership.",
+        "Include version-specific examples and regressions, preserving all pre-existing asset binaries."
+      ]
+    },
     {
       "version": "0.2.242",
       "publishedAt": "2026-11-08T02:40:46Z",
@@ -297,16 +309,6 @@
         "Fix giant inventory tool cards and hidden action buttons by using compact content-sized rows and constrained preview thumbnails.",
         "Replace long Tool Grip panel with compact hand, rig-bone, angle and action-clip selectors; collapse hand/handle offsets in optional Advanced calibration details.",
         "Retain all v0.2.205 shovel tool use, animation features, avatar models, stored equipment data and multiplayer protocols; no migration."
-      ]
-    },
-    {
-      "version": "0.2.205",
-      "publishedAt": "2026-11-06T01:06:19Z",
-      "changes": [
-        "Shovel Use now performs digging at open ground directly ahead or at a clicked target within reach, creating a persistent excavation footprint with owner and room revision.",
-        "An authored Digging clip is selected when the avatar GLB provides one; the bundled avatar has no Digging clip, so a lightweight procedural arm-and-spine motion is used by default.",
-        "Add configurable per-tool action clip choices, an authenticated WebSocket pose relay, and strict shared realm validation for excavation and held-tool animation events.",
-        "Retain B \u2192 Held \u2192 Drop, Store, Switch hand, Grip, all previous changes and original media assets. Excavation is a visual ground marker, not physical ground cutting; other tool actions are optional animation only."
       ]
     }
   ]

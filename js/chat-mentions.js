@@ -42,8 +42,8 @@ export function sceneReferenceCandidates(objects,query=''){
  const needle=String(query).trim().toLocaleLowerCase();
  return (objects||[]).filter(o=>o&&o.kind!=='robot'&&o.kind!=='light'
   &&/^[0-9a-f]{8}-[0-9a-f-]{27,36}$/i.test(String(o.id||''))
-  &&String(o.name||'').toLocaleLowerCase().includes(needle))
-  .sort((a,b)=>a.name.localeCompare(b.name)).slice(0,40);
+  &&(String(o.name||'')+' '+String(o.display||'')).toLocaleLowerCase().includes(needle))
+  .sort((a,b)=>(a.display||a.name).localeCompare(b.display||b.name)).slice(0,40);
 }
 export function insertSceneReference(text,range,item){
  const name=String(item.name||'').replace(/[\[\]()]|\s+/g,c=>/\s/.test(c)?' ':'').trim().slice(0,90);
@@ -51,4 +51,12 @@ export function insertSceneReference(text,range,item){
  if(!name||!/^[0-9a-f]{8}-[0-9a-f-]{27,36}$/i.test(id))return null;
  const token=`$[${name}](${id}) `;
  return {text:String(text).slice(0,range.start)+token+String(text).slice(range.end),cursor:range.start+token.length};
+}
+
+// The last typed trigger wins. A prior @Albert must not hide a later $ query.
+export function activeReferenceQuery(text,cursor){
+ const mention=mentionQuery(text,cursor),scene=sceneReferenceQuery(text,cursor);
+ if(!mention)return scene?{...scene,type:'object'}:null;
+ if(!scene)return {...mention,type:'person'};
+ return scene.start>mention.start?{...scene,type:'object'}:{...mention,type:'person'};
 }

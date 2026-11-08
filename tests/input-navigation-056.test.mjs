@@ -38,7 +38,7 @@ test('linked scale preserves proportional ratios across XYZ',()=>{
  assert.deepEqual(linkedScale({x:2,y:4,z:10},'z',5),{x:1,y:2,z:5});
 });
 test('object selection does not auto-center camera',()=>{
- const editor=read('js/editor.js');const select=editor.match(/\n select\(obj\)\{([\s\S]+?)\n updateInspector\(/)?.[1]||'';
+ const editor=read('js/editor.js');const select=editor.match(/\n select\(obj,\{revealInList=false\}=\{\}\)\{([\s\S]+?)\n renderToolGripControls\(/)?.[1]||'';
  assert.ok(select.includes('this.selected=obj'));
  assert.doesNotMatch(select,/focusCameraOn\(/);
  assert.ok(read('js/world.js').includes('zoomOnSelectedObject(direction)'));

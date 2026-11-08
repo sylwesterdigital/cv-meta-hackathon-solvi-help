@@ -248,7 +248,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.242',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.243',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -5119,6 +5119,11 @@ def valid_surface_mount(mount):
         if not isinstance(val,(int,float)) or isinstance(val,bool) or not math.isfinite(val) or not .06<=val<=30:return False
     return True
 
+def valid_scene_collection(value):
+    return (isinstance(value,dict) and set(value)=={'id','name'} and
+        isinstance(value['id'],str) and re.fullmatch(r'[A-Za-z0-9_.:-]{8,90}',value['id']) is not None and
+        isinstance(value['name'],str) and 0<len(value['name'].strip())<=80 and len(value['name'])<=80)
+
 @app.put('/api/scene')
 def set_scene():
     user,msg,status=actor()
@@ -5131,6 +5136,8 @@ def set_scene():
     allowed={'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'}
     for o in objects:
         if not isinstance(o,dict) or o.get('kind') not in allowed:return json_error('Unsupported scene object')
+        if 'collection' in o and (o['kind']=='robot' or not valid_scene_collection(o['collection'])):return json_error('Invalid scene collection')
+        if 'collectionOptOut' in o and (o['kind']=='robot' or type(o['collectionOptOut']) is not bool):return json_error('Invalid collection opt-out')
         if 'curve' in o and (o['kind']!='curve' or not valid_curve_geometry(o.get('curve'))):return json_error('Invalid curve geometry')
         if 'text' in o and (o['kind']!='text' or not valid_text_geometry(o['text'])):return json_error('Invalid text geometry')
         if 'openings' in o and (o['kind']!='cube' or not valid_cube_openings(o['openings'])):return json_error('Invalid cube openings')
@@ -5245,7 +5252,9 @@ def patch_scene_object():
     if action=='upsert':
         if obj.get('kind') not in {'cube','sphere','cylinder','plane','torus','curve','surface','text','points','light','robot','model','media','wall','stairs','ladder','portal','furniture'}:return json_error('Unsupported object type')
         if not all(isinstance(obj.get(n),list) and len(obj[n])==3 and all(isinstance(x,(int,float)) and math.isfinite(x) and abs(x)<1000000 for x in obj[n]) for n in ('position','rotation','scale')):return json_error('Invalid transform')
-        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','backpackEnabled','combat','animationSpeed','throwSettings','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','followHandRotation','inventory','storage','transformLocked','seating') if key in obj}
+        obj={key:obj[key] for key in ('id','kind','name','position','rotation','scale','color','texture','avatar','light','speed','strafeSpeed','turnSpeed','runMultiplier','climbSpeed','backpackEnabled','combat','animationSpeed','throwSettings','brain','physics','model','media','primitive','wall','stairs','ladder','furniture','portal','curve','text','openings','climbable','pickable','followHandRotation','inventory','storage','transformLocked','seating','collection','collectionOptOut') if key in obj}
+        if 'collection' in obj and (obj['kind']=='robot' or not valid_scene_collection(obj['collection'])):return json_error('Invalid scene collection')
+        if 'collectionOptOut' in obj and (obj['kind']=='robot' or type(obj['collectionOptOut']) is not bool):return json_error('Invalid collection opt-out')
         if 'seating' in obj and (obj['kind']!='robot' or not valid_robot_seating(obj['seating'])):return json_error('Invalid seating anchor')
         if 'backpackEnabled' in obj and (obj['kind']!='robot' or type(obj['backpackEnabled']) is not bool):return json_error('Invalid avatar backpack')
         if obj['kind']=='robot' and 'combat' in obj and not valid_robot_combat(obj['combat']):return json_error('Invalid robot combat controls')

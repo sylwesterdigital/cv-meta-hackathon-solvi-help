@@ -1,7 +1,8 @@
 import {confirmAction,exactNameAction,textEntry} from './app-dialogs.js';
 import {claimProfileTab,clearOnlyCurrentToken,requireSharedBackend} from './profile-session-ownership.js';
 import {makeRealmCards} from './realm-gallery.js';
-import {mentionQuery,mentionCandidates,insertMention,sceneReferenceQuery,sceneReferenceCandidates,insertSceneReference} from './chat-mentions.js';
+import {mentionQuery,mentionCandidates,insertMention,sceneReferenceQuery,sceneReferenceCandidates,insertSceneReference,activeReferenceQuery} from './chat-mentions.js';
+import {collectionOf} from './scene-collections.js';
 import {renderChatAttachment,ensureChatMediaViewer} from './chat-attachments.js';
 import {compactMediaPlayer,makeVideoPoster} from './compact-media-player.js';
 import {typeRobotReply} from './robot-typing.js';
@@ -1488,16 +1489,15 @@ function setupChatMentions(){
   ...(window.solviEditor?.items||[]).filter(o=>o.userData.editorKind==='robot').map(o=>({id:o.userData.editorId,name:o.name,kind:'robot',avatar:o.userData.robotBrain?.portrait}))
  ];
  const allObjects=()=> (window.solviEditor?.items||[]).filter(o=>o.userData?.editorKind!=='robot')
-  .map(o=>({id:o.userData?.editorId,name:o.name,kind:o.userData?.editorKind}));
- const queryAt=()=>mentionQuery(input.value,input.selectionStart)||sceneReferenceQuery(input.value,input.selectionStart);
+  .map(o=>({id:o.userData?.editorId,name:o.name,kind:o.userData?.editorKind,display:(collectionOf(o)?.name?collectionOf(o).name+' · ':'')+(window.solviEditor?.sceneObjectLabel?.(o)||o.name)}));
  const hide=()=>{box.hidden=true;entries=[];};
- const select=index=>{if(!entries[index])return;const person=mentionQuery(input.value,input.selectionStart);
-  const query=person||sceneReferenceQuery(input.value,input.selectionStart);if(!query)return hide();
+ const select=index=>{if(!entries[index])return;const person=activeReferenceQuery(input.value,input.selectionStart)?.type==='person';
+  const query=activeReferenceQuery(input.value,input.selectionStart);if(!query)return hide();
   const result=person?insertMention(input.value,query,entries[index].name):insertSceneReference(input.value,query,entries[index]);
   if(!result)return hide();input.value=result.text;input.setSelectionRange(result.cursor,result.cursor);
   hide();input.focus();input.dispatchEvent(new Event('input',{bubbles:true}));};
  const render=()=>{
-  const person=mentionQuery(input.value,input.selectionStart);const query=person||sceneReferenceQuery(input.value,input.selectionStart);
+  const query=activeReferenceQuery(input.value,input.selectionStart);const person=query?.type==='person';
   if(!query){hide();return;}
   mode=person?'person':'object';entries=person?mentionCandidates(allNames(),query.query):sceneReferenceCandidates(allObjects(),query.query);
   active=0;box.replaceChildren();box.setAttribute('aria-label',person?'Mention a participant or robot':'Reference a current-realm scene object');
@@ -1505,7 +1505,7 @@ function setupChatMentions(){
   entries.slice(0,8).forEach((item,index)=>{
    const b=document.createElement('button');b.type='button';b.className='chat-mention-option';b.setAttribute('role','option');b.dataset.kind=mode==='object'?'object':item.kind;
    const avatar=document.createElement('span');avatar.className='chat-mention-avatar';avatar.textContent=item.name.slice(0,2).toUpperCase();
-   const label=document.createElement('span');label.className='chat-mention-label';label.textContent=item.name;
+   const label=document.createElement('span');label.className='chat-mention-label';label.textContent=mode==='object'?(item.display||item.name):item.name;
    const kind=document.createElement('small');kind.className='chat-mention-kind';kind.textContent=mode==='object'?item.kind:item.kind==='robot'?'Robot':item.kind==='broadcast'?'Group':'Person';
    b.append(avatar,label,kind);
    if(mode==='person'&&item.avatar&&online&&auth)api.mediaBlob(item.avatar).then(url=>{

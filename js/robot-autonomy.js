@@ -1,3 +1,4 @@
+import {creativeCollectionTitle} from './scene-collections.js';
 import {characterPolicy} from './robot-character-core.js';
 import {sceneBoxCopies,liveCleanupObservation,chooseQueuedWorker,resolveQueuedBin} from './robot-task-queue.js';
 import {groupBoxCleanupInstruction,groupBinClarification,selectCleanupTarget,nearestAvailableCleanupWorker,boxCleanupProjectGoal,sceneBinTargets} from './robot-group-cleanup.js';
@@ -838,7 +839,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   if(!object){
    const stale=oldPending?.index===index;
    if(stale)trace(bot,'CREATIVE RETRY','Unsaved part no longer present; reconstructing only the missing part');
-   object=editor.createRobotCreativePart?.(bot,part,{site:run.creativeSite,tag,index});
+   object=editor.createRobotCreativePart?.(bot,part,{site:run.creativeSite,tag,index,collectionName:creativeCollectionTitle(bot.name,blueprint.name,tag,run.creativeSeriesIndex||0)});
    if(!object)throw Error('CREATIVE PLACEMENT REJECTED: no collision-free, operator-editable position for '+part.label);
    run.creativePending={id:object.userData.editorId,index};
   }

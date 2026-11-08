@@ -1,4 +1,11 @@
-## v0.2.242 — Optional obstacle-checked smooth walking and robot-eye previews (2026-11-08)
+## v0.2.243 — Object folders, precise $ references, and collection transforms (2026-11-08)
+
+- Fix closest-trigger selection for `@Albert go to $` so `$` opens current-realm object suggestions.
+- Stage-selected object opens Objects, expands its collection, highlights the exact member, and scrolls it into view.
+- Auto-group robot creations into named, collapsible folders while preserving UUID-based server recovery internally.
+- Group editable primitives manually and transform collections together with one gizmo; each member persists independently.
+
+## v0.2.243 — Optional obstacle-checked smooth walking and robot-eye previews (2026-11-08)
 
 - Opt-in **Smooth paths** adds short sampled, quadratic curves around verified A* waypoints. Every new segment is tested against the actual scene obstacle footprints and the original route is retained when a curve would reduce clearance. Barrier camera checkpoints stay exact.
 - A new **Eyes** checkbox displays the selected robot's latest actual JPEG head-camera capture in a 16:9 panel above its profile roundels. The timestamp distinguishes a past capture from live video; image content is letterboxed rather than distorted.
