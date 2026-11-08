@@ -31,7 +31,8 @@ export function addressedCreativeRobot(text,robots=[]){
  if(!statement||/\b(?:don't|do not|never|stop|cancel)\s+(?:\w+\s+){0,4}(?:build|create|make|add|construct|design|modify|change|remodel)\b/i.test(statement))return null;
  // This is an authorization boundary, not an object-name dictionary.
  // User may name any novel object; Muse, not a regex, decides its geometry.
- if(!/\b(?:please|can you|could you|do|go ahead|go for it|now|start|free to|ok|yes)\b/i.test(statement)||
-    !/\b(?:build|built|create|make|add|construct|design|modify|change|remodel|assemble)\b/i.test(statement))return null;
+ const coordinatedBuild=/^(?:walk|wander|roam|explore)\b[\s\S]{0,160}\b(?:and|while)\b[\s\S]{0,160}\b(?:build|create|make|design|assemble)\b/i.test(statement);
+ if(!coordinatedBuild&&!/\b(?:please|can you|could you|do|go ahead|go for it|now|start|free to|ok|yes)\b/i.test(statement))return null;
+ if(!/\b(?:build|built|create|make|add|construct|design|modify|change|remodel|assemble)\b/i.test(statement))return null;
  return {robotId:robot.id,robotName:robot.name,goal:value};
 }

@@ -248,7 +248,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.238',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.239',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1890,7 +1890,7 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'creativeSite','creativeBuilt','creativePending','creativePlan','completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending','groupJobId','groupNoProgress'}
+    safe_keys={'creativeSite','creativeBuilt','creativePending','creativePlan','creativeSeriesIndex','creativeDeadline','completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending','groupJobId','groupNoProgress'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
@@ -1943,6 +1943,8 @@ def valid_robot_work_order(order,state):
     built=stored.get('teamBuilt',[])
     if not isinstance(built,list) or len(built)>8 or any(not isinstance(p,dict) or set(p)!={'id','variant'} or
          not isinstance(p['id'],str) or len(p['id'])>100 or p['variant'] not in ('road','footpath') for p in built):return None
+    if type(stored.get('creativeSeriesIndex',0)) is not int or not 0<=stored.get('creativeSeriesIndex',0)<=2:return None
+    if type(stored.get('creativeDeadline',0)) not in (int,float) or not math.isfinite(stored.get('creativeDeadline',0)) or not 0<=stored.get('creativeDeadline',0)<=9999999999999:return None
     creative_plan=stored.get('creativePlan')
     if creative_plan is not None:
         # Bound every model-designed component again at the server persistence gate.
@@ -2328,7 +2330,7 @@ def robot_autonomy_design():
     stamp=time.time();throttle=(room_id,rid,hashlib.sha256(goal.encode()).hexdigest())
     with robot_task_lock:
         if stamp-DESIGN_THROTTLE.get(throttle,0)<30:
-            return jsonify(error='Design inference already requested; retry after cooldown',failure_code='rate-limited'),429
+            return jsonify(error='Design inference already requested; retry after cooldown',failure_code='rate-limited',retry_after_seconds=max(1,int(30-(stamp-DESIGN_THROTTLE.get(throttle,0))))),429
         DESIGN_THROTTLE[throttle]=stamp
         if len(DESIGN_THROTTLE)>1000:
             for key,t in list(DESIGN_THROTTLE.items()):
@@ -2349,6 +2351,7 @@ def robot_autonomy_design():
         if phrase:context.append({'speaker':speaker if msg['role']=='assistant' else 'human','text':phrase})
     explicit_distance=re.search(r'\b(\d{1,2}(?:\.\d+)?)\s*(?:m|met(?:re|er)s?)\s+(?:in\s+)?front\s+of\s+you\b',goal,re.I)
     team_role_index=int(state.get('groupJobId','').rsplit(':',1)[-1]) if re.search(r':[012]$',state.get('groupJobId','')) else None
+    series_index=state.get('creativeSeriesIndex',0) if type(state.get('creativeSeriesIndex',0)) is int else 0
     developer=('Design a recognizable 3D object that fulfils the HUMAN objective. '
        'Output ONLY a JSON object: {"name":"...","site_distance":null,"parts":'
        '[{"kind":"cube","label":"...","color":"#aabbcc",'
@@ -2361,10 +2364,11 @@ def robot_autonomy_design():
        'No instructions beyond the JSON fields. SITE_DISTANCE must be a number in 1..45 only when the human '
        'explicitly requests a distance in front of this robot, otherwise null. '
        'Each offset Y is the component BOTTOM above local ground. For a team, invent a DISTINCT design for each assigned team_role_index 0,1,2 rather than repeating towers. '
+       'For a timed creative series, make series_index 0,1,2 distinct in purpose and silhouette; avoid rebuilding the previous structure. '
        'Do not pretend a plan is construction; the client will check route, collisions and save receipts.')
     request_text=json.dumps({'goal':goal,'realm_id':room_id,'robot':{'id':rid,'name':robot.get('name',''),
                     'position':robot.get('position'),'rotation':robot.get('rotation')},
-                    'current_realm_objects':nearby,'current_realm_dialogue':context[-12:],'team_role_index':team_role_index},ensure_ascii=False)[:9200]
+                    'current_realm_objects':nearby,'current_realm_dialogue':context[-12:],'team_role_index':team_role_index,'series_index':series_index},ensure_ascii=False)[:9200]
     try:
         response=meta_request('POST','/responses',{'model':'muse-spark-1.3','store':False,
            'input':[{'role':'developer','content':[{'type':'input_text','text':developer}]},
@@ -3103,6 +3107,13 @@ def plan_robot_command(text,robot,objects):
             words=words[direct.end():].strip()
             break
     words=words.casefold()
+    # Composite human creative objectives are handled by the durable browser
+    # work-order path; the legacy movement parser MUST NOT downgrade them to
+    # patrol-only commands. A negative 'do not build' is not such a request.
+    if (re.search(r'\b(?:walk|wander|roam|explore)\b',words) and
+        re.search(r'\b(?:and|while)\s+(?:please\s+)?(?:start\s+)?(?:build|building|create|make|design|assemble)\b',words) and
+        re.search(r'\b(?:cubes?|figures?|sculptures?|structures?|objects?|geometr(?:y|ies))\b',words)):
+        return None,None
     # Conversational references to assistance ("I built this with the help of AI")
     # are NOT requests to print the robot's command manual or assigned tasks.
     if re.search(r'^(?:please\s+)?(?:help|commands|instructions)\s*[!?.]?$',words) or re.search(
@@ -3135,7 +3146,7 @@ def plan_robot_command(text,robot,objects):
     # STOP effective. The route does not continue with the browser closed.
     timed_roam=re.search(r'\b(?:walk|wander|wonder|roam|patrol|explore)\b',words)
     time_match=re.search(r'\b(?:for\s+)?(\d{1,2}|one|an?)\s*(hours?|hrs?|minutes?|mins?)\b',words)
-    if timed_roam and time_match:
+    if timed_roam and time_match and not (re.search(r'\b(?:and|while)\b.{0,180}\b(?:build|create|make|design|assemble)\b',words) and re.search(r'\b(?:cubes?|figures?|sculptures?|structures?|objects?|geometr(?:y|ies))\b',words)):
         quantity={'one':1,'a':1,'an':1}.get(time_match.group(1),None)
         if quantity is None:quantity=int(time_match.group(1))
         minutes=quantity*(60 if time_match.group(2).startswith(('h','hr')) else 1)

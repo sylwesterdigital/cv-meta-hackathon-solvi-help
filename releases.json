@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.238",
+  "currentVersion": "0.2.239",
   "releases": [
+    {
+      "version": "0.2.239",
+      "publishedAt": "2026-11-08T00:13:32Z",
+      "changes": [
+        "Forward browser session Meta credentials to the creative design API, matching conversation, vision and planning; no key logged or persisted.",
+        "Keep creative group assignments in place during model-key outages and inference cooldowns; schedule a bounded retry instead of reassignment and duplicate construction.",
+        "Recognise a single named human request to roam and build for a stated duration; execute up to three distinct model-designed checked assemblies with per-part persistence, respecting the time window and active-browser requirement.",
+        "Retain existing geometry permissions, robot identities, realm isolation, stored scene objects, avatars, model binaries and watcher gates."
+      ]
+    },
     {
       "version": "0.2.238",
       "publishedAt": "2026-11-07T23:30:20Z",
@@ -296,16 +306,6 @@
         "Make room/AI setup failures nonfatal for an authenticated session: scene load always starts when the active token remains valid.",
         "Prevent duplicate sign-in submissions, show clear recovery-key errors, retain user recovery material, and preserve all scene/GLB data.",
         "Allow profile recovery-key export while signed out, and prevent accidental logout of an already-invalid session."
-      ]
-    },
-    {
-      "version": "0.2.200",
-      "publishedAt": "2026-11-05T17:30:50Z",
-      "changes": [
-        "Persistent held-item state for right and left avatar hands, with hand-bone/fallback animation tracking and no physics collision while held.",
-        "Held tab, Hold nearby, Hold, Store, Drop controls; bag/pocket size restrictions and backpack availability enforced.",
-        "Server-side atomic hand occupancy and avatar authorization checks, safe avatar-deletion release of held/pocket/worn equipment, and import/export holder ID remapping.",
-        "Preserve previous furniture persistence, indoor placement, road drawing, room snapshots, user README, and original GLB model assets."
       ]
     }
   ]

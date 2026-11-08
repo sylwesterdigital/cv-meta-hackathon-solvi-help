@@ -139,7 +139,7 @@ const api={
   const sessionAdmin=activeAdminToken();
   if(sessionAdmin&&url.startsWith('/api/'))headers['X-Solvi-Admin']=sessionAdmin;
   headers['X-Solvi-Tab']=tab;
-  if(['/api/models','/api/chat','/api/robots/react','/api/robots/discussion/step','/api/robots/discussion/start','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/robots/autonomy/plan','/api/ai/vision','/api/ai/analyze-logs','/api/ai/key-status'].includes(url.split('?')[0])){
+  if(['/api/models','/api/chat','/api/robots/react','/api/robots/discussion/step','/api/robots/discussion/start','/api/robots/scenario','/api/robots/vision-reply','/api/robots/perception/start','/api/robots/perception/complete','/api/robots/autonomy/plan','/api/robots/autonomy/design','/api/ai/vision','/api/ai/analyze-logs','/api/ai/key-status'].includes(url.split('?')[0])){
     const key=sessionStorage.getItem('solvi-meta-session-key');if(key)headers['X-Solvi-Model-Key']=key;
   }
   const res=await fetch(url,{...options,headers,cache:'no-store'});
@@ -148,7 +148,7 @@ const api={
     if(res.status===403&&url.includes('/api/admin/stats')){clearAdminSession();$('adminStats').textContent='Admin session expired. Unlock from Profile again.';}
     const planError=url.split('?')[0]==='/api/robots/autonomy/plan';
     const message=planError?[data.error,data.detail,data.failure_code,data.failure_stage?`stage: ${data.failure_stage}`:null,data.remedy,data.retry_after_seconds?`Retry after ${data.retry_after_seconds}s`:null].filter(Boolean).join(' · '):data.error;
-    throw Error(message||`${res.status} ${res.statusText}`);}
+    const failure=new Error(message||`${res.status} ${res.statusText}`);failure.status=res.status;failure.failureCode=String(data.failure_code||'');failure.retryAfterSeconds=Number(data.retry_after_seconds)||0;throw failure;}
   return data;
  },
  async mediaBlobInfo(id){if(!auth)throw Error('Sign in to view media');const res=await fetch(`/api/media/${encodeURIComponent(id)}`,{headers:{Authorization:'Bearer '+auth.token,'X-Solvi-Tab':tab}});if([401,409].includes(res.status))needSignIn('Media session expired');if(!res.ok)throw Error('Media unavailable');const blob=await res.blob();return {id,url:URL.createObjectURL(blob),mime:blob.type,name:decodeURIComponent(res.headers.get('X-Solvi-File-Name')||''),blob};},

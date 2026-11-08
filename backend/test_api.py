@@ -602,6 +602,9 @@ long_command,long_ack=plan_robot_command('Cybert, can you walk 100m away from me
 assert long_command['kind']=='walk_forward' and long_command['distance']==100,(long_command,long_ack)
 cycle_command,cycle_ack=plan_robot_command('Cybert, walk 15m and back 3 times',{'name':'Cybert'},[])
 assert cycle_command['kind']=='walk_forward' and cycle_command['repeat']==3 and cycle_command['return_to_start'],(cycle_command,cycle_ack)
+# A compound creative instruction must not become a patrol-only scene task.
+compound,_=plan_robot_command('Albert, walk around for 15 minutes and build some abstract figures from the cubes',{'name':'Albert'},[])
+assert compound is None,compound
 random_command,_=plan_robot_command('Cybert, do something random 3 times',{'name':'Cybert'},[])
 assert random_command['kind']=='random_action' and random_command['repeat']==3,random_command
 assert plan_robot_command('Cybert, walk 800m',{'name':'Cybert'},[])[0] is None
@@ -1423,7 +1426,22 @@ DESIGN_THROTTLE.clear()
 with _mock_creative('server.active_model_key',return_value='test-model-key'),_mock_creative('server.meta_request',return_value={'output_text':'{\"name\":\"run script\",\"parts\":[],\"js\":\"eval(1)\"}'}):
     malformed=c.post(design_endpoint,headers=headers,json={'room':queue_room,'robot_id':creative_bot['id']})
 assert malformed.status_code==422
-print('PASS: dynamic Muse creative design requires active realm-bound order; returned data validated and unsafe output rejected')
+# A browser-only Meta key must work on the design endpoint, even when the
+# server has no global key. This mirrors the successful chat/vision key path.
+DESIGN_THROTTLE.clear()
+with _mock_creative('server.configured_model_key',return_value=''),_mock_creative('server.meta_request',return_value={'output_text':json.dumps(_dynamic)}):
+    session_made=c.post(design_endpoint,headers={**headers,'X-Solvi-Model-Key':'browser-session-key-for-creative-239'},json={'room':queue_room,'robot_id':creative_bot['id']})
+assert session_made.status_code==200,(session_made.status_code,session_made.data)
+assert session_made.get_json()['plan']['name']==_dynamic['name']
+# Up to three independent assembly stages belong to ONE authorised timed
+# request. The save schema rejects a forged unbounded series index.
+assert c.put('/api/robots/autonomy/order',headers=headers,json={
+    'room':queue_room,'robot_id':creative_bot['id'],'order':_direct,
+    'state':{'creativeSeriesIndex':1,'creativeDeadline':1234567890000},'enabled':True}).status_code==200
+assert c.put('/api/robots/autonomy/order',headers=headers,json={
+    'room':queue_room,'robot_id':creative_bot['id'],'order':_direct,
+    'state':{'creativeSeriesIndex':999,'creativeDeadline':1234567890000},'enabled':True}).status_code==400
+print('PASS: dynamic Muse creative design requires active realm-bound order; browser session key accepted; timed work state validated; unsafe output rejected')
 
 # Logging out revokes the token server-side; the same browser tab cannot use it again.
 assert c.post('/api/logout',headers=headers,json={}).status_code==200

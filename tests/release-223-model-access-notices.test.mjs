@@ -35,5 +35,5 @@ test('cost policy is visible in existing Meta settings without claiming a subscr
  assert.ok(ui.includes('each user can supply their own Meta API key'));
  assert.ok(ui.includes('session key works only in this browser tab'));
  assert.ok(ui.includes('not currently included or promised'));
- assert.match(read('releases.json'),/"currentVersion": "0\.2\.238"/);
+ assert.match(read('releases.json'),/"currentVersion": "0\.2\.239"/);
 });

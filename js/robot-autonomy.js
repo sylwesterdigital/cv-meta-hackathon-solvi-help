@@ -120,7 +120,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
   return {house,step:run.step,completed:run.completed,last:run.last,metaFailures:run.metaFailures,
    nextMetaAt:run.nextMetaAt,recoveryAttempts:run.recoveryAttempts,invitations:run.invitations,contacted:run.contacted,
    placedSupplies:run.placedSupplies,projectPlaced:run.projectPlaced,projectPending:run.projectPending,projectDeferred:run.projectDeferred,completedHouses:run.completedHouses,
-   researchNotes:run.researchNotes,pendingAction:run.pendingAction,creativeSite:run.creativeSite,creativeBuilt:run.creativeBuilt,creativePending:run.creativePending,creativePlan:run.creativePlan,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,cleanupThrowTried:run.cleanupThrowTried,askedPreferences:run.askedPreferences,roofPreference:run.roofPreference,furnishingColors:run.furnishingColors,intentMessageId:run.intentMessageId,groupJobId:run.groupJobId,groupNoProgress:run.groupNoProgress,team:run.team,teamBuilt:run.teamBuilt};
+   researchNotes:run.researchNotes,pendingAction:run.pendingAction,creativeSite:run.creativeSite,creativeBuilt:run.creativeBuilt,creativePending:run.creativePending,creativePlan:run.creativePlan,creativeSeriesIndex:run.creativeSeriesIndex,creativeDeadline:run.creativeDeadline,cleanupBinId:run.cleanupBinId,cleanupDone:run.cleanupDone,cleanupHomeId:run.cleanupHomeId,cleanupSkipped:run.cleanupSkipped,cleanupThrowTried:run.cleanupThrowTried,askedPreferences:run.askedPreferences,roofPreference:run.roofPreference,furnishingColors:run.furnishingColors,intentMessageId:run.intentMessageId,groupJobId:run.groupJobId,groupNoProgress:run.groupNoProgress,team:run.team,teamBuilt:run.teamBuilt};
  }
  function restoreHouse(state){
   if(!state||typeof state!=='object')return null;
@@ -150,6 +150,8 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    completedHouses:Array.isArray(state.completedHouses)?state.completedHouses.filter(id=>typeof id==='string').slice(0,3):[],
    team:cityTeamState(state.team),teamBuilt:Array.isArray(state.teamBuilt)?state.teamBuilt.filter(x=>x&&['road','footpath'].includes(x.variant)&&typeof x.id==='string').slice(0,8):[],
    creativePlan:validateRobotDesign(state.creativePlan)?state.creativePlan:null,
+   creativeSeriesIndex:Number.isInteger(state.creativeSeriesIndex)?Math.max(0,Math.min(2,state.creativeSeriesIndex)):0,
+   creativeDeadline:Number.isFinite(state.creativeDeadline)&&state.creativeDeadline>0?state.creativeDeadline:0,
    creativeSite:state.creativeSite&&Number.isFinite(state.creativeSite.x)&&Number.isFinite(state.creativeSite.z)?{x:state.creativeSite.x,z:state.creativeSite.z}:null,
    creativeBuilt:Array.isArray(state.creativeBuilt)?state.creativeBuilt.filter(p=>p&&typeof p.id==='string'&&Number.isInteger(p.index)&&p.index>=0&&p.index<16).slice(0,12):[],
    creativePending:state.creativePending&&typeof state.creativePending.id==='string'&&Number.isInteger(state.creativePending.index)?state.creativePending:null,
@@ -758,19 +760,31 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
  async function constructCreative(run,bot){
   if(!run.order.allowChanges)throw Error('Creative building requires authorised scene changes');
   requireActive(run,bot);
-  const tag=creativeProjectTag(run.groupJobId||run.intentMessageId,run.id);
+  const seriesTag=run.creativeSeriesIndex?':series'+run.creativeSeriesIndex:'';
+  const tag=creativeProjectTag((run.groupJobId||run.intentMessageId||'')+seriesTag,run.id);
   // New work orders are designed by Muse as declarative geometry, not by
   // hardcoded noun-to-template commands. Previously saved 0.2.236 projects
   // still resume their original eight-part blueprint without rewriting them.
   if(run.order.variant==='creative'&&!run.creativePlan){
-   if(run.nextMetaAt&&Date.now()<run.nextMetaAt)throw Error('Muse design retry cooldown active');
+   if(run.nextMetaAt&&Date.now()<run.nextMetaAt){
+    const pending=Error('Muse design waiting for its existing retry window');pending.failureCode='model-backoff';throw pending;
+   }
    let result;
    try{result=await api.req('/api/robots/autonomy/design',{method:'POST',body:JSON.stringify({room:run.room,robot_id:run.id})});}
-   catch(error){run.nextMetaAt=Date.now()+45000;throw Error('Muse design unavailable; original task remains saved: '+error.message);}
+   catch(error){
+    const transient=['meta-key-missing','rate-limited','provider-error','invalid-design'].includes(error.failureCode)||[429,502,503].includes(error.status);
+    if(transient){
+     run.nextMetaAt=Date.now()+Math.max(30000,Math.min(120000,(error.retryAfterSeconds||45)*1000));
+     run.metaFailure=String(error.failureCode||error.message).slice(0,160);
+    }
+    const stopped=Error('Muse design unavailable; saved work remains intact: '+error.message);
+    stopped.failureCode=transient?'model-backoff':(error.failureCode||'design-rejected');
+    throw stopped;
+   }
    if(result.room!==run.room||result.robot_id!==run.id||!validateRobotDesign(result.plan))
     throw Error('Muse returned a design not valid for this specific robot and realm');
    run.creativePlan=result.plan;
-   run.nextMetaAt=0;
+   run.nextMetaAt=0;run.metaFailure=null;
    await saveOrder(run,true); // commit fixed design BEFORE placing the first part
    trace(bot,'MUSE DESIGN COMMITTED',`${run.creativePlan.name}: ${run.creativePlan.parts.length} validated primitives, scoped to robot ${run.id} in realm ${run.room}`);
   }
@@ -1238,6 +1252,13 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
       const result=await api.req('/api/robots/autonomy/group/result',{method:'POST',body:JSON.stringify({room:run.room,message_id:run.groupJobId,robot_id:run.id,outcome:'completed'})});
       trace(bot,'CREATIVE PROJECT VERIFIED',`${run.creativeBuilt.length} primitives accepted in saved world; group receipt ${result.status}`);
       stop(run.id,'creative structure verified',false);
+     }else if(run.creativeDeadline&&Date.now()<run.creativeDeadline&&run.creativeSeriesIndex<2){
+      const finished=run.creativePlan?.name||'creative geometry';
+      run.creativeSeriesIndex++;run.creativePlan=null;run.creativeSite=null;run.creativeBuilt=[];run.creativePending=null;
+      run.nextMetaAt=0;run.metaFailure=null;
+      await saveOrder(run,true);
+      trace(bot,'NEXT DISTINCT DESIGN',`Verified ${finished}; continuing timed human objective with design ${run.creativeSeriesIndex+1}/3. New geometry and a new checked site required.`);
+      clearTimeout(run.localTimer);run.localTimer=setTimeout(()=>void cycle(run),3000);
      }else{
       trace(bot,'CREATIVE PROJECT VERIFIED',`${run.creativeBuilt.length} individually persisted scene parts; project closed`);
       stop(run.id,'creative structure verified');
@@ -1299,7 +1320,11 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    const diagnosis=operatorFailure(error);run.last={...autonomyResult('task',false,error.message),diagnosis};
    $('autonomyFailure').textContent=`FAILED · ${diagnosis.code}\n${diagnosis.reason}\nNEXT: ${diagnosis.remedy}`;
    trace(bot,'UNFINISHED',diagnosis.reason+' · Next: '+diagnosis.remedy+' · No unverified completion is claimed');
-   if(run.groupJobId&&['cleanup_boxes','creative_build'].includes(run.pendingAction)&&!run.cancelled){
+   if(run.pendingAction==='creative_build'&&!run.creativePlan&&run.nextMetaAt>Date.now()&&!run.cancelled){
+    run.groupNoProgress=0;
+    trace(bot,'MUSE DESIGN WAITING',`Model access/backoff is not a navigation failure. Worker ${bot.name} retains its own saved assignment until ${new Date(run.nextMetaAt).toLocaleTimeString()}; no reassignment or duplicate geometry.`);
+    clearTimeout(run.localTimer);run.localTimer=setTimeout(()=>void cycle(run),Math.max(1000,run.nextMetaAt-Date.now()+150));
+   }else if(run.groupJobId&&['cleanup_boxes','creative_build'].includes(run.pendingAction)&&!run.cancelled){
     run.groupNoProgress=Math.min(15,run.groupNoProgress+1);
     if(run.groupNoProgress>=3){
      const holding=editor.items.some(o=>o.userData.storage?.type==='held'&&o.userData.storage.holderId===run.id);
@@ -1317,7 +1342,7 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
     }
    }
    if(run.pendingAction==='creative_build'&&!run.groupJobId&&!run.cancelled){
-    clearTimeout(run.localTimer);run.localTimer=setTimeout(()=>void cycle(run),8000);
+    clearTimeout(run.localTimer);run.localTimer=setTimeout(()=>void cycle(run),Math.max(1000,(run.nextMetaAt||0)-Date.now()+150,8000));
    }
    if(run.pendingAction==='furnish_room'&&run.lastPlanVariant){
     const prev=run.projectDeferred.find(p=>p.variant===run.lastPlanVariant);
@@ -1669,6 +1694,11 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
    const goal=address.goal;
    const order=cleanAutonomyOrder({mode:'local_project',robotId:id,room:room(),goal,variant:'creative',allowChanges:true,vision:false,interval:180});
    const run=newRun(order,true,creativeBot);run.intentMessageId=message.id;
+   const timed=/(?:for\s+)?(\d{1,2})\s*(minutes?|mins?|hours?|hrs?)\b/i.exec(goal);
+   if(timed&&/\b(?:walk|wander|roam|explore)\b/i.test(goal)){
+    const mins=Math.max(1,Math.min(60,Number(timed[1])*(timed[2].toLowerCase().startsWith('h')?60:1)));
+    run.creativeDeadline=Date.now()+mins*60000;
+   }
    try{await saveOrder(run,true);}catch(error){trace(creativeBot,'CREATIVE NOT STARTED',error.message);return -1;}
    if(old)stop(id,'superseded by a new human creative project',false);
    savedOrders.set(id,{robot_id:id,order,state:stateOf(run),enabled:true});runs.set(id,run);
@@ -1720,7 +1750,12 @@ export function initRobotAutonomy({editor,api,room,toast,postDiscussion,postHuma
  $('routineToolButton').addEventListener('click',refresh);
  $('autonomyRobot').addEventListener('change',()=>{const saved=savedOrders.get($('autonomyRobot').value);if(saved)presentSaved(saved.order);});
  window.addEventListener('solvi:autonomy-ready',()=>{void loadMetaPrefs();void loadSaved();});
- window.addEventListener('solvi:meta-key-updated',()=>void checkMetaStatus());
+ window.addEventListener('solvi:meta-key-updated',()=>{
+  for(const run of runs.values())if(run.order.variant==='creative'&&!run.creativePlan){
+   run.metaFailure='model-key-updated';run.nextMetaAt=0;
+  }
+  void checkMetaStatus();
+ });
  window.addEventListener('solvi:room-changed',()=>{restoreSequence++;stopAll(false);});
  window.addEventListener('solvi:session-lost',()=>{restoreSequence++;stopAll(false);});
  window.addEventListener('pagehide',()=>{restoreSequence++;clearInterval(groupQueueTimer);stopAll(false);});

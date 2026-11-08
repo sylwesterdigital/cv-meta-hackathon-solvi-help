@@ -1,3 +1,10 @@
+## v0.2.239 — Creative builders: browser credentials, no false handoffs, and combined roaming (2026-11-07)
+
+- Forward browser session Meta credentials to the creative design API, matching conversation, vision and planning; no key logged or persisted.
+- Keep creative group assignments in place during model-key outages and inference cooldowns; schedule a bounded retry instead of reassignment and duplicate construction.
+- Recognise a single named human request to roam and build for a stated duration; execute up to three distinct model-designed checked assemblies with per-part persistence, respecting the time window and active-browser requirement.
+- Retain existing geometry permissions, robot identities, realm isolation, stored scene objects, avatars, model binaries and watcher gates.
+
 ## v0.2.238 — Mac watcher design route test fix (2026-11-07)
 
 - Fix the v0.2.237 backend integration failure (HTTP 405): the test posted to `/api/robots/autonomy/group/design` instead of the existing POST `/api/robots/autonomy/design`.

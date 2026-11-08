@@ -6,7 +6,7 @@ const html=read('index.html'), css=read('styles.css');
 const cssSnippet=css.slice(css.indexOf('/* v0.2.192 — Isolated'));
 
 test('only .help gets a rainbow overlay; SOLVI and version retain original text markup', () => {
-  assert.match(html, /<div class="wordmark" aria-label="SOLVI.help">SOLVI<span class="wordmark-rainbow" data-text="\.help">\.help<\/span><small id="version">v0\.2\.238<\/small><\/div>/);
+  assert.match(html, /<div class="wordmark" aria-label="SOLVI.help">SOLVI<span class="wordmark-rainbow" data-text="\.help">\.help<\/span><small id="version">v0\.2\.239<\/small><\/div>/);
   assert.match(cssSnippet, /\.wordmark > span\.wordmark-rainbow::after/);
   assert.doesNotMatch(cssSnippet, /\.wordmark::after|\.wordmark small::after/);
 });
@@ -39,6 +39,6 @@ test('rainbow blinks on and back off periodically without JavaScript', () => {
 test('reduced motion disables both animations and preserves the original mark', () => {
   assert.match(cssSnippet, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(cssSnippet, /animation: none;\s*opacity: 0;/);
-  assert.equal(JSON.parse(read('package.json')).version,'0.2.238');
-  assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.238');
+  assert.equal(JSON.parse(read('package.json')).version,'0.2.239');
+  assert.equal(JSON.parse(read('releases.json')).currentVersion,'0.2.239');
 });
