@@ -1,3 +1,11 @@
+## v0.2.241 — Speech amplitude, scene references and creative mission routing (2026-11-08)
+
+- Drive in-world speech balloon border opacity from TTS PCM waveform (approximate visual cadence for device TTS, which does not expose samples).
+- Add current-realm `$` scene-object autocomplete, stable UUID chat references, clickable scene chips, exact navigation lookup and graceful stale-reference refusal.
+- Add participant portrait roundels to `@` autocomplete and separate names from their Robot/Person labels.
+- Accept novel named and group creative-session briefs, including "perform a metropolis for pink elephants", and default an untimed creative session to a bounded 15-minute multi-stage project.
+- Supply v0.2.241 example instructions, independent tests, watcher-ready SHA-256 manifest, with original assets preserved. No browser-closed autonomy, arbitrary code execution or unbounded construction.
+
 ## v0.2.240 — Timed creative sessions and continuous component execution (2026-11-08)
 
 - Honor an explicit creative work duration as the lifetime of the robot assignment, not a cap of three finished sculptures. Group roles share the absolute timestamp of their authenticated human message.

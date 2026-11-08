@@ -23,6 +23,13 @@ export const robotVoiceConfig=brain=>({
  pitch:Math.max(.5,Math.min(1.7,Number(brain?.voicePitch)||1))
 });
 export const distanceVolume=(distance,base=.75)=>Math.max(0,Math.min(1,base/(1+Math.max(0,distance-2)*.12)));
+export const measuredSpeechLevel=(samples)=>{
+ if(!samples?.length)return 0;
+ let energy=0;
+ for(const value of samples){const centered=(value-128)/128;energy+=centered*centered;}
+ return Math.max(0,Math.min(1,Math.sqrt(energy/samples.length)*5));
+};
+
 
 export class RobotSpeech{
  constructor(world,api,room,notify=()=>{}){
@@ -72,7 +79,7 @@ export class RobotSpeech{
   });
  }
  stop(){this.jobs=[];this.active?.pause?.();this.active?.dispatchEvent?.(new Event('ended'));if(this.active?.src?.startsWith('blob:'))URL.revokeObjectURL(this.active.src);this.active=null;
-  window.speechSynthesis?.cancel?.();window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:false}}));}
+  window.speechSynthesis?.cancel?.();window.dispatchEvent(new CustomEvent('solvi:robot-speech-level',{detail:{active:false,level:0}}));window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:false}}));}
  async consume(){
   if(this.playing)return;this.playing=true;
   while(this.jobs.length){const job=this.jobs.shift();if(job.room!==this.room()||!this.enabled())continue;
@@ -85,7 +92,7 @@ export class RobotSpeech{
      console.warn('SOLVI robot voice:',error.message);
      this.report(job,'error',error.message);
      this.notify('Robot voice: '+error.message);
-   }finally{window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:false,name:robot.name}}));}
+   }finally{window.dispatchEvent(new CustomEvent('solvi:robot-speech-level',{detail:{active:false,name:robot.name,level:0}}));window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:false,name:robot.name}}));}
   }
   this.playing=false;for(const done of [...this.idleWaiters])done();
  }
@@ -120,9 +127,10 @@ export class RobotSpeech{
   const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)throw Error('Web Audio unsupported');
   this.context||=new Ctx();if(this.context.state==='suspended')await this.context.resume();
   const audio=new Audio(URL.createObjectURL(blob));audio.preload='auto';this.active=audio;
-  const source=this.context.createMediaElementSource(audio),panner=this.context.createPanner(),gain=this.context.createGain();
+  const source=this.context.createMediaElementSource(audio),analyser=this.context.createAnalyser(),panner=this.context.createPanner(),gain=this.context.createGain();
+  analyser.fftSize=512;analyser.smoothingTimeConstant=.56;const samples=new Uint8Array(analyser.fftSize);let lastLevelAt=0;
   panner.panningModel='HRTF';panner.distanceModel='inverse';panner.refDistance=2.5;panner.maxDistance=70;panner.rolloffFactor=1;
-  gain.gain.value=this.volume();source.connect(panner).connect(gain).connect(this.context.destination);
+  gain.gain.value=this.volume();source.connect(analyser).connect(panner).connect(gain).connect(this.context.destination);
   const point=robot.position.clone(),look=robot.position.clone(),up=this.world.camera.up.clone();
   let frame=0;
   const update=()=>{
@@ -133,11 +141,17 @@ export class RobotSpeech{
     listener.forwardX.value=look.x;listener.forwardY.value=look.y;listener.forwardZ.value=look.z;
     listener.upX.value=up.x;listener.upY.value=up.y;listener.upZ.value=up.z;
    }else{listener.setPosition(point.x,point.y,point.z);listener.setOrientation(look.x,look.y,look.z,up.x,up.y,up.z);}
+   const now=performance.now();
+   if(now-lastLevelAt>45&&audio.currentTime>0&&!audio.paused){
+    analyser.getByteTimeDomainData(samples);
+    window.dispatchEvent(new CustomEvent('solvi:robot-speech-level',{detail:{active:true,name:robot.name,robotId:robot.userData.editorId,level:measuredSpeechLevel(samples)*gain.gain.value,measured:true}}));
+    lastLevelAt=now;
+   }
    frame=requestAnimationFrame(update);
   };
   update();
   try{await new Promise((resolve,reject)=>{audio.onended=resolve;audio.onplay=()=>window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:true,name:robot.name}}));audio.onerror=()=>reject(Error('Audio playback failed'));audio.play().catch(reject);});}
-  finally{cancelAnimationFrame(frame);source.disconnect();panner.disconnect();gain.disconnect();URL.revokeObjectURL(audio.src);if(this.active===audio)this.active=null;}
+  finally{cancelAnimationFrame(frame);source.disconnect();analyser.disconnect();panner.disconnect();gain.disconnect();URL.revokeObjectURL(audio.src);if(this.active===audio)this.active=null;}
  }
  async playBrowser(text,robot,settings){
   if(!window.speechSynthesis||!window.SpeechSynthesisUtterance)throw Error('No device voice is available');
@@ -150,6 +164,18 @@ export class RobotSpeech{
   speech.voice=selected;
   const distance=robot.getWorldPosition(robot.position.clone()).distanceTo(this.world.camera.getWorldPosition(this.world.camera.position.clone()));
   speech.volume=distanceVolume(distance,this.volume());
-  await new Promise((resolve,reject)=>{speech.onstart=()=>window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:true,name:robot.name}}));speech.onend=resolve;speech.onerror=e=>e.error==='interrupted'?resolve():reject(Error('Device TTS '+e.error));window.speechSynthesis.speak(speech);});
+  // Browser speechSynthesis output cannot be sampled through Web Audio.
+  // Use an explicitly non-measured cadence for the ring on this fallback only.
+  let frame=0,started=0,last=0;
+  const animate=now=>{if(!started)return;
+   if(now-last>75){const level=.25+.22*Math.abs(Math.sin((now-started)/135));
+    window.dispatchEvent(new CustomEvent('solvi:robot-speech-level',{detail:{active:true,name:robot.name,level,measured:false}}));last=now;}
+   frame=requestAnimationFrame(animate);
+  };
+  try{await new Promise((resolve,reject)=>{
+   speech.onstart=()=>{started=performance.now();window.dispatchEvent(new CustomEvent('solvi:robot-speaking',{detail:{active:true,name:robot.name}}));frame=requestAnimationFrame(animate);};
+   speech.onend=resolve;speech.onerror=e=>e.error==='interrupted'?resolve():reject(Error('Device TTS '+e.error));window.speechSynthesis.speak(speech);
+  });}finally{cancelAnimationFrame(frame);}
+
  }
 }

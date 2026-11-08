@@ -248,7 +248,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.240',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.241',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1998,6 +1998,11 @@ def group_intent_kind(text):
         (re.search(r'\b(?:please|can\s+you|could\s+you|start|go\s+ahead|right\s+now)\b',text,re.I) or
          re.match(r'^\s*@(?:all|everyone)\b[\s,:]+(?:build|create|make|design|construct|assemble)\b',text,re.I))):
         return 'creative_build'
+    # Broader action verbs authorize novel creative goals without enumerating
+    # object nouns; requests are still authenticated human messages.
+    if (re.match(r'^\s*@(?:all|everyone)\b[\s,:-]*(?:(?:please|hey|guys|robots|can you|could you|now)\s+)*(?:perform|start|begin|build|create|design|construct|assemble|make|develop|undertake)\b',text,re.I) and
+        re.search(r'\b(?:build|building|construct|constructing|create|creating|make|design|designing|assemble|invent)\b',text,re.I)):
+        return 'creative_build'
     return ''
 
 def group_creative_part_count(goal):
@@ -2010,7 +2015,7 @@ def group_creative_part_count(goal):
 
 def group_creative_duration_seconds(goal):
     match=re.search(r'\b(\d{1,2})\s*(minutes?|mintues?|mins?|hours?|hrs?)\b',str(goal or ''),re.I)
-    if not match:return 0
+    if not match:return 900 if re.search(r'\b(?:creative\s+(?:building\s+)?session|session\s+of\s+(?:building|creating|designing))\b',str(goal or ''),re.I) and re.search(r'\b(?:build|building|create|creating|design|designing)\b',str(goal or ''),re.I) else 0
     amount=int(match.group(1))
     if amount<1:return 0
     return min(3600,amount*(3600 if match.group(2).lower().startswith('h') else 60))
@@ -2423,7 +2428,8 @@ def robot_autonomy_design():
        'No instructions beyond the JSON fields. SITE_DISTANCE must be a number in 1..45 only when the human '
        'explicitly requests a distance in front of this robot, otherwise null. '
        'Each offset Y is the component BOTTOM above local ground. For a team, invent a DISTINCT design for each assigned team_role_index 0,1,2 rather than repeating towers. '
-       'For timed creative work, make EVERY series_index from 0 through 8 distinct in purpose, proportions, silhouette, and name; avoid rebuilding any earlier object visible in the current realm. '
+       'For timed creative work, treat series_index 0..8 as successive phases of ONE human brief: site exploration and a striking landmark, complementary public space, pathways, figures, accents, distinct districts, and final detailing, choosing the specifics based on the brief rather than a hardcoded noun list. Each design must stand alone and connect coherently to previous designs. Make EVERY series_index distinct in purpose, proportions, silhouette and name. Do not repeat a previously saved design. '
+       'Use scene index objects as layout evidence, never describe them as seen through a camera. You have not accessed external research, and must not claim it. '
        'Do not pretend a plan is construction; the client will check route, collisions and save receipts.')
     request_text=json.dumps({'goal':goal,'realm_id':room_id,'robot':{'id':rid,'name':robot.get('name',''),
                     'position':robot.get('position'),'rotation':robot.get('rotation')},
@@ -3262,6 +3268,19 @@ def plan_robot_command(text,robot,objects):
         return {'kind':'go_sit' if sit else 'go_to','target_id':target['id'],
                 'target_name':str(target.get('name',''))[:100]},('I found '+str(target['name'])[:80]+'. I’ll approach it'+
                 (' and try my sitting animation.' if sit else '.') )
+    # $ scene references from the composer contain a UUID captured from this
+    # exact realm. A stale/deleted/other-realm UUID cannot move a robot.
+    explicit_ref=re.search(r'\$\[([^\]\n]{1,90})\]\(([0-9a-f-]{36})\)',words,re.I)
+    if explicit_ref and re.search(r'\b(?:go|walk|move|head|approach|travel|find|sit)\b',words):
+        referenced=[o for o in objects if isinstance(o,dict) and
+                    str(o.get('id','')).casefold()==explicit_ref.group(2).casefold() and
+                    o.get('kind') not in ('robot','light') and
+                    str(o.get('name','')).casefold()==explicit_ref.group(1).casefold()]
+        if len(referenced)!=1:return None,'The referenced object is no longer available in this realm; please select it again with $.'
+        target=referenced[0]
+        sit=bool(re.search(r'\bsit\b',words))
+        return {'kind':'go_sit' if sit else 'go_to','target_id':target['id'],
+                'target_name':str(target.get('name',''))[:100]},'I will approach the exact selected scene object.'
     # Imperative chat must produce a bounded physical task, NOT an LLM-only reply.
     # Prefer a uniquely named scene destination (e.g. chair1o) when supplied.
     locomotion=bool(re.search(r'\b(walk|roll|drive|move|go|approach|head|travel|run)\b',words))

@@ -1,7 +1,7 @@
 import {confirmAction,exactNameAction,textEntry} from './app-dialogs.js';
 import {claimProfileTab,clearOnlyCurrentToken,requireSharedBackend} from './profile-session-ownership.js';
 import {makeRealmCards} from './realm-gallery.js';
-import {mentionQuery,mentionCandidates,insertMention} from './chat-mentions.js';
+import {mentionQuery,mentionCandidates,insertMention,sceneReferenceQuery,sceneReferenceCandidates,insertSceneReference} from './chat-mentions.js';
 import {renderChatAttachment,ensureChatMediaViewer} from './chat-attachments.js';
 import {compactMediaPlayer,makeVideoPoster} from './compact-media-player.js';
 import {typeRobotReply} from './robot-typing.js';
@@ -286,6 +286,21 @@ async function bubble(entry){
   wrap.append(pic,panel);feed.append(wrap);
  }else{panel.querySelector('time').textContent=safeTime(entry.created);}
  const content=document.createElement('div');content.className='chat-body chat-message-item';content.dataset.messageId=entry.id||'';content.textContent=entry.text||'';panel.append(content);
+ // Render the stable $[name](UUID) wire token as a legible scene-object chip.
+ // Keep the original entry.text intact for the authenticated server parser.
+ if(role==='user'&&/\$\[[^\]]+\]\([0-9a-f-]{36}\)/i.test(entry.text||'')){
+  const pattern=/\$\[([^\]\n]{1,90})\]\(([0-9a-f-]{36})\)/gi;
+  const fragment=document.createDocumentFragment();let last=0,match;
+  while((match=pattern.exec(entry.text||''))){
+   fragment.append(document.createTextNode(entry.text.slice(last,match.index)));
+   const object=window.solviEditor?.items?.find(o=>o.userData?.editorId?.toLowerCase()===match[2].toLowerCase()&&o.name.toLowerCase()===match[1].toLowerCase());
+   const chip=document.createElement('button');chip.type='button';chip.className='chat-object-ref';chip.textContent='$'+match[1];
+   chip.title=object?'Select this object in the current realm':'Object is not loaded in the current realm';chip.disabled=!object;
+   if(object)chip.onclick=()=>window.solviEditor?.select(object);
+   fragment.append(chip);last=pattern.lastIndex;
+  }
+  fragment.append(document.createTextNode((entry.text||'').slice(last)));content.replaceChildren(fragment);
+ }
  if(role==='assistant'&&!renderingChat&&!entry.isBrainTrace&&(!entry.media||(Array.isArray(entry.media)?entry.media.length===0:entry.media==='[]')))typeRobotReply(content,entry.text||'',{active:()=>renderEpoch===chatEpoch&&roomAtBubble===activeRoom,onProgress:()=>{if(followChat)scrollChatToLatest();}});
  const marker=String(entry.text||'').match(/#bookmark=([0-9a-f-]{36})/i);
  if(marker){const teleport=document.createElement('button');teleport.type='button';teleport.className='chat-bookmark-teleport';teleport.textContent='Teleport to camera view';teleport.onclick=()=>window.dispatchEvent(new CustomEvent('solvi:bookmark-teleport',{detail:{id:marker[1]}}));content.append(document.createTextNode(' '),teleport);}
@@ -1465,30 +1480,43 @@ function setupChatPresentation(){
   input.addEventListener('input',resize);resize();
 }
 function setupChatMentions(){
- const input=$('chatInput'),box=$('chatMentions');let entries=[],active=0;
+ const input=$('chatInput'),box=$('chatMentions');let entries=[],active=0,mode='person';
  const allNames=()=>[
-  ...(me?.name?[{name:me.name,kind:'user'}]:[]),
-  ...[...(window.solviRoomSocket?.peers?.values?.()||[])].map(p=>({name:p.name,kind:'user'})),
-  ...cachedMessages.filter(m=>m.role!=='assistant'&&m.speaker).map(m=>({name:m.speaker,kind:'user'})),
-  ...(window.solviEditor?.items||[]).filter(o=>o.userData.editorKind==='robot').map(o=>({name:o.name,kind:'robot'}))
+  ...(me?.name?[{name:me.name,kind:'user',avatar:me.avatar}]:[]),
+  ...[...(window.solviRoomSocket?.peers?.values?.()||[])].map(p=>({name:p.name,kind:'user',avatar:p.avatar||p.avatar_id})),
+  ...cachedMessages.filter(m=>m.role!=='assistant'&&m.speaker).map(m=>({name:m.speaker,kind:'user',avatar:m.avatar})),
+  ...(window.solviEditor?.items||[]).filter(o=>o.userData.editorKind==='robot').map(o=>({id:o.userData.editorId,name:o.name,kind:'robot',avatar:o.userData.robotBrain?.portrait}))
  ];
+ const allObjects=()=> (window.solviEditor?.items||[]).filter(o=>o.userData?.editorKind!=='robot')
+  .map(o=>({id:o.userData?.editorId,name:o.name,kind:o.userData?.editorKind}));
+ const queryAt=()=>mentionQuery(input.value,input.selectionStart)||sceneReferenceQuery(input.value,input.selectionStart);
  const hide=()=>{box.hidden=true;entries=[];};
- const select=index=>{if(!entries[index])return;const query=mentionQuery(input.value,input.selectionStart);if(!query)return hide();
-  const result=insertMention(input.value,query,entries[index].name);input.value=result.text;input.setSelectionRange(result.cursor,result.cursor);
+ const select=index=>{if(!entries[index])return;const person=mentionQuery(input.value,input.selectionStart);
+  const query=person||sceneReferenceQuery(input.value,input.selectionStart);if(!query)return hide();
+  const result=person?insertMention(input.value,query,entries[index].name):insertSceneReference(input.value,query,entries[index]);
+  if(!result)return hide();input.value=result.text;input.setSelectionRange(result.cursor,result.cursor);
   hide();input.focus();input.dispatchEvent(new Event('input',{bubbles:true}));};
  const render=()=>{
-  const query=mentionQuery(input.value,input.selectionStart);
+  const person=mentionQuery(input.value,input.selectionStart);const query=person||sceneReferenceQuery(input.value,input.selectionStart);
   if(!query){hide();return;}
-  entries=mentionCandidates(allNames(),query.query);active=0;
-  box.replaceChildren();
+  mode=person?'person':'object';entries=person?mentionCandidates(allNames(),query.query):sceneReferenceCandidates(allObjects(),query.query);
+  active=0;box.replaceChildren();box.setAttribute('aria-label',person?'Mention a participant or robot':'Reference a current-realm scene object');
   if(!entries.length){hide();return;}
-  entries.slice(0,8).forEach((item,index)=>{const b=document.createElement('button');b.type='button';b.className='chat-mention-option';b.setAttribute('role','option');b.dataset.kind=item.kind;b.textContent=item.name;
-    b.addEventListener('pointerdown',e=>e.preventDefault());b.onclick=()=>select(index);box.append(b);});
+  entries.slice(0,8).forEach((item,index)=>{
+   const b=document.createElement('button');b.type='button';b.className='chat-mention-option';b.setAttribute('role','option');b.dataset.kind=mode==='object'?'object':item.kind;
+   const avatar=document.createElement('span');avatar.className='chat-mention-avatar';avatar.textContent=item.name.slice(0,2).toUpperCase();
+   const label=document.createElement('span');label.className='chat-mention-label';label.textContent=item.name;
+   const kind=document.createElement('small');kind.className='chat-mention-kind';kind.textContent=mode==='object'?item.kind:item.kind==='robot'?'Robot':item.kind==='broadcast'?'Group':'Person';
+   b.append(avatar,label,kind);
+   if(mode==='person'&&item.avatar&&online&&auth)api.mediaBlob(item.avatar).then(url=>{
+    if(!b.isConnected)return;const img=document.createElement('img');img.alt='';img.src=url;avatar.replaceChildren(img);
+   }).catch(()=>{});
+   b.addEventListener('pointerdown',e=>e.preventDefault());b.onclick=()=>select(index);box.append(b);
+  });
   box.hidden=false;box.querySelector('button')?.classList.add('active');
  };
  const highlight=()=>{[...box.children].forEach((button,i)=>button.classList.toggle('active',i===active));};
- input.addEventListener('input',render);
- input.addEventListener('click',render);
+ input.addEventListener('input',render);input.addEventListener('click',render);
  input.addEventListener('keydown',e=>{
   if(box.hidden)return;
   if(e.key==='Escape'){e.preventDefault();hide();return;}
@@ -1498,6 +1526,7 @@ function setupChatMentions(){
  document.addEventListener('pointerdown',e=>{if(!e.target.closest?.('#chatMentions,#chatInput'))hide();});
  window.addEventListener('solvi:room-changed',hide);
 }
+
 function setupRobotVoiceSettings(){
  const enabled=$('robotSpeechEnabled'),volume=$('robotVoiceVolume'),input=$('elevenLabsKey'),status=$('voiceKeyStatus');
  enabled.checked=localStorage.getItem('solvi-robot-speech')!=='0';

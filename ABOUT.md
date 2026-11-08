@@ -1,4 +1,4 @@
-SOLVI.help v0.2.240 — Model-planned, identity-bound creative projects.
+SOLVI.help v0.2.241 — Model-planned, identity-bound creative projects.
 
 # About SOLVI.help
 

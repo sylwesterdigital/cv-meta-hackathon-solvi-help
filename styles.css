@@ -2862,3 +2862,22 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #robotBrainsPanel .character-relation{display:grid;gap:4px;padding:10px;border:1px solid #3c5970;border-radius:8px}
 #robotBrainsPanel .character-relation small{color:#b8cbd9}
 @media(max-width:650px){#robotBrainsPanel .character-editor .character-toolbar{grid-template-columns:1fr}#robotBrainsPanel:has([data-brain-page="character"]:not([hidden])){width:calc(100vw - 14px)}}
+
+/* v0.2.241 — sound-reactive outline ONLY; text/background never flicker. */
+#solviComicBubbles .solvi-comic-speech.comic-audio-active{
+ --speech-level:0;
+ border-color:rgba(16,16,16,calc(.38 + var(--speech-level)*.62));
+ box-shadow:0 0 calc(2px + var(--speech-level)*18px) rgba(255,255,255,calc(.20 + var(--speech-level)*.48)),
+  2px 4px 0 #151515,0 8px 20px #0007;
+ transition:border-color 65ms linear,box-shadow 65ms linear;
+}
+#chatMentions .chat-mention-option{display:flex!important;align-items:center!important;gap:10px!important;white-space:nowrap;min-height:40px!important;padding:5px 10px!important}
+#chatMentions .chat-mention-avatar{display:flex;align-items:center;justify-content:center;width:28px;height:28px;min-width:28px;aspect-ratio:1;border-radius:50%;overflow:hidden;background:#466173;border:1px solid #95bad6;color:#fff;font-size:10px;font-weight:700}
+#chatMentions .chat-mention-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+#chatMentions .chat-mention-label{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+#chatMentions .chat-mention-kind{flex:0 0 auto;margin-left:8px;padding-left:9px;border-left:1px solid #8296a766;opacity:.8;font-size:10px}
+#chatMentions .chat-mention-option[data-kind='robot']::after{display:none!important;content:none!important}
+#chatMentions .chat-mention-option[data-kind='object'] .chat-mention-avatar{border-radius:7px;background:#33514e}
+
+#chatFeed .chat-object-ref{display:inline!important;min-height:0!important;padding:1px 5px!important;margin:0 2px!important;vertical-align:baseline;border-radius:5px!important;border:1px solid #83b6d5!important;background:#294d60!important;color:#f5faff!important;font:inherit!important;cursor:pointer}
+#chatFeed .chat-object-ref:disabled{opacity:.55;cursor:default}

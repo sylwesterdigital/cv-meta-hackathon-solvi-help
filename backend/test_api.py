@@ -1543,3 +1543,19 @@ _typo,_ack=_plan_motion('@Elox go to the Red Pshere now',_b,_furniture)
 assert _typo and _typo['kind']=='go_to' and _typo['target_id']=='red-sphere',(_typo,_ack)
 print('PASS: natural move-forward commands, safe typo target resolution, and physical task dispatch')
 
+
+
+# v0.2.241: creative intentions are language goals, not hardcoded object nouns;
+# $ object references must identify an actual object of THIS realm.
+from server import group_intent_kind as _intent_241,plan_robot_command as _command_241,group_creative_duration_seconds as _duration_241
+_brief_241='@all perform an extreme creative session of building a metropolis for pink elephants'
+assert _intent_241(_brief_241)=='creative_build'
+assert _duration_241(_brief_241)==900
+_id_241='12345678-1234-4234-8234-123456789abc'
+_obj_241={'id':_id_241,'name':'Only in this room','kind':'model','position':[0,0,0]}
+_ref_241='@Albert go to $[Only in this room]('+_id_241+')'
+_cmd_241,_=_command_241(_ref_241,{'name':'Albert'},[_obj_241])
+assert _cmd_241['kind']=='go_to' and _cmd_241['target_id']==_id_241
+_missing_241,_=_command_241(_ref_241,{'name':'Albert'},[])
+assert _missing_241 is None
+print('PASS: creative metropolis authorization, bounded default duration, realm-ID object references')

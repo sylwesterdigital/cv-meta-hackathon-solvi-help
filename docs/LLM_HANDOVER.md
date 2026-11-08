@@ -1,4 +1,4 @@
-# SOLVI.help Master LLM Handover — v0.2.240
+# SOLVI.help Master LLM Handover — v0.2.241
 
 ## v0.2.236 — Persistent creative robot teams and checked primitive creation
 

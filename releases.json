@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.240",
+  "currentVersion": "0.2.241",
   "releases": [
+    {
+      "version": "0.2.241",
+      "publishedAt": "2026-11-08T01:45:46Z",
+      "changes": [
+        "Speech comic outlines react to measured streamed-TTS audio volume; system-TTS fallback is an explicitly unmeasured visual cadence.",
+        "Chat @ suggestions show avatar/initial roundels with legible spacing, and $ references list current-realm objects with stable UUIDs.",
+        "Chat object tokens are verified against the current realm before robot navigation and rendered as clickable scene selections.",
+        "Novel human creative-session briefs such as a pink-elephant metropolis become bounded 15-minute work orders and related Muse-designed construction stages.",
+        "Include v0.2.241 example instructions, full regression checks, preserve all original avatar/model/media binaries and existing worlds."
+      ]
+    },
     {
       "version": "0.2.240",
       "publishedAt": "2026-11-08T01:05:46Z",
@@ -296,16 +307,6 @@
         "Default to the actual avatar hand bone instead of finger joints; use tool-specific handle grips for shovel, axe, rake, broom, mop, stick and saw.",
         "Expose Inventory \u2192 Held \u2192 Switch hand / Grip and Selected Tool \u2192 Tool grip settings, with live preview, reset and persistent multiplayer profiles.",
         "Validate and persist grip profiles in scene objects, object presets, realm exports and imports; retain all v0.2.203 authorization and prior improvements. No DB migration or tool-action claim."
-      ]
-    },
-    {
-      "version": "0.2.203",
-      "publishedAt": "2026-11-05T23:14:37Z",
-      "changes": [
-        "Fix captioned and untagged robot vocatives in explicit command parsing so CC: Jessica, stop is correctly interpreted as a stop command rather than chat.",
-        "Restore 403 owner-only room-policy enforcement for CC/untagged STOP, including when Meta is unavailable.",
-        "Clear rejected reaction reservations so failed authorization never consumes the message for later permitted execution.",
-        "Retain all v0.2.202 conversation-continuity enhancements, persistence, original GLB assets and watcher packaging."
       ]
     }
   ]

@@ -13,7 +13,13 @@ export function creativeBuildIntent(text=''){
  return value;
 }
 export function groupCreativeIntent(text=''){
- return /^\s*@(?:all|everyone)\b/i.test(text)?creativeBuildIntent(text):null;
+ const value=String(text||'').trim().slice(0,1800);
+ if(!/^@(?:all|everyone)\b/i.test(value)||NEGATIVE.test(value))return null;
+ // A direct action request is an authorization, even if the requested
+ // invention has never appeared in any built-in noun dictionary.
+ const imperative=/^@(?:all|everyone)\b[\s,:-]*(?:(?:please|hey|guys|robots|can you|could you|now)\s+)*(?:perform|start|begin|build|create|design|construct|assemble|make|develop|undertake)\b/i.test(value);
+ const creativeRequest=/\b(?:build|building|construct|constructing|create|creating|make|design|designing|assemble|invent)\b/i.test(value);
+ return imperative&&creativeRequest?value:creativeBuildIntent(value);
 }
 export function namedCreativeIntent(text='',robotName=''){
  const match=/^\s*@([\p{L}\p{N}_-]+)[\s,:]+(.*)$/iu.exec(String(text||''));

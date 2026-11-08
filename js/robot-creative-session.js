@@ -5,7 +5,7 @@ const MINUTE=60_000;
 export function creativeSessionDurationMs(goal=''){
  const text=String(goal||'');
  const match=/\b(\d{1,2})\s*(minutes?|mintues?|mins?|hours?|hrs?)\b/i.exec(text);
- if(!match)return 0;
+ if(!match)return /\b(?:creative\s+(?:building\s+)?session|session\s+of\s+(?:building|creating|designing))\b/i.test(text)&&/\b(?:build|building|create|creating|design|designing)\b/i.test(text)?15*MINUTE:0;
  const amount=Number(match[1]);
  if(!Number.isInteger(amount)||amount<1)return 0;
  const units=match[2].toLowerCase();

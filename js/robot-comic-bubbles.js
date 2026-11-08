@@ -9,6 +9,7 @@ export function comicBubbleText(text,max=370){
 export function installRobotComicBubbles(world){
  if(typeof document==='undefined'||typeof requestAnimationFrame!=='function')return ()=>{};
  const entries=new Map(),layer=document.createElement('div');
+ let currentSpeaker='';
  layer.id='solviComicBubbles';layer.setAttribute('aria-hidden','true');document.body.append(layer);
  let raf=0,active=true;
  const clear=()=>{for(const entry of entries.values())entry.node.remove();entries.clear();};
@@ -32,6 +33,7 @@ export function installRobotComicBubbles(world){
   node.classList.add('comic-font-'+(['digital','comic','sans'].includes(cfg.comicFont)?cfg.comicFont:'digital'));
   const caption=document.createElement('span');caption.className='solvi-comic-text';caption.textContent=cfg.comicCaps==='upper'?text.toLocaleUpperCase():text;
   node.append(caption);layer.append(node);
+  if(!thinking&&name===currentSpeaker)node.classList.add('comic-audio-active');
   entries.set(name,{robot,node,until:performance.now()+comicBubbleDuration(text,thinking)});
  };
  const brain=e=>{
@@ -42,8 +44,24 @@ export function installRobotComicBubbles(world){
   if(!/PLAN|THINK|DECISION|REASON|INTENT/i.test(d.step||''))return;
   window.dispatchEvent(new CustomEvent('solvi:robot-comic',{detail:{name:d.robotName,text:comicBubbleText(d.detail,90)||d.step,kind:'thought'}}));
  };
- const room=()=>clear();
+ const speaking=e=>{
+  const d=e.detail||{};
+  if(!d.active){currentSpeaker='';for(const entry of entries.values()){entry.node.classList.remove('comic-audio-active');entry.node.style.removeProperty('--speech-level');}return;}
+  currentSpeaker=String(d.name||'');const entry=entries.get(currentSpeaker);
+  if(entry){entry.node.classList.add('comic-audio-active');entry.until=Math.max(entry.until,performance.now()+1000);}
+ };
+ const audioLevel=e=>{
+  const d=e.detail||{},level=Math.max(0,Math.min(1,Number(d.level)||0));
+  if(!d.active||d.name!==currentSpeaker)return;
+  const entry=entries.get(currentSpeaker);if(!entry||entry.node.classList.contains('solvi-comic-thought'))return;
+  entry.node.classList.add('comic-audio-active');
+  entry.node.style.setProperty('--speech-level',level.toFixed(3));
+  entry.until=Math.max(entry.until,performance.now()+2500);
+ };
+ const room=()=>{currentSpeaker='';clear();};
  window.addEventListener('solvi:robot-comic',receive);
+ window.addEventListener('solvi:robot-speaking',speaking);
+ window.addEventListener('solvi:robot-speech-level',audioLevel);
  window.addEventListener('solvi:brain-trace',brain);
  window.addEventListener('solvi:room-changed',room);
  const follow=()=>{
@@ -63,5 +81,5 @@ export function installRobotComicBubbles(world){
   raf=requestAnimationFrame(follow);
  };
  raf=requestAnimationFrame(follow);
- return ()=>{active=false;cancelAnimationFrame(raf);window.removeEventListener('solvi:robot-comic',receive);window.removeEventListener('solvi:brain-trace',brain);window.removeEventListener('solvi:room-changed',room);clear();layer.remove();};
+ return ()=>{active=false;cancelAnimationFrame(raf);window.removeEventListener('solvi:robot-comic',receive);window.removeEventListener('solvi:robot-speaking',speaking);window.removeEventListener('solvi:robot-speech-level',audioLevel);window.removeEventListener('solvi:brain-trace',brain);window.removeEventListener('solvi:room-changed',room);clear();layer.remove();};
 }
