@@ -31,7 +31,7 @@ test('missing Muse key/backoff does not release a creative group worker or recre
  assert.match(source,/run\.groupNoProgress=0/);
  assert.match(source,/run\.creativeSeriesIndex\+\+/);
  assert.match(source,/seriesTag=run\.creativeSeriesIndex\?':series'/);
- assert.match(source,/run\.creativeDeadline=Date\.now\(\)\+mins\*60000/);
+ assert.match(source,/run\.creativeDeadline=creativeSessionDeadline\(goal,Date\.now\(\)\)/);
  const backend=read('backend/server.py');
  assert.match(backend,/creativeSeriesIndex','creativeDeadline'/);
  assert.match(backend,/series_index/);

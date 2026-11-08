@@ -1443,6 +1443,82 @@ assert c.put('/api/robots/autonomy/order',headers=headers,json={
     'state':{'creativeSeriesIndex':999,'creativeDeadline':1234567890000},'enabled':True}).status_code==400
 print('PASS: dynamic Muse creative design requires active realm-bound order; browser session key accepted; timed work state validated; unsafe output rejected')
 
+# v0.2.240: timed group work stays assigned after each sculpture. Claims
+# derive deadline from SAVED human message timestamp; a completed structure
+# is not proof of finishing the full 15-minute session. Verify series-1 names.
+import datetime as dt
+from server import group_creative_duration_seconds as _creative_secs
+assert _creative_secs('@all wander for 15 mintues and build surreal sculptures')==900
+assert _creative_secs('@all build a cube 30 metres ahead')==0
+_timed_message=_msg('@all please walk around for 15 mintues and build surreal sculptures from spheres and cubes')
+assert _timed_message.status_code==200
+_timed_mid=_timed_message.get_json()['message']['id']
+_timed_queue=c.post(endpoint+'queue',headers=headers,json={'room':queue_room,'message_id':_timed_mid})
+assert _timed_queue.status_code==200,(_timed_queue.status_code,_timed_queue.data)
+_timed_task=_timed_queue.get_json()['task']
+assert _timed_task['created']==_timed_message.get_json()['message']['created']
+_timed_start=dt.datetime.fromisoformat(_timed_task['created'].replace('Z','+00:00')).timestamp()
+_timed_deadline=int((_timed_start+900)*1000)
+_timed_bot={**_queue_robot,'id':'queue-test-timed-bot','name':'Timed Alice','position':[13,0,13]}
+with db() as con:
+    _scene=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    _scene.append(_timed_bot)
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(_scene),queue_room))
+_timed_job=_timed_mid+':0'
+_timed_order={**_order,'robotId':_timed_bot['id'],'goal':_timed_message.get_json()['message']['text'],'variant':'creative'}
+_timed_state={'groupJobId':_timed_job,'intentMessageId':_timed_job,'creativeDeadline':_timed_deadline,
+              'creativeNextAt':0,'creativeSeriesIndex':0,'creativeHistory':[]}
+_timed_claim={'room':queue_room,'message_id':_timed_job,'robot_id':_timed_bot['id'],
+              'order':_timed_order,'state':_timed_state}
+forged=c.post(endpoint+'claim',headers=headers,json={**_timed_claim,
+    'state':{**_timed_state,'creativeDeadline':_timed_deadline+60000}})
+assert forged.status_code==400,(forged.status_code,forged.data)
+correct=c.post(endpoint+'claim',headers=headers,json=_timed_claim)
+assert correct.status_code==200,(correct.status_code,correct.data)
+_timed_plan={'name':'Pink Sphere','site_distance':None,'parts':[
+    {'kind':'sphere','label':'sphere','color':'#ed79be',
+     'offset':{'x':0,'y':0,'z':0},'size':{'width':1,'height':1,'depth':1}}]}
+_timed_prev_id='verified-timed-series-zero'
+_timed_current_id='verified-timed-series-one'
+_timed_tag='SOLVI Creative · '+_timed_job+' · 0 · '
+_timed_sphere={'id':_timed_prev_id,'kind':'sphere','owner':_user_id,'name':_timed_tag+'first orb',
+               'position':[29,0.5,31],'rotation':[0,0,0],'scale':[1,1,1],'color':'#ed79be'}
+_timed_next_sphere={**_timed_sphere,'id':_timed_current_id,
+    'name':'SOLVI Creative · '+_timed_job+':series1 · 0 · second orb','position':[30,0.5,31]}
+with db() as con:
+    _scene=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    _scene.extend([_timed_sphere,_timed_next_sphere])
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(_scene),queue_room))
+_timed_final_state={**_timed_state,'creativeSeriesIndex':1,'creativeSite':{'x':30,'z':31},
+   'creativePlan':_timed_plan,'creativeBuilt':[{'index':0,'id':_timed_current_id}],
+   'creativeHistory':[{'index':0,'ids':[_timed_prev_id]}]}
+upsert=c.put('/api/robots/autonomy/order',headers=headers,json={
+    'room':queue_room,'robot_id':_timed_bot['id'],'order':_timed_order,
+    'state':_timed_final_state,'enabled':True})
+assert upsert.status_code==200,(upsert.status_code,upsert.data)
+_timed_result={'room':queue_room,'message_id':_timed_job,
+               'robot_id':_timed_bot['id'],'outcome':'completed'}
+early=c.post(endpoint+'result',headers=headers,json=_timed_result)
+assert early.status_code==409,(early.status_code,early.data)
+assert 'not yet finished' in early.get_json()['error']
+# Simulate the clock passing by shifting only this test task's server-created
+# timestamp. This avoids waiting 15 wall-clock minutes inside the Mac watcher.
+with db() as con:
+    con.execute('UPDATE robot_group_intents SET created=? WHERE room_id=? AND source_message_id=?',
+                ((dt.datetime.now(dt.timezone.utc)-dt.timedelta(minutes=16)).isoformat().replace('+00:00','Z'),queue_room,_timed_job))
+    _scene=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    next(o for o in _scene if o['id']==_timed_prev_id)['name']='Wrong historical robot project'
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(_scene),queue_room))
+assert c.post(endpoint+'result',headers=headers,json=_timed_result).status_code==409
+with db() as con:
+    _scene=json.loads(con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(queue_room,)).fetchone()['payload'])
+    next(o for o in _scene if o['id']==_timed_prev_id)['name']=_timed_tag+'first orb'
+    con.execute('UPDATE room_scenes SET payload=? WHERE room_id=?',(json.dumps(_scene),queue_room))
+_timed_finished=c.post(endpoint+'result',headers=headers,json=_timed_result)
+assert _timed_finished.status_code==200,(_timed_finished.status_code,_timed_finished.data)
+assert _timed_finished.get_json()['status']=='completed'
+print('PASS: timed 15-minute group task preserves assignment, rejects early/fake receipts, verifies later series and history')
+
 # Logging out revokes the token server-side; the same browser tab cannot use it again.
 assert c.post('/api/logout',headers=headers,json={}).status_code==200
 assert c.get('/api/me',headers=headers).status_code==401

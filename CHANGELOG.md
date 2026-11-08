@@ -1,3 +1,11 @@
+## v0.2.240 — Timed creative sessions and continuous component execution (2026-11-08)
+
+- Honor an explicit creative work duration as the lifetime of the robot assignment, not a cap of three finished sculptures. Group roles share the absolute timestamp of their authenticated human message.
+- Repair the hidden 180-second pause after ten creative components: continue bounded scene-save cycles until the active design is complete.
+- Distribute at most nine distinct model-designed structures across a timed work session; maintain precise saved next-slot/deadline and scene object identities across refreshes. One-off creative requests still stop after their verified object.
+- Require the server to reject premature group completion, incorrect deadlines, missing previous-series objects, and invalid series-specific object names; expire unclaimed timed tasks safely.
+- Preserve existing worlds, original avatars/media, edit permissions, Meta credential handling, tool quotas and watcher-controlled deployment.
+
 ## v0.2.239 — Creative builders: browser credentials, no false handoffs, and combined roaming (2026-11-07)
 
 - Forward browser session Meta credentials to the creative design API, matching conversation, vision and planning; no key logged or persisted.

@@ -248,7 +248,7 @@ def origin_protection():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True,service='solvi-help-api',version='0.2.239',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
+    return jsonify(ok=True,service='solvi-help-api',version='0.2.240',ai=bool(configured_model_key()),backend=True,websocket=True,stt={'available':whisper_ready(),'engine':'whisper.cpp','model':'base','shared':True})
 
 # Model assets are stored once and referenced by an opaque identifier in room state.
 # The client may choose a smaller upload limit; this hard ceiling is enforced server-side.
@@ -1890,7 +1890,7 @@ def valid_robot_work_order(order,state):
     except (TypeError,ValueError,OverflowError):return None
     if len(raw)>12000:return None
     # Never store HTML/script, API keys, input frames or giant model outputs.
-    safe_keys={'creativeSite','creativeBuilt','creativePending','creativePlan','creativeSeriesIndex','creativeDeadline','completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending','groupJobId','groupNoProgress'}
+    safe_keys={'creativeSite','creativeBuilt','creativePending','creativePlan','creativeSeriesIndex','creativeDeadline','creativeNextAt','creativeHistory','creativeRoamedIndex','completed','step','last','metaFailures','nextMetaAt','recoveryAttempts','house','invitations','contacted','placedSupplies','researchNotes','pendingAction','projectPlaced','completedHouses','team','teamBuilt','cleanupBinId','cleanupHomeId','cleanupDone','cleanupSkipped','cleanupThrowTried','askedPreferences','roofPreference','furnishingColors','intentMessageId','projectDeferred','projectPending','groupJobId','groupNoProgress'}
     stored={k:state[k] for k in safe_keys if k in state}
     if any(isinstance(stored.get(k),dict) and len(stored[k])>50 for k in ('recoveryAttempts','house','last')):return None
     if not isinstance(stored.get('recoveryAttempts',{}),dict):return None
@@ -1943,8 +1943,20 @@ def valid_robot_work_order(order,state):
     built=stored.get('teamBuilt',[])
     if not isinstance(built,list) or len(built)>8 or any(not isinstance(p,dict) or set(p)!={'id','variant'} or
          not isinstance(p['id'],str) or len(p['id'])>100 or p['variant'] not in ('road','footpath') for p in built):return None
-    if type(stored.get('creativeSeriesIndex',0)) is not int or not 0<=stored.get('creativeSeriesIndex',0)<=2:return None
+    if type(stored.get('creativeSeriesIndex',0)) is not int or not 0<=stored.get('creativeSeriesIndex',0)<=8:return None
     if type(stored.get('creativeDeadline',0)) not in (int,float) or not math.isfinite(stored.get('creativeDeadline',0)) or not 0<=stored.get('creativeDeadline',0)<=9999999999999:return None
+    if type(stored.get('creativeNextAt',0)) not in (int,float) or not math.isfinite(stored.get('creativeNextAt',0)) or not 0<=stored.get('creativeNextAt',0)<=9999999999999:return None
+    if type(stored.get('creativeRoamedIndex',-1)) is not int or not -1<=stored.get('creativeRoamedIndex',-1)<=8:return None
+    history=stored.get('creativeHistory',[])
+    if not isinstance(history,list) or len(history)>8:return None
+    prior_ids=[]
+    for i,record in enumerate(history):
+        if (not isinstance(record,dict) or set(record)!={'index','ids'} or
+           type(record['index']) is not int or record['index']!=i or
+           not isinstance(record['ids'],list) or not 1<=len(record['ids'])<=12 or
+           any(not isinstance(ident,str) or not 1<=len(ident)<=100 for ident in record['ids'])):return None
+        prior_ids.extend(record['ids'])
+    if len(prior_ids)!=len(set(prior_ids)) or len(history)>stored.get('creativeSeriesIndex',0):return None
     creative_plan=stored.get('creativePlan')
     if creative_plan is not None:
         # Bound every model-designed component again at the server persistence gate.
@@ -1996,9 +2008,24 @@ def group_creative_part_count(goal):
     single=bool(re.search(r'\bcubes?\b',text,re.I)) and unit and not re.search(r'\b(?:mega|towers?|structures?|stacks?)\b',text,re.I)
     return 1 if single else 8
 
+def group_creative_duration_seconds(goal):
+    match=re.search(r'\b(\d{1,2})\s*(minutes?|mintues?|mins?|hours?|hrs?)\b',str(goal or ''),re.I)
+    if not match:return 0
+    amount=int(match.group(1))
+    if amount<1:return 0
+    return min(3600,amount*(3600 if match.group(2).lower().startswith('h') else 60))
+
+def group_creative_deadline(task):
+    seconds=group_creative_duration_seconds(task['source_text'])
+    if not seconds:return 0
+    try:
+        started=dt.datetime.fromisoformat(str(task['created']).replace('Z','+00:00')).timestamp()
+        return int((started+seconds)*1000)
+    except (TypeError,ValueError,OverflowError,KeyError):return 0
+
 def group_intent_public(row):
     return {key:row[key] for key in ('room_id','source_message_id','kind','source_text','status',
-             'worker_id','target_id','target_name','failed_worker_id','attempts','retry_at','detail','updated')}
+             'worker_id','target_id','target_name','failed_worker_id','attempts','retry_at','detail','created','updated')}
 
 def group_scene_objects(con,room_id):
     row=con.execute('SELECT payload FROM room_scenes WHERE room_id=?',(room_id,)).fetchone()
@@ -2037,7 +2064,7 @@ def robot_group_queue_add():
     mid=str(data.get('message_id',''))[:100]
     if not mid:return json_error('Human message ID required',400)
     with db() as con:
-        row=con.execute('SELECT id,user_id,role,text FROM messages WHERE id=? AND room_id=?',(mid,room_id)).fetchone()
+        row=con.execute('SELECT id,user_id,role,text,created FROM messages WHERE id=? AND room_id=?',(mid,room_id)).fetchone()
         if not row or row['user_id']!=user['id'] or row['role']!='user':return json_error('Original human chat authority required',403)
         kind=group_intent_kind(row['text'])
         if not kind:return json_error('Only explicit supported @all tasks can be queued',400)
@@ -2064,7 +2091,7 @@ def robot_group_queue_add():
         for ident in identifiers:
             if len(ident)>100:return json_error('Group message ID too long',400)
             con.execute('INSERT INTO robot_group_intents(room_id,source_message_id,user_id,kind,source_text,created,updated) VALUES(?,?,?,?,?,?,?)',
-                 (room_id,ident,user['id'],kind,row['text'],stamp,stamp))
+                 (room_id,ident,user['id'],kind,row['text'],row['created'],stamp))
         task=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=?',(room_id,identifiers[0])).fetchone()
     return jsonify(ok=True,task=group_intent_public(task),deduplicated=False,subtasks=len(identifiers))
 
@@ -2089,6 +2116,11 @@ def robot_group_queue_list():
             # never stolen merely because a browser timer was throttled.
             con.execute("UPDATE robot_group_intents SET status='pending',failed_worker_id=?,worker_id='',retry_at=0,detail='Previous worker or saved order unavailable; safe pending reassignment',updated=? WHERE room_id=? AND source_message_id=?",
                         (task['worker_id'],now(),room_id,task['source_message_id']))
+        for pending in con.execute("SELECT * FROM robot_group_intents WHERE room_id=? AND user_id=? AND kind='creative_build' AND status='pending'",(room_id,user['id'])).fetchall():
+            deadline=group_creative_deadline(pending)
+            if deadline and time.time()*1000>=deadline:
+                con.execute("UPDATE robot_group_intents SET status='blocked',detail='Timed creative request expired before an eligible worker was assigned',updated=? WHERE room_id=? AND source_message_id=?",
+                            (now(),room_id,pending['source_message_id']))
         rows=con.execute("SELECT * FROM robot_group_intents WHERE room_id=? AND user_id=? AND status IN ('pending','assigned','blocked') ORDER BY created ASC LIMIT 40",(room_id,user['id'])).fetchall()
     return jsonify(tasks=[group_intent_public(row) for row in rows],execution='browser-required')
 
@@ -2112,6 +2144,13 @@ def robot_group_queue_claim():
         task=con.execute('SELECT * FROM robot_group_intents WHERE room_id=? AND source_message_id=? AND user_id=?',(room_id,mid,user['id'])).fetchone()
         if not task:return json_error('Unknown group intent',404)
         if task['status']!='pending' or task['retry_at']>time.time():return json_error('Group intent not ready for claiming',409)
+        if task['kind']=='creative_build':
+            expected=group_creative_deadline(task)
+            received=state.get('creativeDeadline',0)
+            if expected and (type(received) not in (int,float) or abs(received-expected)>2500):
+                return json_error('Creative session deadline must match original human message',400)
+            if not expected and received:return json_error('Creative session deadline must be human authorised',400)
+            if expected and time.time()*1000>=expected:return json_error('Timed group instruction already expired',409)
         existing=con.execute('SELECT enabled FROM robot_work_orders WHERE room_id=? AND robot_id=?',(room_id,rid)).fetchone()
         if existing and existing['enabled']:return json_error('Robot already has an active project',409)
         if task['kind']=='cleanup_boxes':
@@ -2212,6 +2251,10 @@ def robot_group_queue_result():
         row=con.execute('SELECT state_json FROM robot_work_orders WHERE room_id=? AND robot_id=? AND user_id=?',(room_id,rid,user['id'])).fetchone()
         if not row or json.loads(row['state_json']).get('groupJobId')!=mid:return json_error('Missing authoritative group work order',409)
         objects=group_scene_objects(con,room_id)
+        if outcome=='completed' and task['kind']=='creative_build':
+            deadline=group_creative_deadline(task)
+            if deadline and time.time()*1000<deadline:
+                return json_error('Timed group work session is not yet finished; retain assignment and continue building',409)
         if outcome=='completed' and task['kind']=='cleanup_boxes':
             boxes=group_copy_objects(objects)
             if not boxes or not all(group_destination_confirmed(objects,task['target_id'],box) for box in boxes):
@@ -2224,7 +2267,23 @@ def robot_group_queue_result():
             indices={entry.get('index') for entry in entries if isinstance(entry,dict)}
             if len(entries)!=count or indices!=set(range(count)):
                 return json_error('Creative structure has unfinished verified parts',409)
-            tag=re.sub(r'[^\w:.-]','_',mid[:90]);seen=set()
+            series=state.get('creativeSeriesIndex',0)
+            if type(series) is not int or not 0<=series<=8:return json_error('Invalid creative series index',409)
+            history=state.get('creativeHistory',[])
+            deadline=group_creative_deadline(task)
+            if deadline and series and len(history)!=series:
+                return json_error('Timed creative history is incomplete',409)
+            for history_item in history:
+                suffix=':series'+str(history_item['index']) if history_item['index'] else ''
+                history_tag=re.sub(r'[^\w:.-]','_',((mid+suffix)[:90]))
+                for history_index,ident in enumerate(history_item['ids']):
+                    obj=next((o for o in objects if isinstance(o,dict) and o.get('id')==ident),None)
+                    if (not obj or obj.get('owner')!=user['id'] or
+                        obj.get('kind') not in ('cube','sphere','cylinder') or
+                        not str(obj.get('name','')).startswith('SOLVI Creative · '+history_tag+' · '+str(history_index)+' · ')):
+                        return json_error('A prior completed creative structure is missing from saved scene',409)
+            suffix=':series'+str(series) if series else ''
+            tag=re.sub(r'[^\w:.-]','_',((mid+suffix)[:90]));seen=set()
             for entry in entries:
                 ident=entry.get('id')
                 object_row=next((obj for obj in objects if isinstance(obj,dict) and obj.get('id')==ident),None)
@@ -2364,7 +2423,7 @@ def robot_autonomy_design():
        'No instructions beyond the JSON fields. SITE_DISTANCE must be a number in 1..45 only when the human '
        'explicitly requests a distance in front of this robot, otherwise null. '
        'Each offset Y is the component BOTTOM above local ground. For a team, invent a DISTINCT design for each assigned team_role_index 0,1,2 rather than repeating towers. '
-       'For a timed creative series, make series_index 0,1,2 distinct in purpose and silhouette; avoid rebuilding the previous structure. '
+       'For timed creative work, make EVERY series_index from 0 through 8 distinct in purpose, proportions, silhouette, and name; avoid rebuilding any earlier object visible in the current realm. '
        'Do not pretend a plan is construction; the client will check route, collisions and save receipts.')
     request_text=json.dumps({'goal':goal,'realm_id':room_id,'robot':{'id':rid,'name':robot.get('name',''),
                     'position':robot.get('position'),'rotation':robot.get('rotation')},

@@ -1,6 +1,17 @@
 {
-  "currentVersion": "0.2.239",
+  "currentVersion": "0.2.240",
   "releases": [
+    {
+      "version": "0.2.240",
+      "publishedAt": "2026-11-08T01:05:46Z",
+      "changes": [
+        "Honor an explicit creative work duration as the lifetime of the robot assignment, not a cap of three finished sculptures. Group roles share the absolute timestamp of their authenticated human message.",
+        "Repair the hidden 180-second pause after ten creative components: continue bounded scene-save cycles until the active design is complete.",
+        "Distribute at most nine distinct model-designed structures across a timed work session; maintain precise saved next-slot/deadline and scene object identities across refreshes. One-off creative requests still stop after their verified object.",
+        "Require the server to reject premature group completion, incorrect deadlines, missing previous-series objects, and invalid series-specific object names; expire unclaimed timed tasks safely.",
+        "Preserve existing worlds, original avatars/media, edit permissions, Meta credential handling, tool quotas and watcher-controlled deployment."
+      ]
+    },
     {
       "version": "0.2.239",
       "publishedAt": "2026-11-08T00:13:32Z",
@@ -295,17 +306,6 @@
         "Restore 403 owner-only room-policy enforcement for CC/untagged STOP, including when Meta is unavailable.",
         "Clear rejected reaction reservations so failed authorization never consumes the message for later permitted execution.",
         "Retain all v0.2.202 conversation-continuity enhancements, persistence, original GLB assets and watcher packaging."
-      ]
-    },
-    {
-      "version": "0.2.201",
-      "publishedAt": "2026-11-05T18:06:13Z",
-      "changes": [
-        "Fix multi-tab profile takeover: a stale tab never evicts a freshly authenticated tab or deletes its browser token, even when both tabs share the same valid token.",
-        "Make public site login backend-first with a retryable health check and explicit offline error rather than silent local-demo sign-in.",
-        "Make room/AI setup failures nonfatal for an authenticated session: scene load always starts when the active token remains valid.",
-        "Prevent duplicate sign-in submissions, show clear recovery-key errors, retain user recovery material, and preserve all scene/GLB data.",
-        "Allow profile recovery-key export while signed out, and prevent accidental logout of an already-invalid session."
       ]
     }
   ]
