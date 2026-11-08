@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.247",
+  "currentVersion": "0.2.248",
   "releases": [
+    {
+      "version": "0.2.248",
+      "publishedAt": "2026-11-08T13:50:46Z",
+      "changes": [
+        "Simplify unnecessary A* zigzags into the shortest collision-safe straight segments before rounding genuine obstacle corners; keep exact destinations.",
+        "Preserve mandatory barrier reconnaissance checkpoints while straightening the safe route between them.",
+        "Automatically refresh the selected robot Eyes view from genuine six-direction 210\u00b0\u00d7135\u00b0 captures after raw observations, including barrier checkpoints; retain Muse original evidence frames.",
+        "Add regression tests, release notes and version-valid example instructions."
+      ]
+    },
     {
       "version": "0.2.247",
       "publishedAt": "2026-11-08T13:18:18Z",
@@ -298,16 +308,6 @@
         "Interpret requested plural homes as two bounded furnished house projects per assigned robot; never overwrite active robot work orders or invent playground equipment.",
         "Parse one-hour wandering as a timed multi-leg patrol, and a 15m retreat with random turn as separate collision-checked motion stages; permit safe bounded fallbacks, no teleports.",
         "Retain every prior 0.2.211 smooth multiplayer robot motion, fence navigation, object ownership, scene persistence, GLB assets, and no database schema migration."
-      ]
-    },
-    {
-      "version": "0.2.211",
-      "publishedAt": "2026-11-06T05:24:38Z",
-      "changes": [
-        "Stream actual autonomous navigation positions, heading and gait state at roughly 9Hz to other signed-in clients; render between snapshots instead of jumping between infrequent scene saves.",
-        "Keep the original collision-aware path and fence checkpoint pauses on the owner client while remote avatars smoothly follow that same route and use walking/run/idle animations.",
-        "Preserve the manual keyboard-prediction network path, lift transport, room permissions and persistent scene objects; avoid stale checkpoint rewinds while a live motion stream is active.",
-        "Bound and authorise robot-motion WebSocket relay and sequence numbers; continue saving final positions and five-second recovery checkpoints without writing every animation frame."
       ]
     }
   ]

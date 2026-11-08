@@ -15,19 +15,21 @@ const checkRoute=(start,waypoints,obstacles,clearance=.30)=>{
   prev=node;
  }
 };
-test('opt-in smoothing rounds turns without changing the actual destination',()=>{
+test('opt-in line of sight removes needless zigzag turns and preserves the exact destination',()=>{
  const start={x:0,z:0},raw=[{x:3,z:0},{x:3,z:3},{x:7,z:3}];
  const result=smoothRobotWaypoints(start,raw,[]);
- assert.ok(result.length>raw.length,'rounded corners gain a few short checked waypoints');
+ assert.deepEqual(result,[raw.at(-1)],'an open-space route becomes a single straight leg');
  assert.deepEqual(result.at(-1),raw.at(-1));
  assert.ok(plannedPathLength(start,result)<plannedPathLength(start,raw)*1.01);
  checkRoute(start,result,[]);
  assert.equal(smoothRobotWaypoints(start,[raw[0]],[]).length,1);
 });
-test('a curve cutting an obstacle clearance band falls back to exact A* waypoints',()=>{
+test('a route shortcut and rounded corner must clear all obstacle padding',()=>{
  const start={x:0,z:0},raw=[{x:3,z:0},{x:3,z:3},{x:7,z:3}];
  const wall=[{minX:2.75,maxX:3.25,minZ:.1,maxZ:1.8}];
- assert.strictEqual(smoothRobotWaypoints(start,raw,wall),raw);
+ const result=smoothRobotWaypoints(start,raw,wall);
+ assert.deepEqual(result.at(-1),raw.at(-1));
+ checkRoute(start,result,wall);
 });
 test('genuine A* detour around a solid wall can be smoothed and remains clear',()=>{
  const start={x:0,z:0},end={x:5,z:5};
@@ -43,8 +45,8 @@ test('navigation UI is opt-in and uses the original path for barrier observation
  const editor=read('js/editor.js'),html=read('index.html');
  assert.match(editor,/smoothRobotPathsEnabled=localStorage\.getItem/);
  assert.match(editor,/this\.smoothRobotPathsEnabled=false/);
- assert.match(editor,/rawCheckpoints\.length===0/);
- assert.match(editor,/smoothRobotWaypoints\(start,rawWaypoints,obstacles\)/);
+ assert.match(editor,/robotRouteCheckpoints\(start,rawWaypoints,obstacles\)/);
+ assert.match(editor,/smoothRobotWaypointsWithCheckpoints\(start,rawWaypoints,obstacles,rawCheckpoints\)/);
  assert.match(editor,/robot\.userData\.robotRouteCheckpoints=rawCheckpoints/);
  assert.match(html,/id="smoothRobotWalks" type="checkbox"/);
 });

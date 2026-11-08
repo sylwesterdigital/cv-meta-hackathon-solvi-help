@@ -1768,6 +1768,47 @@ function bindUI(world){
  // Wide previews are intentionally local and non-billable. They do not
  // replace the exact central JPEG submitted to Muse for an observation.
  const wideSurveyLastAt=new Map();
+ const wideSurveyBusy=new Set();
+ // Any genuine head-camera frame (including a barrier checkpoint) can refresh
+ // the selected robot's wide preview. Previously ONLY periodic reconnaissance
+ // triggered a wide capture, so the user mostly saw square JPEGs.
+ const publishSelectedWideEye=async(robotId,room)=>{
+  const editor=window.solviEditor,robot=editor?.items?.find(o=>o.userData.editorId===robotId&&o.userData.editorKind==='robot');
+  const key=room+':'+robotId;
+  if(!robot||!editor.canEdit(robot)||!document.getElementById('showRobotEyes')?.checked||
+     document.visibilityState!=='visible'||editor.controlledRobotId!==robotId||
+     activeRoom!==room||window.solviRoom!==room||editor.world?.renderer?.xr?.isPresenting||
+     wideSurveyBusy.has(key)||Date.now()-(wideSurveyLastAt.get(key)||0)<120000)return;
+  wideSurveyBusy.add(key);
+  // Limit repeated attempts even if a browser capture fails; do not put camera
+  // work in the critical path of a real movement or a billable Muse request.
+  wideSurveyLastAt.set(key,Date.now());
+  const stillCurrent=()=>activeRoom===room&&window.solviRoom===room&&editor.items.includes(robot)&&
+    editor.controlledRobotId===robotId&&document.visibilityState==='visible';
+  try{
+   const survey=await captureRobotWideSurvey(view=>captureRobotView(editor.world,robot,{
+    yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch,fovDegrees:WIDE_EYE_FOV,wideCapture:true
+   }),{stillCurrent,width:1152,height:744});
+   if(stillCurrent()){
+    rememberRobotObservationFrame(robotId,survey.blob,'Stitched wide eyes · 210° horizontal × 135° vertical · six real head-camera views');
+    emitBrainTrace(robotId,robot.name,'WIDE EYES PREVIEW','Selected robot wide view refreshed locally from six actual camera frames; the central raw JPEG remains independent Muse evidence.');
+   }
+  }catch(error){emitBrainTrace(robotId,robot.name,'WIDE EYES UNAVAILABLE',String(error.message||error));}
+  finally{wideSurveyBusy.delete(key);}
+ };
+ window.addEventListener('solvi:robot-eyes-wide-request',event=>{
+  const {robotId,room}=event.detail||{};
+  if(typeof robotId!=='string'||room!==activeRoom)return;
+  // Yield to the original camera/event pipeline before using the renderer.
+  setTimeout(()=>{void publishSelectedWideEye(robotId,room);},100);
+ });
+ window.addEventListener('solvi:robot-eye-frame',event=>{
+  const frame=event.detail;
+  if(!frame?.robotId||!frame?.blob?.size||frame.room!==activeRoom||
+     /^Stitched wide eyes/.test(String(frame.label||'')))return;
+  if(window.solviEditor?.controlledRobotId===frame.robotId)
+   setTimeout(()=>{void publishSelectedWideEye(frame.robotId,frame.room);},100);
+ });
 
  const observeAutonomously=async()=>{
    if(perceptionBusy||document.visibilityState!=='visible'||!online||!auth||!me||!window.solviEditor)return;
@@ -1795,24 +1836,11 @@ function bindUI(world){
        if(observed.inference)emitBrainTrace(robot.userData.editorId,robot.name,'PERCEPTION MODEL I/O (text + frame reference)',observed.inference);
        robot.userData.lastCameraObservation={text:observed.observation,at:observed.observed_at};
      }
-     // Eyes previously displayed only the 72° square evidence photo. When
-     // enabled, perform a separate six-direction 210° × 135° survey and show
-     // its stitched result in the same 16:9 preview. No extra Meta call.
-     if(document.getElementById('showRobotEyes')?.checked&&
-        Date.now()-(wideSurveyLastAt.get(currentRoom+':'+robot.userData.editorId)||0)>=120000&&
-        document.visibilityState==='visible'){
-      const stillCurrent=()=>activeRoom===currentRoom&&window.solviRoom===currentRoom&&editor.items.includes(robot)&&document.visibilityState==='visible';
-      try{
-       const wide=await captureRobotWideSurvey(view=>captureRobotView(editor.world,robot,{
-        yawOffset:view.yaw*Math.PI/180,pitchDegrees:view.pitch,fovDegrees:WIDE_EYE_FOV,wideCapture:true
-       }),{stillCurrent});
-       if(stillCurrent()){
-        wideSurveyLastAt.set(currentRoom+':'+robot.userData.editorId,Date.now());
-        rememberRobotObservationFrame(robot.userData.editorId,wide.blob,'Stitched wide eyes · 210° horizontal × 135° vertical · six real camera views · peripheral panorama');
-        emitBrainTrace(robot.userData.editorId,robot.name,'WIDE RECONNAISSANCE','Local stitched 210° × 135° field from six head-camera images; central JPEG remains the Muse evidence frame. Not binocular stereo.');
-       }
-      }catch(error){emitBrainTrace(robot.userData.editorId,robot.name,'WIDE EYES UNAVAILABLE',String(error.message||error));}
-     }
+     // The shared wide-preview path also handles barrier checkpoint frames.
+     // This is a preview operation only; never replace the JPEG Muse received.
+     if(editor.controlledRobotId===robot.userData.editorId)
+       void publishSelectedWideEye(robot.userData.editorId,currentRoom);
+
    }catch(error){
      emitBrainTrace(robot.userData.editorId,robot.name,'PERCEPTION UNAVAILABLE',error.message);
    }finally{perceptionBusy=false;}

@@ -1,3 +1,10 @@
+## v0.2.248 — Straight routes instead of rounded zigzags; Eyes from every real capture (2026-11-08)
+
+- Opt-in Smooth paths now removes redundant A* waypoint turns using exact obstacle-clear line-of-sight segments, then rounds only necessary bends.
+- Obstacle and barrier-camera checkpoints are preserved while unrelated left/right detours between them are shortened.
+- Selected robots generate an actual stitched peripheral Eyes preview after any raw camera capture, including barrier checkpoints, subject to rate and realm guards; Muse still receives the unchanged central JPEG.
+- Regression tests and version-specific example instructions. Full Flask and browser acceptance remain gated by the watcher.
+
 ## v0.2.247 — Automatic peripheral eyes, named creative work orders, compact folders (2026-11-08)
 
 - Opt-in Eyes shows stitched 210° × 135° six-frame panorama after autonomous reconnaissance, preserving central-frame model evidence and original image privacy.

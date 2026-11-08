@@ -31,7 +31,7 @@ import {cleanPortal,pairedPortal,resizePortalAperture} from './portal-core.js';
 import {portalPairEntries} from './portal-preset-data.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach,robotRouteCheckpoints} from './robot-pathfinding.js';
-import {smoothRobotWaypoints} from './robot-path-smoothing.js';
+import {smoothRobotWaypointsWithCheckpoints} from './robot-path-smoothing.js';
 import {cleanSceneCollection,collectionOf,groupSceneItems,memberDisplayName,creativeCollectionTitle,findSceneObjectRow} from './scene-collections.js';
 import {collectionDeletionPlan} from './collection-deletion.js';
 import {validCreativeBuild} from './creative-build-preset.js';
@@ -435,7 +435,7 @@ export class SceneEditor{
   const eyePanel=byId('robotEyePreview'),eyeImage=byId('robotEyePreviewImage');
   const eyeName=byId('robotEyePreviewName'),eyeTime=byId('robotEyePreviewTime');
   let eyesEnabled=true,eyeURL=null,displayedBlob=null;
-  const eyeFrames=new Map(),wideEyeFrames=new Map();
+  const eyeFrames=new Map(),wideEyeFrames=new Map(),widePreviewRequests=new Map();
   try{eyesEnabled=localStorage.getItem('solvi-robot-eyes-preview-v1')!=='0';}catch{}
   eyesToggle.checked=eyesEnabled;
   const clearEyeImage=()=>{
@@ -448,8 +448,18 @@ export class SceneEditor{
    if(eyePanel.hidden){clearEyeImage();return;}
    eyeName.textContent=robot.name+' · last real eye view';
    const recentWide=wideEyeFrames.get(robot.userData.editorId);
-   const frame=recentWide&&Date.now()-recentWide.at<240000&&recentWide.room===String(window.solviRoom||'')
-    ?recentWide:eyeFrames.get(robot.userData.editorId);
+   const wideFresh=recentWide&&Date.now()-recentWide.at<240000&&recentWide.room===String(window.solviRoom||'');
+   const frame=wideFresh?recentWide:eyeFrames.get(robot.userData.editorId);
+   // If the last view is narrow or no image exists, ask the browser to capture
+   // genuine peripheral coverage. Never fabricate an image or reuse old realms.
+   if(!wideFresh){
+    const room=String(window.solviRoom||''),key=room+':'+robot.userData.editorId;
+    if(room&&Date.now()-(widePreviewRequests.get(key)||0)>=120000){
+     widePreviewRequests.set(key,Date.now());
+     setTimeout(()=>window.dispatchEvent(new CustomEvent('solvi:robot-eyes-wide-request',
+       {detail:{robotId:robot.userData.editorId,room}})),50);
+    }
+   }
    if(!frame||frame.room!==String(window.solviRoom||'')){
     clearEyeImage();eyeTime.textContent='No camera frame captured in this realm';eyeTime.removeAttribute('datetime');return;
    }
@@ -474,7 +484,7 @@ export class SceneEditor{
    if(/^Stitched wide eyes/.test(String(frame.label||'')))wideEyeFrames.set(frame.robotId,frame);
    updateEyePreview();
   });
-  window.addEventListener('solvi:room-changed',()=>{eyeFrames.clear();wideEyeFrames.clear();clearEyeImage();updateEyePreview();});
+  window.addEventListener('solvi:room-changed',()=>{eyeFrames.clear();wideEyeFrames.clear();widePreviewRequests.clear();clearEyeImage();updateEyePreview();});
   window.addEventListener('pagehide',clearEyeImage);
   setInterval(()=>{if(!eyePanel.hidden)updateEyePreview();},15000);
   const speakingPortrait=e=>{
@@ -3502,11 +3512,11 @@ byId('objectFollowHandRotationRow').hidden=!canBePickable(obj.userData.editorKin
     // Use reachable, obstacle-aware intermediate waypoints. The previous fixed
     // straight-line midpoints could lie inside a house and reject a valid detour.
     const rawWaypoints=planRobotTravelRoute(start,{x:point.x,z:point.z},obstacles)||[];
-    // Barrier camera checkpoints must remain exact. Otherwise round only
-    // corners whose full curve clears the same scene collision footprints.
+    // Barrier camera checkpoints remain exact, but redundant A* zigzags
+    // between them may be removed if the direct segments are clear.
     const rawCheckpoints=robotRouteCheckpoints(start,rawWaypoints,obstacles);
-    const waypoints=smooth&&rawCheckpoints.length===0
-      ?smoothRobotWaypoints(start,rawWaypoints,obstacles):rawWaypoints;
+    const waypoints=smooth
+      ?smoothRobotWaypointsWithCheckpoints(start,rawWaypoints,obstacles,rawCheckpoints):rawWaypoints;
     if(!waypoints.length){
       robot.userData.robotDebugRoute={start,waypoints:[],obstacles,destination:{x:point.x,z:point.z},blocked:true};
       if(typeof this.robotPathDebugVisible==='function'&&this.robotPathDebugVisible(robot))updateRobotPathDebug(this.world,robot,robot.userData.robotDebugRoute);
