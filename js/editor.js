@@ -32,7 +32,7 @@ import {portalPairEntries} from './portal-preset-data.js';
 import {tickPortals,activatePortalButton} from './portal-transport.js';
 import {planRobotPath,planRobotTravelRoute,pathBlocked,planRobotApproach,planRobotPartialApproach,robotRouteCheckpoints} from './robot-pathfinding.js';
 import {smoothRobotWaypoints} from './robot-path-smoothing.js';
-import {cleanSceneCollection,collectionOf,groupSceneItems,memberDisplayName,creativeCollectionTitle} from './scene-collections.js';
+import {cleanSceneCollection,collectionOf,groupSceneItems,memberDisplayName,creativeCollectionTitle,findSceneObjectRow} from './scene-collections.js';
 import {robotPosePacket,appendRobotPose,sampleRobotPose} from './robot-motion-sync.js';
 import {planRobotMeeting,canMeetRobot,sameRobotFloor,remainingRouteBlocked} from './robot-social-navigation.js';
 import {findRobotWorksite,footprintClear} from './robot-worksite.js';
@@ -1925,7 +1925,10 @@ addSceneMedia(media,{backing='white',width=null,height=null,loop=true,refDistanc
   else{this.transform.detach();if(!this.canEdit(obj))this.toast('Read-only object · owned by another user');}
   if(revealInList&&obj)this.revealSceneObject(obj);
   this.updateInspector();this.refreshList();this.updateRobotDebugStatus();
-  if(revealInList&&obj)requestAnimationFrame(()=>byId('sceneItems')?.querySelector('[data-object-id=+obj.userData.editorId+]')?.scrollIntoView({block:'center',behavior:'smooth'}));
+  if(revealInList&&obj)requestAnimationFrame(()=>{
+   const row=findSceneObjectRow(byId('sceneItems'),obj.userData.editorId);
+   row?.scrollIntoView?.({block:'center',behavior:'smooth'});
+  });
   if(isEditMode()&&['wall','stairs'].includes(obj?.userData.editorKind)&&!this.wallDrawing&&!this.skipNextWallPanel)this.openWallPanel(obj);else if(this.wallEditTarget)this.endWallDrawing();
   window.dispatchEvent(new CustomEvent('solvi:properties-robot-selected',{detail:{robotId:obj?.userData.editorKind==='robot'?obj.userData.editorId:null}}));
   // Selection must never move the camera; numpad presets and zoom remain explicit.

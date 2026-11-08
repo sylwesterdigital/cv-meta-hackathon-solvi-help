@@ -2926,3 +2926,23 @@ body>#inspectorValueSlider #inspectorActiveRange{
 #sceneItems .scene-collection-members .scene-item-name{font-size:12px!important}
 #sceneBulkRow #sceneGroupSelected{padding:5px 8px;white-space:nowrap}
 @media(max-width:480px){#sceneItems .scene-collection-action{font-size:9px!important;padding:3px 4px!important}#sceneItems .scene-collection-members{padding-left:5px}}
+
+/* v0.2.244: object identities and collection controls stay legible in icon-only mode.
+   The global icon-only preference is for toolbars, not user-generated scene names. */
+html[data-button-labels='icon'] body #sceneItems .scene-item-row button.scene-item-name[data-ui-icon]{
+ font-size:clamp(11px,calc(12px * var(--ui-scale)),14px)!important;
+ min-width:0!important;max-width:none!important;flex:1 1 auto!important;
+ min-height:36px!important;justify-content:flex-start!important;text-align:left!important;
+ padding:5px 7px!important;gap:6px!important;
+}
+html[data-button-labels='icon'] body #sceneItems .scene-item-row button.scene-item-name[data-ui-icon]>.ui-button-label{
+ display:block!important;font-size:inherit!important;min-width:0!important;
+ white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;
+}
+html[data-button-labels='icon'] body #sceneItems .scene-collection-heading button{
+ font-size:clamp(10px,calc(12px * var(--ui-scale)),14px)!important;
+ min-width:0!important;
+}
+html[data-button-labels='icon'] body #sceneItems .scene-collection-heading button>.ui-button-label{
+ display:block!important;font-size:inherit!important;min-width:0!important;
+}

@@ -1,3 +1,9 @@
+## v0.2.244 — Objects panel hotfix: visible folder names and valid stage-selection lookup (2026-11-08)
+
+- Remove malformed `querySelector` interpolation from stage-click selection; find the exact saved object ID using DOM dataset comparisons.
+- Keep collection title/action text and saved object names visible under icon-only toolbar preferences.
+- Preserve collections, scene saves, ownership and original scene/robot assets. HTTP 502 responses require separate upstream service diagnosis and are not described as a frontend fix.
+
 ## v0.2.243 — Object folders, precise $ references, and collection transforms (2026-11-08)
 
 - Fix closest-trigger selection for `@Albert go to $` so `$` opens current-realm object suggestions.

@@ -1,6 +1,16 @@
 {
-  "currentVersion": "0.2.243",
+  "currentVersion": "0.2.244",
   "releases": [
+    {
+      "version": "0.2.244",
+      "publishedAt": "2026-11-08T03:47:42Z",
+      "changes": [
+        "Fix the invalid Objects querySelector by exact data-object-id dataset lookup.",
+        "Restore visible collection action/title and object row names even in icon-only button mode.",
+        "Add regression tests for UUID/colon object IDs and icon-only folder legibility.",
+        "Preserve existing scene, assets, collection metadata and robot execution code; investigate independent upstream 502 errors in service logs."
+      ]
+    },
     {
       "version": "0.2.243",
       "publishedAt": "2026-11-08T03:07:57Z",
@@ -299,16 +309,6 @@
         "Make B toggle inventory visibility, label I/U/B directly in Held controls and shortcut help, remove duplicate Drop from tool cards and keep Inventory open during grip editing and aimed digging.",
         "Match the Transform inspector format: single-line Attach (hand, bone, Follow), Angle X/Y/Z and reset, Action clip; Advanced contains hand offset/contact axes only, initially collapsed. Remove repetitive instructions and unify label font size.",
         "Suppress incorrect missing-physics-body warning for currently equipped items (their physics bodies are deliberately removed while held). Preserve object IDs, per-hand grips, saved scenes, avatars and backend schema without migration."
-      ]
-    },
-    {
-      "version": "0.2.206",
-      "publishedAt": "2026-11-06T01:56:05Z",
-      "changes": [
-        "Add always-visible Drop Shovel (right) / Drop Saw (left) controls in the Held inventory toolbar above the scrolling item list, wired to persistent equipment release with edit permission checks.",
-        "Fix giant inventory tool cards and hidden action buttons by using compact content-sized rows and constrained preview thumbnails.",
-        "Replace long Tool Grip panel with compact hand, rig-bone, angle and action-clip selectors; collapse hand/handle offsets in optional Advanced calibration details.",
-        "Retain all v0.2.205 shovel tool use, animation features, avatar models, stored equipment data and multiplayer protocols; no migration."
       ]
     }
   ]

@@ -52,7 +52,7 @@ test('stage selection expands, opens and scrolls to the real object row',()=>{
  assert.match(source,/this\.select\(node,\{revealInList:true\}\)/);
  assert.match(source,/revealSceneObject\(obj\)/);
  assert.match(source,/this\.collectionExpanded\.add\(folder\.id\)/);
- assert.match(source,/scrollIntoView\(\{block:'center',behavior:'smooth'\}\)/);
+ assert.match(source,/row\?\.scrollIntoView\?\.\(\{block:'center',behavior:'smooth'\}\)/);
  assert.match(read('styles.css'),/\.scene-item-row\.is-active/);
 });
 test('collection gizmo applies full pivot matrix and persists each editable member',()=>{
@@ -72,5 +72,5 @@ test('browser and backend persist the same optional collection + opt-out schema'
  assert.match(backend,/if 'collection' in obj and/);
  assert.match(backend,/'seating','collection','collectionOptOut'/);
  assert.match(html,/id="sceneGroupSelected"/);
- assert.match(html,/"\.\/js\/scene-collections\.js":"\.\/js\/scene-collections\.js\?v=0\.2\.243"/);
+ assert.match(html,/"\.\/js\/scene-collections\.js":"\.\/js\/scene-collections\.js\?v=0\.2\.244"/);
 });

@@ -48,6 +48,8 @@ export function iconForButton(button){
  if(button.classList.contains('avatar-card')||button.classList.contains('asset-card'))return null; // Initials/avatar are the profile symbol.
  if(/^close[A-Z]/.test(button.id||''))return 'close';
  if(button.classList.contains('theme-swatch')||button.classList.contains('theme-preset'))return null;
+ // Collection controls must retain their visible names even in icon-only mode.
+ if(button.closest?.('.scene-collection-heading'))return null;
  if(button.dataset?.uiIcon&&fileIcons.has(button.dataset.uiIcon))return button.dataset.uiIcon;
  const kind=button.dataset?.objectKind;
  if(kind)return iconForObjectKind(kind);

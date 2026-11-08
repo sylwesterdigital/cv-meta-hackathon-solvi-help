@@ -36,3 +36,13 @@ export function groupSceneItems(items){
  }
  return {folders:[...folders.values()],ungrouped};
 }
+
+// Find an object row by its opaque ID without interpolating the ID into a CSS selector.
+// Object IDs may contain colons or other CSS metacharacters.
+export function findSceneObjectRow(list, objectId){
+ if(!list||typeof list.querySelectorAll!=='function'||typeof objectId!=='string')return null;
+ for(const row of list.querySelectorAll('[data-object-id]')){
+  if(row.dataset?.objectId===objectId)return row;
+ }
+ return null;
+}
